@@ -21,12 +21,12 @@ def _ax_home() -> Path:
 
 def _read_json_input(path: str | None) -> dict[str, Any]:
     if path:
-        with open(path, "r", encoding="utf-8") as f:
+        with open(path, "r", encoding="utf-8-sig") as f:
             return json.load(f)
     if path is None:
         default_path = _ax_home() / "configs" / "mfcloud-expense-receipt-reconcile.json"
         if default_path.exists():
-            with open(default_path, "r", encoding="utf-8") as f:
+            with open(default_path, "r", encoding="utf-8-sig") as f:
                 return json.load(f)
     return {}
 
