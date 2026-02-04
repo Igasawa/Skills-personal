@@ -71,11 +71,11 @@ python scripts/run.py --year 2026 --month 1 --mfcloud-expense-list-url "<経費�
 
 ## 登録済み領収書の一括取得・一括印刷（MVP）
 
-前月分の **Amazon/Rakuten ローカルPDF + MFの添付証憑** を集めて、印刷用リスト/スクリプトを作成する。
+前月分の **Amazon/Rakuten ローカルPDF** を集めて、印刷用リスト/スクリプトを作成する。
 
-1) MF添付のダウンロード（必要なら）
+1) 一括印刷リスト作成
 ```powershell
-python scripts/collect_print.py --year 2026 --month 1 --download-mfcloud --interactive
+python scripts/collect_print.py --year 2026 --month 1
 ```
 
 2) 一括印刷（OSの既定アプリで印刷）
@@ -88,7 +88,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "C:\Users\<user>\.ax\artifac
 - `reports/print_list.txt`：ファイルパス一覧
 - `reports/print_all.ps1`：一括印刷スクリプト
 
-※ 画像(JPG/PNG)はそのまま保存し、PDF変換は行わない。
+※ 画像(JPG/PNG)はそのまま保存し、PDF変換は行わない。  
+※ MF添付証憑は**デフォルトで印刷対象外**。必要なら `--download-mfcloud --include-mfcloud --interactive` を指定。
 
 ### ドライラン（オフライン突き合わせ）
 

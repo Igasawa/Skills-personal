@@ -170,7 +170,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--year", type=int, help="default: last month")
     ap.add_argument("--month", type=int, help="default: last month")
     ap.add_argument("--output-dir", help="override output_root")
-    ap.add_argument("--download-mfcloud", action="store_true", help="download MF attachments before print")
+    ap.add_argument("--download-mfcloud", action="store_true", help="download MF attachments before print (optional)")
+    ap.add_argument("--include-mfcloud", action="store_true", help="include MF attachments in print list")
     ap.add_argument("--mfcloud-storage-state", help="path to mfcloud-expense.storage.json")
     ap.add_argument("--interactive", action="store_true", help="allow auth handoff during MF download")
     ap.add_argument("--headed", action="store_true", help="run browser headed during MF download")
@@ -231,7 +232,8 @@ def main(argv: list[str] | None = None) -> int:
     files = []
     files += _collect_local_pdfs(amazon_pdfs, year, month)
     files += _collect_local_pdfs(rakuten_pdfs, year, month)
-    files += _collect_mfcloud_attachments(attachments_jsonl, year, month)
+    if args.include_mfcloud:
+        files += _collect_mfcloud_attachments(attachments_jsonl, year, month)
 
     file_paths = [f["path"] for f in files]
     manifest = {
