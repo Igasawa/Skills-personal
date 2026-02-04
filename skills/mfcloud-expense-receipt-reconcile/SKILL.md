@@ -69,6 +69,27 @@ python scripts/run.py --year 2026 --month 1 --mfcloud-expense-list-url "<経費�
 python scripts/run.py --year 2026 --month 1 --mfcloud-expense-list-url "<経費明細一覧URL>" --interactive
 ```
 
+## 登録済み領収書の一括取得・一括印刷（MVP）
+
+前月分の **Amazon/Rakuten ローカルPDF + MFの添付証憑** を集めて、印刷用リスト/スクリプトを作成する。
+
+1) MF添付のダウンロード（必要なら）
+```powershell
+python scripts/collect_print.py --year 2026 --month 1 --download-mfcloud --interactive
+```
+
+2) 一括印刷（OSの既定アプリで印刷）
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File "C:\Users\<user>\.ax\artifacts\mfcloud-expense-receipt-reconcile\2026-01\reports\print_all.ps1"
+```
+
+出力:
+- `reports/print_manifest.json`：印刷対象ファイル一覧
+- `reports/print_list.txt`：ファイルパス一覧
+- `reports/print_all.ps1`：一括印刷スクリプト
+
+※ 画像(JPG/PNG)はそのまま保存し、PDF変換は行わない。
+
 ### ドライラン（オフライン突き合わせ）
 
 すでに `output_root/amazon/orders.jsonl` と `output_root/mfcloud/expenses.jsonl` がある場合、ブラウザ操作なしで突き合わせだけ実行できる。
