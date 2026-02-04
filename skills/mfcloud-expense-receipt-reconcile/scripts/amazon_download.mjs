@@ -197,6 +197,16 @@ async function applyReceiptName(page, receiptName) {
   return true;
 }
 
+async function applyReceiptNameWithFallback(page, primary, fallback) {
+  if (await applyReceiptName(page, primary)) {
+    return { applied: true, name: (primary || "").trim() };
+  }
+  if (fallback && (await applyReceiptName(page, fallback))) {
+    return { applied: true, name: (fallback || "").trim() };
+  }
+  return { applied: false, name: null };
+}
+
 async function trySelectYear(page, year) {
   const yearText = `${year}年`;
   const candidates = ["select#orderFilter", "select[name='orderFilter']", "select"];
@@ -353,6 +363,7 @@ async function main() {
   const headed = args.headed !== false;
   const slowMoMs = Number.parseInt(args["slow-mo-ms"] || "0", 10);
   const receiptName = args["receipt-name"] ? String(args["receipt-name"]) : "";
+  const receiptNameFallback = args["receipt-name-fallback"] ? String(args["receipt-name-fallback"]) : "";
   const authHandoff = Boolean(args["auth-handoff"]);
 
   if (!storageState) throw new Error("Missing --storage-state");
@@ -447,6 +458,7 @@ async function main() {
                 total_yen: order.total_yen,
                 receipt_name: receiptName || null,
                 receipt_name_applied: false,
+                source: "amazon",
                 detail_url: order.detail_url,
                 receipt_url: null,
                 pdf_path: null,
@@ -464,6 +476,7 @@ async function main() {
               total_yen: order.total_yen,
               receipt_name: receiptName || null,
               receipt_name_applied: false,
+              source: "amazon",
               detail_url: order.detail_url,
               receipt_url: null,
               pdf_path: null,
@@ -502,9 +515,9 @@ async function main() {
               const t = await extractTotalFromPage(page);
               if (t != null) order.total_yen = t;
             }
-            const nameApplied = await applyReceiptName(page, receiptName);
-            if (nameApplied) order.receipt_name = receiptName;
-            order.receipt_name_applied = Boolean(nameApplied);
+            const nameResult = await applyReceiptNameWithFallback(page, receiptName, receiptNameFallback);
+            if (nameResult.applied) order.receipt_name = nameResult.name;
+            order.receipt_name_applied = Boolean(nameResult.applied);
             await saveReceiptPdf(page, pdfPath);
           } else {
             const pdfPage = await pdfContext.newPage();
@@ -516,9 +529,9 @@ async function main() {
                 const t = await extractTotalFromPage(pdfPage);
                 if (t != null) order.total_yen = t;
               }
-              const nameApplied = await applyReceiptName(pdfPage, receiptName);
-              if (nameApplied) order.receipt_name = receiptName;
-              order.receipt_name_applied = Boolean(nameApplied);
+              const nameResult = await applyReceiptNameWithFallback(pdfPage, receiptName, receiptNameFallback);
+              if (nameResult.applied) order.receipt_name = nameResult.name;
+              order.receipt_name_applied = Boolean(nameResult.applied);
               await saveReceiptPdf(pdfPage, pdfPath);
             } finally {
               await pdfPage.close().catch(() => {});
@@ -543,6 +556,7 @@ async function main() {
           total_yen: order.total_yen,
           receipt_name: order.receipt_name || receiptName || null,
           receipt_name_applied: Boolean(order.receipt_name_applied),
+          source: "amazon",
           detail_url: order.detail_url,
           receipt_url: receiptUrl,
           pdf_path: pdfPath,

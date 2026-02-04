@@ -72,24 +72,28 @@ def _in_year_month(d: date | None, year: int, month: int) -> bool:
 
 
 @dataclass(frozen=True)
-class AmazonOrder:
+class Order:
     order_id: str
     order_date: date | None
     total_yen: int | None
     pdf_path: str | None
     receipt_url: str | None
+    source: str
 
     @staticmethod
-    def from_obj(obj: dict[str, Any]) -> "AmazonOrder | None":
+    def from_obj(obj: dict[str, Any], *, default_source: str) -> "Order | None":
+        if obj.get("include") is False:
+            return None
         order_id = str(obj.get("order_id") or "").strip()
         if not order_id:
             return None
-        return AmazonOrder(
+        return Order(
             order_id=order_id,
             order_date=_to_date(obj.get("order_date") or obj.get("date")),
             total_yen=_to_int_yen(obj.get("total_yen") or obj.get("total")),
             pdf_path=(str(obj.get("pdf_path")).strip() if obj.get("pdf_path") else None),
             receipt_url=(str(obj.get("receipt_url")).strip() if obj.get("receipt_url") else None),
+            source=str(obj.get("source") or default_source),
         )
 
 
@@ -132,25 +136,35 @@ def _looks_like_amazon(text: str) -> bool:
     return ("amazon" in t) or ("アマゾン" in text) or ("ｱﾏｿﾞﾝ" in text)
 
 
+def _looks_like_rakuten(text: str) -> bool:
+    t = text.lower()
+    return ("rakuten" in t) or ("楽天" in text)
+
+
 def reconcile(
     *,
-    amazon_orders: list[AmazonOrder],
+    orders: list[Order],
     mf_expenses: list[MfExpense],
     year: int,
     month: int,
     date_window_days: int,
     max_candidates_per_mf: int,
 ) -> dict[str, Any]:
-    amazon_in_month = [o for o in amazon_orders if _in_year_month(o.order_date, year, month)]
+    orders_in_month = [o for o in orders if _in_year_month(o.order_date, year, month)]
     mf_in_month = [e for e in mf_expenses if _in_year_month(e.use_date, year, month)]
     mf_missing = [e for e in mf_in_month if not e.has_evidence]
+
+    amazon_all = [o for o in orders if o.source == "amazon"]
+    rakuten_all = [o for o in orders if o.source == "rakuten"]
+    amazon_in_month = [o for o in amazon_all if _in_year_month(o.order_date, year, month)]
+    rakuten_in_month = [o for o in rakuten_all if _in_year_month(o.order_date, year, month)]
 
     rows: list[dict[str, Any]] = []
     for expense in mf_missing:
         if expense.amount_yen is None:
             continue
         candidates: list[dict[str, Any]] = []
-        for order in amazon_in_month:
+        for order in orders_in_month:
             if order.total_yen is None:
                 continue
             if order.total_yen != expense.amount_yen:
@@ -161,7 +175,10 @@ def reconcile(
 
             score = 100
             score += max(0, 20 - 2 * diff)
-            if _looks_like_amazon(f"{expense.vendor} {expense.memo}"):
+            vendor_text = f"{expense.vendor} {expense.memo}"
+            if order.source == "amazon" and _looks_like_amazon(vendor_text):
+                score += 10
+            if order.source == "rakuten" and _looks_like_rakuten(vendor_text):
                 score += 10
 
             candidates.append(
@@ -171,6 +188,7 @@ def reconcile(
                     "total_yen": order.total_yen,
                     "pdf_path": order.pdf_path,
                     "receipt_url": order.receipt_url,
+                    "order_source": order.source,
                     "diff_days": diff,
                     "score": score,
                 }
@@ -192,6 +210,7 @@ def reconcile(
                     "order_id": None,
                     "order_date": None,
                     "total_yen": None,
+                    "order_source": None,
                     "pdf_path": None,
                     "score": None,
                 }
@@ -211,6 +230,7 @@ def reconcile(
                     "order_id": cand["order_id"],
                     "order_date": cand["order_date"],
                     "total_yen": cand["total_yen"],
+                    "order_source": cand["order_source"],
                     "pdf_path": cand["pdf_path"],
                     "score": cand["score"],
                 }
@@ -220,8 +240,12 @@ def reconcile(
         "year": year,
         "month": month,
         "counts": {
-            "amazon_orders_total": len(amazon_orders),
+            "amazon_orders_total": len(amazon_all),
             "amazon_orders_in_month": len(amazon_in_month),
+            "rakuten_orders_total": len(rakuten_all),
+            "rakuten_orders_in_month": len(rakuten_in_month),
+            "orders_total": len(orders),
+            "orders_in_month": len(orders_in_month),
             "mf_expenses_total": len(mf_expenses),
             "mf_expenses_in_month": len(mf_in_month),
             "mf_missing_evidence": len(mf_missing),
@@ -244,6 +268,7 @@ def _write_csv(path: Path, rows: list[dict[str, Any]]) -> None:
         "mf_detail_url",
         "rank",
         "order_id",
+        "order_source",
         "order_date",
         "total_yen",
         "pdf_path",
@@ -257,8 +282,9 @@ def _write_csv(path: Path, rows: list[dict[str, Any]]) -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(description="Reconcile MF expenses with Amazon receipt PDFs")
+    ap = argparse.ArgumentParser(description="Reconcile MF expenses with Amazon/Rakuten receipt PDFs")
     ap.add_argument("--amazon-orders-jsonl", required=True)
+    ap.add_argument("--rakuten-orders-jsonl")
     ap.add_argument("--mf-expenses-jsonl", required=True)
     ap.add_argument("--out-json", required=True)
     ap.add_argument("--out-csv", required=True)
@@ -269,12 +295,14 @@ def main(argv: list[str] | None = None) -> int:
     args = ap.parse_args(argv)
 
     amazon_raw = _read_jsonl(Path(args.amazon_orders_jsonl))
+    rakuten_raw = _read_jsonl(Path(args.rakuten_orders_jsonl)) if args.rakuten_orders_jsonl else []
     mf_raw = _read_jsonl(Path(args.mf_expenses_jsonl))
-    amazon_orders = [o for o in (AmazonOrder.from_obj(x) for x in amazon_raw) if o]
+    orders = [o for o in (Order.from_obj(x, default_source="amazon") for x in amazon_raw) if o]
+    orders += [o for o in (Order.from_obj(x, default_source="rakuten") for x in rakuten_raw) if o]
     mf_expenses = [e for e in (MfExpense.from_obj(x) for x in mf_raw) if e]
 
     data = reconcile(
-        amazon_orders=amazon_orders,
+        orders=orders,
         mf_expenses=mf_expenses,
         year=int(args.year),
         month=int(args.month),

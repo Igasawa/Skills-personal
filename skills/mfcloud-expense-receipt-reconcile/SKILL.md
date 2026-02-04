@@ -1,11 +1,11 @@
 ---
 name: mfcloud-expense-receipt-reconcile
-description: MFクラウド経費の経費明細（証憑未添付）と、Amazon.co.jp（個人）の注文履歴から取得した領収書/購入明細PDFを突き合わせて候補を提示するスキル。「MFクラウド経費 証憑 未添付」「Amazon 領収書 PDF 先月」「経費精算 証憑 突き合わせ」などの依頼で使用。
+description: MFクラウド経費の経費明細（証憑未添付）と、Amazon.co.jp（個人）/楽天市場の注文履歴から取得した領収書/購入明細PDFを突き合わせて候補を提示するスキル。「MFクラウド経費 証憑 未添付」「Amazon 領収書 PDF 先月」「楽天 領収書 PDF」「経費精算 証憑 突き合わせ」などの依頼で使用。
 ---
 
-# MFクラウド経費：Amazon領収書PDF一括取得＋未添付突き合わせ（MVP）
+# MFクラウド経費：Amazon/楽天領収書PDF一括取得＋未添付突き合わせ（MVP）
 
-Amazon.co.jp（個人）の注文履歴から「領収書/購入明細ページ」をPDF化して保存し、MFクラウド経費（経費明細一覧）の証憑未添付明細と突き合わせて、候補PDFをランキングして出力する。
+Amazon.co.jp（個人）/楽天市場の注文履歴から「領収書/購入明細ページ」をPDF化して保存し、MFクラウド経費（経費明細一覧）の証憑未添付明細と突き合わせて、候補PDFをランキングして出力する。
 
 ## 重要（秘密情報）
 
@@ -24,6 +24,7 @@ npx playwright install chromium
 
 # 手動ログイン→セッション保存
 npx playwright open -b chromium "https://www.amazon.co.jp/gp/your-account/order-history" --save-storage "$env:AX_HOME\\sessions\\amazon.storage.json"
+npx playwright open -b chromium "https://order.my.rakuten.co.jp/?l-id=top_normal_mymenu_order" --save-storage "$env:AX_HOME\\sessions\\rakuten.storage.json"
 npx playwright open -b chromium "<貴社のMFクラウド経費URL>" --save-storage "$env:AX_HOME\\sessions\\mfcloud-expense.storage.json"
 ```
 
@@ -38,6 +39,16 @@ Set-Location c:\Users\Tatsuo-2023\Projects\PersonalSkills\skills\mfcloud-expense
 python scripts/run.py --year 2026 --month 1 --mfcloud-expense-list-url "<経費明細一覧URL>" --notes "出張多め・特定PJ集中"
 ```
 
+### 楽天を有効化（私用除外: 支払い方法の許可リスト）
+
+楽天は **支払い方法の許可リスト** で私用を除外する。許可リストが空の場合は **全件フィルタ** される（安全側）。
+
+```powershell
+python scripts/run.py --year 2026 --month 1 --mfcloud-expense-list-url "<経費明細一覧URL>" --enable-rakuten `
+  --rakuten-allow-payment-methods "楽天ビジネスカード,法人カード" `
+  --rakuten-orders-url "https://order.my.rakuten.co.jp/?l-id=top_normal_mymenu_order"
+```
+
 ### 領収書の宛名
 
 Amazon領収書の宛名は既定で **「株式会社ＨＩＧＨ－ＳＴＡＮＤＡＲＤ＆ＣＯ．」** を設定する。変更する場合は `--receipt-name` を指定する。
@@ -45,6 +56,8 @@ Amazon領収書の宛名は既定で **「株式会社ＨＩＧＨ－ＳＴＡ�
 ```powershell
 python scripts/run.py --year 2026 --month 1 --mfcloud-expense-list-url "<経費明細一覧URL>" --receipt-name "株式会社ＨＩＧＨ－ＳＴＡＮＤＡＲＤ＆ＣＯ．"
 ```
+
+宛名が入力できない場合は半角表記にフォールバックする（既定：`株式会社HIGH-STANDARD&CO.`）。明示指定は `--receipt-name-fallback`。
 
 ### 認証で詰まった場合（引継ぎ）
 
@@ -78,6 +91,7 @@ python scripts/run.py --year 2026 --month 1 --dry-run --output-dir "C:\Users\<us
 ## トラブルシュート
 
 - storage_state の期限切れ：`scripts/ax.ps1 playwright login --name amazon` / `--name mfcloud-expense` をやり直す
+- 楽天で私用が混じる：`--rakuten-allow-payment-methods` を設定（未設定なら全件フィルタされる）
 - MFの画面構造が違う：`--mfcloud-expense-list-url` を「経費明細一覧」かつ「一覧が表示される状態」のURLにする（フィルタ付きURL推奨）
 - AmazonのUIが変わった：`output_root/debug/` のスクリーンショット/HTMLを確認し、抽出ロジックを更新する
 

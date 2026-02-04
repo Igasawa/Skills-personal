@@ -10,7 +10,8 @@ Input (stdin or --input):
     "output_dir": null,
     "sessions": {
       "amazon_storage_state": null,
-      "mfcloud_storage_state": null
+      "mfcloud_storage_state": null,
+      "rakuten_storage_state": null
     },
     "urls": {
       "amazon_orders": "https://www.amazon.co.jp/gp/your-account/order-history",
@@ -25,7 +26,13 @@ Input (stdin or --input):
       "max_candidates_per_mf": 5
     },
     "monthly_notes": "出張多め・特定PJ集中",
-    "receipt_name": "株式会社ＨＩＧＨ－ＳＴＡＮＤＡＲＤ＆ＣＯ．"
+    "receipt_name": "株式会社ＨＩＧＨ－ＳＴＡＮＤＡＲＤ＆ＣＯ．",
+    "receipt_name_fallback": "株式会社HIGH-STANDARD&CO.",
+    "rakuten": {
+      "enabled": false,
+      "orders_url": "https://order.my.rakuten.co.jp/?l-id=top_normal_mymenu_order",
+      "payment_method_allowlist": []
+    }
   },
   "params": {
     "year": 2026,
@@ -74,6 +81,14 @@ def _coalesce(*values: Any) -> Any:
         if v is not None:
             return v
     return None
+
+
+def _parse_csv_list(value: Any) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, list):
+        return [str(v).strip() for v in value if str(v).strip()]
+    return [s.strip() for s in str(value).split(",") if s.strip()]
 
 
 def _as_int(value: Any, *, name: str) -> int:
@@ -159,6 +174,11 @@ class RunConfig:
     max_candidates_per_mf: int
     monthly_notes: str
     receipt_name: str
+    receipt_name_fallback: str
+    rakuten_enabled: bool
+    rakuten_orders_url: str
+    rakuten_storage_state: Path
+    rakuten_payment_method_allowlist: list[str]
 
 
 def _parse_config(args: argparse.Namespace, raw: dict[str, Any]) -> tuple[RunConfig, int, int]:
@@ -175,16 +195,27 @@ def _parse_config(args: argparse.Namespace, raw: dict[str, Any]) -> tuple[RunCon
     sessions = config.get("sessions") if isinstance(config.get("sessions"), dict) else {}
     pw = config.get("playwright") if isinstance(config.get("playwright"), dict) else {}
     matching = config.get("matching") if isinstance(config.get("matching"), dict) else {}
+    rakuten_cfg = config.get("rakuten") if isinstance(config.get("rakuten"), dict) else {}
     interactive = bool(_coalesce(args.interactive, config.get("interactive", False)))
     monthly_notes = _coalesce(args.monthly_notes, config.get("monthly_notes"))
     monthly_notes = str(monthly_notes).strip() if monthly_notes is not None else ""
     receipt_name = _coalesce(args.receipt_name, config.get("receipt_name"), "株式会社ＨＩＧＨ－ＳＴＡＮＤＡＲＤ＆ＣＯ．")
     receipt_name = str(receipt_name).strip() if receipt_name is not None else ""
+    receipt_name_fallback = _coalesce(args.receipt_name_fallback, config.get("receipt_name_fallback"), "株式会社HIGH-STANDARD&CO.")
+    receipt_name_fallback = str(receipt_name_fallback).strip() if receipt_name_fallback is not None else ""
 
     dry_run = bool(_coalesce(args.dry_run, config.get("dry_run", False)))
 
     amazon_orders_url = str(
         _coalesce(args.amazon_orders_url, urls.get("amazon_orders"), "https://www.amazon.co.jp/gp/your-account/order-history")
+    )
+    rakuten_enabled = bool(_coalesce(args.enable_rakuten, rakuten_cfg.get("enabled", False)))
+    rakuten_orders_url = str(
+        _coalesce(
+            args.rakuten_orders_url,
+            rakuten_cfg.get("orders_url"),
+            "https://order.my.rakuten.co.jp/?l-id=top_normal_mymenu_order",
+        )
     )
     mfcloud_expense_list_url = _coalesce(args.mfcloud_expense_list_url, urls.get("mfcloud_expense_list"))
     if not mfcloud_expense_list_url:
@@ -206,6 +237,9 @@ def _parse_config(args: argparse.Namespace, raw: dict[str, Any]) -> tuple[RunCon
     mfcloud_storage_state = Path(
         _coalesce(args.mfcloud_storage_state, sessions.get("mfcloud_storage_state")) or _default_storage_state("mfcloud-expense")
     )
+    rakuten_storage_state = Path(
+        _coalesce(args.rakuten_storage_state, sessions.get("rakuten_storage_state")) or _default_storage_state("rakuten")
+    )
 
     headed = bool(_coalesce(args.headed, pw.get("headed", True)))
     slow_mo_ms = _as_int(_coalesce(args.slow_mo_ms, pw.get("slow_mo_ms", 0)), name="slow_mo_ms")
@@ -219,15 +253,20 @@ def _parse_config(args: argparse.Namespace, raw: dict[str, Any]) -> tuple[RunCon
         dry_run=dry_run,
         output_root=output_root,
         amazon_orders_url=amazon_orders_url,
+        rakuten_orders_url=rakuten_orders_url,
         mfcloud_expense_list_url=mfcloud_expense_list_url,
         amazon_storage_state=amazon_storage_state.expanduser().resolve(),
         mfcloud_storage_state=mfcloud_storage_state.expanduser().resolve(),
+        rakuten_storage_state=rakuten_storage_state.expanduser().resolve(),
         headed=headed,
         slow_mo_ms=slow_mo_ms,
         date_window_days=date_window_days,
         max_candidates_per_mf=max_candidates_per_mf,
         monthly_notes=monthly_notes,
         receipt_name=receipt_name,
+        receipt_name_fallback=receipt_name_fallback,
+        rakuten_enabled=rakuten_enabled,
+        rakuten_payment_method_allowlist=_parse_csv_list(_coalesce(args.rakuten_allow_payment_methods, rakuten_cfg.get("payment_method_allowlist"))),
     )
     return rc, year, month
 
@@ -242,7 +281,7 @@ def _render_monthly_thread(
     template_path: Path,
     year: int,
     month: int,
-    receipts_path: Path,
+    receipts_path: str | Path,
     reports_path: Path,
     notes: str,
 ) -> str:
@@ -296,8 +335,18 @@ def main(argv: list[str] | None = None) -> int:
 
     ap.add_argument("--amazon-storage-state", dest="amazon_storage_state", help="path to amazon.storage.json")
     ap.add_argument("--mfcloud-storage-state", dest="mfcloud_storage_state", help="path to mfcloud-expense.storage.json")
+    ap.add_argument("--rakuten-storage-state", dest="rakuten_storage_state", help="path to rakuten.storage.json")
     ap.add_argument("--notes", dest="monthly_notes", help="monthly notes for thread template")
     ap.add_argument("--receipt-name", dest="receipt_name", help="receipt addressee name for Amazon invoices")
+    ap.add_argument("--receipt-name-fallback", dest="receipt_name_fallback", help="fallback receipt name when primary fails")
+
+    ap.add_argument("--enable-rakuten", dest="enable_rakuten", action="store_const", const=True, default=None, help="enable Rakuten download")
+    ap.add_argument("--rakuten-orders-url", dest="rakuten_orders_url", help="Rakuten order history URL")
+    ap.add_argument(
+        "--rakuten-allow-payment-methods",
+        dest="rakuten_allow_payment_methods",
+        help="comma-separated allowlist for Rakuten payment methods",
+    )
 
     inter = ap.add_mutually_exclusive_group()
     inter.add_argument("--interactive", dest="interactive", action="store_const", const=True, default=None, help="allow auth handoff to user")
@@ -321,6 +370,8 @@ def main(argv: list[str] | None = None) -> int:
     output_root = _ensure_dir(rc.output_root)
     amazon_dir = _ensure_dir(output_root / "amazon")
     amazon_pdfs_dir = _ensure_dir(amazon_dir / "pdfs")
+    rakuten_dir = _ensure_dir(output_root / "rakuten")
+    rakuten_pdfs_dir = _ensure_dir(rakuten_dir / "pdfs")
     mf_dir = _ensure_dir(output_root / "mfcloud")
     reports_dir = _ensure_dir(output_root / "reports")
     debug_dir = _ensure_dir(output_root / "debug")
@@ -335,23 +386,32 @@ def main(argv: list[str] | None = None) -> int:
             "sessions": {
                 "amazon_storage_state": str(rc.amazon_storage_state),
                 "mfcloud_storage_state": str(rc.mfcloud_storage_state),
+                "rakuten_storage_state": str(rc.rakuten_storage_state),
             },
             "urls": {
                 "amazon_orders": rc.amazon_orders_url,
                 "mfcloud_expense_list": rc.mfcloud_expense_list_url,
             },
+            "rakuten": {
+                "enabled": rc.rakuten_enabled,
+                "orders_url": rc.rakuten_orders_url,
+                "payment_method_allowlist": rc.rakuten_payment_method_allowlist,
+            },
             "playwright": {"headed": rc.headed, "slow_mo_ms": rc.slow_mo_ms},
             "matching": {"date_window_days": rc.date_window_days, "max_candidates_per_mf": rc.max_candidates_per_mf},
             "monthly_notes": rc.monthly_notes,
             "receipt_name": rc.receipt_name,
+            "receipt_name_fallback": rc.receipt_name_fallback,
             "interactive": rc.interactive,
         },
     )
 
     amazon_orders_jsonl = amazon_dir / "orders.jsonl"
+    rakuten_orders_jsonl = rakuten_dir / "orders.jsonl"
     mf_expenses_jsonl = mf_dir / "expenses.jsonl"
 
     amazon_summary: dict[str, Any] = {"orders_jsonl": str(amazon_orders_jsonl), "pdfs_dir": str(amazon_pdfs_dir)}
+    rakuten_summary: dict[str, Any] = {"orders_jsonl": str(rakuten_orders_jsonl), "pdfs_dir": str(rakuten_pdfs_dir)}
     mf_summary: dict[str, Any] = {"expenses_jsonl": str(mf_expenses_jsonl)}
 
     if not rc.dry_run:
@@ -377,6 +437,8 @@ def main(argv: list[str] | None = None) -> int:
                 str(debug_dir / "amazon"),
                 "--receipt-name",
                 rc.receipt_name,
+                "--receipt-name-fallback",
+                rc.receipt_name_fallback,
                 *(["--auth-handoff"] if rc.interactive else []),
                 "--headed" if rc.headed else "--headless",
                 "--slow-mo-ms",
@@ -384,6 +446,54 @@ def main(argv: list[str] | None = None) -> int:
             ],
         )
         amazon_summary.update((amazon_out.get("data") if isinstance(amazon_out, dict) else None) or amazon_out)
+
+        if rc.rakuten_enabled:
+            if not rc.rakuten_payment_method_allowlist:
+                print(
+                    json.dumps(
+                        {
+                            "status": "warning",
+                            "warning": {
+                                "type": "RakutenAllowlistEmpty",
+                                "message": "Rakuten payment_method_allowlist is empty; all Rakuten orders will be filtered.",
+                            },
+                        },
+                        ensure_ascii=False,
+                    ),
+                    file=sys.stderr,
+                )
+
+            rakuten_out = _run_node_playwright_script(
+                script_path=scripts_dir / "rakuten_download.mjs",
+                cwd=scripts_dir,
+                args=[
+                    "--storage-state",
+                    str(rc.rakuten_storage_state),
+                    "--orders-url",
+                    rc.rakuten_orders_url,
+                    "--out-jsonl",
+                    str(rakuten_orders_jsonl),
+                    "--out-pdfs-dir",
+                    str(rakuten_pdfs_dir),
+                    "--year",
+                    str(year),
+                    "--month",
+                    str(month),
+                    "--debug-dir",
+                    str(debug_dir / "rakuten"),
+                    "--receipt-name",
+                    rc.receipt_name,
+                    "--receipt-name-fallback",
+                    rc.receipt_name_fallback,
+                    "--allow-payment-methods",
+                    ",".join(rc.rakuten_payment_method_allowlist),
+                    *(["--auth-handoff"] if rc.interactive else []),
+                    "--headed" if rc.headed else "--headless",
+                    "--slow-mo-ms",
+                    str(rc.slow_mo_ms),
+                ],
+            )
+            rakuten_summary.update((rakuten_out.get("data") if isinstance(rakuten_out, dict) else None) or rakuten_out)
 
         mf_out = _run_node_playwright_script(
             script_path=scripts_dir / "mfcloud_extract.mjs",
@@ -434,6 +544,8 @@ def main(argv: list[str] | None = None) -> int:
         "--max-candidates-per-mf",
         str(rc.max_candidates_per_mf),
     ]
+    if rakuten_orders_jsonl.exists():
+        rec_cmd += ["--rakuten-orders-jsonl", str(rakuten_orders_jsonl)]
     rec_res = subprocess.run(rec_cmd, cwd=str(scripts_dir), capture_output=True, text=True, check=False)
     if rec_res.returncode != 0:
         raise RuntimeError(
@@ -450,11 +562,14 @@ def main(argv: list[str] | None = None) -> int:
         rec_json = {"status": "success", "data": {"note": "reconcile.py did not return JSON; see reports files"}}
 
     template_path = Path(__file__).resolve().parent.parent / "assets" / "monthly_thread_template.md"
+    receipts_path = str(amazon_pdfs_dir)
+    if rc.rakuten_enabled:
+        receipts_path = f"{amazon_pdfs_dir}; {rakuten_pdfs_dir}"
     monthly_thread = _render_monthly_thread(
         template_path=template_path,
         year=year,
         month=month,
-        receipts_path=amazon_pdfs_dir,
+        receipts_path=receipts_path,
         reports_path=reports_dir,
         notes=rc.monthly_notes,
     )
@@ -465,6 +580,7 @@ def main(argv: list[str] | None = None) -> int:
         "data": {
             "output_root": str(output_root),
             "amazon": amazon_summary,
+            "rakuten": rakuten_summary,
             "mfcloud": mf_summary,
             "reports": {
                 "missing_evidence_candidates_csv": str(rec_out_csv),

@@ -8,6 +8,7 @@ entrypoint:
 
 connections:
   - web:amazon.co.jp
+  - web:rakuten.co.jp
   - mfcloud:expense
 
 secrets:
@@ -15,9 +16,15 @@ secrets:
 
 defaults:
   config:
+    receipt_name: "株式会社ＨＩＧＨ－ＳＴＡＮＤＡＲＤ＆ＣＯ．"
+    receipt_name_fallback: "株式会社HIGH-STANDARD&CO."
     urls:
       amazon_orders: "https://www.amazon.co.jp/gp/your-account/order-history"
       mfcloud_expense_list: null
+    rakuten:
+      enabled: false
+      orders_url: "https://order.my.rakuten.co.jp/?l-id=top_normal_mymenu_order"
+      payment_method_allowlist: []
     playwright:
       headed: true
       slow_mo_ms: 0
