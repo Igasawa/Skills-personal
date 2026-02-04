@@ -1,0 +1,26 @@
+version: 1
+name: mfcloud-expense-receipt-reconcile
+kind: automation
+
+entrypoint:
+  runtime: python
+  command: python scripts/run.py
+
+connections:
+  - web:amazon.co.jp
+  - mfcloud:expense
+
+secrets:
+  env: []
+
+defaults:
+  config:
+    urls:
+      amazon_orders: "https://www.amazon.co.jp/gp/your-account/order-history"
+      mfcloud_expense_list: null
+    playwright:
+      headed: true
+      slow_mo_ms: 0
+    matching:
+      date_window_days: 7
+      max_candidates_per_mf: 5
