@@ -43,6 +43,7 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import shutil
 import sys
 import traceback
 from typing import Any
@@ -111,7 +112,14 @@ def _run_node_playwright_script(
     cwd: Path,
     env: dict[str, str] | None = None,
 ) -> dict[str, Any]:
-    cmd = ["npx", "--yes", "-p", "playwright", "node", str(script_path), *args]
+    npx = None
+    for name in ("npx.cmd", "npx.exe", "npx"):
+        npx = shutil.which(name)
+        if npx:
+            break
+    if not npx:
+        raise FileNotFoundError("npx not found in PATH. Please install Node.js/npm and ensure npx is available.")
+    cmd = [npx, "--yes", "-p", "playwright", "node", str(script_path), *args]
     res = subprocess.run(
         cmd,
         cwd=str(cwd),

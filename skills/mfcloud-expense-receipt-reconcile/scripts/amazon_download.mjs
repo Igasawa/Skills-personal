@@ -40,20 +40,60 @@ function safeFilePart(s) {
 
 function yenToInt(s) {
   if (s == null) return null;
-  const m = String(s).replace(/[,円\\s]/g, "").match(/-?\\d+/);
+  const normalized = String(s)
+    .replace(/[０-９]/g, (d) => String.fromCharCode(d.charCodeAt(0) - 0xfee0))
+    .replace(/[，,]/g, "")
+    .replace(/[円\s]/g, "")
+    .replace(/[¥￥]/g, "");
+  const m = normalized.match(/-?\d+/);
   return m ? Number.parseInt(m[0], 10) : null;
+}
+
+function normalizeOrderText(s) {
+  return String(s)
+    .replace(/[０-９]/g, (d) => String.fromCharCode(d.charCodeAt(0) - 0xfee0))
+    .replace(/[，,]/g, ",")
+    .replace(/[￥¥]/g, "円")
+    .replace(/[／]/g, "/")
+    .replace(/[－–—]/g, "-")
+    .replace(/[（]/g, "(")
+    .replace(/[）]/g, ")")
+    .replace(/[\u200B-\u200D\uFEFF]/g, "");
 }
 
 function parseJapaneseDate(s, fallbackYear) {
   if (!s) return null;
-  const t = String(s).trim();
-  let m = t.match(/(\\d{4})[/-](\\d{1,2})[/-](\\d{1,2})/);
+  const t = normalizeOrderText(s).trim();
+  let m = t.match(/(\d{4})[/-](\d{1,2})[/-](\d{1,2})/);
   if (m) return { y: +m[1], m: +m[2], d: +m[3] };
-  m = t.match(/(\\d{4})年(\\d{1,2})月(\\d{1,2})日/);
+  m = t.match(/(\d{4})年(\d{1,2})月(\d{1,2})日/);
   if (m) return { y: +m[1], m: +m[2], d: +m[3] };
-  m = t.match(/(\\d{1,2})月(\\d{1,2})日/);
+  m = t.match(/(\d{1,2})月(\d{1,2})日/);
   if (m && fallbackYear) return { y: +fallbackYear, m: +m[1], d: +m[2] };
   return null;
+}
+
+function extractTotalFromText(text) {
+  if (!text) return null;
+  const t = normalizeOrderText(text);
+  const patterns = [
+    /合計\s*[:：]?\s*([0-9,]+)\s*円/,
+    /ご請求額\s*[:：]?\s*([0-9,]+)\s*円/,
+    /注文合計\s*[:：]?\s*([0-9,]+)\s*円/,
+    /合計金額\s*[:：]?\s*([0-9,]+)\s*円/,
+  ];
+  for (const p of patterns) {
+    const m = t.match(p);
+    if (m) return yenToInt(m[1]);
+  }
+  const all = [...t.matchAll(/([0-9][0-9,]*)\s*円/g)];
+  if (all.length) return yenToInt(all[all.length - 1][1]);
+  return null;
+}
+
+async function extractTotalFromPage(page) {
+  const text = await page.innerText("body").catch(() => "");
+  return extractTotalFromText(text);
 }
 
 async function writeDebug(page, debugDir, name) {
@@ -96,18 +136,26 @@ async function trySelectYear(page, year) {
 }
 
 async function extractOrdersFromPage(page, year, targetMonth) {
-  const orderCards = page.locator("div").filter({ hasText: "注文番号" });
-  const n = await orderCards.count();
+  let orderCards = page.locator(".order-card, .js-order-card");
+  let n = await orderCards.count();
+  if (n === 0) {
+    orderCards = page.locator("div").filter({ hasText: "注文番号" });
+    n = await orderCards.count();
+  }
   const orders = [];
 
   for (let i = 0; i < n; i++) {
     const card = orderCards.nth(i);
     const cardText = await card.innerText().catch(() => "");
+    const cardTextNorm = normalizeOrderText(cardText);
 
-    const idMatch = cardText.match(/注文番号\\s*[:：]?\\s*([0-9-]{10,})/);
+    const idMatch = cardTextNorm.match(/注文番号\s*[:：]?\s*([0-9-]{10,})/);
     const orderId = idMatch ? idMatch[1] : null;
 
-    const dateMatch = cardText.match(/注文日\\s*[:：]?\\s*([^\\n]+)/) || cardText.match(/注文日\\s*([^\\n]+)/);
+    const dateMatch =
+      cardTextNorm.match(/注文日\s*[:：]?\s*([0-9/年月日()]+)/) ||
+      cardTextNorm.match(/注文日\s*([0-9/年月日()]+)/) ||
+      cardTextNorm.match(/(\d{4}[/-]\d{1,2}[/-]\d{1,2})/);
     const dateParts = dateMatch ? parseJapaneseDate(dateMatch[1], year) : null;
     const orderDate = dateParts
       ? `${String(dateParts.y).padStart(4, "0")}-${String(dateParts.m).padStart(2, "0")}-${String(dateParts.d).padStart(2, "0")}`
@@ -117,23 +165,53 @@ async function extractOrdersFromPage(page, year, targetMonth) {
     const m = Number.parseInt(orderDate.slice(5, 7), 10);
     if (m !== targetMonth) continue;
 
-    const totalMatch = cardText.match(/合計\\s*[:：]?\\s*([0-9,]+)\\s*円/) || cardText.match(/合計\\s*([0-9,]+)\\s*円/);
+    const totalMatch =
+      cardTextNorm.match(/合計\s*[:：]?\s*([0-9,]+)\s*円/) ||
+      cardTextNorm.match(/注文合計\s*[:：]?\s*([0-9,]+)\s*円/) ||
+      cardTextNorm.match(/合計\s*([0-9,]+)\s*円/);
     const totalYen = totalMatch ? yenToInt(totalMatch[1]) : null;
 
     let detailUrl = null;
-    const detailLink = card.locator("a", { hasText: "注文の詳細" }).first();
-    if ((await detailLink.count()) > 0) {
-      detailUrl = await detailLink.getAttribute("href");
-    }
+    const detailLink = card.locator("a[href*='order-details'], a", { hasText: "注文内容を表示" }).first();
+    if ((await detailLink.count()) > 0) detailUrl = await detailLink.getAttribute("href");
     if (detailUrl && detailUrl.startsWith("/")) {
       detailUrl = new URL(detailUrl, page.url()).toString();
     }
 
-    if (!orderId) continue;
     orders.push({ order_id: orderId, order_date: orderDate, total_yen: totalYen, detail_url: detailUrl });
   }
 
   return orders;
+}
+
+async function extractDetailLinks(page) {
+  const links = page.locator("a[href*='order-details'], a[href*='orderID=']");
+  const n = await links.count();
+  const out = [];
+  for (let i = 0; i < n; i++) {
+    const href = await links.nth(i).getAttribute("href");
+    if (!href) continue;
+    const url = href.startsWith("/") ? new URL(href, page.url()).toString() : href;
+    out.push(url);
+  }
+  return out;
+}
+
+async function parseOrderDetail(page, fallbackYear) {
+  const textRaw = await page.innerText("body").catch(() => "");
+  const text = normalizeOrderText(textRaw);
+  const idMatch = text.match(/注文番号\s*[:：]?\s*([0-9-]{10,})/);
+  const orderId = idMatch ? idMatch[1] : null;
+
+  const dateMatch = text.match(/注文日\s*[:：]?\s*([^\n]+)/) || text.match(/注文日\s*([^\n]+)/);
+  const dateParts = dateMatch ? parseJapaneseDate(dateMatch[1], fallbackYear) : null;
+  const orderDate = dateParts
+    ? `${String(dateParts.y).padStart(4, "0")}-${String(dateParts.m).padStart(2, "0")}-${String(dateParts.d).padStart(2, "0")}`
+    : null;
+
+  const totalYen = extractTotalFromText(text);
+
+  return { orderId, orderDate, totalYen };
 }
 
 async function findReceiptLink(page) {
@@ -141,6 +219,29 @@ async function findReceiptLink(page) {
   for (const label of labels) {
     const a = page.locator("a", { hasText: label }).first();
     if ((await a.count()) > 0) return a;
+  }
+  return null;
+}
+
+async function findPopoverReceiptUrl(page, receiptLink) {
+  let popover = null;
+  if (receiptLink) {
+    popover = await receiptLink.getAttribute("data-a-popover");
+    if (!popover) {
+      const ancestor = receiptLink.locator("xpath=ancestor-or-self::*[@data-a-popover]").first();
+      if ((await ancestor.count()) > 0) popover = await ancestor.getAttribute("data-a-popover");
+    }
+  }
+  if (!popover) {
+    const anyPopover = page.locator("[data-a-popover*='invoice'], [data-a-popover*='Invoice']");
+    if ((await anyPopover.count()) > 0) popover = await anyPopover.first().getAttribute("data-a-popover");
+  }
+  if (!popover) return null;
+  try {
+    const parsed = JSON.parse(popover);
+    if (parsed && parsed.url) return parsed.url;
+  } catch {
+    return null;
   }
   return null;
 }
@@ -183,15 +284,31 @@ async function main() {
     await page.waitForLoadState("networkidle").catch(() => {});
 
     await trySelectYear(page, year);
+    await page.waitForSelector(".order-card, .js-order-card", { timeout: 15000 }).catch(() => {});
 
     const seenOrderIds = new Set();
+    const seenDetailUrls = new Set();
     for (let pageNo = 1; pageNo <= 50; pageNo++) {
       await page.waitForTimeout(300);
       const orders = await extractOrdersFromPage(page, year, month);
+      const detailLinks = await extractDetailLinks(page);
+
+      if (pageNo === 1 && orders.length === 0 && detailLinks.length === 0 && debugDir) {
+        await writeDebug(page, debugDir, "orders_page_empty");
+      }
+
       for (const o of orders) {
         if (!seenOrderIds.has(o.order_id)) {
           seenOrderIds.add(o.order_id);
           allOrders.push(o);
+          if (o.detail_url) seenDetailUrls.add(o.detail_url);
+        }
+      }
+
+      for (const url of detailLinks) {
+        if (!seenDetailUrls.has(url)) {
+          seenDetailUrls.add(url);
+          allOrders.push({ order_id: null, order_date: null, total_yen: null, detail_url: url });
         }
       }
 
@@ -204,6 +321,7 @@ async function main() {
     }
 
     const lines = [];
+    let debugDetailSaved = false;
     let pdfSaved = 0;
     let noReceipt = 0;
 
@@ -217,13 +335,56 @@ async function main() {
         await page.goto(order.detail_url, { waitUntil: "domcontentloaded" });
         await page.waitForLoadState("networkidle").catch(() => {});
 
+        if (!order.order_id || !order.order_date || order.total_yen == null) {
+          const parsed = await parseOrderDetail(page, year);
+          order.order_id = order.order_id || parsed.orderId;
+          order.order_date = order.order_date || parsed.orderDate;
+          if (order.total_yen == null && parsed.totalYen != null) order.total_yen = parsed.totalYen;
+        }
+
+        if (order.order_date) {
+          const m = Number.parseInt(order.order_date.slice(5, 7), 10);
+          if (m !== month) {
+            status = "out_of_month";
+            lines.push(
+              JSON.stringify({
+                order_id: order.order_id,
+                order_date: order.order_date,
+                total_yen: order.total_yen,
+                detail_url: order.detail_url,
+                receipt_url: null,
+                pdf_path: null,
+                status,
+              })
+            );
+            continue;
+          }
+        } else {
+          status = "unknown_date";
+          lines.push(
+            JSON.stringify({
+              order_id: order.order_id,
+              order_date: order.order_date,
+              total_yen: order.total_yen,
+              detail_url: order.detail_url,
+              receipt_url: null,
+              pdf_path: null,
+              status,
+            })
+          );
+          continue;
+        }
+
         const receiptLink = await findReceiptLink(page);
         if (!receiptLink) {
           status = "no_receipt";
           noReceipt += 1;
         } else {
-          const href = await receiptLink.getAttribute("href");
-          receiptUrl = href ? (href.startsWith("/") ? new URL(href, page.url()).toString() : href) : null;
+          let href = await receiptLink.getAttribute("href");
+          if (href && href.startsWith("javascript")) href = null;
+          const popoverUrl = await findPopoverReceiptUrl(page, receiptLink);
+          const chosen = href || popoverUrl;
+          receiptUrl = chosen ? (chosen.startsWith("/") ? new URL(chosen, page.url()).toString() : chosen) : null;
           if (!receiptUrl) {
             await receiptLink.click().catch(() => {});
             await page.waitForLoadState("domcontentloaded").catch(() => {});
@@ -236,12 +397,22 @@ async function main() {
           const fileName = `${safeFilePart(ymd)}_amazon_${safeFilePart(order.order_id)}_${safeFilePart(total)}.pdf`;
           pdfPath = path.join(outPdfsDir, fileName);
           if (pdfContext === context) {
+            await page.goto(receiptUrl, { waitUntil: "domcontentloaded" });
+            await page.waitForLoadState("networkidle").catch(() => {});
+            if (order.total_yen == null) {
+              const t = await extractTotalFromPage(page);
+              if (t != null) order.total_yen = t;
+            }
             await saveReceiptPdf(page, pdfPath);
           } else {
             const pdfPage = await pdfContext.newPage();
             try {
               await pdfPage.goto(receiptUrl, { waitUntil: "domcontentloaded" });
               await pdfPage.waitForLoadState("networkidle").catch(() => {});
+              if (order.total_yen == null) {
+                const t = await extractTotalFromPage(pdfPage);
+                if (t != null) order.total_yen = t;
+              }
               await saveReceiptPdf(pdfPage, pdfPath);
             } finally {
               await pdfPage.close().catch(() => {});
@@ -252,6 +423,11 @@ async function main() {
       } catch (e) {
         status = "error";
         if (debugDir) await writeDebug(page, debugDir, `order_${safeFilePart(order.order_id)}_error`);
+      }
+
+      if (debugDir && !debugDetailSaved && order.total_yen == null) {
+        await writeDebug(page, debugDir, `order_${safeFilePart(order.order_id || "unknown")}_detail`);
+        debugDetailSaved = true;
       }
 
       lines.push(

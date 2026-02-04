@@ -40,16 +40,26 @@ function safeFilePart(s) {
 
 function yenToInt(s) {
   if (s == null) return null;
-  const m = String(s).replace(/[,円\\s]/g, "").match(/-?\\d+/);
+  const normalized = String(s).replace(/[，,]/g, "").replace(/[円\s]/g, "");
+  const m = normalized.match(/-?\d+/);
   return m ? Number.parseInt(m[0], 10) : null;
+}
+
+function normalizeText(s) {
+  return String(s)
+    .replace(/[０-９]/g, (d) => String.fromCharCode(d.charCodeAt(0) - 0xfee0))
+    .replace(/[，]/g, ",")
+    .replace(/[／]/g, "/")
+    .replace(/[－–—]/g, "-")
+    .replace(/[（]/g, "(")
+    .replace(/[）]/g, ")")
+    .replace(/[\u200B-\u200D\uFEFF]/g, "");
 }
 
 function parseAnyDate(s) {
   if (!s) return null;
   const t = String(s).trim();
-  let m = t.match(/(\\d{4})[/-](\\d{1,2})[/-](\\d{1,2})/);
-  if (m) return `${m[1]}-${String(+m[2]).padStart(2, "0")}-${String(+m[3]).padStart(2, "0")}`;
-  m = t.match(/(\\d{4})年(\\d{1,2})月(\\d{1,2})日/);
+  const m = t.match(/(20\d{2})\D{0,4}(\d{1,2})\D{0,4}(\d{1,2})/);
   if (m) return `${m[1]}-${String(+m[2]).padStart(2, "0")}-${String(+m[3]).padStart(2, "0")}`;
   return null;
 }
@@ -77,9 +87,19 @@ async function extractRows(page) {
 
 async function bestEffortRowData(row, pageUrl) {
   const text = await row.innerText().catch(() => "");
-  const useDate = parseAnyDate(text);
-  const amountMatch = text.match(/([0-9,]+)\\s*円/);
-  const amountYen = amountMatch ? yenToInt(amountMatch[1]) : null;
+  const normalized = normalizeText(text);
+  const useDate = parseAnyDate(normalized);
+  const amountMatches = [...normalized.matchAll(/([0-9][0-9,]*)\D{0,3}円/g)];
+  const amountYen = amountMatches.length ? yenToInt(amountMatches[amountMatches.length - 1][1]) : null;
+  if (process.env.AX_DEBUG && (!useDate || amountYen == null)) {
+    const sample = text.replace(/\s+/g, " ").slice(0, 160);
+    const normalizedSample = normalized.replace(/\s+/g, " ").slice(0, 160);
+    const dm = normalized.match(/(20\d{2})\D{0,4}(\d{1,2})\D{0,4}(\d{1,2})/);
+    const am = normalized.match(/([0-9][0-9,]*)\D{0,3}円/);
+    console.error(
+      `[DEBUG] parse failed: useDate=${useDate} amountYen=${amountYen} dm=${dm ? dm[0] : "null"} am=${am ? am[1] : "null"} text="${sample}" normalized="${normalizedSample}"`
+    );
+  }
 
   let detailUrl = null;
   const a = row.locator("a[href]").first();
@@ -102,7 +122,7 @@ async function bestEffortRowData(row, pageUrl) {
 
   let expenseId = null;
   if (detailUrl) {
-    const idMatch = detailUrl.match(/(\\d{5,})/);
+    const idMatch = detailUrl.match(/(\d{5,})/);
     if (idMatch) expenseId = idMatch[1];
   }
   if (!expenseId) {
