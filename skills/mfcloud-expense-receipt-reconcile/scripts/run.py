@@ -73,6 +73,10 @@ def _read_json_input(path: str | None) -> dict[str, Any]:
         raw = sys.stdin.read()
         if raw.strip():
             return json.loads(raw)
+    default_path = _ax_home() / "configs" / "mfcloud-expense-receipt-reconcile.json"
+    if default_path.exists():
+        with open(default_path, "r", encoding="utf-8") as f:
+            return json.load(f)
     return {}
 
 

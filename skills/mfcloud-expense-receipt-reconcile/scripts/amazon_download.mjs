@@ -207,6 +207,28 @@ async function applyReceiptNameWithFallback(page, primary, fallback) {
   return { applied: false, name: null };
 }
 
+async function readReceiptNameValue(page) {
+  const input = await findReceiptNameInput(page);
+  if (!input) return null;
+  try {
+    const v = await input.inputValue();
+    return v ? String(v).trim() : null;
+  } catch {
+    return null;
+  }
+}
+
+async function promptUserReceiptName(page) {
+  if (!process.stdin || !process.stdin.isTTY) return false;
+  console.error("[ACTION_REQUIRED] 領収書の宛名が自動入力できませんでした。手動で設定してEnterを押してください。");
+  await page.bringToFront().catch(() => {});
+  await new Promise((resolve) => {
+    process.stdin.resume();
+    process.stdin.once("data", () => resolve());
+  });
+  return true;
+}
+
 async function trySelectYear(page, year) {
   const yearText = `${year}年`;
   const candidates = ["select#orderFilter", "select[name='orderFilter']", "select"];
@@ -515,7 +537,12 @@ async function main() {
               const t = await extractTotalFromPage(page);
               if (t != null) order.total_yen = t;
             }
-            const nameResult = await applyReceiptNameWithFallback(page, receiptName, receiptNameFallback);
+            let nameResult = await applyReceiptNameWithFallback(page, receiptName, receiptNameFallback);
+            if (!nameResult.applied && receiptName && authHandoff) {
+              await promptUserReceiptName(page);
+              const manualValue = await readReceiptNameValue(page);
+              if (manualValue) nameResult = { applied: true, name: manualValue };
+            }
             if (nameResult.applied) order.receipt_name = nameResult.name;
             order.receipt_name_applied = Boolean(nameResult.applied);
             await saveReceiptPdf(page, pdfPath);
@@ -529,7 +556,12 @@ async function main() {
                 const t = await extractTotalFromPage(pdfPage);
                 if (t != null) order.total_yen = t;
               }
-              const nameResult = await applyReceiptNameWithFallback(pdfPage, receiptName, receiptNameFallback);
+              let nameResult = await applyReceiptNameWithFallback(pdfPage, receiptName, receiptNameFallback);
+              if (!nameResult.applied && receiptName && authHandoff) {
+                await promptUserReceiptName(pdfPage);
+                const manualValue = await readReceiptNameValue(pdfPage);
+                if (manualValue) nameResult = { applied: true, name: manualValue };
+              }
               if (nameResult.applied) order.receipt_name = nameResult.name;
               order.receipt_name_applied = Boolean(nameResult.applied);
               await saveReceiptPdf(pdfPage, pdfPath);

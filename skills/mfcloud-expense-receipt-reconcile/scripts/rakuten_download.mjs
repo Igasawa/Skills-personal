@@ -234,6 +234,28 @@ async function applyReceiptNameWithFallback(page, primary, fallback) {
   return { applied: false, name: null };
 }
 
+async function readReceiptNameValue(page) {
+  const input = await findReceiptNameInput(page);
+  if (!input) return null;
+  try {
+    const v = await input.inputValue();
+    return v ? String(v).trim() : null;
+  } catch {
+    return null;
+  }
+}
+
+async function promptUserReceiptName(page) {
+  if (!process.stdin || !process.stdin.isTTY) return false;
+  console.error("[ACTION_REQUIRED] 領収書の宛名が自動入力できませんでした。手動で設定してEnterを押してください。");
+  await page.bringToFront().catch(() => {});
+  await new Promise((resolve) => {
+    process.stdin.resume();
+    process.stdin.once("data", () => resolve());
+  });
+  return true;
+}
+
 async function saveReceiptPdf(page, outPdfPath) {
   await page.emulateMedia({ media: "print" });
   await page.pdf({ path: outPdfPath, format: "A4", printBackground: true });
@@ -457,7 +479,12 @@ async function main() {
                 const t = await extractTotalFromText(await pdfPage.innerText("body").catch(() => ""));
                 if (t != null) totalYen = t;
               }
-              const nameResult = await applyReceiptNameWithFallback(pdfPage, receiptName, receiptNameFallback);
+              let nameResult = await applyReceiptNameWithFallback(pdfPage, receiptName, receiptNameFallback);
+              if (!nameResult.applied && receiptName && authHandoff) {
+                await promptUserReceiptName(pdfPage);
+                const manualValue = await readReceiptNameValue(pdfPage);
+                if (manualValue) nameResult = { applied: true, name: manualValue };
+              }
               receiptNameApplied = Boolean(nameResult.applied);
               if (nameResult.applied) appliedName = nameResult.name;
               await saveReceiptPdf(pdfPage, pdfPath);

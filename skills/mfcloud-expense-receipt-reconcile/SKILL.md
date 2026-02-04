@@ -49,6 +49,8 @@ python scripts/run.py --year 2026 --month 1 --mfcloud-expense-list-url "<経費�
   --rakuten-orders-url "https://order.my.rakuten.co.jp/?l-id=top_normal_mymenu_order"
 ```
 
+`--input` を省略した場合、`AX_HOME/configs/mfcloud-expense-receipt-reconcile.json` が存在すれば自動で読み込む。
+
 ### 領収書の宛名
 
 Amazon領収書の宛名は既定で **「株式会社ＨＩＧＨ－ＳＴＡＮＤＡＲＤ＆ＣＯ．」** を設定する。変更する場合は `--receipt-name` を指定する。
