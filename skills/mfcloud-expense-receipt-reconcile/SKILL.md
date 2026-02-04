@@ -38,6 +38,22 @@ Set-Location c:\Users\Tatsuo-2023\Projects\PersonalSkills\skills\mfcloud-expense
 python scripts/run.py --year 2026 --month 1 --mfcloud-expense-list-url "<経費明細一覧URL>" --notes "出張多め・特定PJ集中"
 ```
 
+### 領収書の宛名
+
+Amazon領収書の宛名は既定で **「株式会社ＨＩＧＨ－ＳＴＡＮＤＡＲＤ＆ＣＯ．」** を設定する。変更する場合は `--receipt-name` を指定する。
+
+```powershell
+python scripts/run.py --year 2026 --month 1 --mfcloud-expense-list-url "<経費明細一覧URL>" --receipt-name "株式会社ＨＩＧＨ－ＳＴＡＮＤＡＲＤ＆ＣＯ．"
+```
+
+### 認証で詰まった場合（引継ぎ）
+
+`--interactive` を付けて実行すると、ログイン画面が出たタイミングで **ユーザーに引き継いでログイン** できる。
+
+```powershell
+python scripts/run.py --year 2026 --month 1 --mfcloud-expense-list-url "<経費明細一覧URL>" --interactive
+```
+
 ### ドライラン（オフライン突き合わせ）
 
 すでに `output_root/amazon/orders.jsonl` と `output_root/mfcloud/expenses.jsonl` がある場合、ブラウザ操作なしで突き合わせだけ実行できる。

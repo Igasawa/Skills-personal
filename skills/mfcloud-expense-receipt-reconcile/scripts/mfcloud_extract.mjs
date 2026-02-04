@@ -75,6 +75,47 @@ async function writeDebug(page, debugDir, name) {
   }
 }
 
+function isLoginUrl(url) {
+  return /sign[_-]?in|login|auth/i.test(url || "");
+}
+
+async function isLoginPage(page) {
+  const url = page.url();
+  if (isLoginUrl(url)) return true;
+  const email = page.locator("input[type='email'], input[name*='email' i]");
+  if ((await email.count()) > 0) return true;
+  const password = page.locator("input[type='password']");
+  if ((await password.count()) > 0) return true;
+  const signIn = page.locator("button, input[type='submit']", { hasText: /ログイン|サインイン|Sign in/i }).first();
+  if ((await signIn.count()) > 0) return true;
+  return false;
+}
+
+async function waitForUserAuth(page, label) {
+  if (!process.stdin || !process.stdin.isTTY) {
+    throw new Error(`AUTH_REQUIRED: ${label} (non-interactive)`);
+  }
+  console.error(`[AUTH_REQUIRED] ${label}`);
+  console.error("ブラウザでログインを完了したら、このウィンドウでEnterを押してください。");
+  await page.bringToFront().catch(() => {});
+  await new Promise((resolve) => {
+    process.stdin.resume();
+    process.stdin.once("data", () => resolve());
+  });
+}
+
+async function ensureAuthenticated(page, authHandoff, label) {
+  if (!(await isLoginPage(page))) return;
+  if (!authHandoff) {
+    throw new Error(`AUTH_REQUIRED: ${label} (storage_state expired)`);
+  }
+  await waitForUserAuth(page, label);
+  await page.waitForLoadState("networkidle").catch(() => {});
+  if (await isLoginPage(page)) {
+    throw new Error(`AUTH_REQUIRED: ${label} (still on login page)`);
+  }
+}
+
 async function extractRows(page) {
   const candidates = ["table tbody tr", "[role='row']", ".table tbody tr"];
   for (const sel of candidates) {
@@ -151,6 +192,7 @@ async function main() {
   const slowMoMs = Number.parseInt(args["slow-mo-ms"] || "0", 10);
   const year = Number.parseInt(args.year, 10);
   const month = Number.parseInt(args.month, 10);
+  const authHandoff = Boolean(args["auth-handoff"]);
 
   if (!storageState) throw new Error("Missing --storage-state");
   if (!expenseListUrl) throw new Error("Missing --expense-list-url");
@@ -167,6 +209,7 @@ async function main() {
   try {
     await page.goto(expenseListUrl, { waitUntil: "domcontentloaded" });
     await page.waitForLoadState("networkidle").catch(() => {});
+    await ensureAuthenticated(page, authHandoff, "MF Cloud expense list");
 
     const rowsLoc = await extractRows(page);
     const n = await rowsLoc.count();

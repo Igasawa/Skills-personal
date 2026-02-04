@@ -24,7 +24,8 @@ Input (stdin or --input):
       "date_window_days": 7,
       "max_candidates_per_mf": 5
     },
-    "monthly_notes": "出張多め・特定PJ集中"
+    "monthly_notes": "出張多め・特定PJ集中",
+    "receipt_name": "株式会社ＨＩＧＨ－ＳＴＡＮＤＡＲＤ＆ＣＯ．"
   },
   "params": {
     "year": 2026,
@@ -145,6 +146,7 @@ def _run_node_playwright_script(
 
 @dataclass(frozen=True)
 class RunConfig:
+    interactive: bool
     dry_run: bool
     output_root: Path
     amazon_orders_url: str
@@ -156,6 +158,7 @@ class RunConfig:
     date_window_days: int
     max_candidates_per_mf: int
     monthly_notes: str
+    receipt_name: str
 
 
 def _parse_config(args: argparse.Namespace, raw: dict[str, Any]) -> tuple[RunConfig, int, int]:
@@ -172,8 +175,11 @@ def _parse_config(args: argparse.Namespace, raw: dict[str, Any]) -> tuple[RunCon
     sessions = config.get("sessions") if isinstance(config.get("sessions"), dict) else {}
     pw = config.get("playwright") if isinstance(config.get("playwright"), dict) else {}
     matching = config.get("matching") if isinstance(config.get("matching"), dict) else {}
+    interactive = bool(_coalesce(args.interactive, config.get("interactive", False)))
     monthly_notes = _coalesce(args.monthly_notes, config.get("monthly_notes"))
     monthly_notes = str(monthly_notes).strip() if monthly_notes is not None else ""
+    receipt_name = _coalesce(args.receipt_name, config.get("receipt_name"), "株式会社ＨＩＧＨ－ＳＴＡＮＤＡＲＤ＆ＣＯ．")
+    receipt_name = str(receipt_name).strip() if receipt_name is not None else ""
 
     dry_run = bool(_coalesce(args.dry_run, config.get("dry_run", False)))
 
@@ -209,6 +215,7 @@ def _parse_config(args: argparse.Namespace, raw: dict[str, Any]) -> tuple[RunCon
     )
 
     rc = RunConfig(
+        interactive=interactive,
         dry_run=dry_run,
         output_root=output_root,
         amazon_orders_url=amazon_orders_url,
@@ -220,6 +227,7 @@ def _parse_config(args: argparse.Namespace, raw: dict[str, Any]) -> tuple[RunCon
         date_window_days=date_window_days,
         max_candidates_per_mf=max_candidates_per_mf,
         monthly_notes=monthly_notes,
+        receipt_name=receipt_name,
     )
     return rc, year, month
 
@@ -289,6 +297,13 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--amazon-storage-state", dest="amazon_storage_state", help="path to amazon.storage.json")
     ap.add_argument("--mfcloud-storage-state", dest="mfcloud_storage_state", help="path to mfcloud-expense.storage.json")
     ap.add_argument("--notes", dest="monthly_notes", help="monthly notes for thread template")
+    ap.add_argument("--receipt-name", dest="receipt_name", help="receipt addressee name for Amazon invoices")
+
+    inter = ap.add_mutually_exclusive_group()
+    inter.add_argument("--interactive", dest="interactive", action="store_const", const=True, default=None, help="allow auth handoff to user")
+    inter.add_argument(
+        "--non-interactive", dest="interactive", action="store_const", const=False, default=None, help="fail fast on auth"
+    )
 
     head = ap.add_mutually_exclusive_group()
     head.add_argument("--headed", dest="headed", action="store_const", const=True, default=None, help="run browser headed")
@@ -328,6 +343,8 @@ def main(argv: list[str] | None = None) -> int:
             "playwright": {"headed": rc.headed, "slow_mo_ms": rc.slow_mo_ms},
             "matching": {"date_window_days": rc.date_window_days, "max_candidates_per_mf": rc.max_candidates_per_mf},
             "monthly_notes": rc.monthly_notes,
+            "receipt_name": rc.receipt_name,
+            "interactive": rc.interactive,
         },
     )
 
@@ -358,6 +375,9 @@ def main(argv: list[str] | None = None) -> int:
                 str(month),
                 "--debug-dir",
                 str(debug_dir / "amazon"),
+                "--receipt-name",
+                rc.receipt_name,
+                *(["--auth-handoff"] if rc.interactive else []),
                 "--headed" if rc.headed else "--headless",
                 "--slow-mo-ms",
                 str(rc.slow_mo_ms),
@@ -381,6 +401,7 @@ def main(argv: list[str] | None = None) -> int:
                 str(month),
                 "--debug-dir",
                 str(debug_dir / "mfcloud"),
+                *(["--auth-handoff"] if rc.interactive else []),
                 "--headed" if rc.headed else "--headless",
                 "--slow-mo-ms",
                 str(rc.slow_mo_ms),

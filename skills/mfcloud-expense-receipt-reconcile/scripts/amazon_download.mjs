@@ -107,6 +107,96 @@ async function writeDebug(page, debugDir, name) {
   }
 }
 
+function isAmazonLoginUrl(url) {
+  return /\/ap\/signin|signin|login/i.test(url || "");
+}
+
+async function isAmazonLoginPage(page) {
+  const url = page.url();
+  if (isAmazonLoginUrl(url)) return true;
+  const email = page.locator("input#ap_email, input[type='email']");
+  if ((await email.count()) > 0) return true;
+  const password = page.locator("input#ap_password, input[type='password']");
+  if ((await password.count()) > 0) return true;
+  const signIn = page.locator("input#signInSubmit, button", { hasText: /ログイン|サインイン|Sign in/i }).first();
+  if ((await signIn.count()) > 0) return true;
+  return false;
+}
+
+async function waitForUserAuth(page, label) {
+  if (!process.stdin || !process.stdin.isTTY) {
+    throw new Error(`AUTH_REQUIRED: ${label} (non-interactive)`);
+  }
+  console.error(`[AUTH_REQUIRED] ${label}`);
+  console.error("ブラウザでログインを完了したら、このウィンドウでEnterを押してください。");
+  await page.bringToFront().catch(() => {});
+  await new Promise((resolve) => {
+    process.stdin.resume();
+    process.stdin.once("data", () => resolve());
+  });
+}
+
+async function ensureAuthenticated(page, authHandoff, label) {
+  if (!(await isAmazonLoginPage(page))) return;
+  if (!authHandoff) {
+    throw new Error(`AUTH_REQUIRED: ${label} (storage_state expired)`);
+  }
+  await waitForUserAuth(page, label);
+  await page.waitForLoadState("networkidle").catch(() => {});
+  if (await isAmazonLoginPage(page)) {
+    throw new Error(`AUTH_REQUIRED: ${label} (still on login page)`);
+  }
+}
+
+async function findReceiptNameInput(page) {
+  const byLabel = page.getByLabel("宛名", { exact: false });
+  if ((await byLabel.count()) > 0) return byLabel.first();
+  const byPlaceholder = page.locator("input[placeholder*='宛名'], textarea[placeholder*='宛名']");
+  if ((await byPlaceholder.count()) > 0) return byPlaceholder.first();
+  const byName = page.locator(
+    "input[name*='name' i], input[id*='name' i], input[name*='recipient' i], input[id*='recipient' i], input[name*='invoice' i], input[id*='invoice' i]"
+  );
+  if ((await byName.count()) > 0) return byName.first();
+  const label = page.locator("text=宛名").first();
+  if ((await label.count()) > 0) {
+    const container = label.locator("xpath=ancestor::*[self::div or self::section or self::td][1]");
+    const input = container.locator("input,textarea");
+    if ((await input.count()) > 0) return input.first();
+  }
+  return null;
+}
+
+async function applyReceiptName(page, receiptName) {
+  const name = (receiptName || "").trim();
+  if (!name) return false;
+
+  const label = page.locator("text=宛名").first();
+  if ((await label.count()) > 0) {
+    const container = label.locator("xpath=ancestor::*[self::div or self::section or self::td][1]");
+    const edit = container.locator("a,button", { hasText: /変更|編集|入力|追加/ }).first();
+    if ((await edit.count()) > 0) {
+      await edit.click().catch(() => {});
+      await page.waitForTimeout(200);
+    }
+  }
+
+  const input = await findReceiptNameInput(page);
+  if (!input) return false;
+
+  try {
+    await input.fill(name);
+  } catch {
+    return false;
+  }
+
+  const save = page.locator("button, input[type='submit'], a", { hasText: /保存|更新|適用|登録/ }).first();
+  if ((await save.count()) > 0) {
+    await save.click().catch(() => {});
+    await page.waitForTimeout(200);
+  }
+  return true;
+}
+
 async function trySelectYear(page, year) {
   const yearText = `${year}年`;
   const candidates = ["select#orderFilter", "select[name='orderFilter']", "select"];
@@ -262,6 +352,8 @@ async function main() {
   const month = Number.parseInt(args.month, 10);
   const headed = args.headed !== false;
   const slowMoMs = Number.parseInt(args["slow-mo-ms"] || "0", 10);
+  const receiptName = args["receipt-name"] ? String(args["receipt-name"]) : "";
+  const authHandoff = Boolean(args["auth-handoff"]);
 
   if (!storageState) throw new Error("Missing --storage-state");
   if (!outJsonl) throw new Error("Missing --out-jsonl");
@@ -282,6 +374,7 @@ async function main() {
   try {
     await page.goto(ordersUrl, { waitUntil: "domcontentloaded" });
     await page.waitForLoadState("networkidle").catch(() => {});
+    await ensureAuthenticated(page, authHandoff, "Amazon orders page");
 
     await trySelectYear(page, year);
     await page.waitForSelector(".order-card, .js-order-card", { timeout: 15000 }).catch(() => {});
@@ -334,6 +427,7 @@ async function main() {
         if (!order.detail_url) throw new Error("missing detail_url");
         await page.goto(order.detail_url, { waitUntil: "domcontentloaded" });
         await page.waitForLoadState("networkidle").catch(() => {});
+        await ensureAuthenticated(page, authHandoff, "Amazon order detail");
 
         if (!order.order_id || !order.order_date || order.total_yen == null) {
           const parsed = await parseOrderDetail(page, year);
@@ -351,6 +445,8 @@ async function main() {
                 order_id: order.order_id,
                 order_date: order.order_date,
                 total_yen: order.total_yen,
+                receipt_name: receiptName || null,
+                receipt_name_applied: false,
                 detail_url: order.detail_url,
                 receipt_url: null,
                 pdf_path: null,
@@ -366,6 +462,8 @@ async function main() {
               order_id: order.order_id,
               order_date: order.order_date,
               total_yen: order.total_yen,
+              receipt_name: receiptName || null,
+              receipt_name_applied: false,
               detail_url: order.detail_url,
               receipt_url: null,
               pdf_path: null,
@@ -399,20 +497,28 @@ async function main() {
           if (pdfContext === context) {
             await page.goto(receiptUrl, { waitUntil: "domcontentloaded" });
             await page.waitForLoadState("networkidle").catch(() => {});
+            await ensureAuthenticated(page, authHandoff, "Amazon receipt page");
             if (order.total_yen == null) {
               const t = await extractTotalFromPage(page);
               if (t != null) order.total_yen = t;
             }
+            const nameApplied = await applyReceiptName(page, receiptName);
+            if (nameApplied) order.receipt_name = receiptName;
+            order.receipt_name_applied = Boolean(nameApplied);
             await saveReceiptPdf(page, pdfPath);
           } else {
             const pdfPage = await pdfContext.newPage();
             try {
               await pdfPage.goto(receiptUrl, { waitUntil: "domcontentloaded" });
               await pdfPage.waitForLoadState("networkidle").catch(() => {});
+              await ensureAuthenticated(pdfPage, authHandoff, "Amazon receipt page");
               if (order.total_yen == null) {
                 const t = await extractTotalFromPage(pdfPage);
                 if (t != null) order.total_yen = t;
               }
+              const nameApplied = await applyReceiptName(pdfPage, receiptName);
+              if (nameApplied) order.receipt_name = receiptName;
+              order.receipt_name_applied = Boolean(nameApplied);
               await saveReceiptPdf(pdfPage, pdfPath);
             } finally {
               await pdfPage.close().catch(() => {});
@@ -435,6 +541,8 @@ async function main() {
           order_id: order.order_id,
           order_date: order.order_date,
           total_yen: order.total_yen,
+          receipt_name: order.receipt_name || receiptName || null,
+          receipt_name_applied: Boolean(order.receipt_name_applied),
           detail_url: order.detail_url,
           receipt_url: receiptUrl,
           pdf_path: pdfPath,
