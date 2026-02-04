@@ -123,6 +123,34 @@ function extractTotalFromText(text) {
   return null;
 }
 
+function parseOrderDateFromUrl(url) {
+  if (!url) return null;
+  const m = String(url).match(/order_number=\d{5,}-([0-9]{8})-/);
+  if (!m) return null;
+  const y = m[1].slice(0, 4);
+  const mo = m[1].slice(4, 6);
+  const d = m[1].slice(6, 8);
+  return `${y}-${mo}-${d}`;
+}
+
+function readExistingProcessed(outJsonl) {
+  if (!outJsonl || !fs.existsSync(outJsonl)) return { detailUrls: new Set(), orderIds: new Set() };
+  const content = fs.readFileSync(outJsonl, "utf-8");
+  const lines = content.split(/\r?\n/).filter((l) => l.trim().length);
+  const detailUrls = new Set();
+  const orderIds = new Set();
+  for (const line of lines) {
+    try {
+      const obj = JSON.parse(line);
+      if (obj.detail_url) detailUrls.add(String(obj.detail_url));
+      if (obj.order_id) orderIds.add(String(obj.order_id));
+    } catch {
+      // ignore
+    }
+  }
+  return { detailUrls, orderIds };
+}
+
 async function writeDebug(page, debugDir, name) {
   try {
     ensureDir(debugDir);
@@ -261,6 +289,37 @@ async function saveReceiptPdf(page, outPdfPath) {
   await page.pdf({ path: outPdfPath, format: "A4", printBackground: true });
 }
 
+async function extractPaymentMethodFromDom(page) {
+  const text = await page.evaluate(() => {
+    const norm = (s) => (s || "").replace(/\s+/g, " ").trim();
+    const candidates = Array.from(
+      document.querySelectorAll("dt,th,div,section,td,span,label,strong,p")
+    );
+    const label = candidates.find((el) => norm(el.textContent) === "支払い方法");
+    if (!label) return null;
+    const base = label.closest("dt,th,div,section,td") || label;
+    const next = base.nextElementSibling;
+    let target = next || base;
+    let text = norm(target.textContent);
+    if (!text || text === "支払い方法") {
+      const parent = base.parentElement;
+      if (parent) {
+        const dd = parent.querySelector("dd,td,div");
+        if (dd) text = norm(dd.textContent);
+      }
+    }
+    if (!text) return null;
+    text = text.replace("支払い方法", "").trim();
+    return text || null;
+  });
+  if (!text) return null;
+  return normalizeTextLines(text)
+    .split(/\n/)
+    .map((l) => l.replace(/\s+/g, " ").trim())
+    .filter(Boolean)
+    .join(" / ");
+}
+
 async function extractDetailLinks(page) {
   const links = page.locator("a[href]");
   const n = await links.count();
@@ -286,14 +345,22 @@ function matchAllowlist(paymentMethod, allowlist) {
   if (!allowlist || allowlist.length === 0) return { allowed: false, reason: "allowlist_not_configured" };
   if (!paymentMethod) return { allowed: false, reason: "payment_method_unknown" };
   const pm = paymentMethod.toLowerCase();
-  for (const a of allowlist) {
-    if (!a) continue;
+  const strongToken = (s) => {
+    const t = String(s).toLowerCase();
+    if (/visa|jcb|master|amex|american express|diners|discover|銀聯|unionpay/.test(t)) return true;
+    if (t.includes("****")) return true;
+    if (/\d{4,}/.test(t) && !/\d{2}\/\d{2,4}/.test(t)) return true;
+    return false;
+  };
+  const strong = allowlist.filter((a) => a && strongToken(a));
+  const targets = strong.length ? strong : allowlist.filter(Boolean);
+  for (const a of targets) {
     if (pm.includes(String(a).toLowerCase())) return { allowed: true, reason: null };
   }
   return { allowed: false, reason: "payment_method_not_allowed" };
 }
 
-async function parseOrderDetail(page, fallbackYear) {
+async function parseOrderDetail(page, fallbackYear, detailUrl) {
   const raw = await page.innerText("body").catch(() => "");
   const text = normalizeText(raw);
 
@@ -304,20 +371,30 @@ async function parseOrderDetail(page, fallbackYear) {
     text.match(/注文日(?:時刻)?\s*[:：]?\s*([0-9/年月日 ()]+?)(?:\s|$)/) ||
     text.match(/購入日\s*[:：]?\s*([0-9/年月日 ()]+?)(?:\s|$)/);
   const dateParts = dateMatch ? parseJapaneseDate(dateMatch[1], fallbackYear) : null;
-  const orderDate = dateParts
+  let orderDate = dateParts
     ? `${String(dateParts.y).padStart(4, "0")}-${String(dateParts.m).padStart(2, "0")}-${String(dateParts.d).padStart(2, "0")}`
     : null;
+  if (!orderDate) {
+    orderDate = parseOrderDateFromUrl(detailUrl || page.url());
+  }
 
   const totalYen = extractTotalFromText(text);
   const paymentMethod =
+    (await extractPaymentMethodFromDom(page)) ||
     extractFieldFromText(raw, [/お支払い方法|支払い方法|お支払方法/]) ||
     extractFieldFromText(raw, [/支払方法|決済方法/]);
 
   return { orderId, orderDate, totalYen, paymentMethod };
 }
 
-async function findReceiptLink(page) {
-  const labels = ["領収書", "領収書を発行", "領収書発行", "購入明細", "Receipt", "Invoice"];
+async function findReceiptAction(page) {
+  const section = page.locator("text=領収書").first();
+  if ((await section.count()) > 0) {
+    const container = section.locator("xpath=ancestor::*[self::section or self::div][1]");
+    const btn = container.locator("a,button", { hasText: /発行|表示|印刷|ダウンロード|領収書|請求書|購入明細/ }).first();
+    if ((await btn.count()) > 0) return btn;
+  }
+  const labels = ["領収書", "領収書を発行", "領収書発行", "購入明細", "請求書", "発行する", "表示する", "印刷", "ダウンロード", "Receipt", "Invoice"];
   for (const label of labels) {
     const a = page.locator("a,button", { hasText: label }).first();
     if ((await a.count()) > 0) return a;
@@ -365,8 +442,8 @@ async function main() {
 
   let detailUrls = [];
   try {
-    await page.goto(ordersUrl, { waitUntil: "domcontentloaded" });
-    await page.waitForLoadState("networkidle").catch(() => {});
+    await page.goto(ordersUrl, { waitUntil: "domcontentloaded", timeout: 30000 });
+    await page.waitForLoadState("networkidle", { timeout: 15000 }).catch(() => {});
     await ensureAuthenticated(page, authHandoff, "Rakuten order list");
 
     const seen = new Set();
@@ -385,20 +462,23 @@ async function main() {
       const disabled = await next.getAttribute("aria-disabled");
       if (disabled === "true") break;
       await next.click().catch(() => {});
-      await page.waitForLoadState("networkidle").catch(() => {});
+      await page.waitForLoadState("networkidle", { timeout: 15000 }).catch(() => {});
     }
 
     if (detailUrls.length === 0 && debugDir) {
       await writeDebug(page, debugDir, "orders_page_empty");
     }
 
-    const lines = [];
+    const existing = readExistingProcessed(outJsonl);
+    const outStream = fs.createWriteStream(outJsonl, { flags: existing.detailUrls.size ? "a" : "w" });
     let pdfSaved = 0;
     let noReceipt = 0;
     let included = 0;
     let filtered = 0;
 
+    const ymPrefix = `${year}-${String(month).padStart(2, "0")}-`;
     for (const detailUrl of detailUrls) {
+      if (existing.detailUrls.has(detailUrl)) continue;
       let status = "ok";
       let receiptUrl = null;
       let pdfPath = null;
@@ -412,11 +492,36 @@ async function main() {
       let appliedName = null;
 
       try {
-        await page.goto(detailUrl, { waitUntil: "domcontentloaded" });
-        await page.waitForLoadState("networkidle").catch(() => {});
+        const dateFromUrl = parseOrderDateFromUrl(detailUrl);
+        if (dateFromUrl && !dateFromUrl.startsWith(ymPrefix)) {
+          status = "out_of_month";
+          include = false;
+          orderDate = dateFromUrl;
+          orderId = detailUrl.match(/order_number=([^&]+)/)?.[1] || null;
+          const record = {
+            order_id: orderId,
+            order_date: orderDate,
+            total_yen: totalYen,
+            payment_method: paymentMethod,
+            include,
+            filtered_reason: "out_of_month",
+            receipt_name: appliedName || receiptName || null,
+            receipt_name_applied: receiptNameApplied,
+            source: "rakuten",
+            detail_url: detailUrl,
+            receipt_url: receiptUrl,
+            pdf_path: pdfPath,
+            status,
+          };
+          outStream.write(JSON.stringify(record) + "\n");
+          continue;
+        }
+
+        await page.goto(detailUrl, { waitUntil: "domcontentloaded", timeout: 30000 });
+        await page.waitForLoadState("networkidle", { timeout: 15000 }).catch(() => {});
         await ensureAuthenticated(page, authHandoff, "Rakuten order detail");
 
-        const parsed = await parseOrderDetail(page, year);
+        const parsed = await parseOrderDetail(page, year, detailUrl);
         orderId = parsed.orderId;
         orderDate = parsed.orderDate;
         totalYen = parsed.totalYen;
@@ -443,20 +548,26 @@ async function main() {
         }
 
         if (include) {
-          const receiptLink = await findReceiptLink(page);
-          if (!receiptLink) {
+          let preApplied = await applyReceiptNameWithFallback(page, receiptName, receiptNameFallback);
+          if (preApplied.applied) {
+            receiptNameApplied = true;
+            appliedName = preApplied.name;
+          }
+
+          const receiptAction = await findReceiptAction(page);
+          if (!receiptAction) {
             status = "no_receipt";
             noReceipt += 1;
           } else {
-            let href = await receiptLink.getAttribute("href");
+            let href = await receiptAction.getAttribute("href");
             if (href && href.startsWith("javascript")) href = null;
             receiptUrl = href ? (href.startsWith("/") ? new URL(href, page.url()).toString() : href) : null;
             if (!receiptUrl) {
-              const popupPromise = page.waitForEvent("popup").catch(() => null);
-              await receiptLink.click().catch(() => {});
+              const popupPromise = page.waitForEvent("popup", { timeout: 8000 }).catch(() => null);
+              await receiptAction.click().catch(() => {});
               const popup = await popupPromise;
               if (popup) {
-                await popup.waitForLoadState("domcontentloaded").catch(() => {});
+                await popup.waitForLoadState("domcontentloaded", { timeout: 15000 }).catch(() => {});
                 receiptUrl = popup.url();
                 await popup.close().catch(() => {});
               } else {
@@ -473,8 +584,8 @@ async function main() {
             const pdfPage = pdfContext === context ? page : await pdfContext.newPage();
             try {
               if (pdfContext !== context) {
-                await pdfPage.goto(receiptUrl, { waitUntil: "domcontentloaded" });
-                await pdfPage.waitForLoadState("networkidle").catch(() => {});
+                await pdfPage.goto(receiptUrl, { waitUntil: "domcontentloaded", timeout: 30000 });
+                await pdfPage.waitForLoadState("networkidle", { timeout: 15000 }).catch(() => {});
               }
               await ensureAuthenticated(pdfPage, authHandoff, "Rakuten receipt page");
               if (totalYen == null) {
@@ -504,27 +615,25 @@ async function main() {
       }
 
       if (include && status === "ok") included += 1;
-
-      lines.push(
-        JSON.stringify({
-          order_id: orderId,
-          order_date: orderDate,
-          total_yen: totalYen,
-          payment_method: paymentMethod,
-          include,
-          filtered_reason: filteredReason,
-          receipt_name: appliedName || receiptName || null,
-          receipt_name_applied: receiptNameApplied,
-          source: "rakuten",
-          detail_url: detailUrl,
-          receipt_url: receiptUrl,
-          pdf_path: pdfPath,
-          status,
-        })
-      );
+      const record = {
+        order_id: orderId,
+        order_date: orderDate,
+        total_yen: totalYen,
+        payment_method: paymentMethod,
+        include,
+        filtered_reason: filteredReason,
+        receipt_name: appliedName || receiptName || null,
+        receipt_name_applied: receiptNameApplied,
+        source: "rakuten",
+        detail_url: detailUrl,
+        receipt_url: receiptUrl,
+        pdf_path: pdfPath,
+        status,
+      };
+      outStream.write(JSON.stringify(record) + "\n");
     }
 
-    fs.writeFileSync(outJsonl, lines.join("\n") + (lines.length ? "\n" : ""), "utf-8");
+    outStream.end();
     console.log(
       JSON.stringify({
         status: "success",
