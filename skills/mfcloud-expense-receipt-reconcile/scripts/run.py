@@ -66,7 +66,7 @@ def _ax_home() -> Path:
 
 def _read_json_input(path: str | None) -> dict[str, Any]:
     if path:
-        with open(path, "r", encoding="utf-8") as f:
+        with open(path, "r", encoding="utf-8-sig") as f:
             return json.load(f)
 
     if sys.stdin and not sys.stdin.isatty():
@@ -75,7 +75,7 @@ def _read_json_input(path: str | None) -> dict[str, Any]:
             return json.loads(raw)
     default_path = _ax_home() / "configs" / "mfcloud-expense-receipt-reconcile.json"
     if default_path.exists():
-        with open(default_path, "r", encoding="utf-8") as f:
+        with open(default_path, "r", encoding="utf-8-sig") as f:
             return json.load(f)
     return {}
 
@@ -140,10 +140,13 @@ def _run_node_playwright_script(
     if not npx:
         raise FileNotFoundError("npx not found in PATH. Please install Node.js/npm and ensure npx is available.")
     cmd = [npx, "--yes", "-p", "playwright", "node", str(script_path), *args]
+    merged_env = os.environ.copy()
+    if env:
+        merged_env.update(env)
     res = subprocess.run(
         cmd,
         cwd=str(cwd),
-        env=env,
+        env=merged_env,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
@@ -420,6 +423,10 @@ def main(argv: list[str] | None = None) -> int:
 
     if not rc.dry_run:
         scripts_dir = Path(__file__).parent
+        receipt_env = {
+            "RECEIPT_NAME": rc.receipt_name,
+            "RECEIPT_NAME_FALLBACK": rc.receipt_name_fallback,
+        }
 
         amazon_out = _run_node_playwright_script(
             script_path=scripts_dir / "amazon_download.mjs",
@@ -439,15 +446,12 @@ def main(argv: list[str] | None = None) -> int:
                 str(month),
                 "--debug-dir",
                 str(debug_dir / "amazon"),
-                "--receipt-name",
-                rc.receipt_name,
-                "--receipt-name-fallback",
-                rc.receipt_name_fallback,
                 *(["--auth-handoff"] if rc.interactive else []),
                 "--headed" if rc.headed else "--headless",
                 "--slow-mo-ms",
                 str(rc.slow_mo_ms),
             ],
+            env=receipt_env,
         )
         amazon_summary.update((amazon_out.get("data") if isinstance(amazon_out, dict) else None) or amazon_out)
 
@@ -485,10 +489,6 @@ def main(argv: list[str] | None = None) -> int:
                     str(month),
                     "--debug-dir",
                     str(debug_dir / "rakuten"),
-                    "--receipt-name",
-                    rc.receipt_name,
-                    "--receipt-name-fallback",
-                    rc.receipt_name_fallback,
                     "--allow-payment-methods",
                     ",".join(rc.rakuten_payment_method_allowlist),
                     *(["--auth-handoff"] if rc.interactive else []),
@@ -496,6 +496,7 @@ def main(argv: list[str] | None = None) -> int:
                     "--slow-mo-ms",
                     str(rc.slow_mo_ms),
                 ],
+                env=receipt_env,
             )
             rakuten_summary.update((rakuten_out.get("data") if isinstance(rakuten_out, dict) else None) or rakuten_out)
 

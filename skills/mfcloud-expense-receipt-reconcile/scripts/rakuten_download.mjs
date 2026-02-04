@@ -336,8 +336,10 @@ async function main() {
   const month = Number.parseInt(args.month, 10);
   const headed = args.headed !== false;
   const slowMoMs = Number.parseInt(args["slow-mo-ms"] || "0", 10);
-  const receiptName = args["receipt-name"] ? String(args["receipt-name"]) : "";
-  const receiptNameFallback = args["receipt-name-fallback"] ? String(args["receipt-name-fallback"]) : "";
+  const receiptName = args["receipt-name"] ? String(args["receipt-name"]) : process.env.RECEIPT_NAME || "";
+  const receiptNameFallback = args["receipt-name-fallback"]
+    ? String(args["receipt-name-fallback"])
+    : process.env.RECEIPT_NAME_FALLBACK || "";
   const authHandoff = Boolean(args["auth-handoff"]);
   const allowPaymentMethods = args["allow-payment-methods"]
     ? String(args["allow-payment-methods"])
