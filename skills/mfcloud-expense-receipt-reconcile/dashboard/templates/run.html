@@ -1,0 +1,201 @@
+﻿<!DOCTYPE html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>経費精算ダッシュボード {{ ym }}</title>
+    <link rel="stylesheet" href="/static/styles.css" />
+  </head>
+  <body>
+    <div class="page">
+      <header class="hero">
+        <div>
+          <p class="eyebrow">経費精算ダッシュボード</p>
+          <h1>{{ ym }}</h1>
+          <p class="subtitle">成果物の確認と除外・印刷の確定を行います。</p>
+        </div>
+        <div class="hero-meta">
+          <a class="pill" href="/">ダッシュボードへ戻る</a>
+        </div>
+      </header>
+
+      <section class="grid two">
+        <div class="card">
+          <h2>集計</h2>
+          <div class="stats-grid">
+            <div class="stat">
+              <span class="label">未添付候補</span>
+              <span class="value">{{ counts.get("mf_missing_evidence", 0) }}</span>
+            </div>
+            <div class="stat">
+              <span class="label">MF経費</span>
+              <span class="value">{{ counts.get("mf_expenses_in_month", 0) }}</span>
+            </div>
+            <div class="stat">
+              <span class="label">Amazon注文</span>
+              <span class="value">{{ counts.get("amazon_orders_in_month", 0) }}</span>
+            </div>
+            <div class="stat">
+              <span class="label">楽天注文</span>
+              <span class="value">{{ counts.get("rakuten_orders_in_month", 0) }}</span>
+            </div>
+            <div class="stat">
+              <span class="label">Amazon PDF</span>
+              <span class="value">{{ amazon_pdf_count }}</span>
+            </div>
+            <div class="stat">
+              <span class="label">楽天 PDF</span>
+              <span class="value">{{ rakuten_pdf_count }}</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2>成果物ダウンロード</h2>
+          {% if has_reports %}
+          <div class="download-grid">
+            <div class="download-card">
+              <a href="/files/{{ ym }}/missing_csv" class="download">{{ file_labels.missing_csv }}</a>
+              <div class="muted">MF未添付候補の一覧</div>
+            </div>
+            <div class="download-card">
+              <a href="/files/{{ ym }}/missing_json" class="download">{{ file_labels.missing_json }}</a>
+              <div class="muted">未添付候補の詳細データ</div>
+            </div>
+            <div class="download-card">
+              <a href="/files/{{ ym }}/monthly_thread" class="download">{{ file_labels.monthly_thread }}</a>
+              <div class="muted">月次の整理メモ</div>
+            </div>
+            <div class="download-card">
+              <a href="/files/{{ ym }}/run_config" class="download">{{ file_labels.run_config }}</a>
+              <div class="muted">実行に使ったURLなど</div>
+            </div>
+            {% if print_script %}
+            <div class="download-card">
+              <a href="/files/{{ ym }}/print_script" class="download">{{ file_labels.print_script }}</a>
+              <div class="muted">印刷用PowerShell</div>
+            </div>
+            {% endif %}
+          </div>
+          {% if print_script %}
+          <div class="print-box">
+            <div class="label">印刷コマンド</div>
+            <div class="print-actions">
+              <div class="print-cmd" id="print-cmd">{{ print_command }}</div>
+              <button type="button" class="copy-button" data-copy-target="print-cmd">コピー</button>
+            </div>
+          </div>
+          {% endif %}
+          {% else %}
+          <p class="muted">成果物がまだありません。</p>
+          {% endif %}
+        </div>
+      </section>
+
+      <section class="card" id="exclude-section" data-ym="{{ ym }}">
+        <h2>除外設定（保存後に印刷）</h2>
+        <p class="muted">
+          MFに入力しない／印刷しないものだけにチェックを付けて保存してください。保存後、自動で印刷リストを作成し印刷を実行します。
+          <br />MFとの突合はこの画面では行いません（ダッシュボードのステップ5で実行します）。
+        </p>
+        <div class="form-row">
+          <button type="button" class="primary exclude-save" data-source="amazon">Amazonで保存して印刷</button>
+          <button type="button" class="primary exclude-save" data-source="rakuten">楽天で保存して印刷</button>
+          <a class="secondary" href="/runs/{{ ym }}/excluded-pdfs">除外PDF一覧</a>
+          <span id="exclude-status" class="status-note" data-success="除外設定を保存しました。印刷を実行しました。" data-error="保存または印刷に失敗しました。ログを確認してください。"></span>
+          <span class="muted">注文 {{ orders_total }} 件 / 除外 {{ excluded_count }} 件</span>
+        </div>
+        {% if orders %}
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>除外</th>
+                <th>種別</th>
+                <th>注文日</th>
+                <th>注文ID</th>
+                <th>合計</th>
+                <th>商品名</th>
+                <th>状態</th>
+                <th>PDF</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for order in orders %}
+              <tr>
+                <td>
+                  {% if order.can_toggle %}
+                  <input
+                    type="checkbox"
+                    class="exclude-toggle"
+                    data-source="{{ order.source }}"
+                    data-order-id="{{ order.order_id }}"
+                    {% if order.excluded %}checked{% endif %}
+                  />
+                  {% else %}
+                  <span class="muted">{% if order.auto_excluded %}自動除外{% else %}-{% endif %}</span>
+                  {% endif %}
+                </td>
+                <td>{{ order.source_label }}</td>
+                <td>{{ order.order_date or "-" }}</td>
+                <td>{{ order.order_id or "-" }}</td>
+                <td>{{ order.total_yen or "-" }}</td>
+                <td>{{ order.item_name or "-" }}</td>
+                <td>{{ order.status_label }}</td>
+                <td>{% if order.has_pdf %}あり{% else %}なし{% endif %}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% else %}
+        <p class="muted">注文データがありません。Amazon/楽天の取得を先に実行してください。</p>
+        {% endif %}
+      </section>
+
+      <section class="card">
+        <h2>未添付候補（上位50件）</h2>
+        <p class="muted">
+          MFの未添付候補CSV/JSONから先頭50件を表示します。PDF取得や除外判断の目安にしてください。
+          <br />ステータス: 取得済み=領収書あり / 領収書なし / 対象外 / 日付不明 / エラー / ギフト券
+        </p>
+        {% if rows %}
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>利用日</th>
+                <th>金額</th>
+                <th>摘要 / メモ</th>
+                <th>紐付け（注文ID / 日付 / 金額）</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for row in rows %}
+              <tr>
+                <td>{{ row.mf_use_date }}</td>
+                <td>{{ row.mf_amount_label }}</td>
+                <td class="wide">{{ row.mf_summary }}</td>
+                <td>
+                  {% if row.order_id %}
+                  {% if row.order_source == "amazon" %}Amazon{% elif row.order_source == "rakuten" %}楽天{% else %}{{ row.order_source }}{% endif %}
+                  / {{ row.order_date }} / {{ row.total_yen }}
+                  {% else %}
+                  未突合
+                  {% endif %}
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        <p class="muted">全 {{ row_total }} 件。CSV/JSONに全文があります。</p>
+        {% else %}
+        <p class="muted">未添付候補がありません。</p>
+        {% endif %}
+      </section>
+    </div>
+    <div id="toast" class="toast" aria-live="polite"></div>
+    <script src="/static/app.js"></script>
+  </body>
+</html>

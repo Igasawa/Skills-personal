@@ -1,0 +1,233 @@
+﻿<!DOCTYPE html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>経費精算ダッシュボード</title>
+    <link rel="stylesheet" href="/static/styles.css" />
+  </head>
+  <body>
+    <div class="page">
+      <header class="hero">
+        <div>
+          <p class="eyebrow">MF経費精算 / Amazon / 楽天</p>
+          <h1>経費精算ダッシュボード</h1>
+          <p class="subtitle">
+            成果物の確認と実行をまとめて管理します。ローカル専用（127.0.0.1）。
+          </p>
+        </div>
+        <div class="hero-meta">
+          <div class="pill">AX_HOME: {{ ax_home }}</div>
+          <div class="pill">Local: 127.0.0.1</div>
+        </div>
+      </header>
+
+      <section class="grid two">
+        <div class="card">
+          <h2>実行履歴</h2>
+          {% if artifacts %}
+          <div class="cards">
+            {% for item in artifacts %}
+            <a class="run-card" href="/runs/{{ item.ym }}">
+              <div class="run-title">{{ item.ym }}</div>
+              <div class="run-stats">
+                <div>
+                  <span class="label">未添付候補</span>
+                  <span class="value">{{ item.counts.get("mf_missing_evidence", 0) }}</span>
+                </div>
+                <div>
+                  <span class="label">注文数 A/R</span>
+                  <span class="value">{{ item.counts.get("orders_in_month", 0) }}</span>
+                  <span class="subvalue">A {{ item.counts.get("amazon_orders_in_month", 0) }} / R {{ item.counts.get("rakuten_orders_in_month", 0) }}</span>
+                </div>
+                <div>
+                  <span class="label">PDF数 A/R</span>
+                  <span class="value">{{ item.amazon_pdf_count + item.rakuten_pdf_count }}</span>
+                  <span class="subvalue">A {{ item.amazon_pdf_count }} / R {{ item.rakuten_pdf_count }}</span>
+                </div>
+              </div>
+            </a>
+            {% endfor %}
+          </div>
+          {% else %}
+          <p class="muted">まだ実行履歴がありません。</p>
+          {% endif %}
+        </div>
+
+        <div class="card">
+          <h2>直近の実行</h2>
+          {% if latest_job %}
+          <div class="stack">
+            <div class="status-row">
+              <span class="status-dot {{ latest_job.status }}"></span>
+              <span class="status-label">{{ latest_job.status }}</span>
+              <span class="status-time">{{ latest_job.started_at }}</span>
+            </div>
+            <div class="detail">
+              <div>Run ID: {{ latest_job.run_id }}</div>
+              <div>対象: {{ latest_job.params.year }}-{{ "%02d"|format(latest_job.params.month) }}</div>
+            </div>
+            {% if running_job %}
+            <button type="button" id="stop-run" class="danger" data-run-id="{{ running_job.run_id }}">停止する</button>
+            {% endif %}
+          </div>
+          {% else %}
+          <p class="muted">直近の実行はありません。</p>
+          {% endif %}
+        </div>
+      </section>
+
+      <section class="grid two">
+        <div class="card">
+          <h2>実行依頼</h2>
+          <div id="error-box" class="error-box hidden"></div>
+          <form id="run-form" class="form">
+            <div class="form-row">
+              <label>
+                年
+                <input type="number" name="year" value="{{ defaults.year }}" min="2000" max="2100" required />
+              </label>
+              <label>
+                月
+                <input type="number" name="month" value="{{ defaults.month }}" min="1" max="12" required />
+              </label>
+            </div>
+            <label>
+              MFクラウド経費一覧URL
+              <input type="url" name="mfcloud_url" value="{{ defaults.mfcloud_url }}" required />
+            </label>
+            <label>
+              メモ（任意）
+              <input type="text" name="notes" value="{{ defaults.notes }}" placeholder="税理士提出用の補足や例外対応など" />
+            </label>
+            <div class="muted">メモは月次の補足があるときだけ入力すればOKです。</div>
+            <input type="hidden" name="rakuten_orders_url" value="{{ defaults.rakuten_orders_url }}" />
+            <div class="form-row">
+              <div class="muted">このフォームの年月・URLがウィザード実行に使われます。</div>
+            </div>
+            <p class="muted">
+              Amazon/楽天の領収書取得→除外判断→印刷→MF抽出＋突合の順で進めてください。<br />
+              MF抽出＋突合は、Amazon/楽天の除外確定後に実行してください。
+            </p>
+          </form>
+        </div>
+
+        <div class="card">
+          <h2>実行ログ</h2>
+          {% if latest_job %}
+          <div class="log-meta">
+            <span>Run: {{ latest_job.run_id }}</span>
+            <span class="status-label">{{ latest_job.status }}</span>
+          </div>
+          <pre id="run-log" class="log" data-run-id="{{ latest_job.run_id }}"></pre>
+          {% else %}
+          <p class="muted">実行ログはここに表示されます。</p>
+          {% endif %}
+        </div>
+      </section>
+
+      <section class="card" id="wizard" data-ym="">
+        <h2>経費精算ステップウィザード</h2>
+        <p class="muted">上から順にボタンを押すと作業が完遂します。</p>
+        <div id="wizard-next" class="next-step hidden" aria-live="polite"></div>
+        <div class="wizard-steps">
+          <div class="wizard-step" data-step-id="preflight">
+            <div class="step-head">
+              <span class="step-num">0</span>
+              <span class="step-title">準備：ログイン一括 + MF連携再取得</span>
+              <span class="step-status" data-step-status="preflight">未実行</span>
+            </div>
+            <div class="step-actions">
+              <button type="button" class="primary" data-step-action="preflight">準備を実行</button>
+              <span class="muted">各サイトのログインとMF連携の再取得をまとめて実行します。</span>
+            </div>
+          </div>
+          <div class="wizard-step" data-step-id="amazon_download">
+            <div class="step-head">
+              <span class="step-num">1</span>
+              <span class="step-title">Amazonの領収書を取得</span>
+              <span class="step-status" data-step-status="amazon_download">未実行</span>
+            </div>
+            <div class="step-actions">
+              <button type="button" class="primary" data-step-action="amazon_download">Amazon領収書を取得</button>
+            </div>
+          </div>
+          <div class="wizard-step" data-step-id="amazon_decide_print">
+            <div class="step-head">
+              <span class="step-num">2</span>
+              <span class="step-title">Amazonの除外判断 → 印刷</span>
+              <span class="step-status" data-step-status="amazon_decide_print">未実行</span>
+            </div>
+            <div class="step-actions">
+              <a class="secondary" data-step-link="amazon_exclude" href="#">除外・印刷へ</a>
+            </div>
+          </div>
+          <div class="wizard-step" data-step-id="rakuten_download">
+            <div class="step-head">
+              <span class="step-num">3</span>
+              <span class="step-title">楽天の領収書を取得</span>
+              <span class="step-status" data-step-status="rakuten_download">未実行</span>
+            </div>
+            <div class="step-actions">
+              <button type="button" class="primary" data-step-action="rakuten_download">楽天領収書を取得</button>
+            </div>
+          </div>
+          <div class="wizard-step" data-step-id="rakuten_decide_print">
+            <div class="step-head">
+              <span class="step-num">4</span>
+              <span class="step-title">楽天の除外判断 → 印刷</span>
+              <span class="step-status" data-step-status="rakuten_decide_print">未実行</span>
+            </div>
+            <div class="step-actions">
+              <a class="secondary" data-step-link="rakuten_exclude" href="#">除外・印刷へ</a>
+            </div>
+          </div>
+          <div class="wizard-step" data-step-id="mf_reconcile">
+            <div class="step-head">
+              <span class="step-num">5</span>
+              <span class="step-title">MF抽出 + 突合（除外確定済みの成果物を使用）</span>
+              <span class="step-status" data-step-status="mf_reconcile">未実行</span>
+            </div>
+            <div class="step-actions">
+              <button type="button" class="primary" data-step-action="mf_reconcile">MF抽出 + 突合を実行</button>
+              <span class="muted">Amazon/楽天の除外確定後に実行</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {% if latest_artifact %}
+      <section class="card">
+        <h2>成果物ダウンロード</h2>
+        <div class="download-grid">
+          <div class="download-card">
+            <a href="/files/{{ latest_artifact.ym }}/missing_csv" class="download">未添付候補CSV</a>
+            <div class="muted">MF未添付候補の一覧</div>
+          </div>
+          <div class="download-card">
+            <a href="/files/{{ latest_artifact.ym }}/missing_json" class="download">未添付候補JSON</a>
+            <div class="muted">未添付候補の詳細データ</div>
+          </div>
+          <div class="download-card">
+            <a href="/files/{{ latest_artifact.ym }}/monthly_thread" class="download">月次メモ</a>
+            <div class="muted">月次の整理メモ</div>
+          </div>
+          <div class="download-card">
+            <a href="/files/{{ latest_artifact.ym }}/run_config" class="download">実行設定</a>
+            <div class="muted">実行に使ったURLなど</div>
+          </div>
+          {% if latest_artifact.has_reports %}
+          <div class="download-card">
+            <a href="/files/{{ latest_artifact.ym }}/print_script" class="download">印刷スクリプト</a>
+            <div class="muted">印刷用PowerShell</div>
+          </div>
+          {% endif %}
+        </div>
+      </section>
+      {% endif %}
+    </div>
+
+    <div id="toast" class="toast" aria-live="polite"></div>
+    <script src="/static/app.js"></script>
+  </body>
+</html>

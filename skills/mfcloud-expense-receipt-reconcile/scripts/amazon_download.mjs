@@ -96,6 +96,107 @@ async function extractTotalFromPage(page) {
   return extractTotalFromText(text);
 }
 
+async function extractItemNamesFromDom(page) {
+  const selectors = [
+    "a[href*='/dp/']",
+    "a[href*='/gp/product/']",
+    ".item-view-left-col-inner a",
+    ".a-unordered-list.a-vertical.a-spacing-mini span",
+  ];
+  const blacklist = [
+    "注文",
+    "返品",
+    "返品手続き",
+    "領収書",
+    "請求",
+    "配送",
+    "ヘルプ",
+    "お問い合わせ",
+    "アカウント",
+    "お届け",
+    "詳細",
+    "支払い",
+    "ギフト",
+  ];
+  const out = [];
+  const seen = new Set();
+
+  for (const selector of selectors) {
+    let texts = [];
+    try {
+      texts = await page.locator(selector).allTextContents();
+    } catch {
+      texts = [];
+    }
+    for (const raw of texts) {
+      const t = normalizeOrderText(raw).replace(/\s+/g, " ").trim();
+      if (!t) continue;
+      if (t.length < 3 || t.length > 120) continue;
+      const lower = t.toLowerCase();
+      if (lower.includes("order") || lower.includes("invoice") || lower.includes("help")) continue;
+      if (blacklist.some((b) => t.includes(b))) continue;
+      if (seen.has(t)) continue;
+      seen.add(t);
+      out.push(t);
+      if (out.length >= 3) break;
+    }
+    if (out.length >= 3) break;
+  }
+
+  return out.length ? out.join(" / ") : null;
+}
+
+async function extractItemNamesFromCard(card) {
+  const selectors = [
+    "a.a-link-normal",
+    "a[href*='/dp/']",
+    "a[href*='/gp/product/']",
+    ".a-unordered-list.a-vertical.a-spacing-mini span",
+    "span.a-size-base",
+  ];
+  const blacklist = [
+    "注文",
+    "返品",
+    "返品手続き",
+    "領収書",
+    "請求",
+    "配送",
+    "ヘルプ",
+    "お問い合わせ",
+    "アカウント",
+    "お届け",
+    "詳細",
+    "支払い",
+    "ギフト",
+    "注文内容を表示",
+  ];
+  const out = [];
+  const seen = new Set();
+  for (const selector of selectors) {
+    let texts = [];
+    try {
+      texts = await card.locator(selector).allTextContents();
+    } catch {
+      texts = [];
+    }
+    for (const raw of texts) {
+      const t = normalizeOrderText(raw).replace(/\s+/g, " ").trim();
+      if (!t) continue;
+      if (t.length < 3 || t.length > 120) continue;
+      const lower = t.toLowerCase();
+      if (lower.includes("order") || lower.includes("invoice") || lower.includes("help")) continue;
+      if (blacklist.some((b) => t.includes(b))) continue;
+      if (seen.has(t)) continue;
+      seen.add(t);
+      out.push(t);
+      if (out.length >= 2) break;
+    }
+    if (out.length >= 2) break;
+  }
+  return out.length ? out.join(" / ") : null;
+}
+
+
 async function writeDebug(page, debugDir, name) {
   try {
     ensureDir(debugDir);
@@ -111,30 +212,53 @@ function isAmazonLoginUrl(url) {
   return /\/ap\/signin|signin|login/i.test(url || "");
 }
 
+
+async function locatorVisible(locator) {
+  try {
+    if ((await locator.count()) === 0) return false;
+    return await locator.first().isVisible();
+  } catch {
+    return false;
+  }
+}
+
 async function isAmazonLoginPage(page) {
   const url = page.url();
   if (isAmazonLoginUrl(url)) return true;
   const email = page.locator("input#ap_email, input[type='email']");
-  if ((await email.count()) > 0) return true;
+  if (await locatorVisible(email)) return true;
   const password = page.locator("input#ap_password, input[type='password']");
-  if ((await password.count()) > 0) return true;
-  const signIn = page.locator("input#signInSubmit, button", { hasText: /ログイン|サインイン|Sign in/i }).first();
-  if ((await signIn.count()) > 0) return true;
+  if (await locatorVisible(password)) return true;
+  const signIn = page.locator("input#signInSubmit, button", { hasText: /sign in|signin|sign-in/i });
+  if (await locatorVisible(signIn)) return true;
   return false;
 }
 
+
+
 async function waitForUserAuth(page, label) {
-  if (!process.stdin || !process.stdin.isTTY) {
-    throw new Error(`AUTH_REQUIRED: ${label} (non-interactive)`);
-  }
   console.error(`[AUTH_REQUIRED] ${label}`);
-  console.error("ブラウザでログインを完了したら、このウィンドウでEnterを押してください。");
   await page.bringToFront().catch(() => {});
-  await new Promise((resolve) => {
+  const timeoutMs = 15 * 60 * 1000;
+  const start = Date.now();
+  let entered = false;
+  if (process.stdin && process.stdin.isTTY) {
+    console.error("Please complete login in the browser. (auto-continue enabled, Enter optional)");
     process.stdin.resume();
-    process.stdin.once("data", () => resolve());
-  });
+    process.stdin.once("data", () => {
+      entered = true;
+    });
+  }
+  while (Date.now() - start < timeoutMs) {
+    if (entered) return;
+    await page.waitForTimeout(1000);
+    if (!(await isAmazonLoginPage(page))) {
+      return;
+    }
+  }
+  throw new Error(`AUTH_REQUIRED: ${label} (timeout waiting for manual login)`);
 }
+
 
 async function ensureAuthenticated(page, authHandoff, label) {
   if (!(await isAmazonLoginPage(page))) return;
@@ -292,6 +416,7 @@ async function extractOrdersFromPage(page, year, targetMonth) {
       cardTextNorm.match(/注文合計\s*[:：]?\s*([0-9,]+)\s*円/) ||
       cardTextNorm.match(/合計\s*([0-9,]+)\s*円/);
     const totalYen = totalMatch ? yenToInt(totalMatch[1]) : null;
+    const itemName = await extractItemNamesFromCard(card);
 
     let detailUrl = null;
     const detailLink = card.locator("a[href*='order-details'], a", { hasText: "注文内容を表示" }).first();
@@ -300,7 +425,13 @@ async function extractOrdersFromPage(page, year, targetMonth) {
       detailUrl = new URL(detailUrl, page.url()).toString();
     }
 
-    orders.push({ order_id: orderId, order_date: orderDate, total_yen: totalYen, detail_url: detailUrl });
+    orders.push({
+      order_id: orderId,
+      order_date: orderDate,
+      total_yen: totalYen,
+      detail_url: detailUrl,
+      item_name: itemName,
+    });
   }
 
   return orders;
@@ -319,6 +450,49 @@ async function extractDetailLinks(page) {
   return out;
 }
 
+function isGiftCardOrder(textRaw) {
+  const text = String(textRaw || "");
+  const lower = text.toLowerCase();
+  const jpTerms = [
+    "Amazonギフト券",
+    "ギフト券",
+    "ギフトカード",
+  ];
+  const enTerms = ["amazon gift card", "gift card"];
+  const jpContextTerms = [
+    "注文商品",
+    "注文内容",
+    "商品名",
+    "明細",
+    "注文の詳細",
+  ];
+  const enContextTerms = ["order", "item", "order details"];
+
+  const hasContext = (near, terms) => terms.some((t) => near.includes(t));
+
+  for (const term of jpTerms) {
+    const idx = text.indexOf(term);
+    if (idx >= 0) {
+      const startIdx = Math.max(0, idx - 200);
+      const endIdx = Math.min(text.length, idx + 200);
+      const near = text.slice(startIdx, endIdx);
+      if (hasContext(near, jpContextTerms)) return true;
+    }
+  }
+
+  for (const term of enTerms) {
+    const idx = lower.indexOf(term);
+    if (idx >= 0) {
+      const startIdx = Math.max(0, idx - 200);
+      const endIdx = Math.min(lower.length, idx + 200);
+      const near = lower.slice(startIdx, endIdx);
+      if (hasContext(near, enContextTerms)) return true;
+    }
+  }
+
+  return false;
+}
+
 async function parseOrderDetail(page, fallbackYear) {
   const textRaw = await page.innerText("body").catch(() => "");
   const text = normalizeOrderText(textRaw);
@@ -332,8 +506,11 @@ async function parseOrderDetail(page, fallbackYear) {
     : null;
 
   const totalYen = extractTotalFromText(text);
+  const itemName = await extractItemNamesFromDom(page);
 
-  return { orderId, orderDate, totalYen };
+  const isGiftCard = isGiftCardOrder(textRaw);
+
+  return { orderId, orderDate, totalYen, itemName, isGiftCard };
 }
 
 async function findReceiptLink(page) {
@@ -388,6 +565,7 @@ async function main() {
   const receiptNameFallback = args["receipt-name-fallback"]
     ? String(args["receipt-name-fallback"])
     : process.env.RECEIPT_NAME_FALLBACK || "";
+  const skipReceiptName = Boolean(args["skip-receipt-name"]);
   const authHandoff = Boolean(args["auth-handoff"]);
 
   if (!storageState) throw new Error("Missing --storage-state");
@@ -404,12 +582,17 @@ async function main() {
   const context = await browser.newContext({ storageState });
   const pdfContext = pdfBrowser === browser ? context : await pdfBrowser.newContext({ storageState });
   const page = await context.newPage();
+  const navTimeoutMs = Number.parseInt(process.env.PW_NAV_TIMEOUT_MS || "45000", 10);
+  page.setDefaultTimeout(navTimeoutMs);
+  page.setDefaultNavigationTimeout(navTimeoutMs);
+  console.log("[amazon] open orders page");
 
   let allOrders = [];
   try {
     await page.goto(ordersUrl, { waitUntil: "domcontentloaded" });
     await page.waitForLoadState("networkidle").catch(() => {});
     await ensureAuthenticated(page, authHandoff, "Amazon orders page");
+    console.log("[amazon] authenticated");
 
     await trySelectYear(page, year);
     await page.waitForSelector(".order-card, .js-order-card", { timeout: 15000 }).catch(() => {});
@@ -453,7 +636,10 @@ async function main() {
     let pdfSaved = 0;
     let noReceipt = 0;
 
-    for (const order of allOrders) {
+    console.log(`[amazon] total orders to process: ${allOrders.length}`);
+    for (let i = 0; i < allOrders.length; i++) {
+      const order = allOrders[i];
+      console.log(`[amazon] processing ${i + 1}/${allOrders.length}`);
       let status = "ok";
       let receiptUrl = null;
       let pdfPath = null;
@@ -464,11 +650,12 @@ async function main() {
         await page.waitForLoadState("networkidle").catch(() => {});
         await ensureAuthenticated(page, authHandoff, "Amazon order detail");
 
+        const parsed = await parseOrderDetail(page, year);
         if (!order.order_id || !order.order_date || order.total_yen == null) {
-          const parsed = await parseOrderDetail(page, year);
           order.order_id = order.order_id || parsed.orderId;
           order.order_date = order.order_date || parsed.orderDate;
           if (order.total_yen == null && parsed.totalYen != null) order.total_yen = parsed.totalYen;
+          if (!order.item_name && parsed.itemName) order.item_name = parsed.itemName;
         }
 
         if (order.order_date) {
@@ -480,6 +667,7 @@ async function main() {
                 order_id: order.order_id,
                 order_date: order.order_date,
                 total_yen: order.total_yen,
+                item_name: order.item_name || null,
                 receipt_name: receiptName || null,
                 receipt_name_applied: false,
                 source: "amazon",
@@ -505,6 +693,27 @@ async function main() {
               receipt_url: null,
               pdf_path: null,
               status,
+            })
+          );
+          continue;
+        }
+
+        if (parsed.isGiftCard) {
+          status = "gift_card";
+          lines.push(
+            JSON.stringify({
+              order_id: order.order_id,
+              order_date: order.order_date,
+              total_yen: order.total_yen,
+              receipt_name: receiptName || null,
+              receipt_name_applied: false,
+              source: "amazon",
+              detail_url: order.detail_url,
+              receipt_url: null,
+              pdf_path: null,
+              status,
+              include: false,
+              gift_card: true,
             })
           );
           continue;
@@ -539,17 +748,20 @@ async function main() {
               const t = await extractTotalFromPage(page);
               if (t != null) order.total_yen = t;
             }
-            let nameResult = await applyReceiptNameWithFallback(page, receiptName, receiptNameFallback);
-            if (!nameResult.applied && receiptName && authHandoff) {
-              await promptUserReceiptName(page);
-              const manualValue = await readReceiptNameValue(page);
-              if (manualValue) nameResult = { applied: true, name: manualValue };
+            let nameResult = { applied: false, name: null };
+            if (!skipReceiptName) {
+              const input = await findReceiptNameInput(page);
+              if (input) {
+                nameResult = await applyReceiptNameWithFallback(page, receiptName, receiptNameFallback);
+              }
             }
             if (nameResult.applied) order.receipt_name = nameResult.name;
             order.receipt_name_applied = Boolean(nameResult.applied);
             await saveReceiptPdf(page, pdfPath);
           } else {
             const pdfPage = await pdfContext.newPage();
+            pdfPage.setDefaultTimeout(navTimeoutMs);
+            pdfPage.setDefaultNavigationTimeout(navTimeoutMs);
             try {
               await pdfPage.goto(receiptUrl, { waitUntil: "domcontentloaded" });
               await pdfPage.waitForLoadState("networkidle").catch(() => {});
@@ -558,11 +770,12 @@ async function main() {
                 const t = await extractTotalFromPage(pdfPage);
                 if (t != null) order.total_yen = t;
               }
-              let nameResult = await applyReceiptNameWithFallback(pdfPage, receiptName, receiptNameFallback);
-              if (!nameResult.applied && receiptName && authHandoff) {
-                await promptUserReceiptName(pdfPage);
-                const manualValue = await readReceiptNameValue(pdfPage);
-                if (manualValue) nameResult = { applied: true, name: manualValue };
+              let nameResult = { applied: false, name: null };
+              if (!skipReceiptName) {
+                const input = await findReceiptNameInput(pdfPage);
+                if (input) {
+                  nameResult = await applyReceiptNameWithFallback(pdfPage, receiptName, receiptNameFallback);
+                }
               }
               if (nameResult.applied) order.receipt_name = nameResult.name;
               order.receipt_name_applied = Boolean(nameResult.applied);
@@ -588,6 +801,7 @@ async function main() {
           order_id: order.order_id,
           order_date: order.order_date,
           total_yen: order.total_yen,
+          item_name: order.item_name || null,
           receipt_name: order.receipt_name || receiptName || null,
           receipt_name_applied: Boolean(order.receipt_name_applied),
           source: "amazon",

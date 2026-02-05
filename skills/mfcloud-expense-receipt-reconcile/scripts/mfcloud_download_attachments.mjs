@@ -96,17 +96,26 @@ async function isLoginPage(page) {
 }
 
 async function waitForUserAuth(page, label) {
-  if (!process.stdin || !process.stdin.isTTY) {
-    throw new Error(`AUTH_REQUIRED: ${label} (non-interactive)`);
-  }
   console.error(`[AUTH_REQUIRED] ${label}`);
-  console.error("ブラウザでログインを完了したら、このウィンドウでEnterを押してください。");
   await page.bringToFront().catch(() => {});
+  if (!process.stdin || !process.stdin.isTTY) {
+    const timeoutMs = 15 * 60 * 1000;
+    const start = Date.now();
+    while (Date.now() - start < timeoutMs) {
+      await page.waitForTimeout(1000);
+      if (!(await isLoginPage(page))) {
+        return;
+      }
+    }
+    throw new Error(`AUTH_REQUIRED: ${label} (timeout waiting for manual login)`);
+  }
+  console.error("Please complete login in the browser, then press Enter here.");
   await new Promise((resolve) => {
     process.stdin.resume();
     process.stdin.once("data", () => resolve());
   });
 }
+
 
 async function ensureAuthenticated(page, authHandoff, label) {
   if (!(await isLoginPage(page))) return;

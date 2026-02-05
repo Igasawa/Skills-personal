@@ -119,8 +119,41 @@ python scripts/run.py --year 2026 --month 1 --dry-run --output-dir "C:\Users\<us
 - MFの画面構造が違う：`--mfcloud-expense-list-url` を「経費明細一覧」かつ「一覧が表示される状態」のURLにする（フィルタ付きURL推奨）
 - AmazonのUIが変わった：`output_root/debug/` のスクリーンショット/HTMLを確認し、抽出ロジックを更新する
 
+## 成果物整理（任意）
+
+同月の成果物を時刻付きでアーカイブしたい場合は次を使う。
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File "scripts\\archive_outputs.ps1" -Year 2026 -Month 1
+```
+
+PDFやデバッグ情報も残す場合:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File "scripts\\archive_outputs.ps1" -Year 2026 -Month 1 -IncludePdfs -IncludeDebug
+```
+
+## ダッシュボード（ローカル）
+
+成果物の可視化と実行依頼ができるローカルUI。
+
+```powershell
+Set-Location c:\Users\TatsuoIgasawa\.vscode\Skillpersonal\skills\mfcloud-expense-receipt-reconcile
+python -m pip install -r dashboard\requirements.txt
+python -m uvicorn dashboard.app:app --host 127.0.0.1 --port 8765
+```
+
+ブラウザで `http://127.0.0.1:8765/` を開く。
+
+### 実行パターン
+
+- Amazonのみプリントアウトまで
+- 楽天のみプリントアウトまで
+- MF抽出+突合（既存の `orders.jsonl` が必要）
+
 ## 運用ルール（参照）
 
 - 恒久ルール：`references/operation_policy.md`
 - 自動登録OK例外一覧：`references/auto_register_exceptions.yaml`
 - 月次スレッドテンプレ：`assets/monthly_thread_template.md`
+- 成果物整理ルール：`references/output_policy.md`

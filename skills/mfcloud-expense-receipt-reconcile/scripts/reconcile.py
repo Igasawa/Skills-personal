@@ -28,6 +28,58 @@ def _read_jsonl(path: Path) -> list[dict[str, Any]]:
     return out
 
 
+def _load_exclusions(path: str | None) -> set[tuple[str, str]]:
+    if not path:
+        return set()
+    p = Path(path)
+    if not p.exists():
+        return set()
+    try:
+        data = json.loads(p.read_text(encoding="utf-8-sig"))
+    except Exception:
+        try:
+            data = json.loads(p.read_text(encoding="utf-8"))
+        except Exception:
+            return set()
+    if not isinstance(data, dict):
+        return set()
+    items = data.get("exclude")
+    if not isinstance(items, list):
+        return set()
+    out: set[tuple[str, str]] = set()
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        source = str(item.get("source") or "").strip()
+        order_id = str(item.get("order_id") or "").strip()
+        if not source or not order_id:
+            continue
+        out.add((source, order_id))
+    return out
+
+
+def _is_excluded(obj: dict[str, Any], exclusions: set[tuple[str, str]], default_source: str) -> bool:
+    if not exclusions:
+        return False
+    order_id = str(obj.get("order_id") or "").strip()
+    if not order_id:
+        return False
+    source = str(obj.get("source") or default_source).strip()
+    return (source, order_id) in exclusions
+
+
+def _dedupe_orders(orders: list["Order"]) -> list["Order"]:
+    seen: set[tuple[str, str, str]] = set()
+    out: list["Order"] = []
+    for o in orders:
+        key = (o.source, o.order_id, o.pdf_path or "")
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(o)
+    return out
+
+
 def _write_json(path: Path, data: Any) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -285,6 +337,7 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="Reconcile MF expenses with Amazon/Rakuten receipt PDFs")
     ap.add_argument("--amazon-orders-jsonl", required=True)
     ap.add_argument("--rakuten-orders-jsonl")
+    ap.add_argument("--exclude-orders-json", help="path to exclude orders json")
     ap.add_argument("--mf-expenses-jsonl", required=True)
     ap.add_argument("--out-json", required=True)
     ap.add_argument("--out-csv", required=True)
@@ -296,9 +349,14 @@ def main(argv: list[str] | None = None) -> int:
 
     amazon_raw = _read_jsonl(Path(args.amazon_orders_jsonl))
     rakuten_raw = _read_jsonl(Path(args.rakuten_orders_jsonl)) if args.rakuten_orders_jsonl else []
+    exclusions = _load_exclusions(args.exclude_orders_json)
+    if exclusions:
+        amazon_raw = [x for x in amazon_raw if not _is_excluded(x, exclusions, "amazon")]
+        rakuten_raw = [x for x in rakuten_raw if not _is_excluded(x, exclusions, "rakuten")]
     mf_raw = _read_jsonl(Path(args.mf_expenses_jsonl))
     orders = [o for o in (Order.from_obj(x, default_source="amazon") for x in amazon_raw) if o]
     orders += [o for o in (Order.from_obj(x, default_source="rakuten") for x in rakuten_raw) if o]
+    orders = _dedupe_orders(orders)
     mf_expenses = [e for e in (MfExpense.from_obj(x) for x in mf_raw) if e]
 
     data = reconcile(

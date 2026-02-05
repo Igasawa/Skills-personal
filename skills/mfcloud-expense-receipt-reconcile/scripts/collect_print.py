@@ -134,6 +134,67 @@ def _collect_local_pdfs(pdfs_dir: Path, year: int, month: int) -> list[dict[str,
     return files
 
 
+def _load_exclusions(path: Path | None) -> set[tuple[str, str]]:
+    if not path or not path.exists():
+        return set()
+    try:
+        data = json.loads(path.read_text(encoding="utf-8-sig"))
+    except Exception:
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except Exception:
+            return set()
+    if not isinstance(data, dict):
+        return set()
+    items = data.get("exclude")
+    if not isinstance(items, list):
+        return set()
+    out: set[tuple[str, str]] = set()
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        source = str(item.get("source") or "").strip()
+        order_id = str(item.get("order_id") or "").strip()
+        if not source or not order_id:
+            continue
+        out.add((source, order_id))
+    return out
+
+
+def _collect_orders_pdfs(
+    orders_jsonl: Path,
+    year: int,
+    month: int,
+    source: str,
+    exclusions: set[tuple[str, str]],
+) -> list[dict[str, Any]]:
+    rows = _read_jsonl(orders_jsonl)
+    files: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for r in rows:
+        if r.get("include") is False:
+            continue
+        status = str(r.get("status") or "").strip()
+        if status in ("out_of_month", "unknown_date", "error", "no_receipt", "gift_card"):
+            continue
+        order_id = str(r.get("order_id") or "").strip()
+        if order_id and (source, order_id) in exclusions:
+            continue
+        pdf_path = str(r.get("pdf_path") or "").strip()
+        if not pdf_path:
+            continue
+        ym = _parse_date(r.get("order_date") or r.get("date"))
+        if ym is None:
+            ym = _parse_date_from_filename(Path(pdf_path).name)
+        if ym != (year, month):
+            continue
+        if pdf_path in seen:
+            continue
+        seen.add(pdf_path)
+        files.append({"path": pdf_path, "source": source, "order_id": order_id})
+    return files
+
+
 def _collect_mfcloud_attachments(attachments_jsonl: Path, year: int, month: int) -> list[dict[str, Any]]:
     rows = _read_jsonl(attachments_jsonl)
     files: list[dict[str, Any]] = []
@@ -172,6 +233,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--output-dir", help="override output_root")
     ap.add_argument("--download-mfcloud", action="store_true", help="download MF attachments before print (optional)")
     ap.add_argument("--include-mfcloud", action="store_true", help="include MF attachments in print list")
+    ap.add_argument("--sources", help="comma-separated sources to include (amazon,rakuten,mfcloud)")
+    ap.add_argument("--exclude-orders-json", help="path to exclude orders json (optional)")
     ap.add_argument("--mfcloud-storage-state", help="path to mfcloud-expense.storage.json")
     ap.add_argument("--interactive", action="store_true", help="allow auth handoff during MF download")
     ap.add_argument("--headed", action="store_true", help="run browser headed during MF download")
@@ -179,6 +242,8 @@ def main(argv: list[str] | None = None) -> int:
     args = ap.parse_args(argv)
     raw = _read_json_input(args.input)
     config = raw.get("config") if isinstance(raw, dict) else {}
+    if not isinstance(config, dict):
+        config = {}
 
     default_year, default_month = _ym_default()
     year = int(_coalesce(args.year, (raw.get("params") or {}).get("year"), default_year))
@@ -199,6 +264,8 @@ def main(argv: list[str] | None = None) -> int:
     expenses_jsonl = mf_dir / "expenses.jsonl"
     attachments_dir = mf_dir / "attachments"
     attachments_jsonl = mf_dir / "attachments.jsonl"
+    exclusions_path = Path(args.exclude_orders_json) if args.exclude_orders_json else (reports_dir / "exclude_orders.json")
+    exclusions = _load_exclusions(exclusions_path)
 
     if args.download_mfcloud:
         storage_state = Path(_coalesce(args.mfcloud_storage_state, (config.get("sessions") or {}).get("mfcloud_storage_state")) or _default_storage_state("mfcloud-expense"))
@@ -229,11 +296,36 @@ def main(argv: list[str] | None = None) -> int:
             args=node_args,
         )
 
+    sources = set(s.strip() for s in (args.sources or "").split(",") if s.strip())
+    include_amazon = not sources or "amazon" in sources
+    include_rakuten = not sources or "rakuten" in sources
+    include_mfcloud = not sources or "mfcloud" in sources
+
     files = []
-    files += _collect_local_pdfs(amazon_pdfs, year, month)
-    files += _collect_local_pdfs(rakuten_pdfs, year, month)
-    if args.include_mfcloud:
+    if include_amazon:
+        amazon_orders = output_root / "amazon" / "orders.jsonl"
+        if amazon_orders.exists():
+            files += _collect_orders_pdfs(amazon_orders, year, month, "amazon", exclusions)
+        else:
+            files += _collect_local_pdfs(amazon_pdfs, year, month)
+    if include_rakuten:
+        rakuten_orders = output_root / "rakuten" / "orders.jsonl"
+        if rakuten_orders.exists():
+            files += _collect_orders_pdfs(rakuten_orders, year, month, "rakuten", exclusions)
+        else:
+            files += _collect_local_pdfs(rakuten_pdfs, year, month)
+    if args.include_mfcloud or include_mfcloud:
         files += _collect_mfcloud_attachments(attachments_jsonl, year, month)
+
+    deduped: list[dict[str, Any]] = []
+    seen_paths: set[str] = set()
+    for f in files:
+        path = f.get("path")
+        if not path or path in seen_paths:
+            continue
+        seen_paths.add(path)
+        deduped.append(f)
+    files = deduped
 
     file_paths = [f["path"] for f in files]
     manifest = {

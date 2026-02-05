@@ -166,30 +166,53 @@ function isRakutenLoginUrl(url) {
   return /login|signin|auth|id\.rakuten\.co\.jp/i.test(url || "");
 }
 
+
+async function locatorVisible(locator) {
+  try {
+    if ((await locator.count()) === 0) return false;
+    return await locator.first().isVisible();
+  } catch {
+    return false;
+  }
+}
+
 async function isRakutenLoginPage(page) {
   const url = page.url();
   if (isRakutenLoginUrl(url)) return true;
   const user = page.locator("input[name='u'], input[name*='user' i], input[type='email']");
-  if ((await user.count()) > 0) return true;
+  if (await locatorVisible(user)) return true;
   const pass = page.locator("input[type='password']");
-  if ((await pass.count()) > 0) return true;
-  const signIn = page.locator("button, input[type='submit']", { hasText: /ログイン|サインイン|Sign in/i }).first();
-  if ((await signIn.count()) > 0) return true;
+  if (await locatorVisible(pass)) return true;
+  const signIn = page.locator("button, input[type='submit']", { hasText: /login|signin|sign in/i });
+  if (await locatorVisible(signIn)) return true;
   return false;
 }
 
+
+
 async function waitForUserAuth(page, label) {
-  if (!process.stdin || !process.stdin.isTTY) {
-    throw new Error(`AUTH_REQUIRED: ${label} (non-interactive)`);
-  }
   console.error(`[AUTH_REQUIRED] ${label}`);
-  console.error("ブラウザでログインを完了したら、このウィンドウでEnterを押してください。");
   await page.bringToFront().catch(() => {});
-  await new Promise((resolve) => {
+  const timeoutMs = 15 * 60 * 1000;
+  const start = Date.now();
+  let entered = false;
+  if (process.stdin && process.stdin.isTTY) {
+    console.error("Please complete login in the browser. (auto-continue enabled, Enter optional)");
     process.stdin.resume();
-    process.stdin.once("data", () => resolve());
-  });
+    process.stdin.once("data", () => {
+      entered = true;
+    });
+  }
+  while (Date.now() - start < timeoutMs) {
+    if (entered) return;
+    await page.waitForTimeout(1000);
+    if (!(await isRakutenLoginPage(page))) {
+      return;
+    }
+  }
+  throw new Error(`AUTH_REQUIRED: ${label} (timeout waiting for manual login)`);
 }
+
 
 async function ensureAuthenticated(page, authHandoff, label) {
   if (!(await isRakutenLoginPage(page))) return;
@@ -221,11 +244,28 @@ async function findReceiptNameInput(page) {
   return null;
 }
 
+async function isReceiptNameLocked(page) {
+  const lockText = page.locator("text=宛名の変更はできません");
+  if ((await lockText.count()) > 0) return true;
+  const input = await findReceiptNameInput(page);
+  if (!input) return false;
+  try {
+    const disabled = await input.isDisabled();
+    const readonly = await input.getAttribute("readonly");
+    if (disabled || readonly != null) return true;
+  } catch {
+    // ignore
+  }
+  return false;
+}
+
 async function applyReceiptName(page, receiptName) {
   const name = (receiptName || "").trim();
   if (!name) return false;
 
-  const label = page.locator("text=宛名").first();
+  if (await isReceiptNameLocked(page)) return false;
+
+  const label = page.locator("text=領収書").first();
   if ((await label.count()) > 0) {
     const container = label.locator("xpath=ancestor::*[self::div or self::section or self::td][1]");
     const edit = container.locator("a,button", { hasText: /変更|編集|入力|追加/ }).first();
@@ -238,29 +278,63 @@ async function applyReceiptName(page, receiptName) {
   const input = await findReceiptNameInput(page);
   if (!input) return false;
 
+  let hasExisting = false;
   try {
-    await input.fill(name);
+    const existing = await input.inputValue();
+    if (existing && String(existing).trim()) hasExisting = true;
   } catch {
-    return false;
+    // ignore
   }
 
-  const save = page.locator("button, input[type='submit'], a", { hasText: /保存|更新|適用|登録|発行/ }).first();
+  if (!hasExisting) {
+    try {
+      const disabled = await input.isDisabled().catch(() => false);
+      const readonly = await input.getAttribute("readonly");
+      if (disabled || readonly != null) return false;
+    } catch {
+      // ignore
+    }
+
+    try {
+      await input.fill(name);
+    } catch {
+      return false;
+    }
+  }
+
+  const save = page
+    .locator(
+      "button, input[type='submit'], input[type='button'], a, input[value*='領収書'], input[value*='発行']",
+      { hasText: /保存|更新|適用|登録|発行|領収書/ }
+    )
+    .first();
   if ((await save.count()) > 0) {
     await save.click().catch(() => {});
     await page.waitForTimeout(200);
+    await page.waitForLoadState("networkidle", { timeout: 10000 }).catch(() => {});
+    await acceptIssueConfirm(page, 2500);
   }
   return true;
 }
 
+
 async function applyReceiptNameWithFallback(page, primary, fallback) {
+  const existing = await readReceiptNameValue(page);
+  if (await isReceiptNameLocked(page)) {
+    return { applied: false, name: existing };
+  }
+  if (existing) {
+    return { applied: false, name: existing };
+  }
   if (await applyReceiptName(page, primary)) {
     return { applied: true, name: (primary || "").trim() };
   }
   if (fallback && (await applyReceiptName(page, fallback))) {
     return { applied: true, name: (fallback || "").trim() };
   }
-  return { applied: false, name: null };
+  return { applied: false, name: existing };
 }
+
 
 async function readReceiptNameValue(page) {
   const input = await findReceiptNameInput(page);
@@ -289,19 +363,106 @@ async function saveReceiptPdf(page, outPdfPath) {
   await page.pdf({ path: outPdfPath, format: "A4", printBackground: true });
 }
 
+async function acceptIssueConfirm(page, timeoutMs = 1200) {
+  const start = Date.now();
+  const selectors = ["この宛名で発行します", "宛名の変更はできません", "一度発行したあとは"];
+  while (Date.now() - start < timeoutMs) {
+    const dialog = page.locator("[role='dialog'], .modal, .MuiDialog-root").first();
+    if ((await dialog.count()) > 0 && (await dialog.isVisible().catch(() => false))) {
+      const btn = dialog
+        .locator("button, input[type='button'], input[type='submit'], a", { hasText: /OK|はい|発行/ })
+        .first();
+      if ((await btn.count()) > 0) {
+        await btn.click().catch(() => {});
+        await page.waitForTimeout(200);
+        return true;
+      }
+    }
+    for (const text of selectors) {
+      const label = page.locator(`text=${text}`).first();
+      if ((await label.count()) > 0 && (await label.isVisible().catch(() => false))) {
+        const container = label.locator("xpath=ancestor::*[self::div or self::section or self::dialog][1]");
+        const ok = container
+          .locator("button, input[type='button'], input[type='submit'], a", { hasText: /OK|はい|発行/ })
+          .first();
+        if ((await ok.count()) > 0) {
+          await ok.click().catch(() => {});
+          await page.waitForTimeout(200);
+          return true;
+        }
+        const okGlobal = page
+          .locator("button, input[type='button'], input[type='submit'], a", { hasText: /OK|はい|発行/ })
+          .first();
+        if ((await okGlobal.count()) > 0) {
+          await okGlobal.click().catch(() => {});
+          await page.waitForTimeout(200);
+          return true;
+        }
+      }
+    }
+    await page.waitForTimeout(200);
+  }
+  return false;
+}
+
+async function isReceiptIssuePage(page) {
+  const candidates = [
+    "領収書発行",
+    "領収書・請求書",
+    "楽天ブックス 領収書発行",
+    "宛名",
+  ];
+  for (const text of candidates) {
+    const loc = page.locator(`text=${text}`).first();
+    if ((await loc.count()) > 0 && (await loc.isVisible().catch(() => false))) {
+      return true;
+    }
+  }
+  const btn = page.locator("button, input[type='submit'], input[type='button'], a", { hasText: /領収書発行|発行/ }).first();
+  if ((await btn.count()) > 0 && (await btn.isVisible().catch(() => false))) return true;
+  const input = page.locator("input[placeholder*='宛名'], textarea[placeholder*='宛名'], input[name*='name' i]").first();
+  if ((await input.count()) > 0 && (await input.isVisible().catch(() => false))) return true;
+  return false;
+}
+
+async function waitForReceiptUrl(page, baseUrl, timeoutMs) {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    await acceptIssueConfirm(page, 200);
+    if (await isReceiptIssuePage(page)) return page.url();
+    const url = page.url();
+    if (url && url !== baseUrl) return url;
+    await page.waitForTimeout(500);
+  }
+  return null;
+}
+
+async function withTimeout(promise, timeoutMs, label) {
+  let timeoutId;
+  const timeout = new Promise((_, reject) => {
+    timeoutId = setTimeout(() => reject(new Error(`TIMEOUT:${label}`)), timeoutMs);
+  });
+  try {
+    return await Promise.race([promise, timeout]);
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
 async function extractPaymentMethodFromDom(page) {
-  const text = await page.evaluate(() => {
+  const labelText = "支払い方法";
+  const text = await page.evaluate((labelText) => {
     const norm = (s) => (s || "").replace(/\s+/g, " ").trim();
     const candidates = Array.from(
       document.querySelectorAll("dt,th,div,section,td,span,label,strong,p")
     );
-    const label = candidates.find((el) => norm(el.textContent) === "支払い方法");
+    const label = candidates.find((el) => norm(el.textContent) === labelText);
     if (!label) return null;
     const base = label.closest("dt,th,div,section,td") || label;
     const next = base.nextElementSibling;
     let target = next || base;
     let text = norm(target.textContent);
-    if (!text || text === "支払い方法") {
+    if (!text || text === labelText) {
       const parent = base.parentElement;
       if (parent) {
         const dd = parent.querySelector("dd,td,div");
@@ -309,15 +470,106 @@ async function extractPaymentMethodFromDom(page) {
       }
     }
     if (!text) return null;
-    text = text.replace("支払い方法", "").trim();
+    text = text.replace(labelText, "").trim();
     return text || null;
-  });
+  }, labelText);
   if (!text) return null;
   return normalizeTextLines(text)
     .split(/\n/)
     .map((l) => l.replace(/\s+/g, " ").trim())
     .filter(Boolean)
     .join(" / ");
+}
+
+async function extractItemNamesFromDom(page) {
+  const labelText = "商品名";
+  let nameFromLabel = null;
+  try {
+    nameFromLabel = await page.evaluate((labelText) => {
+      const candidates = Array.from(document.querySelectorAll("th,dt,div,span,label"));
+      const label = candidates.find((el) => (el.textContent || "").trim() === labelText);
+      if (!label) return null;
+      const row = label.closest("tr,dl,div");
+      if (row) {
+        const cell = row.querySelector("td,dd,div");
+        if (cell) return (cell.textContent || "").trim();
+      }
+      if (label.nextElementSibling) return (label.nextElementSibling.textContent || "").trim();
+      return null;
+    }, labelText);
+  } catch {
+    nameFromLabel = null;
+  }
+  if (nameFromLabel) {
+    const cleaned = normalizeTextLines(nameFromLabel).replace(/\s+/g, " ").trim();
+    if (cleaned) return cleaned;
+  }
+
+  const selectors = [
+    "a[href*='/item/']",
+    "a[href*='/product/']",
+    ".item-name",
+    ".itemTitle",
+  ];
+  const blacklist = [
+    "注文",
+    "領収書",
+    "請求",
+    "返品",
+    "ヘルプ",
+    "お問い合わせ",
+    "詳細",
+  ];
+  const out = [];
+  const seen = new Set();
+  for (const selector of selectors) {
+    let texts = [];
+    try {
+      texts = await page.locator(selector).allTextContents();
+    } catch {
+      texts = [];
+    }
+    for (const raw of texts) {
+      const t = normalizeTextLines(raw).replace(/\s+/g, " ").trim();
+      if (!t) continue;
+      if (t.length < 3 || t.length > 120) continue;
+      const lower = t.toLowerCase();
+      if (lower.includes("order") || lower.includes("invoice") || lower.includes("help")) continue;
+      if (blacklist.some((b) => t.includes(b))) continue;
+      if (seen.has(t)) continue;
+      seen.add(t);
+      out.push(t);
+      if (out.length >= 3) break;
+    }
+    if (out.length >= 3) break;
+  }
+
+  if (out.length) return out.join(" / ");
+
+  let html = "";
+  try {
+    html = await page.content();
+  } catch {
+    html = "";
+  }
+  if (html) {
+    const matches = [...html.matchAll(/itemName\"\\s*:\\s*\"(.*?)\"/g)];
+    for (const m of matches) {
+      const raw = m[1] || "";
+      const t = normalizeTextLines(raw).replace(/\\s+/g, " ").trim();
+      if (!t) continue;
+      if (t.length < 3 || t.length > 160) continue;
+      const lower = t.toLowerCase();
+      if (lower.includes("order") || lower.includes("invoice") || lower.includes("help")) continue;
+      if (blacklist.some((b) => t.includes(b))) continue;
+      if (seen.has(t)) continue;
+      seen.add(t);
+      out.push(t);
+      if (out.length >= 3) break;
+    }
+  }
+
+  return out.length ? out.join(" / ") : null;
 }
 
 async function extractDetailLinks(page) {
@@ -342,7 +594,7 @@ async function extractDetailLinks(page) {
 }
 
 function matchAllowlist(paymentMethod, allowlist) {
-  if (!allowlist || allowlist.length === 0) return { allowed: false, reason: "allowlist_not_configured" };
+  if (!allowlist || allowlist.length === 0) return { allowed: true, reason: null };
   if (!paymentMethod) return { allowed: false, reason: "payment_method_unknown" };
   const pm = paymentMethod.toLowerCase();
   const strongToken = (s) => {
@@ -379,12 +631,13 @@ async function parseOrderDetail(page, fallbackYear, detailUrl) {
   }
 
   const totalYen = extractTotalFromText(text);
+  const itemName = await extractItemNamesFromDom(page);
   const paymentMethod =
     (await extractPaymentMethodFromDom(page)) ||
     extractFieldFromText(raw, [/お支払い方法|支払い方法|お支払方法/]) ||
     extractFieldFromText(raw, [/支払方法|決済方法/]);
 
-  return { orderId, orderDate, totalYen, paymentMethod };
+  return { orderId, orderDate, totalYen, paymentMethod, itemName };
 }
 
 async function findReceiptAction(page) {
@@ -440,6 +693,21 @@ async function main() {
   const pdfContext = pdfBrowser === browser ? context : await pdfBrowser.newContext({ storageState });
   const page = await context.newPage();
 
+  const attachAutoDialog = (p) => {
+    p.on("dialog", async (dialog) => {
+      try {
+        await dialog.accept();
+      } catch {
+        // ignore
+      }
+    });
+  };
+  attachAutoDialog(page);
+  context.on("page", attachAutoDialog);
+  if (pdfContext !== context) {
+    pdfContext.on("page", attachAutoDialog);
+  }
+
   let detailUrls = [];
   try {
     await page.goto(ordersUrl, { waitUntil: "domcontentloaded", timeout: 30000 });
@@ -483,6 +751,7 @@ async function main() {
       let receiptUrl = null;
       let pdfPath = null;
       let paymentMethod = null;
+      let itemName = null;
       let include = true;
       let filteredReason = null;
       let orderId = null;
@@ -490,6 +759,7 @@ async function main() {
       let totalYen = null;
       let receiptNameApplied = false;
       let appliedName = null;
+      let errorReason = null;
 
       try {
         const dateFromUrl = parseOrderDateFromUrl(detailUrl);
@@ -526,6 +796,7 @@ async function main() {
         orderDate = parsed.orderDate;
         totalYen = parsed.totalYen;
         paymentMethod = parsed.paymentMethod;
+        itemName = parsed.itemName;
 
         if (orderDate) {
           const m = Number.parseInt(orderDate.slice(5, 7), 10);
@@ -551,6 +822,8 @@ async function main() {
           let preApplied = await applyReceiptNameWithFallback(page, receiptName, receiptNameFallback);
           if (preApplied.applied) {
             receiptNameApplied = true;
+          }
+          if (preApplied.name) {
             appliedName = preApplied.name;
           }
 
@@ -559,12 +832,15 @@ async function main() {
             status = "no_receipt";
             noReceipt += 1;
           } else {
+            const receiptTimeoutMs = 20 * 1000;
             let href = await receiptAction.getAttribute("href");
             if (href && href.startsWith("javascript")) href = null;
             receiptUrl = href ? (href.startsWith("/") ? new URL(href, page.url()).toString() : href) : null;
             if (!receiptUrl) {
+              const baseUrl = page.url();
               const popupPromise = page.waitForEvent("popup", { timeout: 8000 }).catch(() => null);
               await receiptAction.click().catch(() => {});
+              await acceptIssueConfirm(page, 1200);
               const popup = await popupPromise;
               if (popup) {
                 await popup.waitForLoadState("domcontentloaded", { timeout: 15000 }).catch(() => {});
@@ -572,10 +848,19 @@ async function main() {
                 await popup.close().catch(() => {});
               } else {
                 await page.waitForTimeout(300);
-                receiptUrl = page.url();
+                receiptUrl = (await isReceiptIssuePage(page)) ? page.url() : page.url();
+              }
+              if (!receiptUrl || receiptUrl === baseUrl) {
+                receiptUrl = await waitForReceiptUrl(page, baseUrl, receiptTimeoutMs);
               }
             }
 
+            if (!receiptUrl) {
+              status = "error";
+              include = false;
+              errorReason = "receipt_timeout";
+              console.error(`[rakuten] receipt timeout: ${orderId || "unknown"}`);
+            } else {
             const ymd = orderDate || `${year}-??-??`;
             const total = totalYen ?? "unknown";
             const fileName = `${safeFilePart(ymd)}_rakuten_${safeFilePart(orderId || "unknown")}_${safeFilePart(total)}.pdf`;
@@ -583,34 +868,45 @@ async function main() {
 
             const pdfPage = pdfContext === context ? page : await pdfContext.newPage();
             try {
-              if (pdfContext !== context) {
-                await pdfPage.goto(receiptUrl, { waitUntil: "domcontentloaded", timeout: 30000 });
-                await pdfPage.waitForLoadState("networkidle", { timeout: 15000 }).catch(() => {});
-              }
-              await ensureAuthenticated(pdfPage, authHandoff, "Rakuten receipt page");
-              if (totalYen == null) {
-                const t = await extractTotalFromText(await pdfPage.innerText("body").catch(() => ""));
-                if (t != null) totalYen = t;
-              }
-              let nameResult = await applyReceiptNameWithFallback(pdfPage, receiptName, receiptNameFallback);
-              if (!nameResult.applied && receiptName && authHandoff) {
-                await promptUserReceiptName(pdfPage);
-                const manualValue = await readReceiptNameValue(pdfPage);
-                if (manualValue) nameResult = { applied: true, name: manualValue };
-              }
-              receiptNameApplied = Boolean(nameResult.applied);
-              if (nameResult.applied) appliedName = nameResult.name;
-              await saveReceiptPdf(pdfPage, pdfPath);
+              await withTimeout(
+                (async () => {
+                  if (pdfContext !== context) {
+                    await pdfPage.goto(receiptUrl, { waitUntil: "domcontentloaded", timeout: 30000 });
+                    await pdfPage.waitForLoadState("networkidle", { timeout: 15000 }).catch(() => {});
+                  }
+                  await ensureAuthenticated(pdfPage, authHandoff, "Rakuten receipt page");
+                  await acceptIssueConfirm(pdfPage, 1200);
+                  if (totalYen == null) {
+                    const t = await extractTotalFromText(await pdfPage.innerText("body").catch(() => ""));
+                    if (t != null) totalYen = t;
+                  }
+                  let nameResult = await applyReceiptNameWithFallback(pdfPage, receiptName, receiptNameFallback);
+                  const locked = await isReceiptNameLocked(pdfPage);
+                  if (!nameResult.applied && receiptName && authHandoff && !locked) {
+                    await promptUserReceiptName(pdfPage);
+                    const manualValue = await readReceiptNameValue(pdfPage);
+                    if (manualValue) nameResult = { applied: true, name: manualValue };
+                  }
+                  receiptNameApplied = Boolean(nameResult.applied);
+                  if (nameResult.name) appliedName = nameResult.name;
+                  await acceptIssueConfirm(pdfPage, 1200);
+                  await saveReceiptPdf(pdfPage, pdfPath);
+                })(),
+                receiptTimeoutMs,
+                "receipt_pdf"
+              );
             } finally {
               if (pdfContext !== context) await pdfPage.close().catch(() => {});
             }
             pdfSaved += 1;
+            }
           }
         } else {
           filtered += 1;
         }
       } catch (e) {
         status = "error";
+        errorReason = String(e?.message || e);
         if (debugDir) await writeDebug(page, debugDir, `order_${safeFilePart(orderId || "unknown")}_error`);
       }
 
@@ -619,6 +915,7 @@ async function main() {
         order_id: orderId,
         order_date: orderDate,
         total_yen: totalYen,
+        item_name: itemName || null,
         payment_method: paymentMethod,
         include,
         filtered_reason: filteredReason,
@@ -629,6 +926,7 @@ async function main() {
         receipt_url: receiptUrl,
         pdf_path: pdfPath,
         status,
+        error_reason: errorReason,
       };
       outStream.write(JSON.stringify(record) + "\n");
     }

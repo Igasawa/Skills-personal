@@ -45,7 +45,7 @@ from __future__ import annotations
 
 import argparse
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime
 import calendar
 import json
 import os
@@ -53,6 +53,7 @@ from pathlib import Path
 import subprocess
 import shutil
 import sys
+import threading
 import traceback
 from typing import Any
 
@@ -125,6 +126,49 @@ def _default_storage_state(name: str) -> Path:
     return _ax_home() / "sessions" / f"{safe}.storage.json"
 
 
+def _archive_existing_pdfs(pdfs_dir: Path, label: str) -> None:
+    if not pdfs_dir.exists():
+        return
+    pdfs = list(pdfs_dir.glob("*.pdf"))
+    if not pdfs:
+        return
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    archive_dir = pdfs_dir.parent / "_archive" / ts
+    archive_dir.mkdir(parents=True, exist_ok=True)
+    for p in pdfs:
+        dest = archive_dir / p.name
+        if dest.exists():
+            stem = p.stem
+            suffix = p.suffix
+            i = 1
+            while True:
+                candidate = archive_dir / f"{stem}_{i}{suffix}"
+                if not candidate.exists():
+                    dest = candidate
+                    break
+                i += 1
+        shutil.move(str(p), str(dest))
+    print(f"[run] Archived existing {label} PDFs to {archive_dir}", flush=True)
+    _cleanup_archives(pdfs_dir.parent / "_archive", keep=1, label=label)
+
+
+def _cleanup_archives(archive_root: Path, keep: int, label: str) -> None:
+    if keep < 1:
+        keep = 1
+    if not archive_root.exists():
+        return
+    dirs = [d for d in archive_root.iterdir() if d.is_dir()]
+    if len(dirs) <= keep:
+        return
+    dirs.sort(key=lambda d: d.stat().st_mtime, reverse=True)
+    for old in dirs[keep:]:
+        try:
+            shutil.rmtree(old)
+        except Exception:
+            continue
+    print(f"[run] Cleaned old {label} archives (keep {keep})", flush=True)
+
+
 def _run_node_playwright_script(
     *,
     script_path: Path,
@@ -143,27 +187,66 @@ def _run_node_playwright_script(
     merged_env = os.environ.copy()
     if env:
         merged_env.update(env)
-    res = subprocess.run(
+    proc = subprocess.Popen(
         cmd,
         cwd=str(cwd),
         env=merged_env,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
-        text=True,
-        check=False,
+        text=False,
+        bufsize=0,
     )
-    if res.returncode != 0:
+
+    stdout_lines: list[str] = []
+    stderr_lines: list[str] = []
+
+    def _drain(stream, sink, is_err: bool = False) -> None:
+        if stream is None:
+            return
+        for raw in iter(stream.readline, b""):
+            try:
+                line = raw.decode("utf-8", errors="replace")
+            except Exception:
+                line = raw.decode(errors="replace")
+            sink.append(line)
+            if is_err:
+                print(line.rstrip("\n"), file=sys.stderr, flush=True)
+            else:
+                print(line.rstrip("\n"), file=sys.stdout, flush=True)
+
+    t_out = threading.Thread(target=_drain, args=(proc.stdout, stdout_lines))
+    t_err = threading.Thread(target=_drain, args=(proc.stderr, stderr_lines, True))
+    t_out.start()
+    t_err.start()
+    returncode = proc.wait()
+    t_out.join()
+    t_err.join()
+
+    res_stdout = "".join(stdout_lines)
+    res_stderr = "".join(stderr_lines)
+    if returncode != 0:
         raise RuntimeError(
             "Node script failed:\n"
             f"cmd: {cmd}\n"
-            f"exit: {res.returncode}\n"
-            f"stdout:\n{res.stdout}\n"
-            f"stderr:\n{res.stderr}\n"
+            f"exit: {returncode}\n"
+            f"stdout:\n{res_stdout}\n"
+            f"stderr:\n{res_stderr}\n"
         )
+    stdout_str = res_stdout.strip()
+    if not stdout_str:
+        return {}
+    # Accept logs before JSON: parse the last JSON-looking line.
+    lines = [ln for ln in stdout_str.splitlines() if ln.strip()]
+    for candidate in reversed(lines):
+        if candidate.lstrip().startswith("{") and candidate.rstrip().endswith("}"):
+            try:
+                return json.loads(candidate)
+            except Exception:
+                continue
     try:
-        return json.loads(res.stdout) if res.stdout.strip() else {}
+        return json.loads(stdout_str)
     except Exception as e:  # noqa: BLE001
-        raise RuntimeError(f"Node script returned non-JSON stdout:\n{res.stdout}") from e
+        raise RuntimeError(f"Node script returned non-JSON stdout:\n{res_stdout}") from e
 
 
 @dataclass(frozen=True)
@@ -172,6 +255,7 @@ class RunConfig:
     dry_run: bool
     output_root: Path
     amazon_orders_url: str
+    mfcloud_accounts_url: str
     mfcloud_expense_list_url: str
     amazon_storage_state: Path
     mfcloud_storage_state: Path
@@ -224,9 +308,13 @@ def _parse_config(args: argparse.Namespace, raw: dict[str, Any]) -> tuple[RunCon
             "https://order.my.rakuten.co.jp/?l-id=top_normal_mymenu_order",
         )
     )
+    preflight = bool(getattr(args, "preflight", False))
+    mfcloud_accounts_url = str(
+        _coalesce(args.mfcloud_accounts_url, urls.get("mfcloud_accounts"), "https://expense.moneyforward.com/accounts")
+    )
     mfcloud_expense_list_url = _coalesce(args.mfcloud_expense_list_url, urls.get("mfcloud_expense_list"))
     if not mfcloud_expense_list_url:
-        if dry_run:
+        if dry_run or getattr(args, "skip_mfcloud", False) or preflight:
             mfcloud_expense_list_url = ""
         else:
             raise ValueError(
@@ -261,6 +349,7 @@ def _parse_config(args: argparse.Namespace, raw: dict[str, Any]) -> tuple[RunCon
         output_root=output_root,
         amazon_orders_url=amazon_orders_url,
         rakuten_orders_url=rakuten_orders_url,
+        mfcloud_accounts_url=mfcloud_accounts_url,
         mfcloud_expense_list_url=mfcloud_expense_list_url,
         amazon_storage_state=amazon_storage_state.expanduser().resolve(),
         mfcloud_storage_state=mfcloud_storage_state.expanduser().resolve(),
@@ -329,6 +418,11 @@ def _render_monthly_thread(
 
 
 def main(argv: list[str] | None = None) -> int:
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
     ap = argparse.ArgumentParser(description="mfcloud-expense-receipt-reconcile runner")
     ap.add_argument("--input", help="path to input JSON (otherwise stdin)")
 
@@ -338,6 +432,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--output-dir", dest="output_dir", help="override output_root")
 
     ap.add_argument("--amazon-orders-url", dest="amazon_orders_url", help="override Amazon order history URL")
+    ap.add_argument("--mfcloud-accounts-url", dest="mfcloud_accounts_url", help="MF Cloud accounts URL")
     ap.add_argument("--mfcloud-expense-list-url", dest="mfcloud_expense_list_url", help="MF Cloud expense list URL (required)")
 
     ap.add_argument("--amazon-storage-state", dest="amazon_storage_state", help="path to amazon.storage.json")
@@ -346,6 +441,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--notes", dest="monthly_notes", help="monthly notes for thread template")
     ap.add_argument("--receipt-name", dest="receipt_name", help="receipt addressee name for Amazon invoices")
     ap.add_argument("--receipt-name-fallback", dest="receipt_name_fallback", help="fallback receipt name when primary fails")
+    ap.add_argument("--skip-receipt-name", action="store_true", help="skip auto input of receipt addressee name")
 
     ap.add_argument("--enable-rakuten", dest="enable_rakuten", action="store_const", const=True, default=None, help="enable Rakuten download")
     ap.add_argument("--rakuten-orders-url", dest="rakuten_orders_url", help="Rakuten order history URL")
@@ -368,11 +464,19 @@ def main(argv: list[str] | None = None) -> int:
 
     ap.add_argument("--date-window-days", type=int, help="matching date window (default: 7)")
     ap.add_argument("--max-candidates-per-mf", type=int, help="max candidates per MF expense (default: 5)")
+    ap.add_argument("--skip-amazon", action="store_true", help="skip Amazon download step")
+    ap.add_argument("--skip-rakuten", action="store_true", help="skip Rakuten download step")
+    ap.add_argument("--skip-mfcloud", action="store_true", help="skip MF Cloud extract step")
+    ap.add_argument("--skip-reconcile", action="store_true", help="skip reconcile step")
+    ap.add_argument("--print-list", action="store_true", help="generate print list after downloads")
+    ap.add_argument("--print-sources", help="comma-separated sources for print list (amazon,rakuten,mfcloud)")
+    ap.add_argument("--preflight", action="store_true", help="login and refresh MF linked services before running steps")
 
     args = ap.parse_args(argv)
 
     raw = _read_json_input(args.input)
     rc, year, month = _parse_config(args, raw)
+    print(f"[run] start year={year} month={month} output_root={rc.output_root}", flush=True)
 
     output_root = _ensure_dir(rc.output_root)
     amazon_dir = _ensure_dir(output_root / "amazon")
@@ -397,6 +501,7 @@ def main(argv: list[str] | None = None) -> int:
             },
             "urls": {
                 "amazon_orders": rc.amazon_orders_url,
+                "mfcloud_accounts": rc.mfcloud_accounts_url,
                 "mfcloud_expense_list": rc.mfcloud_expense_list_url,
             },
             "rakuten": {
@@ -421,6 +526,46 @@ def main(argv: list[str] | None = None) -> int:
     rakuten_summary: dict[str, Any] = {"orders_jsonl": str(rakuten_orders_jsonl), "pdfs_dir": str(rakuten_pdfs_dir)}
     mf_summary: dict[str, Any] = {"expenses_jsonl": str(mf_expenses_jsonl)}
 
+    if args.preflight:
+        print("[run] Preflight start", flush=True)
+        scripts_dir = Path(__file__).parent
+        preflight_out = _run_node_playwright_script(
+            script_path=scripts_dir / "preflight.mjs",
+            cwd=scripts_dir,
+            args=[
+                "--amazon-orders-url",
+                rc.amazon_orders_url,
+                "--rakuten-orders-url",
+                rc.rakuten_orders_url,
+                "--mfcloud-accounts-url",
+                rc.mfcloud_accounts_url,
+                "--amazon-storage-state",
+                str(rc.amazon_storage_state),
+                "--rakuten-storage-state",
+                str(rc.rakuten_storage_state),
+                "--mfcloud-storage-state",
+                str(rc.mfcloud_storage_state),
+                *(["--auth-handoff"] if rc.interactive else []),
+                "--headed" if rc.headed else "--headless",
+                "--slow-mo-ms",
+                str(rc.slow_mo_ms),
+            ],
+        )
+        preflight_data = (preflight_out.get("data") if isinstance(preflight_out, dict) else None) or preflight_out
+        _write_json(
+            reports_dir / "preflight.json",
+            {
+                "status": "success",
+                "finished_at": datetime.now().isoformat(timespec="seconds"),
+                "data": preflight_data,
+            },
+        )
+        print("[run] Preflight done", flush=True)
+        print(json.dumps({"status": "success", "data": {"preflight": preflight_data}}, ensure_ascii=False, indent=2))
+        return 0
+
+    if rc.dry_run:
+        print("[run] dry-run enabled: skipping browser downloads", flush=True)
     if not rc.dry_run:
         scripts_dir = Path(__file__).parent
         receipt_env = {
@@ -428,143 +573,167 @@ def main(argv: list[str] | None = None) -> int:
             "RECEIPT_NAME_FALLBACK": rc.receipt_name_fallback,
         }
 
-        amazon_out = _run_node_playwright_script(
-            script_path=scripts_dir / "amazon_download.mjs",
-            cwd=scripts_dir,
-            args=[
-                "--storage-state",
-                str(rc.amazon_storage_state),
-                "--orders-url",
-                rc.amazon_orders_url,
-                "--out-jsonl",
-                str(amazon_orders_jsonl),
-                "--out-pdfs-dir",
-                str(amazon_pdfs_dir),
-                "--year",
-                str(year),
-                "--month",
-                str(month),
-                "--debug-dir",
-                str(debug_dir / "amazon"),
-                *(["--auth-handoff"] if rc.interactive else []),
-                "--headed" if rc.headed else "--headless",
-                "--slow-mo-ms",
-                str(rc.slow_mo_ms),
-            ],
-            env=receipt_env,
-        )
-        amazon_summary.update((amazon_out.get("data") if isinstance(amazon_out, dict) else None) or amazon_out)
-
-        if rc.rakuten_enabled:
-            if not rc.rakuten_payment_method_allowlist:
-                print(
-                    json.dumps(
-                        {
-                            "status": "warning",
-                            "warning": {
-                                "type": "RakutenAllowlistEmpty",
-                                "message": "Rakuten payment_method_allowlist is empty; all Rakuten orders will be filtered.",
-                            },
-                        },
-                        ensure_ascii=False,
-                    ),
-                    file=sys.stderr,
-                )
-
-            rakuten_out = _run_node_playwright_script(
-                script_path=scripts_dir / "rakuten_download.mjs",
+        if not args.skip_amazon:
+            print("[run] Amazon download start", flush=True)
+            _archive_existing_pdfs(amazon_pdfs_dir, "Amazon")
+            amazon_out = _run_node_playwright_script(
+                script_path=scripts_dir / "amazon_download.mjs",
                 cwd=scripts_dir,
                 args=[
                     "--storage-state",
-                    str(rc.rakuten_storage_state),
+                    str(rc.amazon_storage_state),
                     "--orders-url",
-                    rc.rakuten_orders_url,
+                    rc.amazon_orders_url,
                     "--out-jsonl",
-                    str(rakuten_orders_jsonl),
+                    str(amazon_orders_jsonl),
                     "--out-pdfs-dir",
-                    str(rakuten_pdfs_dir),
+                    str(amazon_pdfs_dir),
                     "--year",
                     str(year),
                     "--month",
                     str(month),
                     "--debug-dir",
-                    str(debug_dir / "rakuten"),
-                    "--allow-payment-methods",
-                    ",".join(rc.rakuten_payment_method_allowlist),
+                    str(debug_dir / "amazon"),
                     *(["--auth-handoff"] if rc.interactive else []),
                     "--headed" if rc.headed else "--headless",
                     "--slow-mo-ms",
                     str(rc.slow_mo_ms),
+                    *(["--skip-receipt-name"] if args.skip_receipt_name else []),
                 ],
                 env=receipt_env,
             )
-            rakuten_summary.update((rakuten_out.get("data") if isinstance(rakuten_out, dict) else None) or rakuten_out)
+            amazon_summary.update((amazon_out.get("data") if isinstance(amazon_out, dict) else None) or amazon_out)
+            print("[run] Amazon download done", flush=True)
+        else:
+            print("[run] Amazon download skipped", flush=True)
 
-        mf_out = _run_node_playwright_script(
-            script_path=scripts_dir / "mfcloud_extract.mjs",
-            cwd=scripts_dir,
-            args=[
+        if rc.rakuten_enabled and not args.skip_rakuten:
+            print("[run] Rakuten download start", flush=True)
+            _archive_existing_pdfs(rakuten_pdfs_dir, "Rakuten")
+            if rakuten_orders_jsonl.exists():
+                rakuten_orders_jsonl.unlink()
+                print("[run] Deleted existing Rakuten orders.jsonl", flush=True)
+
+            rakuten_allowlist = [str(v).strip() for v in rc.rakuten_payment_method_allowlist if str(v).strip()]
+            rakuten_args = [
                 "--storage-state",
-                str(rc.mfcloud_storage_state),
-                "--expense-list-url",
-                rc.mfcloud_expense_list_url,
+                str(rc.rakuten_storage_state),
+                "--orders-url",
+                rc.rakuten_orders_url,
                 "--out-jsonl",
-                str(mf_expenses_jsonl),
+                str(rakuten_orders_jsonl),
+                "--out-pdfs-dir",
+                str(rakuten_pdfs_dir),
                 "--year",
                 str(year),
                 "--month",
                 str(month),
                 "--debug-dir",
-                str(debug_dir / "mfcloud"),
+                str(debug_dir / "rakuten"),
                 *(["--auth-handoff"] if rc.interactive else []),
                 "--headed" if rc.headed else "--headless",
                 "--slow-mo-ms",
                 str(rc.slow_mo_ms),
-            ],
-        )
-        mf_summary.update((mf_out.get("data") if isinstance(mf_out, dict) else None) or mf_out)
+            ]
+            if rakuten_allowlist:
+                rakuten_args += ["--allow-payment-methods", ",".join(rakuten_allowlist)]
+            rakuten_out = _run_node_playwright_script(
+                script_path=scripts_dir / "rakuten_download.mjs",
+                cwd=scripts_dir,
+                args=rakuten_args,
+                env=receipt_env,
+            )
+            rakuten_summary.update((rakuten_out.get("data") if isinstance(rakuten_out, dict) else None) or rakuten_out)
+            print("[run] Rakuten download done", flush=True)
+        elif args.skip_rakuten:
+            print("[run] Rakuten download skipped", flush=True)
+        elif not rc.rakuten_enabled:
+            print("[run] Rakuten disabled", flush=True)
+
+        if not args.skip_mfcloud:
+            print("[run] MF Cloud extract start", flush=True)
+            mf_out = _run_node_playwright_script(
+                script_path=scripts_dir / "mfcloud_extract.mjs",
+                cwd=scripts_dir,
+                args=[
+                    "--storage-state",
+                    str(rc.mfcloud_storage_state),
+                    "--expense-list-url",
+                    rc.mfcloud_expense_list_url,
+                    "--out-jsonl",
+                    str(mf_expenses_jsonl),
+                    "--year",
+                    str(year),
+                    "--month",
+                    str(month),
+                    "--debug-dir",
+                    str(debug_dir / "mfcloud"),
+                    *(["--auth-handoff"] if rc.interactive else []),
+                    "--headed" if rc.headed else "--headless",
+                    "--slow-mo-ms",
+                    str(rc.slow_mo_ms),
+                ],
+            )
+            mf_summary.update((mf_out.get("data") if isinstance(mf_out, dict) else None) or mf_out)
+            print("[run] MF Cloud extract done", flush=True)
+        else:
+            print("[run] MF Cloud extract skipped", flush=True)
 
     scripts_dir = Path(__file__).parent
     rec_out_json = reports_dir / "missing_evidence_candidates.json"
     rec_out_csv = reports_dir / "missing_evidence_candidates.csv"
     monthly_thread_md = reports_dir / "monthly_thread.md"
+    exclude_orders_json = reports_dir / "exclude_orders.json"
 
-    rec_cmd = [
-        sys.executable,
-        str(scripts_dir / "reconcile.py"),
-        "--amazon-orders-jsonl",
-        str(amazon_orders_jsonl),
-        "--mf-expenses-jsonl",
-        str(mf_expenses_jsonl),
-        "--out-json",
-        str(rec_out_json),
-        "--out-csv",
-        str(rec_out_csv),
-        "--year",
-        str(year),
-        "--month",
-        str(month),
-        "--date-window-days",
-        str(rc.date_window_days),
-        "--max-candidates-per-mf",
-        str(rc.max_candidates_per_mf),
-    ]
-    if rakuten_orders_jsonl.exists():
-        rec_cmd += ["--rakuten-orders-jsonl", str(rakuten_orders_jsonl)]
-    rec_res = subprocess.run(rec_cmd, cwd=str(scripts_dir), capture_output=True, text=True, check=False)
-    if rec_res.returncode != 0:
-        raise RuntimeError(
-            "reconcile.py failed:\n"
-            f"cmd: {rec_cmd}\n"
-            f"exit: {rec_res.returncode}\n"
-            f"stdout:\n{rec_res.stdout}\n"
-            f"stderr:\n{rec_res.stderr}\n"
-        )
+    rec_json = {}
+    if not args.skip_reconcile:
+        print("[run] Reconcile start", flush=True)
+        if not amazon_orders_jsonl.exists():
+            raise RuntimeError("Missing amazon/orders.jsonl. Run Amazon download or provide existing data.")
+        if not mf_expenses_jsonl.exists():
+            raise RuntimeError("Missing mfcloud/expenses.jsonl. Run MF extract or provide existing data.")
 
-    try:
-        rec_json = json.loads(rec_res.stdout) if rec_res.stdout.strip() else {}
-    except Exception:
-        rec_json = {"status": "success", "data": {"note": "reconcile.py did not return JSON; see reports files"}}
+        rec_cmd = [
+            sys.executable,
+            str(scripts_dir / "reconcile.py"),
+            "--amazon-orders-jsonl",
+            str(amazon_orders_jsonl),
+            "--mf-expenses-jsonl",
+            str(mf_expenses_jsonl),
+            "--out-json",
+            str(rec_out_json),
+            "--out-csv",
+            str(rec_out_csv),
+            "--year",
+            str(year),
+            "--month",
+            str(month),
+            "--date-window-days",
+            str(rc.date_window_days),
+            "--max-candidates-per-mf",
+            str(rc.max_candidates_per_mf),
+        ]
+        if rakuten_orders_jsonl.exists():
+            rec_cmd += ["--rakuten-orders-jsonl", str(rakuten_orders_jsonl)]
+        if exclude_orders_json.exists():
+            rec_cmd += ["--exclude-orders-json", str(exclude_orders_json)]
+        rec_res = subprocess.run(rec_cmd, cwd=str(scripts_dir), capture_output=True, text=True, check=False)
+        if rec_res.returncode != 0:
+            raise RuntimeError(
+                "reconcile.py failed:\n"
+                f"cmd: {rec_cmd}\n"
+                f"exit: {rec_res.returncode}\n"
+                f"stdout:\n{rec_res.stdout}\n"
+                f"stderr:\n{rec_res.stderr}\n"
+            )
+
+        try:
+            rec_json = json.loads(rec_res.stdout) if rec_res.stdout.strip() else {}
+        except Exception:
+            rec_json = {"status": "success", "data": {"note": "reconcile.py did not return JSON; see reports files"}}
+        print("[run] Reconcile done", flush=True)
+    else:
+        print("[run] Reconcile skipped", flush=True)
 
     template_path = Path(__file__).resolve().parent.parent / "assets" / "monthly_thread_template.md"
     receipts_path = str(amazon_pdfs_dir)
@@ -579,6 +748,34 @@ def main(argv: list[str] | None = None) -> int:
         notes=rc.monthly_notes,
     )
     monthly_thread_md.write_text(monthly_thread, encoding="utf-8")
+
+    if args.print_list:
+        print("[run] Print list generation start", flush=True)
+        print_sources = args.print_sources or ""
+        print_cmd = [
+            sys.executable,
+            str(scripts_dir / "collect_print.py"),
+            "--year",
+            str(year),
+            "--month",
+            str(month),
+            "--output-dir",
+            str(output_root),
+        ]
+        if print_sources:
+            print_cmd += ["--sources", print_sources]
+        if exclude_orders_json.exists():
+            print_cmd += ["--exclude-orders-json", str(exclude_orders_json)]
+        print_res = subprocess.run(print_cmd, cwd=str(scripts_dir), capture_output=True, text=True, check=False)
+        if print_res.returncode != 0:
+            raise RuntimeError(
+                "collect_print.py failed:\n"
+                f"cmd: {print_cmd}\n"
+                f"exit: {print_res.returncode}\n"
+                f"stdout:\n{print_res.stdout}\n"
+                f"stderr:\n{print_res.stderr}\n"
+            )
+        print("[run] Print list generation done", flush=True)
 
     out = {
         "status": "success",

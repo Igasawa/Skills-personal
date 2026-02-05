@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>除外PDF一覧 {{ ym }}</title>
+    <link rel="stylesheet" href="/static/styles.css" />
+  </head>
+  <body>
+    <div class="page">
+      <header class="hero">
+        <div>
+          <p class="eyebrow">経費精算ダッシュボード</p>
+          <h1>{{ ym }} 除外PDF一覧</h1>
+          <p class="subtitle">除外対象として保存されたPDFを一覧表示し、個別印刷できます。</p>
+        </div>
+        <div class="hero-meta">
+          <a class="pill" href="/runs/{{ ym }}">実行詳細へ戻る</a>
+          <a class="pill" href="/">ダッシュボードへ戻る</a>
+        </div>
+      </header>
+
+      <section class="card">
+        <h2>除外PDF</h2>
+        <div class="form-row">
+          <span class="muted">合計 {{ total }} 件</span>
+          <span class="muted">Amazon {{ amazon_count }} 件</span>
+          <span class="muted">楽天 {{ rakuten_count }} 件</span>
+          <span id="print-status" class="status-note"></span>
+        </div>
+        <div class="form-row">
+          <label>
+            検索
+            <input
+              type="text"
+              id="excluded-search"
+              placeholder="注文ID / 商品名 / 金額 / 種別 などで検索"
+            />
+          </label>
+          <label>
+            種別
+            <div class="inline-checks">
+              <label class="inline-check">
+                <input type="checkbox" id="filter-amazon" checked />
+                Amazon
+              </label>
+              <label class="inline-check">
+                <input type="checkbox" id="filter-rakuten" checked />
+                楽天
+              </label>
+            </div>
+          </label>
+          <label>
+            PDF
+            <select id="filter-pdf">
+              <option value="all">すべて</option>
+              <option value="yes">あり</option>
+              <option value="no">なし</option>
+            </select>
+          </label>
+          <span class="muted">表示中 <span id="excluded-count">{{ total }}</span> 件</span>
+        </div>
+        {% if rows %}
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>種別</th>
+                <th>注文日</th>
+                <th>注文ID</th>
+                <th>合計</th>
+                <th>商品名</th>
+                <th>除外理由</th>
+                <th>PDF</th>
+                <th>印刷</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for row in rows %}
+              <tr
+                class="excluded-row"
+                data-search="{{ row.source_label }} {{ row.order_date }} {{ row.order_id }} {{ row.total_yen }} {{ row.item_name }} {{ row.excluded_reason }} {{ row.status_label }} {{ row.pdf_name }}"
+                data-source="{{ row.source }}"
+                data-has-pdf="yes"
+              >
+                <td>{{ row.source_label }}</td>
+                <td>{{ row.order_date or "-" }}</td>
+                <td>{{ row.order_id or "-" }}</td>
+                <td>{{ row.total_yen or "-" }}</td>
+                <td>{{ row.item_name or "-" }}</td>
+                <td>{{ row.excluded_reason }}</td>
+                <td>
+                  <a href="/files/{{ ym }}/pdf/{{ row.source }}/{{ row.pdf_name }}" class="download">開く</a>
+                  <div class="muted">{{ row.pdf_size_kb }} KB</div>
+                </td>
+                <td>
+                  <button
+                    type="button"
+                    class="secondary print-single"
+                    data-ym="{{ ym }}"
+                    data-source="{{ row.source }}"
+                    data-filename="{{ row.pdf_name }}"
+                  >
+                    このPDFを印刷
+                  </button>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% else %}
+        <p class="muted">除外されたPDFが見つかりません。</p>
+        {% endif %}
+      </section>
+    </div>
+
+    <div id="toast" class="toast" aria-live="polite"></div>
+    <script src="/static/app.js"></script>
+  </body>
+</html>
