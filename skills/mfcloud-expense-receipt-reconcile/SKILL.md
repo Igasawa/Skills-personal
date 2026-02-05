@@ -39,13 +39,10 @@ Set-Location c:\Users\Tatsuo-2023\Projects\PersonalSkills\skills\mfcloud-expense
 python scripts/run.py --year 2026 --month 1 --mfcloud-expense-list-url "<経費明細一覧URL>" --notes "出張多め・特定PJ集中"
 ```
 
-### 楽天を有効化（私用除外: 支払い方法の許可リスト）
-
-楽天は **支払い方法の許可リスト** で私用を除外する。許可リストが空の場合は **全件フィルタ** される（安全側）。
+### 楽天を有効化
 
 ```powershell
 python scripts/run.py --year 2026 --month 1 --mfcloud-expense-list-url "<経費明細一覧URL>" --enable-rakuten `
-  --rakuten-allow-payment-methods "楽天ビジネスカード,法人カード" `
   --rakuten-orders-url "https://order.my.rakuten.co.jp/?l-id=top_normal_mymenu_order"
 ```
 
@@ -115,7 +112,6 @@ python scripts/run.py --year 2026 --month 1 --dry-run --output-dir "C:\Users\<us
 ## トラブルシュート
 
 - storage_state の期限切れ：`scripts/ax.ps1 playwright login --name amazon` / `--name mfcloud-expense` をやり直す
-- 楽天で私用が混じる：`--rakuten-allow-payment-methods` を設定（未設定なら全件フィルタされる）
 - MFの画面構造が違う：`--mfcloud-expense-list-url` を「経費明細一覧」かつ「一覧が表示される状態」のURLにする（フィルタ付きURL推奨）
 - AmazonのUIが変わった：`output_root/debug/` のスクリーンショット/HTMLを確認し、抽出ロジックを更新する
 

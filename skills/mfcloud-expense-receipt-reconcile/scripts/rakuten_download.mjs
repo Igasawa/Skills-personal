@@ -593,25 +593,6 @@ async function extractDetailLinks(page) {
   return out;
 }
 
-function matchAllowlist(paymentMethod, allowlist) {
-  if (!allowlist || allowlist.length === 0) return { allowed: true, reason: null };
-  if (!paymentMethod) return { allowed: false, reason: "payment_method_unknown" };
-  const pm = paymentMethod.toLowerCase();
-  const strongToken = (s) => {
-    const t = String(s).toLowerCase();
-    if (/visa|jcb|master|amex|american express|diners|discover|銀聯|unionpay/.test(t)) return true;
-    if (t.includes("****")) return true;
-    if (/\d{4,}/.test(t) && !/\d{2}\/\d{2,4}/.test(t)) return true;
-    return false;
-  };
-  const strong = allowlist.filter((a) => a && strongToken(a));
-  const targets = strong.length ? strong : allowlist.filter(Boolean);
-  for (const a of targets) {
-    if (pm.includes(String(a).toLowerCase())) return { allowed: true, reason: null };
-  }
-  return { allowed: false, reason: "payment_method_not_allowed" };
-}
-
 async function parseOrderDetail(page, fallbackYear, detailUrl) {
   const raw = await page.innerText("body").catch(() => "");
   const text = normalizeText(raw);
@@ -671,12 +652,6 @@ async function main() {
     ? String(args["receipt-name-fallback"])
     : process.env.RECEIPT_NAME_FALLBACK || "";
   const authHandoff = Boolean(args["auth-handoff"]);
-  const allowPaymentMethods = args["allow-payment-methods"]
-    ? String(args["allow-payment-methods"])
-        .split(",")
-        .map((s) => s.trim())
-        .filter(Boolean)
-    : [];
 
   if (!storageState) throw new Error("Missing --storage-state");
   if (!outJsonl) throw new Error("Missing --out-jsonl");
@@ -807,15 +782,6 @@ async function main() {
         } else {
           status = "unknown_date";
           include = false;
-        }
-
-        if (include) {
-          const allow = matchAllowlist(paymentMethod, allowPaymentMethods);
-          include = allow.allowed;
-          filteredReason = allow.reason;
-          if (!include) {
-            status = "filtered_payment_method";
-          }
         }
 
         if (include) {

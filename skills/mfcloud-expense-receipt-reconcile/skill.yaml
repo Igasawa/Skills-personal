@@ -24,7 +24,6 @@ defaults:
     rakuten:
       enabled: false
       orders_url: "https://order.my.rakuten.co.jp/?l-id=top_normal_mymenu_order"
-      payment_method_allowlist: []
     playwright:
       headed: true
       slow_mo_ms: 0
