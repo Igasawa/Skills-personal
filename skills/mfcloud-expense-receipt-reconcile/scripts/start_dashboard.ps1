@@ -1,6 +1,6 @@
 $ErrorActionPreference = "Stop"
 
-$root = "c:\Users\TatsuoIgasawa\.vscode\Skillpersonal\skills\mfcloud-expense-receipt-reconcile"
+$root = "C:\Users\Tatsuo-2023\Projects\PersonalSkills\skills\mfcloud-expense-receipt-reconcile"
 Set-Location $root
 
 $appDir = Join-Path $root "dashboard"
