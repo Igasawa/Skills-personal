@@ -6,10 +6,10 @@ Set-Location $root
 $appDir = Join-Path $root "dashboard"
 $args = @(
   "-m", "uvicorn",
-  "app:app",
+  "dashboard.app:app",
   "--host", "127.0.0.1",
   "--port", "8765",
-  "--app-dir", $appDir
+  "--app-dir", $root
 )
 Start-Process -FilePath (Get-Command python).Source -ArgumentList $args -WorkingDirectory $root
 
