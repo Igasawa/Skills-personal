@@ -7,55 +7,19 @@ from datetime import date, datetime
 import json
 from pathlib import Path
 import re
+import sys
 from typing import Any
 
+SCRIPT_DIR = Path(__file__).resolve().parent
+SKILL_ROOT = SCRIPT_DIR.parent
+if str(SKILL_ROOT) not in sys.path:
+    sys.path.insert(0, str(SKILL_ROOT))
 
-def _read_jsonl(path: Path) -> list[dict[str, Any]]:
-    if not path.exists():
-        raise FileNotFoundError(f"JSONL not found: {path}")
-    out: list[dict[str, Any]] = []
-    with path.open("r", encoding="utf-8") as f:
-        for i, line in enumerate(f, start=1):
-            s = line.strip()
-            if not s:
-                continue
-            try:
-                obj = json.loads(s)
-            except Exception as e:  # noqa: BLE001
-                raise ValueError(f"Invalid JSON on {path}:{i}") from e
-            if isinstance(obj, dict):
-                out.append(obj)
-    return out
-
-
-def _load_exclusions(path: str | None) -> set[tuple[str, str]]:
-    if not path:
-        return set()
-    p = Path(path)
-    if not p.exists():
-        return set()
-    try:
-        data = json.loads(p.read_text(encoding="utf-8-sig"))
-    except Exception:
-        try:
-            data = json.loads(p.read_text(encoding="utf-8"))
-        except Exception:
-            return set()
-    if not isinstance(data, dict):
-        return set()
-    items = data.get("exclude")
-    if not isinstance(items, list):
-        return set()
-    out: set[tuple[str, str]] = set()
-    for item in items:
-        if not isinstance(item, dict):
-            continue
-        source = str(item.get("source") or "").strip()
-        order_id = str(item.get("order_id") or "").strip()
-        if not source or not order_id:
-            continue
-        out.add((source, order_id))
-    return out
+from common import (  # noqa: E402
+    load_order_exclusions as _load_exclusions,
+    read_jsonl as _read_jsonl,
+    write_json as _write_json,
+)
 
 
 def _is_excluded(obj: dict[str, Any], exclusions: set[tuple[str, str]], default_source: str) -> bool:
@@ -78,11 +42,6 @@ def _dedupe_orders(orders: list["Order"]) -> list["Order"]:
         seen.add(key)
         out.append(o)
     return out
-
-
-def _write_json(path: Path, data: Any) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
 def _to_int_yen(value: Any) -> int | None:
@@ -347,13 +306,13 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--max-candidates-per-mf", type=int, default=5)
     args = ap.parse_args(argv)
 
-    amazon_raw = _read_jsonl(Path(args.amazon_orders_jsonl))
-    rakuten_raw = _read_jsonl(Path(args.rakuten_orders_jsonl)) if args.rakuten_orders_jsonl else []
+    amazon_raw = _read_jsonl(Path(args.amazon_orders_jsonl), required=True, strict=True)
+    rakuten_raw = _read_jsonl(Path(args.rakuten_orders_jsonl), required=True, strict=True) if args.rakuten_orders_jsonl else []
     exclusions = _load_exclusions(args.exclude_orders_json)
     if exclusions:
         amazon_raw = [x for x in amazon_raw if not _is_excluded(x, exclusions, "amazon")]
         rakuten_raw = [x for x in rakuten_raw if not _is_excluded(x, exclusions, "rakuten")]
-    mf_raw = _read_jsonl(Path(args.mf_expenses_jsonl))
+    mf_raw = _read_jsonl(Path(args.mf_expenses_jsonl), required=True, strict=True)
     orders = [o for o in (Order.from_obj(x, default_source="amazon") for x in amazon_raw) if o]
     orders += [o for o in (Order.from_obj(x, default_source="rakuten") for x in rakuten_raw) if o]
     orders = _dedupe_orders(orders)

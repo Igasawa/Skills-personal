@@ -1,56 +1,8 @@
 #!/usr/bin/env node
-import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
 import { chromium } from "playwright";
-
-function parseArgs(argv) {
-  const out = {};
-  for (let i = 2; i < argv.length; i++) {
-    const a = argv[i];
-    if (!a.startsWith("--")) continue;
-    const key = a.slice(2);
-    if (key === "headed") {
-      out.headed = true;
-      continue;
-    }
-    if (key === "headless") {
-      out.headed = false;
-      continue;
-    }
-    const v = argv[i + 1];
-    if (v == null || v.startsWith("--")) {
-      out[key] = true;
-    } else {
-      out[key] = v;
-      i++;
-    }
-  }
-  return out;
-}
-
-function ensureDir(p) {
-  fs.mkdirSync(p, { recursive: true });
-  return p;
-}
-
-function fileExists(p) {
-  if (!p) return false;
-  try {
-    return fs.existsSync(p);
-  } catch {
-    return false;
-  }
-}
-
-async function locatorVisible(locator) {
-  try {
-    if ((await locator.count()) === 0) return false;
-    return await locator.first().isVisible();
-  } catch {
-    return false;
-  }
-}
+import { ensureDir, fileExists, locatorVisible, parseArgs } from "./mjs_common.mjs";
 
 function isAmazonLoginUrl(url) {
   return /\/ap\/signin|signin|login/i.test(url || "");

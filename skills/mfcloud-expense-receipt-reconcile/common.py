@@ -87,21 +87,47 @@ def read_json(path: Path) -> dict[str, Any] | list[Any] | None:
             return None
 
 
-def read_jsonl(path: Path) -> list[dict[str, Any]]:
+def read_jsonl(path: Path, *, required: bool = False, strict: bool = False) -> list[dict[str, Any]]:
     if not path.exists():
+        if required:
+            raise FileNotFoundError(f"JSONL not found: {path}")
         return []
     out: list[dict[str, Any]] = []
     with path.open("r", encoding="utf-8") as f:
-        for line in f:
+        for i, line in enumerate(f, start=1):
             s = line.strip()
             if not s:
                 continue
             try:
                 obj = json.loads(s)
-            except Exception:
+            except Exception as e:
+                if strict:
+                    raise ValueError(f"Invalid JSON on {path}:{i}") from e
                 continue
             if isinstance(obj, dict):
                 out.append(obj)
+    return out
+
+
+def load_order_exclusions(path: Path | str | None) -> set[tuple[str, str]]:
+    if path is None:
+        return set()
+    p = path if isinstance(path, Path) else Path(path)
+    data = read_json(p)
+    if not isinstance(data, dict):
+        return set()
+    items = data.get("exclude")
+    if not isinstance(items, list):
+        return set()
+    out: set[tuple[str, str]] = set()
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        source = str(item.get("source") or "").strip()
+        order_id = str(item.get("order_id") or "").strip()
+        if not source or not order_id:
+            continue
+        out.add((source, order_id))
     return out
 
 

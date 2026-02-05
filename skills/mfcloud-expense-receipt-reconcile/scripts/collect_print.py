@@ -2,21 +2,29 @@
 from __future__ import annotations
 
 import argparse
-from datetime import date
 import json
-import os
 from pathlib import Path
 import re
 import shutil
 import subprocess
+import sys
 from typing import Any
 
+SCRIPT_DIR = Path(__file__).resolve().parent
+SKILL_ROOT = SCRIPT_DIR.parent
+if str(SKILL_ROOT) not in sys.path:
+    sys.path.insert(0, str(SKILL_ROOT))
 
-def _ax_home() -> Path:
-    configured = os.environ.get("AX_HOME")
-    if configured:
-        return Path(configured).expanduser()
-    return Path.home() / ".ax"
+from common import (  # noqa: E402
+    ax_home as _ax_home,
+    coalesce as _coalesce,
+    default_storage_state as _default_storage_state,
+    ensure_dir as _ensure_dir,
+    load_order_exclusions as _load_exclusions,
+    read_jsonl as _read_jsonl,
+    ym_default as _ym_default,
+    ym_to_dirname as _ym_to_dirname,
+)
 
 
 def _read_json_input(path: str | None) -> dict[str, Any]:
@@ -29,34 +37,6 @@ def _read_json_input(path: str | None) -> dict[str, Any]:
             with open(default_path, "r", encoding="utf-8-sig") as f:
                 return json.load(f)
     return {}
-
-
-def _coalesce(*values: Any) -> Any:
-    for v in values:
-        if v is not None:
-            return v
-    return None
-
-
-def _ym_default(now: date | None = None) -> tuple[int, int]:
-    d = now or date.today()
-    if d.month == 1:
-        return d.year - 1, 12
-    return d.year, d.month - 1
-
-
-def _ym_to_dirname(year: int, month: int) -> str:
-    return f"{year:04d}-{month:02d}"
-
-
-def _ensure_dir(p: Path) -> Path:
-    p.mkdir(parents=True, exist_ok=True)
-    return p
-
-
-def _default_storage_state(name: str) -> Path:
-    safe = "".join(ch if ch.isalnum() or ch in ("-", "_", ".") else "_" for ch in name)
-    return _ax_home() / "sessions" / f"{safe}.storage.json"
 
 
 def _run_node_playwright_script(*, script_path: Path, args: list[str], cwd: Path) -> dict[str, Any]:
@@ -97,19 +77,6 @@ def _parse_date_from_filename(name: str) -> tuple[int, int] | None:
     return int(m.group(1)), int(m.group(2))
 
 
-def _read_jsonl(path: Path) -> list[dict[str, Any]]:
-    if not path.exists():
-        return []
-    out: list[dict[str, Any]] = []
-    with path.open("r", encoding="utf-8") as f:
-        for line in f:
-            s = line.strip()
-            if not s:
-                continue
-            out.append(json.loads(s))
-    return out
-
-
 def _parse_date(value: Any) -> tuple[int, int] | None:
     if value is None:
         return None
@@ -132,33 +99,6 @@ def _collect_local_pdfs(pdfs_dir: Path, year: int, month: int) -> list[dict[str,
         if ym and ym == (year, month):
             files.append({"path": str(p), "source": pdfs_dir.parent.name})
     return files
-
-
-def _load_exclusions(path: Path | None) -> set[tuple[str, str]]:
-    if not path or not path.exists():
-        return set()
-    try:
-        data = json.loads(path.read_text(encoding="utf-8-sig"))
-    except Exception:
-        try:
-            data = json.loads(path.read_text(encoding="utf-8"))
-        except Exception:
-            return set()
-    if not isinstance(data, dict):
-        return set()
-    items = data.get("exclude")
-    if not isinstance(items, list):
-        return set()
-    out: set[tuple[str, str]] = set()
-    for item in items:
-        if not isinstance(item, dict):
-            continue
-        source = str(item.get("source") or "").strip()
-        order_id = str(item.get("order_id") or "").strip()
-        if not source or not order_id:
-            continue
-        out.add((source, order_id))
-    return out
 
 
 def _collect_orders_pdfs(

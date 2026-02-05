@@ -3,40 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
 import { chromium } from "playwright";
-
-function parseArgs(argv) {
-  const out = {};
-  for (let i = 2; i < argv.length; i++) {
-    const a = argv[i];
-    if (!a.startsWith("--")) continue;
-    const key = a.slice(2);
-    if (key === "headed") {
-      out.headed = true;
-      continue;
-    }
-    if (key === "headless") {
-      out.headed = false;
-      continue;
-    }
-    const v = argv[i + 1];
-    if (v == null || v.startsWith("--")) {
-      out[key] = true;
-    } else {
-      out[key] = v;
-      i++;
-    }
-  }
-  return out;
-}
-
-function ensureDir(p) {
-  fs.mkdirSync(p, { recursive: true });
-  return p;
-}
-
-function safeFilePart(s) {
-  return String(s).replace(/[^a-zA-Z0-9._-]+/g, "_");
-}
+import { ensureDir, parseArgs, safeFilePart, writeDebug } from "./mjs_common.mjs";
 
 function parseDateLike(s) {
   if (!s) return null;
@@ -66,17 +33,6 @@ function readJsonl(filePath) {
   const content = fs.readFileSync(filePath, "utf-8");
   const lines = content.split(/\r?\n/).filter((l) => l.trim().length);
   return lines.map((l) => JSON.parse(l));
-}
-
-async function writeDebug(page, debugDir, name) {
-  try {
-    ensureDir(debugDir);
-    await page.screenshot({ path: path.join(debugDir, `${name}.png`), fullPage: true });
-    const html = await page.content();
-    fs.writeFileSync(path.join(debugDir, `${name}.html`), html, "utf-8");
-  } catch {
-    // best-effort
-  }
 }
 
 function isLoginUrl(url) {
