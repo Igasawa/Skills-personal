@@ -1,0 +1,96 @@
+﻿<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>MF月次ダッシュボード</title>
+  <style>
+    :root {
+      --bg: #0b0c0f;
+      --panel: #12141a;
+      --muted: #8b92a3;
+      --text: #f2f4f8;
+      --accent: #6aa6ff;
+      --ok: #4cd964;
+      --warn: #ffcc00;
+      --bad: #ff3b30;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; padding: 24px; background: var(--bg); color: var(--text);
+      font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+    }
+    h1 { font-size: 20px; margin: 0 0 12px; }
+    .row { display: flex; gap: 16px; flex-wrap: wrap; }
+    .card {
+      background: var(--panel); border: 1px solid #1e2430; border-radius: 12px; padding: 16px; min-width: 260px;
+    }
+    .card h2 { font-size: 14px; margin: 0 0 8px; color: var(--muted); }
+    .btn {
+      display: inline-block; padding: 10px 14px; border-radius: 10px; border: 1px solid #2b3242;
+      background: #1a2030; color: var(--text); text-decoration: none; font-weight: 600;
+    }
+    .btn:hover { border-color: var(--accent); color: var(--accent); }
+    .muted { color: var(--muted); font-size: 12px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+    th, td { padding: 8px; border-bottom: 1px solid #1e2430; font-size: 12px; text-align: left; }
+    th { color: var(--muted); font-weight: 600; }
+    .pill { padding: 2px 8px; border-radius: 999px; font-size: 11px; display: inline-block; }
+    .ok { background: rgba(76,217,100,.15); color: var(--ok); }
+    .warn { background: rgba(255,204,0,.15); color: var(--warn); }
+    .bad { background: rgba(255,59,48,.15); color: var(--bad); }
+    .grid { display: grid; gap: 8px; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
+    .file { background: #0f131b; border: 1px solid #1e2430; border-radius: 10px; padding: 10px; font-size: 12px; }
+  </style>
+</head>
+<body>
+  <h1>MF月次ダッシュボード（ローカル）</h1>
+  <div class="row">
+    <div class="card" style="flex:1">
+      <h2>実行</h2>
+      <div class="row">
+        <a class="btn" href="file:///C:/Users/Tatsuo-2023/Projects/PersonalSkills/skills/mfcloud-expense-receipt-reconcile/scripts/dashboard_run.ps1">月次実行（スクリプト）</a>
+        <a class="btn" href="file:///C:/Users/Tatsuo-2023/.ax/artifacts/mfcloud-expense-receipt-reconcile/2026-01/reports/print_all.ps1">一括印刷</a>
+      </div>
+      <p class="muted">※ ブラウザからの .ps1 実行は OS 設定によりブロックされることがあります。</p>
+    </div>
+    <div class="card">
+      <h2>今月の出力（2026-01）</h2>
+      <div class="row">
+        <a class="btn" href="file:///C:/Users/Tatsuo-2023/.ax/artifacts/mfcloud-expense-receipt-reconcile/2026-01/reports/">reports を開く</a>
+        <a class="btn" href="file:///C:/Users/Tatsuo-2023/.ax/artifacts/mfcloud-expense-receipt-reconcile/2026-01/amazon/pdfs/">Amazon PDFs</a>
+        <a class="btn" href="file:///C:/Users/Tatsuo-2023/.ax/artifacts/mfcloud-expense-receipt-reconcile/2026-01/rakuten/pdfs/">Rakuten PDFs</a>
+      </div>
+    </div>
+  </div>
+
+  <div class="row" style="margin-top:16px;">
+    <div class="card" style="flex:1">
+      <h2>サマリ</h2>
+      <table>
+        <tr><th>項目</th><th>値</th></tr>
+        <tr><td>Amazon PDF</td><td>6</td></tr>
+        <tr><td>Rakuten PDF</td><td>7</td></tr>
+        <tr><td>印刷対象</td><td>13</td></tr>
+      </table>
+    </div>
+    <div class="card" style="flex:1">
+      <h2>主要レポート</h2>
+      <div class="grid">
+        <a class="file" href="file:///C:/Users/Tatsuo-2023/.ax/artifacts/mfcloud-expense-receipt-reconcile/2026-01/reports/missing_evidence_candidates.csv">missing_evidence_candidates.csv</a>
+        <a class="file" href="file:///C:/Users/Tatsuo-2023/.ax/artifacts/mfcloud-expense-receipt-reconcile/2026-01/reports/missing_evidence_candidates.json">missing_evidence_candidates.json</a>
+        <a class="file" href="file:///C:/Users/Tatsuo-2023/.ax/artifacts/mfcloud-expense-receipt-reconcile/2026-01/reports/print_manifest.json">print_manifest.json</a>
+        <a class="file" href="file:///C:/Users/Tatsuo-2023/.ax/artifacts/mfcloud-expense-receipt-reconcile/2026-01/reports/monthly_thread.md">monthly_thread.md</a>
+      </div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:16px;">
+    <h2>注意</h2>
+    <ul class="muted">
+      <li>このHTMLは静的です。最新月に合わせて再生成してください。</li>
+      <li>実行ボタンが動かない場合は、デスクトップのショートカット（.lnk）から実行してください。</li>
+    </ul>
+  </div>
+</body>
+</html>
