@@ -1,15 +1,29 @@
+param(
+  [switch]$NoOpen,
+  [string]$BindHost = "127.0.0.1",
+  [int]$Port = 8765,
+  [int]$WaitSeconds = 120
+)
+
 $ErrorActionPreference = "Stop"
 
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $root = (Resolve-Path (Join-Path $scriptDir "..")).Path
 Set-Location $root
 
+if ($Port -lt 1 -or $Port -gt 65535) {
+  throw "Invalid -Port: $Port (expected 1-65535)."
+}
+if ($WaitSeconds -lt 1) {
+  throw "Invalid -WaitSeconds: $WaitSeconds (expected >= 1)."
+}
+
 $logDir = Join-Path $env:USERPROFILE ".ax\logs"
 New-Item -ItemType Directory -Force -Path $logDir | Out-Null
 $logOut = Join-Path $logDir "mf_dashboard_uvicorn.out.log"
 $logErr = Join-Path $logDir "mf_dashboard_uvicorn.err.log"
 
-$url = "http://127.0.0.1:8765/"
+$url = "http://$BindHost`:$Port/"
 
 function Find-PythonRuntime {
   $python = $null
@@ -67,7 +81,9 @@ function Ensure-UvBinary {
 try {
   $resp = Invoke-WebRequest -UseBasicParsing $url -TimeoutSec 2
   if ($resp.StatusCode -eq 200) {
-    Start-Process $url
+    if (-not $NoOpen) {
+      Start-Process $url
+    }
     return
   }
 } catch {}
@@ -84,8 +100,8 @@ if ($python) {
     $pythonPrefix + @(
       "-m", "uvicorn",
       "dashboard.app:app",
-      "--host", "127.0.0.1",
-      "--port", "8765",
+      "--host", $BindHost,
+      "--port", "$Port",
       "--app-dir", $root
     )
   )
@@ -98,21 +114,23 @@ if ($python) {
     "--with-requirements", (Join-Path $root "dashboard\requirements.txt"),
     "uvicorn",
     "dashboard.app:app",
-    "--host", "127.0.0.1",
-    "--port", "8765",
+    "--host", $BindHost,
+    "--port", "$Port",
     "--app-dir", $root
   )
 }
 
 Start-Process -FilePath $launcher -ArgumentList $args -WorkingDirectory $root -RedirectStandardOutput $logOut -RedirectStandardError $logErr -WindowStyle Hidden
 
-$deadline = (Get-Date).AddSeconds(120)
+$deadline = (Get-Date).AddSeconds($WaitSeconds)
 while ((Get-Date) -lt $deadline) {
   Start-Sleep -Seconds 2
   try {
     $resp = Invoke-WebRequest -UseBasicParsing $url -TimeoutSec 5
     if ($resp.StatusCode -eq 200) {
-      Start-Process $url
+      if (-not $NoOpen) {
+        Start-Process $url
+      }
       return
     }
   } catch {}
