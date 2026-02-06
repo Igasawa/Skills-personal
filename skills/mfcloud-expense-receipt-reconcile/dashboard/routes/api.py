@@ -42,6 +42,14 @@ def create_api_router() -> APIRouter:
         state = core._workflow_state_for_ym(year, month)
         return JSONResponse(state, headers={"Cache-Control": "no-store"})
 
+    @router.post("/api/steps/{ym}/reset/{step_id}")
+    def api_step_reset(ym: str, step_id: str, request: Request) -> JSONResponse:
+        ym = core._safe_ym(ym)
+        year, month = core._split_ym(ym)
+        actor = _actor_from_request(request)
+        result = core._reset_step_state(year, month, str(step_id).strip(), actor=actor)
+        return JSONResponse({"status": "ok", **result})
+
     @router.get("/api/exclusions/{ym}")
     def api_get_exclusions(ym: str) -> JSONResponse:
         ym = core._safe_ym(ym)

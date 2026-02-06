@@ -54,6 +54,8 @@ def create_pages_router(templates: Jinja2Templates) -> APIRouter:
         data = core._read_json(missing_json) or {}
         rows = data.get("rows") if isinstance(data, dict) else []
         counts = data.get("counts") if isinstance(data, dict) else {}
+        merged_counts = dict(counts or {})
+        merged_counts.update(core._derive_order_counts_from_jsonl(root, ym))
         rows = rows if isinstance(rows, list) else []
         for row in rows:
             vendor = str(row.get("mf_vendor") or "")
@@ -71,6 +73,14 @@ def create_pages_router(templates: Jinja2Templates) -> APIRouter:
         exclusions = core._load_exclusions(reports_dir)
         orders = core._collect_orders(root, ym, exclusions)
         excluded_count = sum(1 for o in orders if o.get("excluded"))
+        included_count = max(0, len(orders) - excluded_count)
+        merged_counts.update(
+            {
+                "manual_excluded_orders": len(exclusions),
+                "excluded_orders": excluded_count,
+                "included_orders": included_count,
+            }
+        )
 
         amazon_pdfs = list((root / "amazon" / "pdfs").glob("*.pdf")) if (root / "amazon" / "pdfs").exists() else []
         rakuten_pdfs = list((root / "rakuten" / "pdfs").glob("*.pdf")) if (root / "rakuten" / "pdfs").exists() else []
@@ -85,12 +95,13 @@ def create_pages_router(templates: Jinja2Templates) -> APIRouter:
             {
                 "request": request,
                 "ym": ym,
-                "counts": counts or {},
+                "counts": merged_counts,
                 "rows": rows[:50],
                 "row_total": len(rows),
                 "orders": orders,
                 "orders_total": len(orders),
                 "excluded_count": excluded_count,
+                "included_count": included_count,
                 "amazon_pdf_count": len(amazon_pdfs),
                 "rakuten_pdf_count": len(rakuten_pdfs),
                 "has_reports": reports_dir.exists(),

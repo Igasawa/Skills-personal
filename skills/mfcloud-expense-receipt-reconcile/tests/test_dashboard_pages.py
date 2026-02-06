@@ -74,4 +74,5 @@ def test_run_page_shows_detail_shortcut_when_pdf_missing(
     res = client.get(f"/runs/{ym}")
     assert res.status_code == 200
     assert "注文詳細" in res.text
+    assert "未保存（Webあり）" in res.text
     assert "https://order.my.rakuten.co.jp/purchase-history/?order_number=RAK-001" in res.text

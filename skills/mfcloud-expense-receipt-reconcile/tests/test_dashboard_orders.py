@@ -153,3 +153,23 @@ def test_collect_orders_keeps_shortcut_urls_when_pdf_missing(tmp_path: Path) -> 
     assert orders[0]["pdf_name"] is None
     assert orders[0]["detail_url"] == "https://order.my.rakuten.co.jp/purchase-history/?order_number=RAK-URL-001"
     assert orders[0]["receipt_url"] == "https://order.my.rakuten.co.jp/purchase-history/?act=order_invoice"
+
+
+def test_collect_orders_defaults_to_excluded_when_total_is_dash(tmp_path: Path) -> None:
+    root = tmp_path / "2026-01"
+    _write_jsonl(
+        root / "amazon" / "orders.jsonl",
+        [
+            {"order_id": "AMZ-DASH", "order_date": "2026-01-21", "status": "ok", "total_yen": "-"},
+            {"order_id": "AMZ-PRICE", "order_date": "2026-01-21", "status": "ok", "total_yen": 1200},
+        ],
+    )
+
+    orders = _collect_orders(root, "2026-01", set())
+    assert len(orders) == 2
+
+    by_id = {order["order_id"]: order for order in orders}
+    assert by_id["AMZ-DASH"]["excluded"] is True
+    assert by_id["AMZ-DASH"]["can_toggle"] is True
+    assert by_id["AMZ-DASH"]["auto_excluded"] is False
+    assert by_id["AMZ-PRICE"]["excluded"] is False

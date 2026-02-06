@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 from datetime import datetime
 from pathlib import Path
 import re
@@ -24,6 +25,29 @@ from .core_shared import (
     _write_json,
 )
 from .core_orders import _read_workflow
+
+STEP_RESET_SPECS: dict[str, dict[str, Any]] = {
+    "amazon_download": {
+        "run_modes": {"amazon_download", "amazon_print"},
+        "clear_source": "amazon",
+        "clear_download": True,
+    },
+    "amazon_decide_print": {
+        "run_modes": {"amazon_print"},
+        "clear_source": "amazon",
+        "clear_download": False,
+    },
+    "rakuten_download": {
+        "run_modes": {"rakuten_download", "rakuten_print"},
+        "clear_source": "rakuten",
+        "clear_download": True,
+    },
+    "rakuten_decide_print": {
+        "run_modes": {"rakuten_print"},
+        "clear_source": "rakuten",
+        "clear_download": False,
+    },
+}
 
 
 def _preflight_global_path() -> Path:
@@ -375,6 +399,153 @@ def _run_worker(process: subprocess.Popen, meta_path: Path) -> None:
         run_id=str(meta.get("run_id") or ""),
         details={"returncode": exit_code},
     )
+
+
+def _terminate_pid(pid: Any) -> None:
+    pid_int = _safe_int(pid)
+    if pid_int is None:
+        return
+    if os.name == "nt":
+        subprocess.run(
+            ["taskkill", "/PID", str(pid_int), "/T", "/F"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+        )
+        return
+    try:
+        os.kill(pid_int, 9)
+    except Exception:
+        pass
+
+
+def _delete_path(path: Path) -> bool:
+    if not path.exists():
+        return False
+    if path.is_dir():
+        shutil.rmtree(path, ignore_errors=True)
+        return True
+    try:
+        path.unlink()
+    except FileNotFoundError:
+        return False
+    return True
+
+
+def _remove_mf_outputs(reports_dir: Path) -> list[str]:
+    cleared: list[str] = []
+    for name in (
+        "missing_evidence_candidates.json",
+        "missing_evidence_candidates.csv",
+        "quality_gate.json",
+        "monthly_thread.md",
+    ):
+        path = reports_dir / name
+        if _delete_path(path):
+            cleared.append(str(path))
+    return cleared
+
+
+def _cancel_step_runs(
+    *,
+    year: int,
+    month: int,
+    step: str,
+    allowed_modes: set[str],
+    actor: Any = None,
+) -> list[str]:
+    cancelled_run_ids: list[str] = []
+    for job in _scan_run_jobs():
+        if job.get("status") != "running":
+            continue
+        params = job.get("params") if isinstance(job.get("params"), dict) else {}
+        if _safe_int(params.get("year")) != year or _safe_int(params.get("month")) != month:
+            continue
+        mode = str(params.get("mode") or "")
+        if mode not in allowed_modes:
+            raise HTTPException(
+                status_code=409,
+                detail=f"現在この年月で別の実行中です（{mode}）。停止してからリセットしてください。",
+            )
+        run_id = str(job.get("run_id") or "")
+        if not run_id:
+            continue
+        _terminate_pid(job.get("pid"))
+        job["status"] = "cancelled"
+        job["finished_at"] = datetime.now().isoformat(timespec="seconds")
+        job["returncode"] = -1
+        _write_json(_runs_root() / f"{run_id}.json", job)
+        cancelled_run_ids.append(run_id)
+        _append_audit_event(
+            year=year,
+            month=month,
+            event_type="run",
+            action="step_reset_stop",
+            status="success",
+            actor=actor,
+            mode=mode,
+            run_id=run_id,
+            details={"step": step, "returncode": -1},
+        )
+    return cancelled_run_ids
+
+
+def _reset_step_state(year: int, month: int, step: str, actor: Any = None) -> dict[str, Any]:
+    spec = STEP_RESET_SPECS.get(step)
+    if not spec:
+        raise HTTPException(status_code=400, detail="Invalid step id for reset.")
+
+    root = _artifact_root() / f"{year:04d}-{month:02d}"
+    reports_dir = root / "reports"
+    clear_source = str(spec["clear_source"])
+    clear_download = bool(spec["clear_download"])
+    run_modes = set(spec["run_modes"])
+
+    cancelled = _cancel_step_runs(year=year, month=month, step=step, allowed_modes=run_modes, actor=actor)
+
+    cleared_paths: list[str] = []
+    if clear_download:
+        orders_jsonl = root / clear_source / "orders.jsonl"
+        if _delete_path(orders_jsonl):
+            cleared_paths.append(str(orders_jsonl))
+        pdfs_dir = root / clear_source / "pdfs"
+        if _delete_path(pdfs_dir):
+            cleared_paths.append(str(pdfs_dir))
+        pdfs_dir.mkdir(parents=True, exist_ok=True)
+
+    workflow = _read_workflow(reports_dir)
+    changed_workflow = False
+    if clear_source in workflow:
+        workflow.pop(clear_source, None)
+        changed_workflow = True
+    if changed_workflow:
+        _write_json(reports_dir / "workflow.json", workflow)
+        cleared_paths.append(str(reports_dir / "workflow.json"))
+
+    cleared_paths.extend(_remove_mf_outputs(reports_dir))
+
+    _append_audit_event(
+        year=year,
+        month=month,
+        event_type="step_reset",
+        action=step,
+        status="success",
+        actor=actor,
+        source=clear_source,
+        details={
+            "cancelled_runs": cancelled,
+            "cleared_paths": cleared_paths,
+            "clear_download": clear_download,
+        },
+    )
+
+    return {
+        "step": step,
+        "source": clear_source,
+        "cancelled_runs": cancelled,
+        "cleared_paths": cleared_paths,
+        "clear_download": clear_download,
+    }
 
 
 def _start_run(payload: dict[str, Any]) -> dict[str, Any]:

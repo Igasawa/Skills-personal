@@ -861,27 +861,114 @@ async function extractDetailLinks(page) {
   return out;
 }
 
+function parseLooseYen(value) {
+  if (value == null) return null;
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) return null;
+    return Math.trunc(value);
+  }
+  const text = String(value).replace(/[^\d-]/g, "");
+  if (!text) return null;
+  const parsed = Number.parseInt(text, 10);
+  return Number.isNaN(parsed) ? null : parsed;
+}
+
+function normalizeOrderDateFromText(raw, fallbackYear) {
+  const text = normalizeText(String(raw || ""));
+  if (!text) return null;
+  const parts = parseJapaneseDate(text, fallbackYear);
+  if (!parts) return null;
+  return `${String(parts.y).padStart(4, "0")}-${String(parts.m).padStart(2, "0")}-${String(parts.d).padStart(2, "0")}`;
+}
+
+async function extractOrderDetailFromInitialState(page, fallbackYear) {
+  const stateSummary = await page
+    .evaluate(() => {
+      const s = window.__INITIAL_STATE__;
+      if (!s || typeof s !== "object") return null;
+      const orderData = s.orderData && typeof s.orderData === "object" ? s.orderData : {};
+      const orderSummary = orderData.orderSummary && typeof orderData.orderSummary === "object" ? orderData.orderSummary : {};
+      const itemObject = orderData.itemObject && typeof orderData.itemObject === "object" ? orderData.itemObject : {};
+      const paymentInfoModel =
+        orderData.paymentInfoModel && typeof orderData.paymentInfoModel === "object" ? orderData.paymentInfoModel : {};
+      const requestParams = s.requestParams && typeof s.requestParams === "object" ? s.requestParams : {};
+
+      const itemList = Array.isArray(itemObject.itemList) ? itemObject.itemList : [];
+      const itemNames = [];
+      for (const it of itemList) {
+        if (!it || typeof it !== "object") continue;
+        const name = String(it.itemName || "").trim();
+        if (!name) continue;
+        if (!itemNames.includes(name)) itemNames.push(name);
+        if (itemNames.length >= 3) break;
+      }
+
+      return {
+        orderId: String(orderSummary.orderNumber || requestParams.orderNumber || "").trim(),
+        orderDateRaw: String(orderSummary.orderCreationDate || "").trim(),
+        totalCandidates: [
+          orderSummary.totalPrice,
+          orderSummary.totalOrderAmount,
+          itemObject.totalOrderAmount,
+          itemObject.paymentAmount,
+        ],
+        itemNames,
+        paymentMethod: String(paymentInfoModel.paymentMethodName || "").trim(),
+      };
+    })
+    .catch(() => null);
+
+  if (!stateSummary) return null;
+  let totalYen = null;
+  for (const candidate of stateSummary.totalCandidates || []) {
+    const parsed = parseLooseYen(candidate);
+    if (parsed != null) {
+      totalYen = parsed;
+      break;
+    }
+  }
+  const orderDate = normalizeOrderDateFromText(stateSummary.orderDateRaw, fallbackYear);
+  const itemName =
+    Array.isArray(stateSummary.itemNames) && stateSummary.itemNames.length
+      ? stateSummary.itemNames.map((name) => normalizeTextLines(name).replace(/\s+/g, " ").trim()).filter(Boolean).join(" / ")
+      : null;
+  return {
+    orderId: stateSummary.orderId || null,
+    orderDate,
+    totalYen,
+    itemName: itemName || null,
+    paymentMethod: stateSummary.paymentMethod || null,
+  };
+}
+
 async function parseOrderDetail(page, fallbackYear, detailUrl) {
   const raw = await page.innerText("body").catch(() => "");
   const text = normalizeText(raw);
+  const stateDetail = await extractOrderDetailFromInitialState(page, fallbackYear);
 
   const idMatch = text.match(/注文番号\s*[:：]?\s*([0-9-]{6,})/);
-  const orderId = idMatch ? idMatch[1] : null;
+  const orderId = stateDetail?.orderId || (idMatch ? idMatch[1] : null) || detailUrl.match(/order_number=([^&]+)/)?.[1] || null;
 
   const dateMatch =
     text.match(/注文日(?:時刻)?\s*[:：]?\s*([0-9/年月日 ()]+?)(?:\s|$)/) ||
     text.match(/購入日\s*[:：]?\s*([0-9/年月日 ()]+?)(?:\s|$)/);
   const dateParts = dateMatch ? parseJapaneseDate(dateMatch[1], fallbackYear) : null;
-  let orderDate = dateParts
-    ? `${String(dateParts.y).padStart(4, "0")}-${String(dateParts.m).padStart(2, "0")}-${String(dateParts.d).padStart(2, "0")}`
-    : null;
+  let orderDate =
+    stateDetail?.orderDate ||
+    (dateParts
+      ? `${String(dateParts.y).padStart(4, "0")}-${String(dateParts.m).padStart(2, "0")}-${String(dateParts.d).padStart(2, "0")}`
+      : null);
   if (!orderDate) {
     orderDate = parseOrderDateFromUrl(detailUrl || page.url());
   }
 
-  const totalYen = extractTotalFromText(text);
-  const itemName = await extractItemNamesFromDom(page);
+  let totalYen = stateDetail?.totalYen ?? null;
+  if (totalYen == null) {
+    totalYen = extractTotalFromText(text);
+  }
+  const itemName = stateDetail?.itemName || (await extractItemNamesFromDom(page));
   const paymentMethod =
+    stateDetail?.paymentMethod ||
     (await extractPaymentMethodFromDom(page)) ||
     extractFieldFromText(raw, [/お支払い方法|支払い方法|お支払方法/]) ||
     extractFieldFromText(raw, [/支払方法|決済方法/]);

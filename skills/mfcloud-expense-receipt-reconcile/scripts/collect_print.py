@@ -5,6 +5,7 @@ import argparse
 import json
 from pathlib import Path
 import re
+import shutil
 import sys
 from typing import Any
 
@@ -24,6 +25,10 @@ from common import (  # noqa: E402
     ym_to_dirname as _ym_to_dirname,
 )
 from run_core_playwright import run_node_playwright_script as _run_node_playwright_script  # noqa: E402
+
+DEFAULT_AMAZON_ORDERS_URL = "https://www.amazon.co.jp/gp/your-account/order-history"
+DEFAULT_RAKUTEN_ORDERS_URL = "https://order.my.rakuten.co.jp/?l-id=top_normal_mymenu_order"
+NON_ACTIONABLE_STATUS = {"out_of_month", "unknown_date", "gift_card"}
 
 
 def _read_json_input(path: str | None) -> dict[str, Any]:
@@ -133,6 +138,178 @@ def _write_print_script(path: Path, files: list[str]) -> None:
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
+def _resolve_orders_url(config: dict[str, Any], source: str) -> str:
+    tenant = config.get("tenant") if isinstance(config.get("tenant"), dict) else {}
+    tenant_urls = tenant.get("urls") if isinstance(tenant.get("urls"), dict) else {}
+    legacy_urls = config.get("urls") if isinstance(config.get("urls"), dict) else {}
+    if source == "amazon":
+        return str(tenant_urls.get("amazon_orders") or legacy_urls.get("amazon_orders") or DEFAULT_AMAZON_ORDERS_URL)
+    if source == "rakuten":
+        rakuten_cfg = config.get("rakuten") if isinstance(config.get("rakuten"), dict) else {}
+        return str(
+            tenant_urls.get("rakuten_orders")
+            or rakuten_cfg.get("orders_url")
+            or legacy_urls.get("rakuten_orders")
+            or DEFAULT_RAKUTEN_ORDERS_URL
+        )
+    return ""
+
+
+def _resolve_receipt_env(config: dict[str, Any]) -> dict[str, str]:
+    tenant = config.get("tenant") if isinstance(config.get("tenant"), dict) else {}
+    receipt_cfg = tenant.get("receipt") if isinstance(tenant.get("receipt"), dict) else {}
+    receipt_name = str(_coalesce(receipt_cfg.get("name"), config.get("receipt_name"), "") or "").strip()
+    receipt_name_fallback = str(
+        _coalesce(receipt_cfg.get("name_fallback"), config.get("receipt_name_fallback"), "") or ""
+    ).strip()
+    env: dict[str, str] = {}
+    if receipt_name:
+        env["RECEIPT_NAME"] = receipt_name
+    if receipt_name_fallback:
+        env["RECEIPT_NAME_FALLBACK"] = receipt_name_fallback
+    return env
+
+
+def _collect_missing_shortcut_orders(
+    orders_jsonl: Path,
+    year: int,
+    month: int,
+    source: str,
+    exclusions: set[tuple[str, str]],
+) -> list[dict[str, Any]]:
+    rows = _read_jsonl(orders_jsonl)
+    pending: list[dict[str, Any]] = []
+    seen: set[tuple[str, str]] = set()
+    for r in rows:
+        if r.get("include") is False:
+            continue
+        status = str(r.get("status") or "").strip()
+        if status in NON_ACTIONABLE_STATUS:
+            continue
+
+        order_id = str(r.get("order_id") or "").strip()
+        if order_id and (source, order_id) in exclusions:
+            continue
+
+        ym = _parse_date(r.get("order_date") or r.get("date"))
+        if ym != (year, month):
+            continue
+
+        pdf_path = str(r.get("pdf_path") or "").strip()
+        if pdf_path and Path(pdf_path).exists():
+            continue
+
+        detail_url = str(r.get("detail_url") or "").strip()
+        receipt_url = str(r.get("receipt_url") or "").strip()
+        if not (detail_url or receipt_url):
+            continue
+
+        key = (order_id or detail_url or receipt_url, status)
+        if key in seen:
+            continue
+        seen.add(key)
+        pending.append(
+            {
+                "order_id": order_id,
+                "status": status,
+                "detail_url": detail_url,
+                "receipt_url": receipt_url,
+            }
+        )
+    return pending
+
+
+def _attempt_source_shortcut_download(
+    *,
+    source: str,
+    year: int,
+    month: int,
+    output_root: Path,
+    config: dict[str, Any],
+    exclusions: set[tuple[str, str]],
+    interactive: bool,
+    headed: bool,
+) -> dict[str, Any]:
+    orders_jsonl = output_root / source / "orders.jsonl"
+    pdfs_dir = output_root / source / "pdfs"
+    if not orders_jsonl.exists():
+        return {"pending": 0, "attempted": False, "downloaded": False}
+
+    pending = _collect_missing_shortcut_orders(orders_jsonl, year, month, source, exclusions)
+    if not pending:
+        return {"pending": 0, "attempted": False, "downloaded": False}
+
+    sessions = config.get("sessions") if isinstance(config.get("sessions"), dict) else {}
+    storage_key = "amazon_storage_state" if source == "amazon" else "rakuten_storage_state"
+    storage_fallback = "amazon" if source == "amazon" else "rakuten"
+    storage_state = Path(_coalesce(sessions.get(storage_key), _default_storage_state(storage_fallback))).expanduser().resolve()
+    orders_url = _resolve_orders_url(config, source)
+    debug_dir = _ensure_dir(output_root / "debug" / source / "print_hydrate")
+    env = _resolve_receipt_env(config)
+
+    before = len(_collect_orders_pdfs(orders_jsonl, year, month, source, exclusions))
+    backup_path: Path | None = None
+    if source == "rakuten" and orders_jsonl.exists():
+        # Rakuten downloader skips already-listed detail_url rows, so clear the file for full retry.
+        backup_path = orders_jsonl.with_suffix(".jsonl.print_retry.bak")
+        shutil.copy2(orders_jsonl, backup_path)
+        orders_jsonl.unlink(missing_ok=True)
+
+    node_args = [
+        "--storage-state",
+        str(storage_state),
+        "--orders-url",
+        orders_url,
+        "--out-jsonl",
+        str(orders_jsonl),
+        "--out-pdfs-dir",
+        str(pdfs_dir),
+        "--year",
+        str(year),
+        "--month",
+        str(month),
+        "--debug-dir",
+        str(debug_dir),
+        "--headed" if headed else "--headless",
+        "--slow-mo-ms",
+        "0",
+    ]
+    if interactive:
+        node_args.append("--auth-handoff")
+    if source == "amazon":
+        node_args.append("--skip-receipt-name")
+
+    script_name = "amazon_download.mjs" if source == "amazon" else "rakuten_download.mjs"
+    try:
+        _run_node_playwright_script(
+            script_path=SCRIPT_DIR / script_name,
+            cwd=SCRIPT_DIR,
+            args=node_args,
+            env=env,
+        )
+    except Exception as exc:  # noqa: BLE001
+        if backup_path and backup_path.exists() and not orders_jsonl.exists():
+            shutil.copy2(backup_path, orders_jsonl)
+            backup_path.unlink(missing_ok=True)
+        return {
+            "pending": len(pending),
+            "attempted": True,
+            "downloaded": False,
+            "error": str(exc),
+        }
+    if backup_path and backup_path.exists():
+        backup_path.unlink(missing_ok=True)
+    after = len(_collect_orders_pdfs(orders_jsonl, year, month, source, exclusions))
+    return {
+        "pending": len(pending),
+        "attempted": True,
+        "downloaded": True,
+        "before_pdf_count": before,
+        "after_pdf_count": after,
+        "added_pdf_count": max(0, after - before),
+    }
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="Collect receipts and prepare bulk print")
     ap.add_argument("--input", help="path to input JSON (optional; default config in AX_HOME)")
@@ -146,6 +323,11 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--mfcloud-storage-state", help="path to mfcloud-expense.storage.json")
     ap.add_argument("--interactive", action="store_true", help="allow auth handoff during MF download")
     ap.add_argument("--headed", action="store_true", help="run browser headed during MF download")
+    ap.add_argument(
+        "--skip-shortcut-download",
+        action="store_true",
+        help="skip auto-retry download for non-excluded orders with shortcuts and missing PDFs",
+    )
 
     args = ap.parse_args(argv)
     raw = _read_json_input(args.input)
@@ -209,6 +391,31 @@ def main(argv: list[str] | None = None) -> int:
     include_rakuten = not sources or "rakuten" in sources
     include_mfcloud = not sources or "mfcloud" in sources
 
+    hydrate_result: dict[str, Any] = {}
+    if not args.skip_shortcut_download:
+        if include_amazon:
+            hydrate_result["amazon"] = _attempt_source_shortcut_download(
+                source="amazon",
+                year=year,
+                month=month,
+                output_root=output_root,
+                config=config,
+                exclusions=exclusions,
+                interactive=bool(args.interactive),
+                headed=bool(args.headed or args.interactive),
+            )
+        if include_rakuten:
+            hydrate_result["rakuten"] = _attempt_source_shortcut_download(
+                source="rakuten",
+                year=year,
+                month=month,
+                output_root=output_root,
+                config=config,
+                exclusions=exclusions,
+                interactive=bool(args.interactive),
+                headed=bool(args.headed or args.interactive),
+            )
+
     files = []
     if include_amazon:
         amazon_orders = output_root / "amazon" / "orders.jsonl"
@@ -241,6 +448,7 @@ def main(argv: list[str] | None = None) -> int:
         "month": month,
         "count": len(files),
         "files": files,
+        "shortcut_download": hydrate_result,
     }
     manifest_path = reports_dir / "print_manifest.json"
     manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")

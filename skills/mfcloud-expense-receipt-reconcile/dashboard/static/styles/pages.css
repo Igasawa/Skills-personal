@@ -24,6 +24,27 @@
   color: var(--primary);
 }
 
+.step-reset {
+  border: 1px solid #d2c2ad;
+  background: #fff;
+  color: var(--ink);
+  border-radius: 999px;
+  font-size: 11px;
+  line-height: 1;
+  padding: 4px 10px;
+  cursor: pointer;
+}
+
+.step-reset:hover {
+  background: #fff9f2;
+  border-color: var(--accent);
+}
+
+.step-reset:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
 .step-title {
   font-weight: 600;
 }

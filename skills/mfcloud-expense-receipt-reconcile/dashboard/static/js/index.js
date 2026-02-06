@@ -16,12 +16,26 @@
   let stepRetryTimer = null;
   let activeLogRunId = "";
   let stepRefreshInFlight = false;
+  let stepRefreshStartedAt = 0;
+  const REQUEST_TIMEOUT_MS = 12000;
+  const STEP_REFRESH_STALE_MS = 15000;
 
   async function apiGetJson(url) {
     const sep = url.includes("?") ? "&" : "?";
-    const res = await fetch(`${url}${sep}_=${Date.now()}`, { cache: "no-store" });
-    if (!res.ok) return null;
-    return res.json();
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+    try {
+      const res = await fetch(`${url}${sep}_=${Date.now()}`, {
+        cache: "no-store",
+        signal: controller.signal,
+      });
+      if (!res.ok) return null;
+      return res.json();
+    } catch {
+      return null;
+    } finally {
+      clearTimeout(timer);
+    }
   }
 
   function showError(message) {
@@ -37,16 +51,42 @@
   }
 
   function scheduleStepSync() {
-    refreshSteps();
-    [800, 2000, 4500].forEach((delayMs) => {
+    refreshSteps({ force: true });
+    [800, 2000, 4500, 9000].forEach((delayMs) => {
       setTimeout(() => {
-        refreshSteps();
+        refreshSteps({ force: true });
       }, delayMs);
     });
   }
 
   async function fetchStatus(runId) {
     return apiGetJson(`/api/runs/${runId}`);
+  }
+
+  function isStepReflected(data, mode) {
+    const normalizedMode = String(mode || "").trim();
+    if (!normalizedMode) return true;
+    if (!data || typeof data !== "object") return false;
+    if (String(data.running_mode || "").trim()) return false;
+    if (normalizedMode === "preflight") return Boolean(data.preflight?.done);
+    if (normalizedMode === "amazon_download") return Boolean(data.amazon?.downloaded);
+    if (normalizedMode === "rakuten_download") return Boolean(data.rakuten?.downloaded);
+    if (normalizedMode === "amazon_print") return Boolean(data.amazon?.confirmed && data.amazon?.printed);
+    if (normalizedMode === "rakuten_print") return Boolean(data.rakuten?.confirmed && data.rakuten?.printed);
+    if (normalizedMode === "mf_reconcile") return Boolean(data.mf?.reconciled);
+    return true;
+  }
+
+  async function syncAfterRunCompletion(expectedMode) {
+    const delays = [0, 500, 1300, 2600, 5000, 9000];
+    for (const delayMs of delays) {
+      if (delayMs > 0) {
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+      }
+      const data = await refreshSteps({ force: true });
+      if (isStepReflected(data, expectedMode)) return true;
+    }
+    return false;
   }
 
   function startLogPolling(runId) {
@@ -95,6 +135,8 @@
       awaitingRunFinalization = false;
       stopLogPolling(runId);
       scheduleStepSync();
+      const finishedMode = String(data.run?.params?.mode || "");
+      syncAfterRunCompletion(finishedMode).catch(() => {});
     }
   }
 
@@ -157,6 +199,48 @@
       const message = "実行開始に失敗しました。再試行してください。";
       showError(message);
       showToast(message, "error");
+    }
+  }
+
+  async function resetStep(stepId, buttonEl) {
+    const ym = getYmFromForm();
+    if (!ym) {
+      showToast("年月が未設定です。", "error");
+      return;
+    }
+    const labelByStep = {
+      amazon_download: "1 Amazon領収書取得",
+      amazon_decide_print: "2 Amazon除外判断・印刷",
+      rakuten_download: "3 楽天領収書取得",
+      rakuten_decide_print: "4 楽天除外判断・印刷",
+    };
+    const label = labelByStep[String(stepId || "")] || String(stepId || "");
+    const confirmed = window.confirm(`「${label}」をリセットします。必要なら実行中ジョブを停止します。続行しますか？`);
+    if (!confirmed) return;
+
+    if (buttonEl) buttonEl.disabled = true;
+    clearError();
+    try {
+      const res = await fetch(`/api/steps/${ym}/reset/${encodeURIComponent(stepId)}`, { method: "POST" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const message = toFriendlyMessage(data.detail || "リセットに失敗しました。");
+        showError(message);
+        showToast(message, "error");
+        return;
+      }
+      const cancelledCount = Array.isArray(data.cancelled_runs) ? data.cancelled_runs.length : 0;
+      showToast(cancelledCount > 0 ? `リセット完了（実行中 ${cancelledCount} 件を停止）` : "リセット完了", "success");
+      scheduleStepSync();
+      if (activeLogRunId) {
+        refreshLog(activeLogRunId);
+      }
+    } catch {
+      const message = "リセットに失敗しました。";
+      showError(message);
+      showToast(message, "error");
+    } finally {
+      if (buttonEl) buttonEl.disabled = false;
     }
   }
 
@@ -326,19 +410,26 @@
     };
   }
 
-  async function refreshSteps() {
-    if (stepRefreshInFlight) return;
+  async function refreshSteps(options = {}) {
+    const force = Boolean(options && options.force);
+    if (stepRefreshInFlight) {
+      if (!force) return null;
+      if (Date.now() - stepRefreshStartedAt < STEP_REFRESH_STALE_MS) return null;
+    }
     stepRefreshInFlight = true;
+    stepRefreshStartedAt = Date.now();
     const wizard = document.getElementById("wizard");
     if (!wizard) {
       stepRefreshInFlight = false;
-      return;
+      stepRefreshStartedAt = 0;
+      return null;
     }
 
     const ym = getYmFromForm();
     if (!ym) {
       stepRefreshInFlight = false;
-      return;
+      stepRefreshStartedAt = 0;
+      return null;
     }
     wizard.dataset.ym = ym;
 
@@ -353,7 +444,7 @@
             refreshSteps();
           }, 1500);
         }
-        return;
+        return null;
       }
 
       const data = {
@@ -404,6 +495,7 @@
         clearTimeout(stepRetryTimer);
         stepRetryTimer = null;
       }
+      return data;
 
 
     } catch {
@@ -415,8 +507,10 @@
           refreshSteps();
         }, 1500);
       }
+      return null;
     } finally {
       stepRefreshInFlight = false;
+      stepRefreshStartedAt = 0;
     }
   }
 
@@ -440,6 +534,15 @@
           event.preventDefault();
           showToast("まだこのステップには進めません。次ステップ案内に従ってください。", "error");
         }
+      });
+    });
+
+    document.querySelectorAll("[data-step-reset]").forEach((button) => {
+      button.addEventListener("click", (event) => {
+        event.preventDefault();
+        const stepId = String(button.dataset.stepReset || "");
+        if (!stepId) return;
+        resetStep(stepId, button);
       });
     });
 

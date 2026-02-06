@@ -45,6 +45,11 @@
                   <span class="value">{{ item.amazon_pdf_count + item.rakuten_pdf_count }}</span>
                   <span class="subvalue">A {{ item.amazon_pdf_count }} / R {{ item.rakuten_pdf_count }}</span>
                 </div>
+                <div>
+                  <span class="label">除外/対象</span>
+                  <span class="value">{{ item.counts.get("included_orders", 0) }}</span>
+                  <span class="subvalue">除外 {{ item.counts.get("excluded_orders", 0) }} / 対象 {{ item.counts.get("included_orders", 0) }}</span>
+                </div>
               </div>
               <div class="muted">成果物を見る</div>
             </a>
@@ -149,6 +154,7 @@
           <div class="wizard-step" data-step-id="amazon_download">
             <div class="step-head">
               <span class="step-num">1</span>
+              <button type="button" class="step-reset" data-step-reset="amazon_download">リセット</button>
               <span class="step-title">Amazonの領収書を取得</span>
               <span class="step-status" data-step-status="amazon_download">未実行</span>
             </div>
@@ -159,6 +165,7 @@
           <div class="wizard-step" data-step-id="amazon_decide_print">
             <div class="step-head">
               <span class="step-num">2</span>
+              <button type="button" class="step-reset" data-step-reset="amazon_decide_print">リセット</button>
               <span class="step-title">Amazonの除外判断 → 印刷</span>
               <span class="step-status" data-step-status="amazon_decide_print">未実行</span>
             </div>
@@ -169,6 +176,7 @@
           <div class="wizard-step" data-step-id="rakuten_download">
             <div class="step-head">
               <span class="step-num">3</span>
+              <button type="button" class="step-reset" data-step-reset="rakuten_download">リセット</button>
               <span class="step-title">楽天の領収書を取得</span>
               <span class="step-status" data-step-status="rakuten_download">未実行</span>
             </div>
@@ -179,6 +187,7 @@
           <div class="wizard-step" data-step-id="rakuten_decide_print">
             <div class="step-head">
               <span class="step-num">4</span>
+              <button type="button" class="step-reset" data-step-reset="rakuten_decide_print">リセット</button>
               <span class="step-title">楽天の除外判断 → 印刷</span>
               <span class="step-status" data-step-status="rakuten_decide_print">未実行</span>
             </div>

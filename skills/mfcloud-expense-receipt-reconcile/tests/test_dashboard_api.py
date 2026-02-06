@@ -163,3 +163,62 @@ def test_api_stop_run_writes_audit(monkeypatch: pytest.MonkeyPatch, tmp_path: Pa
     assert last["action"] == "stop"
     assert last["status"] == "success"
     assert last["run_id"] == run_id
+
+
+def test_api_step_reset_download_clears_source_and_mf_reports(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    client = _create_client(monkeypatch, tmp_path)
+    ym = "2026-01"
+    root = _artifact_root(tmp_path) / ym
+    reports_dir = _reports_dir(tmp_path, ym)
+
+    _touch(root / "amazon" / "orders.jsonl", '{"order_id":"A-1"}\n')
+    _touch(root / "amazon" / "pdfs" / "A-1.pdf", "%PDF-1.4\n")
+    _touch(root / "rakuten" / "orders.jsonl", '{"order_id":"R-1"}\n')
+    _write_json(
+        reports_dir / "workflow.json",
+        {
+            "amazon": {"confirmed_at": "2026-02-01T00:00:00", "printed_at": "2026-02-01T00:01:00"},
+            "rakuten": {"confirmed_at": "2026-02-01T00:02:00", "printed_at": "2026-02-01T00:03:00"},
+        },
+    )
+    _touch(reports_dir / "missing_evidence_candidates.json", "{}")
+    _touch(reports_dir / "missing_evidence_candidates.csv", "h1\n")
+    _touch(reports_dir / "quality_gate.json", "{}")
+    _touch(reports_dir / "monthly_thread.md", "# monthly\n")
+
+    res = client.post("/api/steps/2026-01/reset/amazon_download")
+    assert res.status_code == 200
+    body = res.json()
+    assert body["status"] == "ok"
+    assert body["step"] == "amazon_download"
+    assert body["source"] == "amazon"
+    assert body["clear_download"] is True
+
+    assert not (root / "amazon" / "orders.jsonl").exists()
+    assert (root / "amazon" / "pdfs").exists()
+    assert not any((root / "amazon" / "pdfs").iterdir())
+    assert (root / "rakuten" / "orders.jsonl").exists()
+
+    workflow = json.loads((reports_dir / "workflow.json").read_text(encoding="utf-8"))
+    assert "amazon" not in workflow
+    assert "rakuten" in workflow
+
+    assert not (reports_dir / "missing_evidence_candidates.json").exists()
+    assert not (reports_dir / "missing_evidence_candidates.csv").exists()
+    assert not (reports_dir / "quality_gate.json").exists()
+    assert not (reports_dir / "monthly_thread.md").exists()
+
+    entries = _read_audit_entries(tmp_path, ym)
+    assert entries
+    last = entries[-1]
+    assert last["event_type"] == "step_reset"
+    assert last["action"] == "amazon_download"
+    assert last["status"] == "success"
+    assert last["source"] == "amazon"
+
+
+def test_api_step_reset_rejects_invalid_step(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    client = _create_client(monkeypatch, tmp_path)
+    res = client.post("/api/steps/2026-01/reset/unknown_step")
+    assert res.status_code == 400
+    assert "Invalid step id for reset." in str(res.json().get("detail"))

@@ -120,6 +120,14 @@ def _is_low_confidence_item_name(value: Any) -> bool:
     return False
 
 
+def _is_missing_total(value: Any) -> bool:
+    if value is None:
+        return True
+    if isinstance(value, str):
+        return value.strip() in {"", "-", "ー", "―", "—", "–"}
+    return False
+
+
 def _collect_orders(root: Path, ym: str, exclusions: set[tuple[str, str]]) -> list[dict[str, Any]]:
     raw: list[dict[str, Any]] = []
     for source in ("amazon", "rakuten"):
@@ -211,7 +219,8 @@ def _collect_orders(root: Path, ym: str, exclusions: set[tuple[str, str]]) -> li
         status = str(rec.get("status") or "ok")
         order_id = rec.get("order_id")
         auto_excluded = status == "gift_card"
-        default_excluded = rec.get("include_flag") is False and not auto_excluded
+        missing_total = _is_missing_total(rec.get("total_yen"))
+        default_excluded = (rec.get("include_flag") is False or missing_total) and not auto_excluded
         excluded = auto_excluded or default_excluded or (order_id and (rec.get("source"), order_id) in exclusions)
         can_toggle = bool(order_id) and not auto_excluded
         item_name = rec.get("item_name")
@@ -287,7 +296,8 @@ def _collect_excluded_pdfs(root: Path, ym: str, exclusions: set[tuple[str, str]]
             item_name = str(obj.get("item_name") or "").strip() or None
             include_flag = obj.get("include")
             auto_excluded = status == "gift_card"
-            default_excluded = include_flag is False and not auto_excluded
+            missing_total = _is_missing_total(total)
+            default_excluded = (include_flag is False or missing_total) and not auto_excluded
             excluded = auto_excluded or default_excluded or (order_id and (source, order_id) in exclusions)
             if not excluded:
                 continue

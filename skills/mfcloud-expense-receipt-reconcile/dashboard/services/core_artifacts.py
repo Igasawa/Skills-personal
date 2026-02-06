@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 from .core_shared import (
@@ -9,11 +10,64 @@ from .core_shared import (
     _artifact_root,
     _ax_home,
     _read_json,
+    _read_jsonl,
     _ym_default,
+)
+from .core_orders import (
+    _collect_orders,
+    _load_exclusions,
 )
 
 DEFAULT_MFCLOUD_EXPENSE_LIST_URL = "https://expense.moneyforward.com/outgo_input"
 LEGACY_MFCLOUD_EXPENSE_LIST_URL = "https://expense.moneyforward.com/transactions"
+
+
+def _derive_order_counts_from_jsonl(root: Any, ym: str) -> dict[str, int]:
+    base = Path(root)
+    per_source: dict[str, dict[str, set[str]]] = {
+        "amazon": {"total": set(), "in_month": set()},
+        "rakuten": {"total": set(), "in_month": set()},
+    }
+    for source in ("amazon", "rakuten"):
+        orders_path = base / source / "orders.jsonl"
+        for obj in _read_jsonl(orders_path):
+            if not isinstance(obj, dict):
+                continue
+            order_id = str(obj.get("order_id") or "").strip()
+            if not order_id:
+                continue
+            per_source[source]["total"].add(order_id)
+            order_date = str(obj.get("order_date") or "").strip()
+            if order_date.startswith(ym):
+                per_source[source]["in_month"].add(order_id)
+    amazon_total = len(per_source["amazon"]["total"])
+    rakuten_total = len(per_source["rakuten"]["total"])
+    amazon_in_month = len(per_source["amazon"]["in_month"])
+    rakuten_in_month = len(per_source["rakuten"]["in_month"])
+    return {
+        "amazon_orders_total": amazon_total,
+        "rakuten_orders_total": rakuten_total,
+        "orders_total": amazon_total + rakuten_total,
+        "amazon_orders_in_month": amazon_in_month,
+        "rakuten_orders_in_month": rakuten_in_month,
+        "orders_in_month": amazon_in_month + rakuten_in_month,
+    }
+
+
+def _derive_exclusion_counts(root: Path, ym: str) -> dict[str, int]:
+    reports_dir = root / "reports"
+    exclusions = _load_exclusions(reports_dir)
+    orders = _collect_orders(root, ym, exclusions)
+    excluded_orders = [o for o in orders if o.get("excluded")]
+    amazon_excluded = sum(1 for o in excluded_orders if o.get("source") == "amazon")
+    rakuten_excluded = sum(1 for o in excluded_orders if o.get("source") == "rakuten")
+    return {
+        "manual_excluded_orders": len(exclusions),
+        "excluded_orders": len(excluded_orders),
+        "included_orders": max(0, len(orders) - len(excluded_orders)),
+        "amazon_excluded_orders": amazon_excluded,
+        "rakuten_excluded_orders": rakuten_excluded,
+    }
 
 
 def _scan_artifacts() -> list[dict[str, Any]]:
@@ -35,6 +89,9 @@ def _scan_artifacts() -> list[dict[str, Any]]:
 
         data = _read_json(missing_json) or {}
         counts = data.get("counts") if isinstance(data, dict) else {}
+        merged_counts = dict(counts or {})
+        merged_counts.update(_derive_order_counts_from_jsonl(p, p.name))
+        merged_counts.update(_derive_exclusion_counts(p, p.name))
         rows = data.get("rows") if isinstance(data, dict) else None
         rows_count = len(rows) if isinstance(rows, list) else None
 
@@ -46,7 +103,7 @@ def _scan_artifacts() -> list[dict[str, Any]]:
                 "ym": p.name,
                 "path": str(p),
                 "has_reports": reports_dir.exists(),
-                "counts": counts or {},
+                "counts": merged_counts,
                 "report_rows": rows_count,
                 "amazon_pdf_count": len(amazon_pdfs),
                 "rakuten_pdf_count": len(rakuten_pdfs),
