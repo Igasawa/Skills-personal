@@ -1,6 +1,7 @@
 (function () {
   const Common = window.DashboardCommon || {};
   const showToast = Common.showToast || (() => {});
+  const toFriendlyMessage = Common.toFriendlyMessage || ((text) => String(text || ""));
   const bindCopyButtons = Common.bindCopyButtons || (() => {});
 
   const excludeSection = document.getElementById("exclude-section");
@@ -48,18 +49,19 @@
         const source = button.dataset.source;
         if (!ym || !source) return;
         excludeButtons.forEach((btn) => (btn.disabled = true));
-        try {
-          await saveExclusions(ym, source);
-          await runPrint(ym, source);
-          setExcludeStatus(excludeStatus?.dataset.success || "除外設定を保存しました。印刷を実行しました。", "success");
-          showToast("除外設定を保存し印刷を開始しました。", "success");
-        } catch {
-          setExcludeStatus(excludeStatus?.dataset.error || "保存または印刷に失敗しました。", "error");
-          showToast("保存または印刷に失敗しました。", "error");
-        } finally {
-          excludeButtons.forEach((btn) => (btn.disabled = false));
-        }
-      });
+      try {
+        await saveExclusions(ym, source);
+        await runPrint(ym, source);
+        setExcludeStatus(excludeStatus?.dataset.success || "除外設定を保存しました。印刷を実行しました。", "success");
+        showToast("除外設定を保存し印刷を開始しました。", "success");
+      } catch (error) {
+        const message = toFriendlyMessage(error?.message);
+        setExcludeStatus(message || excludeStatus?.dataset.error || "保存または印刷に失敗しました。", "error");
+        showToast(message || "保存または印刷に失敗しました。", "error");
+      } finally {
+        excludeButtons.forEach((btn) => (btn.disabled = false));
+      }
+    });
     });
   }
 

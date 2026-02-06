@@ -41,6 +41,20 @@ def _write_resolved_config(*, output_root: Path, rc: Any, year: int, month: int)
                 "mfcloud_accounts": rc.mfcloud_accounts_url,
                 "mfcloud_expense_list": rc.mfcloud_expense_list_url,
             },
+            "tenant": {
+                "key": rc.tenant_key,
+                "name": rc.tenant_name,
+                "receipt": {
+                    "name": rc.receipt_name,
+                    "name_fallback": rc.receipt_name_fallback,
+                },
+                "urls": {
+                    "amazon_orders": rc.amazon_orders_url,
+                    "rakuten_orders": rc.rakuten_orders_url,
+                    "mfcloud_accounts": rc.mfcloud_accounts_url,
+                    "mfcloud_expense_list": rc.mfcloud_expense_list_url,
+                },
+            },
             "rakuten": {
                 "enabled": rc.rakuten_enabled,
                 "orders_url": rc.rakuten_orders_url,
@@ -51,6 +65,7 @@ def _write_resolved_config(*, output_root: Path, rc: Any, year: int, month: int)
             "receipt_name": rc.receipt_name,
             "receipt_name_fallback": rc.receipt_name_fallback,
             "interactive": rc.interactive,
+            "resolved_sources": rc.resolved_sources,
         },
     )
 

@@ -31,6 +31,12 @@ from run_core_io import read_json_input as _read_json_input  # noqa: E402
 from run_core_pipeline import execute_pipeline  # noqa: E402
 from run_core_template import render_monthly_thread  # noqa: E402
 
+DEFAULT_RECEIPT_NAME = "株式会社ＨＩＧＨ－ＳＴＡＮＤＡＲＤ＆ＣＯ．"
+DEFAULT_RECEIPT_NAME_FALLBACK = "株式会社HIGH-STANDARD&CO."
+DEFAULT_AMAZON_ORDERS_URL = "https://www.amazon.co.jp/gp/your-account/order-history"
+DEFAULT_RAKUTEN_ORDERS_URL = "https://order.my.rakuten.co.jp/?l-id=top_normal_mymenu_order"
+DEFAULT_MFCLOUD_ACCOUNTS_URL = "https://expense.moneyforward.com/accounts"
+
 
 @dataclass(frozen=True)
 class RunConfig:
@@ -52,6 +58,20 @@ class RunConfig:
     rakuten_enabled: bool
     rakuten_orders_url: str
     rakuten_storage_state: Path
+    tenant_name: str
+    tenant_key: str
+    resolved_sources: dict[str, str]
+
+
+def _as_dict(value: Any) -> dict[str, Any]:
+    return value if isinstance(value, dict) else {}
+
+
+def _pick_with_source(candidates: list[tuple[Any, str]]) -> tuple[Any, str]:
+    for value, source in candidates:
+        if value is not None:
+            return value, source
+    return None, "missing"
 
 
 def _parse_config(args: argparse.Namespace, raw: dict[str, Any]) -> tuple[RunConfig, int, int]:
@@ -64,50 +84,115 @@ def _parse_config(args: argparse.Namespace, raw: dict[str, Any]) -> tuple[RunCon
     year = _as_int(_coalesce(args.year, params.get("year"), default_year), name="year")
     month = _as_int(_coalesce(args.month, params.get("month"), default_month), name="month")
 
-    urls = config.get("urls") if isinstance(config.get("urls"), dict) else {}
-    sessions = config.get("sessions") if isinstance(config.get("sessions"), dict) else {}
-    pw = config.get("playwright") if isinstance(config.get("playwright"), dict) else {}
-    matching = config.get("matching") if isinstance(config.get("matching"), dict) else {}
-    rakuten_cfg = config.get("rakuten") if isinstance(config.get("rakuten"), dict) else {}
+    urls = _as_dict(config.get("urls"))
+    sessions = _as_dict(config.get("sessions"))
+    pw = _as_dict(config.get("playwright"))
+    matching = _as_dict(config.get("matching"))
+    rakuten_cfg = _as_dict(config.get("rakuten"))
+    tenant = _as_dict(config.get("tenant"))
+    tenant_urls = _as_dict(tenant.get("urls"))
+    tenant_receipt = _as_dict(tenant.get("receipt"))
+
+    resolved_sources: dict[str, str] = {}
 
     interactive = bool(_coalesce(args.interactive, config.get("interactive", False)))
     monthly_notes = _coalesce(args.monthly_notes, config.get("monthly_notes"))
     monthly_notes = str(monthly_notes).strip() if monthly_notes is not None else ""
-    receipt_name = _coalesce(args.receipt_name, config.get("receipt_name"), "株式会社ＨＩＧＨ－ＳＴＡＮＤＡＲＤ＆ＣＯ．")
-    receipt_name = str(receipt_name).strip() if receipt_name is not None else ""
-    receipt_name_fallback = _coalesce(
-        args.receipt_name_fallback,
-        config.get("receipt_name_fallback"),
-        "株式会社HIGH-STANDARD&CO.",
+    receipt_name_raw, receipt_name_source = _pick_with_source(
+        [
+            (args.receipt_name, "cli.receipt_name"),
+            (tenant_receipt.get("name"), "config.tenant.receipt.name"),
+            (config.get("receipt_name"), "config.receipt_name"),
+            (DEFAULT_RECEIPT_NAME, "default.receipt_name"),
+        ]
     )
+    resolved_sources["receipt_name"] = receipt_name_source
+    receipt_name = receipt_name_raw
+    receipt_name = str(receipt_name).strip() if receipt_name is not None else ""
+    receipt_name_fallback_raw, receipt_name_fallback_source = _pick_with_source(
+        [
+            (args.receipt_name_fallback, "cli.receipt_name_fallback"),
+            (tenant_receipt.get("name_fallback"), "config.tenant.receipt.name_fallback"),
+            (config.get("receipt_name_fallback"), "config.receipt_name_fallback"),
+            (DEFAULT_RECEIPT_NAME_FALLBACK, "default.receipt_name_fallback"),
+        ]
+    )
+    resolved_sources["receipt_name_fallback"] = receipt_name_fallback_source
+    receipt_name_fallback = receipt_name_fallback_raw
     receipt_name_fallback = str(receipt_name_fallback).strip() if receipt_name_fallback is not None else ""
 
     dry_run = bool(_coalesce(args.dry_run, config.get("dry_run", False)))
     preflight = bool(getattr(args, "preflight", False))
 
-    amazon_orders_url = str(
-        _coalesce(args.amazon_orders_url, urls.get("amazon_orders"), "https://www.amazon.co.jp/gp/your-account/order-history")
+    amazon_orders_url_raw, amazon_orders_source = _pick_with_source(
+        [
+            (args.amazon_orders_url, "cli.amazon_orders_url"),
+            (tenant_urls.get("amazon_orders"), "config.tenant.urls.amazon_orders"),
+            (urls.get("amazon_orders"), "config.urls.amazon_orders"),
+            (DEFAULT_AMAZON_ORDERS_URL, "default.amazon_orders_url"),
+        ]
     )
+    resolved_sources["amazon_orders_url"] = amazon_orders_source
+    amazon_orders_url = str(amazon_orders_url_raw)
     rakuten_enabled = bool(_coalesce(args.enable_rakuten, rakuten_cfg.get("enabled", False)))
-    rakuten_orders_url = str(
-        _coalesce(
-            args.rakuten_orders_url,
-            rakuten_cfg.get("orders_url"),
-            "https://order.my.rakuten.co.jp/?l-id=top_normal_mymenu_order",
-        )
+    rakuten_orders_url_raw, rakuten_orders_source = _pick_with_source(
+        [
+            (args.rakuten_orders_url, "cli.rakuten_orders_url"),
+            (tenant_urls.get("rakuten_orders"), "config.tenant.urls.rakuten_orders"),
+            (rakuten_cfg.get("orders_url"), "config.rakuten.orders_url"),
+            (DEFAULT_RAKUTEN_ORDERS_URL, "default.rakuten_orders_url"),
+        ]
     )
-    mfcloud_accounts_url = str(
-        _coalesce(args.mfcloud_accounts_url, urls.get("mfcloud_accounts"), "https://expense.moneyforward.com/accounts")
+    resolved_sources["rakuten_orders_url"] = rakuten_orders_source
+    rakuten_orders_url = str(rakuten_orders_url_raw)
+    mfcloud_accounts_url_raw, mfcloud_accounts_source = _pick_with_source(
+        [
+            (args.mfcloud_accounts_url, "cli.mfcloud_accounts_url"),
+            (tenant_urls.get("mfcloud_accounts"), "config.tenant.urls.mfcloud_accounts"),
+            (urls.get("mfcloud_accounts"), "config.urls.mfcloud_accounts"),
+            (DEFAULT_MFCLOUD_ACCOUNTS_URL, "default.mfcloud_accounts_url"),
+        ]
     )
-    mfcloud_expense_list_url = _coalesce(args.mfcloud_expense_list_url, urls.get("mfcloud_expense_list"))
+    resolved_sources["mfcloud_accounts_url"] = mfcloud_accounts_source
+    mfcloud_accounts_url = str(mfcloud_accounts_url_raw)
+    mfcloud_expense_list_url, mfcloud_expense_list_source = _pick_with_source(
+        [
+            (args.mfcloud_expense_list_url, "cli.mfcloud_expense_list_url"),
+            (tenant_urls.get("mfcloud_expense_list"), "config.tenant.urls.mfcloud_expense_list"),
+            (urls.get("mfcloud_expense_list"), "config.urls.mfcloud_expense_list"),
+        ]
+    )
+    resolved_sources["mfcloud_expense_list_url"] = mfcloud_expense_list_source
     if not mfcloud_expense_list_url:
         if dry_run or getattr(args, "skip_mfcloud", False) or preflight:
             mfcloud_expense_list_url = ""
+            resolved_sources["mfcloud_expense_list_url"] = "optional.empty"
         else:
             raise ValueError(
-                "Missing MF Cloud expense list URL. Set config.urls.mfcloud_expense_list or pass --mfcloud-expense-list-url."
+                "Missing MF Cloud expense list URL. Set config.tenant.urls.mfcloud_expense_list "
+                "(or config.urls.mfcloud_expense_list) or pass --mfcloud-expense-list-url."
             )
     mfcloud_expense_list_url = str(mfcloud_expense_list_url)
+
+    tenant_name_raw, tenant_name_source = _pick_with_source(
+        [
+            (tenant.get("name"), "config.tenant.name"),
+            (config.get("tenant_name"), "config.tenant_name"),
+            (receipt_name if receipt_name else None, "resolved.receipt_name"),
+            ("default", "default.tenant_name"),
+        ]
+    )
+    resolved_sources["tenant_name"] = tenant_name_source
+    tenant_name = str(tenant_name_raw).strip() if tenant_name_raw is not None else ""
+    tenant_key_raw, tenant_key_source = _pick_with_source(
+        [
+            (tenant.get("key"), "config.tenant.key"),
+            (config.get("tenant_key"), "config.tenant_key"),
+            ("default", "default.tenant_key"),
+        ]
+    )
+    resolved_sources["tenant_key"] = tenant_key_source
+    tenant_key = str(tenant_key_raw).strip() if tenant_key_raw is not None else ""
 
     output_root = Path(
         _coalesce(args.output_dir, config.get("output_dir"))
@@ -152,6 +237,9 @@ def _parse_config(args: argparse.Namespace, raw: dict[str, Any]) -> tuple[RunCon
         receipt_name=receipt_name,
         receipt_name_fallback=receipt_name_fallback,
         rakuten_enabled=rakuten_enabled,
+        tenant_name=tenant_name,
+        tenant_key=tenant_key,
+        resolved_sources=resolved_sources,
     )
     return rc, year, month
 

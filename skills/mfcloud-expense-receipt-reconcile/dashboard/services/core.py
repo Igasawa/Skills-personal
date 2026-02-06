@@ -14,6 +14,10 @@ from .core_orders import (
     _write_workflow,
 )
 from .core_runs import (
+    _append_audit_event,
+    _audit_log_path,
+    _assert_run_mode_allowed,
+    _assert_source_action_allowed,
     _get_latest_running_job,
     _preflight_global_path,
     _reconcile_running_jobs,
@@ -24,6 +28,7 @@ from .core_runs import (
     _split_ym,
     _start_run,
     _tail_text,
+    _workflow_state_for_ym,
 )
 from .core_shared import (
     ORDER_ID_RE,
@@ -42,7 +47,11 @@ __all__ = [
     "ORDER_ID_RE",
     "SAFE_NAME_RE",
     "SKILL_ROOT",
+    "_append_audit_event",
     "_artifact_root",
+    "_audit_log_path",
+    "_assert_run_mode_allowed",
+    "_assert_source_action_allowed",
     "_ax_home",
     "_collect_excluded_pdfs",
     "_collect_orders",
@@ -66,6 +75,7 @@ __all__ = [
     "_split_ym",
     "_start_run",
     "_tail_text",
+    "_workflow_state_for_ym",
     "_write_json",
     "_write_workflow",
 ]

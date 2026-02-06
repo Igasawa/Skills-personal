@@ -130,13 +130,25 @@
   }
 
   function computeNextStep(data, ym) {
-    if (!data.preflight?.done) return { message: "次は準備（ログイン + MF連携再取得）を実行してください。", href: null };
-    if (!data.amazon?.downloaded) return { message: "次はAmazonの領収書取得を実行してください。", href: null };
-    if (!data.amazon?.confirmed || !data.amazon?.printed) return { message: "次はAmazonの除外判断と印刷を実行してください。", href: `/runs/${ym}#exclude-section` };
-    if (!data.rakuten?.downloaded) return { message: "次は楽天の領収書取得を実行してください。", href: null };
-    if (!data.rakuten?.confirmed || !data.rakuten?.printed) return { message: "次は楽天の除外判断と印刷を実行してください。", href: `/runs/${ym}#exclude-section` };
-    if (!data.mf?.reconciled) return { message: "次はMF抽出 + 突合を実行してください。", href: null };
-    return { message: "すべて完了しました。お疲れさまでした。", href: null };
+    const nextStep = String(data.next_step || "");
+    if (nextStep === "preflight") return { message: "次は準備（ログイン + MF連携再取得）を実行してください。", href: null };
+    if (nextStep === "amazon_download") return { message: "次はAmazonの領収書取得を実行してください。", href: null };
+    if (nextStep === "amazon_decide_print") return { message: "次はAmazonの除外判断と印刷を実行してください。", href: `/runs/${ym}#exclude-section` };
+    if (nextStep === "rakuten_download") return { message: "次は楽天の領収書取得を実行してください。", href: null };
+    if (nextStep === "rakuten_decide_print") return { message: "次は楽天の除外判断と印刷を実行してください。", href: `/runs/${ym}#exclude-section` };
+    if (nextStep === "mf_reconcile") return { message: "次はMF抽出 + 突合を実行してください。", href: null };
+    return { message: "すべて完了しました。", href: null };
+  }
+
+  function applyActionAvailability(data) {
+    const runningMode = String(data.running_mode || "");
+    const allowedModes = Array.isArray(data.allowed_run_modes) ? data.allowed_run_modes : [];
+    document.querySelectorAll("[data-step-action]").forEach((button) => {
+      const mode = String(button.dataset.stepAction || "");
+      const allowed = allowedModes.includes(mode);
+      button.disabled = Boolean(runningMode) || !allowed;
+      button.title = button.disabled ? "現在のワークフロー順序では実行できません。" : "";
+    });
   }
 
   function buildStepStates(data, runningMode) {
@@ -167,6 +179,7 @@
     if (!res.ok) return;
     const data = await res.json();
     const runningMode = data.running_mode || "";
+    applyActionAvailability(data);
     const stepStates = buildStepStates(data, runningMode);
 
     setStepStatus("preflight", stepStates.preflight);

@@ -40,6 +40,7 @@
     if (text.includes("Missing amazon/orders.jsonl")) return "Amazonの注文データがありません。先にAmazonの領収書取得を実行してください。";
     if (text.includes("Missing mfcloud/expenses.jsonl")) return "MFクラウドの抽出データがありません。先にMF抽出を実行してください。";
     if (text.includes("Invalid mode")) return "実行モードが不正です。";
+    if (text.includes("Workflow order violation")) return "実行順序が正しくありません。画面の次ステップ案内に従ってください。";
     return text || "実行に失敗しました。ログを確認してください。";
   }
 

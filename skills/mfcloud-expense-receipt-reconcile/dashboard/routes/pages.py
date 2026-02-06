@@ -92,6 +92,7 @@ def create_pages_router(templates: Jinja2Templates) -> APIRouter:
                     "missing_json": "未添付候補JSON",
                     "monthly_thread": "月次メモ",
                     "run_config": "実行設定",
+                    "audit_log": "監査ログ(JSONL)",
                     "print_script": "印刷用スクリプト",
                 },
             },
@@ -132,6 +133,7 @@ def create_pages_router(templates: Jinja2Templates) -> APIRouter:
             "missing_json": root / "reports" / "missing_evidence_candidates.json",
             "monthly_thread": root / "reports" / "monthly_thread.md",
             "run_config": root / "run_config.resolved.json",
+            "audit_log": root / "reports" / "audit_log.jsonl",
             "print_script": root / "reports" / "print_all.ps1",
         }
         if kind not in mapping:

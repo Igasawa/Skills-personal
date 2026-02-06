@@ -30,10 +30,10 @@ npx playwright open -b chromium "<貴社のMFクラウド経費URL>" --save-stor
 
 ## クイックスタート
 
-`config.urls.mfcloud_expense_list` は環境ごとに異なるため、**必ず指定**する（経費明細一覧URL）。
+`config.tenant.urls.mfcloud_expense_list` は環境ごとに異なるため、**必ず指定**する（経費明細一覧URL）。
 
 ```powershell
-Set-Location c:\Users\Tatsuo-2023\Projects\PersonalSkills\skills\mfcloud-expense-receipt-reconcile
+Set-Location c:\Users\TatsuoIgasawa\.vscode\Skillpersonal\skills\mfcloud-expense-receipt-reconcile
 
 # 例: 2026-01 を実行（通常運用は先月がデフォルト）
 python scripts/run.py --year 2026 --month 1 --mfcloud-expense-list-url "<経費明細一覧URL>" --notes "出張多め・特定PJ集中"
@@ -57,6 +57,31 @@ python scripts/run.py --year 2026 --month 1 --mfcloud-expense-list-url "<経費�
 ```
 
 宛名が入力できない場合は半角表記にフォールバックする（既定：`株式会社HIGH-STANDARD&CO.`）。明示指定は `--receipt-name-fallback`。
+
+### テナント設定（推奨）
+
+会社/部署ごとの設定は `config.tenant` にまとめる。既存の `config.receipt_name` / `config.urls.*` も互換のため読み込む。
+
+```json
+{
+  "config": {
+    "tenant": {
+      "key": "corp-a",
+      "name": "株式会社Example",
+      "receipt": {
+        "name": "株式会社Example",
+        "name_fallback": "Example Inc."
+      },
+      "urls": {
+        "amazon_orders": "https://www.amazon.co.jp/gp/your-account/order-history",
+        "rakuten_orders": "https://order.my.rakuten.co.jp/?l-id=top_normal_mymenu_order",
+        "mfcloud_accounts": "https://expense.moneyforward.com/accounts",
+        "mfcloud_expense_list": "https://expense.moneyforward.com/..."
+      }
+    }
+  }
+}
+```
 
 ### 認証で詰まった場合（引継ぎ）
 
@@ -108,12 +133,21 @@ python scripts/run.py --year 2026 --month 1 --dry-run --output-dir "C:\Users\<us
 - `reports/missing_evidence_candidates.csv`：未添付明細→候補PDF一覧
 - `reports/missing_evidence_candidates.json`：同内容のJSON
 - `reports/monthly_thread.md`：月次処理スレッド用の下書き（テンプレ出力）
+- `reports/audit_log.jsonl`：実行・確認・印刷などの操作監査ログ
 
 ## トラブルシュート
 
 - storage_state の期限切れ：`scripts/ax.ps1 playwright login --name amazon` / `--name mfcloud-expense` をやり直す
 - MFの画面構造が違う：`--mfcloud-expense-list-url` を「経費明細一覧」かつ「一覧が表示される状態」のURLにする（フィルタ付きURL推奨）
 - AmazonのUIが変わった：`output_root/debug/` のスクリーンショット/HTMLを確認し、抽出ロジックを更新する
+
+## テスト（開発者向け）
+
+```powershell
+Set-Location c:\Users\TatsuoIgasawa\.vscode\Skillpersonal\skills\mfcloud-expense-receipt-reconcile
+python -m pip install -r requirements-dev.txt
+python -m pytest -q
+```
 
 ## 成果物整理（任意）
 
@@ -152,6 +186,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "scripts\start_dashboard.ps1
 - Amazonのみプリントアウトまで
 - 楽天のみプリントアウトまで
 - MF抽出+突合（既存の `orders.jsonl` が必要）
+
+※ ダッシュボードAPIはワークフロー順序を検証し、順序外の実行依頼は `409 Workflow order violation` で拒否する。
 
 ## 運用ルール（参照）
 

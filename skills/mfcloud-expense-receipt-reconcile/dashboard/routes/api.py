@@ -6,7 +6,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse
 
 from services import core
@@ -15,47 +15,32 @@ from services import core
 def create_api_router() -> APIRouter:
     router = APIRouter()
 
+    def _actor_from_request(request: Request) -> dict[str, str]:
+        ip = request.client.host if request.client else ""
+        ua = str(request.headers.get("user-agent") or "").strip()
+        return {
+            "channel": "dashboard",
+            "id": "local_user",
+            "ip": ip,
+            "user_agent": ua[:300],
+        }
+
+    def _try_year_month(payload: dict[str, Any]) -> tuple[int, int] | None:
+        try:
+            year = int(payload.get("year"))
+            month = int(payload.get("month"))
+        except Exception:
+            return None
+        if month < 1 or month > 12:
+            return None
+        return year, month
+
     @router.get("/api/steps/{ym}")
     def api_steps(ym: str) -> JSONResponse:
         ym = core._safe_ym(ym)
         year, month = core._split_ym(ym)
-        root = core._artifact_root() / ym
-        reports_dir = root / "reports"
-        workflow = core._read_workflow(reports_dir)
-
-        def _is_preflight_success(payload: Any) -> bool:
-            if not isinstance(payload, dict):
-                return False
-            status = str(payload.get("status") or "").strip().lower()
-            if status != "success":
-                return False
-            try:
-                return int(payload.get("year")) == year and int(payload.get("month")) == month
-            except Exception:
-                return False
-
-        local_preflight = core._read_json(reports_dir / "preflight.json")
-        global_preflight = core._read_json(core._preflight_global_path())
-        preflight_done = _is_preflight_success(local_preflight) or _is_preflight_success(global_preflight)
-        amazon_downloaded = (root / "amazon" / "orders.jsonl").exists()
-        rakuten_downloaded = (root / "rakuten" / "orders.jsonl").exists()
-        amazon_confirmed = bool((workflow.get("amazon") or {}).get("confirmed_at"))
-        amazon_printed = bool((workflow.get("amazon") or {}).get("printed_at"))
-        rakuten_confirmed = bool((workflow.get("rakuten") or {}).get("confirmed_at"))
-        rakuten_printed = bool((workflow.get("rakuten") or {}).get("printed_at"))
-        mf_reconciled = (reports_dir / "missing_evidence_candidates.json").exists()
-        running_mode = core._running_mode_for_ym(year, month)
-
-        return JSONResponse(
-            {
-                "ym": ym,
-                "preflight": {"done": preflight_done},
-                "amazon": {"downloaded": amazon_downloaded, "confirmed": amazon_confirmed, "printed": amazon_printed},
-                "rakuten": {"downloaded": rakuten_downloaded, "confirmed": rakuten_confirmed, "printed": rakuten_printed},
-                "mf": {"reconciled": mf_reconciled},
-                "running_mode": running_mode,
-            }
-        )
+        state = core._workflow_state_for_ym(year, month)
+        return JSONResponse(state)
 
     @router.get("/api/exclusions/{ym}")
     def api_get_exclusions(ym: str) -> JSONResponse:
@@ -67,50 +52,92 @@ def create_api_router() -> APIRouter:
         return JSONResponse(data)
 
     @router.post("/api/exclusions/{ym}")
-    def api_set_exclusions(ym: str, payload: dict[str, Any]) -> JSONResponse:
+    def api_set_exclusions(ym: str, payload: dict[str, Any], request: Request) -> JSONResponse:
         ym = core._safe_ym(ym)
+        year, month = core._split_ym(ym)
+        actor = _actor_from_request(request)
         exclude = payload.get("exclude")
         if not isinstance(exclude, list):
             raise HTTPException(status_code=400, detail="exclude must be a list.")
+        source = str(payload.get("source") or "").strip()
+        if source not in {"amazon", "rakuten"}:
+            raise HTTPException(status_code=400, detail="source must be amazon or rakuten.")
+        try:
+            core._assert_source_action_allowed(year, month, source, "confirm")
+        except HTTPException as exc:
+            core._append_audit_event(
+                year=year,
+                month=month,
+                event_type="source_action",
+                action="confirm",
+                status="rejected",
+                actor=actor,
+                source=source,
+                details={"reason": str(exc.detail)},
+            )
+            raise
 
         cleaned: list[dict[str, str]] = []
         seen: set[tuple[str, str]] = set()
         for item in exclude:
             if not isinstance(item, dict):
                 continue
-            source = str(item.get("source") or "").strip()
+            item_source = str(item.get("source") or "").strip()
             order_id = str(item.get("order_id") or "").strip()
-            if source not in {"amazon", "rakuten"}:
+            if item_source not in {"amazon", "rakuten"}:
                 continue
             if not order_id or not core.ORDER_ID_RE.match(order_id):
                 continue
-            key = (source, order_id)
+            key = (item_source, order_id)
             if key in seen:
                 continue
             seen.add(key)
-            cleaned.append({"source": source, "order_id": order_id})
+            cleaned.append({"source": item_source, "order_id": order_id})
 
         reports_dir = core._artifact_root() / ym / "reports"
         reports_dir.mkdir(parents=True, exist_ok=True)
         data = {"ym": ym, "exclude": cleaned, "updated_at": datetime.now().isoformat(timespec="seconds")}
         core._write_json(reports_dir / "exclude_orders.json", data)
-        source = str(payload.get("source") or "").strip()
-        if source in {"amazon", "rakuten"}:
-            wf = core._read_workflow(reports_dir)
-            section = wf.get(source) if isinstance(wf.get(source), dict) else {}
-            section["confirmed_at"] = datetime.now().isoformat(timespec="seconds")
-            wf[source] = section
-            core._write_workflow(reports_dir, wf)
+        wf = core._read_workflow(reports_dir)
+        section = wf.get(source) if isinstance(wf.get(source), dict) else {}
+        section["confirmed_at"] = datetime.now().isoformat(timespec="seconds")
+        wf[source] = section
+        core._write_workflow(reports_dir, wf)
+        core._append_audit_event(
+            year=year,
+            month=month,
+            event_type="source_action",
+            action="confirm",
+            status="success",
+            actor=actor,
+            source=source,
+            details={"exclude_count": len(cleaned)},
+        )
 
         return JSONResponse({"status": "ok", "count": len(cleaned)})
 
     @router.post("/api/print/{ym}/{source}")
-    def api_print(ym: str, source: str) -> JSONResponse:
+    def api_print(ym: str, source: str, request: Request) -> JSONResponse:
         ym = core._safe_ym(ym)
         if source not in {"amazon", "rakuten"}:
             raise HTTPException(status_code=400, detail="Invalid source.")
 
         year, month = core._split_ym(ym)
+        actor = _actor_from_request(request)
+        try:
+            core._assert_source_action_allowed(year, month, source, "print")
+        except HTTPException as exc:
+            core._append_audit_event(
+                year=year,
+                month=month,
+                event_type="source_action",
+                action="print",
+                status="rejected",
+                actor=actor,
+                source=source,
+                details={"reason": str(exc.detail)},
+            )
+            raise
         output_root = core._artifact_root() / ym
         scripts_dir = core.SKILL_ROOT / "scripts"
         exclude_orders_json = output_root / "reports" / "exclude_orders.json"
@@ -170,11 +197,21 @@ def create_api_router() -> APIRouter:
         section["printed_at"] = datetime.now().isoformat(timespec="seconds")
         wf[source] = section
         core._write_workflow(reports_dir, wf)
+        core._append_audit_event(
+            year=year,
+            month=month,
+            event_type="source_action",
+            action="print",
+            status="success",
+            actor=actor,
+            source=source,
+            details={"print_script": str(print_script)},
+        )
 
         return JSONResponse({"status": "ok", "source": source})
 
     @router.post("/api/print-pdf/{ym}/{source}/{filename}")
-    def api_print_pdf(ym: str, source: str, filename: str) -> JSONResponse:
+    def api_print_pdf(ym: str, source: str, filename: str, request: Request) -> JSONResponse:
         ym = core._safe_ym(ym)
         if source not in {"amazon", "rakuten"}:
             raise HTTPException(status_code=404, detail="PDF not found.")
@@ -195,15 +232,47 @@ def create_api_router() -> APIRouter:
         res = subprocess.run(cmd, capture_output=True, text=True, check=False)
         if res.returncode != 0:
             raise HTTPException(status_code=500, detail="Print failed.")
+        year, month = core._split_ym(ym)
+        core._append_audit_event(
+            year=year,
+            month=month,
+            event_type="source_action",
+            action="print_single_pdf",
+            status="success",
+            actor=_actor_from_request(request),
+            source=source,
+            details={"file": str(path.name)},
+        )
         return JSONResponse({"status": "ok", "file": str(path.name)})
 
     @router.post("/api/runs")
-    def api_run(payload: dict[str, Any]) -> JSONResponse:
-        result = core._start_run(payload)
+    def api_run(payload: dict[str, Any], request: Request) -> JSONResponse:
+        actor = _actor_from_request(request)
+        req_payload = dict(payload)
+        req_payload["_audit_actor"] = actor
+        mode = str(req_payload.get("mode") or "unknown")
+        try:
+            result = core._start_run(req_payload)
+        except HTTPException as exc:
+            ym = _try_year_month(req_payload)
+            detail = str(exc.detail)
+            if ym and ("Invalid year/month" in detail or "Month must be between" in detail):
+                year, month = ym
+                core._append_audit_event(
+                    year=year,
+                    month=month,
+                    event_type="run",
+                    action=mode,
+                    status="rejected",
+                    actor=actor,
+                    mode=mode,
+                    details={"reason": detail},
+                )
+            raise
         return JSONResponse(result)
 
     @router.post("/api/runs/{run_id}/stop")
-    def api_run_stop(run_id: str) -> JSONResponse:
+    def api_run_stop(run_id: str, request: Request) -> JSONResponse:
         run_id = core._safe_run_id(run_id)
         meta_path = core._runs_root() / f"{run_id}.json"
         meta = core._read_json(meta_path)
@@ -228,6 +297,25 @@ def create_api_router() -> APIRouter:
         meta["finished_at"] = datetime.now().isoformat(timespec="seconds")
         meta["returncode"] = -1
         core._write_json(meta_path, meta)
+        params = meta.get("params") if isinstance(meta.get("params"), dict) else {}
+        try:
+            year = int(params.get("year"))
+            month = int(params.get("month"))
+        except Exception:
+            year = None
+            month = None
+        if year is not None and month is not None:
+            core._append_audit_event(
+                year=year,
+                month=month,
+                event_type="run",
+                action="stop",
+                status="success",
+                actor=_actor_from_request(request),
+                mode=str(params.get("mode") or ""),
+                run_id=run_id,
+                details={"returncode": -1},
+            )
         return JSONResponse({"status": "cancelled", "run_id": run_id})
 
     @router.get("/api/runs/{run_id}")

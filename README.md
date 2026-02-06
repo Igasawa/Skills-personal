@@ -27,7 +27,41 @@ npx playwright open -b chromium "<貴社のMFクラウド経費URL>" --save-stor
 ## 実行例
 
 ```powershell
-Set-Location c:\Users\Tatsuo-2023\Projects\PersonalSkills\skills\mfcloud-expense-receipt-reconcile
+Set-Location c:\Users\TatsuoIgasawa\.vscode\Skillpersonal\skills\mfcloud-expense-receipt-reconcile
 python scripts/run.py --mfcloud-expense-list-url "<経費明細一覧URL>" --notes "出張多め・特定PJ集中"
+```
+
+## 設定方針（tenant）
+
+`AX_HOME/configs/mfcloud-expense-receipt-reconcile.json` は `config.tenant` に会社/部署設定をまとめる。
+`config.receipt_name` / `config.urls.*` は互換のため読み込まれるが、新規設定は `tenant` を推奨。
+
+```json
+{
+  "config": {
+    "tenant": {
+      "key": "default",
+      "name": "株式会社ＨＩＧＨ－ＳＴＡＮＤＡＲＤ＆ＣＯ．",
+      "receipt": {
+        "name": "株式会社ＨＩＧＨ－ＳＴＡＮＤＡＲＤ＆ＣＯ．",
+        "name_fallback": "株式会社HIGH-STANDARD&CO."
+      },
+      "urls": {
+        "amazon_orders": "https://www.amazon.co.jp/gp/your-account/order-history",
+        "rakuten_orders": "https://order.my.rakuten.co.jp/?l-id=top_normal_mymenu_order",
+        "mfcloud_accounts": "https://expense.moneyforward.com/accounts",
+        "mfcloud_expense_list": null
+      }
+    }
+  }
+}
+```
+
+## テスト（開発者向け）
+
+```powershell
+Set-Location c:\Users\TatsuoIgasawa\.vscode\Skillpersonal\skills\mfcloud-expense-receipt-reconcile
+python -m pip install -r requirements-dev.txt
+python -m pytest -q
 ```
 

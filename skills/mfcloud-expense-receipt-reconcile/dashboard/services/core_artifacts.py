@@ -69,6 +69,13 @@ def _load_config_file() -> dict[str, Any]:
     return data if isinstance(data, dict) else {}
 
 
+def _extract_urls_from_config_section(section: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
+    tenant = section.get("tenant") if isinstance(section.get("tenant"), dict) else {}
+    tenant_urls = tenant.get("urls") if isinstance(tenant.get("urls"), dict) else {}
+    legacy_urls = section.get("urls") if isinstance(section.get("urls"), dict) else {}
+    return tenant_urls, legacy_urls
+
+
 def _resolve_form_defaults() -> dict[str, Any]:
     year, month = _ym_default()
     defaults: dict[str, Any] = {
@@ -85,22 +92,46 @@ def _resolve_form_defaults() -> dict[str, Any]:
     if last_run:
         defaults["year"] = last_run.get("year") or defaults["year"]
         defaults["month"] = last_run.get("month") or defaults["month"]
-        urls = last_run.get("urls") if isinstance(last_run.get("urls"), dict) else {}
-        defaults["mfcloud_url"] = urls.get("mfcloud_expense_list") or defaults["mfcloud_url"]
-        defaults["amazon_orders_url"] = urls.get("amazon_orders") or defaults["amazon_orders_url"]
+        tenant_urls, legacy_urls = _extract_urls_from_config_section(last_run)
+        defaults["mfcloud_url"] = (
+            tenant_urls.get("mfcloud_expense_list")
+            or legacy_urls.get("mfcloud_expense_list")
+            or defaults["mfcloud_url"]
+        )
+        defaults["amazon_orders_url"] = (
+            tenant_urls.get("amazon_orders")
+            or legacy_urls.get("amazon_orders")
+            or defaults["amazon_orders_url"]
+        )
         rakuten = last_run.get("rakuten") if isinstance(last_run.get("rakuten"), dict) else {}
         defaults["rakuten_enabled"] = bool(rakuten.get("enabled", defaults["rakuten_enabled"]))
-        defaults["rakuten_orders_url"] = rakuten.get("orders_url") or defaults["rakuten_orders_url"]
+        defaults["rakuten_orders_url"] = (
+            tenant_urls.get("rakuten_orders")
+            or rakuten.get("orders_url")
+            or defaults["rakuten_orders_url"]
+        )
         defaults["notes"] = last_run.get("monthly_notes") or defaults["notes"]
 
     config = _load_config_file()
     cfg = config.get("config") if isinstance(config.get("config"), dict) else {}
-    urls = cfg.get("urls") if isinstance(cfg.get("urls"), dict) else {}
+    tenant_urls, legacy_urls = _extract_urls_from_config_section(cfg)
     rakuten = cfg.get("rakuten") if isinstance(cfg.get("rakuten"), dict) else {}
-    defaults["mfcloud_url"] = urls.get("mfcloud_expense_list") or defaults["mfcloud_url"]
-    defaults["amazon_orders_url"] = urls.get("amazon_orders") or defaults["amazon_orders_url"]
+    defaults["mfcloud_url"] = (
+        tenant_urls.get("mfcloud_expense_list")
+        or legacy_urls.get("mfcloud_expense_list")
+        or defaults["mfcloud_url"]
+    )
+    defaults["amazon_orders_url"] = (
+        tenant_urls.get("amazon_orders")
+        or legacy_urls.get("amazon_orders")
+        or defaults["amazon_orders_url"]
+    )
     defaults["rakuten_enabled"] = bool(rakuten.get("enabled", defaults["rakuten_enabled"]))
-    defaults["rakuten_orders_url"] = rakuten.get("orders_url") or defaults["rakuten_orders_url"]
+    defaults["rakuten_orders_url"] = (
+        tenant_urls.get("rakuten_orders")
+        or rakuten.get("orders_url")
+        or defaults["rakuten_orders_url"]
+    )
     defaults["notes"] = cfg.get("monthly_notes") or defaults["notes"]
 
     return defaults

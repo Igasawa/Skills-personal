@@ -11,6 +11,7 @@
 - `reports/missing_evidence_candidates.csv`
 - `reports/missing_evidence_candidates.json`
 - `reports/monthly_thread.md`
+- `reports/audit_log.jsonl`
 - `amazon/orders.jsonl`
 - `mfcloud/expenses.jsonl`
 - `run_config.resolved.json`

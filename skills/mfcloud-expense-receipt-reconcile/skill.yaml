@@ -16,10 +16,22 @@ secrets:
 
 defaults:
   config:
+    tenant:
+      key: "default"
+      name: "株式会社ＨＩＧＨ－ＳＴＡＮＤＡＲＤ＆ＣＯ．"
+      receipt:
+        name: "株式会社ＨＩＧＨ－ＳＴＡＮＤＡＲＤ＆ＣＯ．"
+        name_fallback: "株式会社HIGH-STANDARD&CO."
+      urls:
+        amazon_orders: "https://www.amazon.co.jp/gp/your-account/order-history"
+        rakuten_orders: "https://order.my.rakuten.co.jp/?l-id=top_normal_mymenu_order"
+        mfcloud_accounts: "https://expense.moneyforward.com/accounts"
+        mfcloud_expense_list: null
     receipt_name: "株式会社ＨＩＧＨ－ＳＴＡＮＤＡＲＤ＆ＣＯ．"
     receipt_name_fallback: "株式会社HIGH-STANDARD&CO."
     urls:
       amazon_orders: "https://www.amazon.co.jp/gp/your-account/order-history"
+      mfcloud_accounts: "https://expense.moneyforward.com/accounts"
       mfcloud_expense_list: null
     rakuten:
       enabled: false

@@ -216,6 +216,10 @@
             <a href="/files/{{ latest_artifact.ym }}/run_config" class="download">実行設定</a>
             <div class="muted">実行に使ったURLなど</div>
           </div>
+          <div class="download-card">
+            <a href="/files/{{ latest_artifact.ym }}/audit_log" class="download">監査ログ(JSONL)</a>
+            <div class="muted">実行・確認・印刷の操作履歴</div>
+          </div>
           {% if latest_artifact.has_reports %}
           <div class="download-card">
             <a href="/files/{{ latest_artifact.ym }}/print_script" class="download">印刷スクリプト</a>

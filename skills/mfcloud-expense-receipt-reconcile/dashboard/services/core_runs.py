@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 from datetime import datetime
 from pathlib import Path
@@ -22,10 +23,202 @@ from .core_shared import (
     _runs_root,
     _write_json,
 )
+from .core_orders import _read_workflow
 
 
 def _preflight_global_path() -> Path:
     return _artifact_root() / "_preflight.json"
+
+
+def _audit_log_path(year: int, month: int) -> Path:
+    return _artifact_root() / f"{year:04d}-{month:02d}" / "reports" / "audit_log.jsonl"
+
+
+def _safe_int(value: Any) -> int | None:
+    try:
+        return int(value)
+    except Exception:
+        return None
+
+
+def _normalize_actor(actor: Any) -> dict[str, Any]:
+    if isinstance(actor, dict):
+        out: dict[str, Any] = {}
+        for key in ("channel", "id", "ip", "user_agent"):
+            value = actor.get(key)
+            if value is None:
+                continue
+            text = str(value).strip()
+            if text:
+                out[key] = text
+        if out:
+            return out
+    return {"channel": "dashboard", "id": "unknown"}
+
+
+def _append_audit_event(
+    *,
+    year: int,
+    month: int,
+    event_type: str,
+    action: str,
+    status: str,
+    actor: Any = None,
+    source: str | None = None,
+    mode: str | None = None,
+    run_id: str | None = None,
+    details: dict[str, Any] | None = None,
+) -> None:
+    path = _audit_log_path(year, month)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    entry: dict[str, Any] = {
+        "ts": datetime.now().isoformat(timespec="seconds"),
+        "ym": f"{year:04d}-{month:02d}",
+        "year": year,
+        "month": month,
+        "event_type": str(event_type).strip(),
+        "action": str(action).strip(),
+        "status": str(status).strip(),
+        "actor": _normalize_actor(actor),
+    }
+    if source:
+        entry["source"] = str(source).strip()
+    if mode:
+        entry["mode"] = str(mode).strip()
+    if run_id:
+        entry["run_id"] = str(run_id).strip()
+    if isinstance(details, dict) and details:
+        entry["details"] = details
+    with path.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(entry, ensure_ascii=False) + "\n")
+
+
+def _is_preflight_success(payload: Any, *, year: int, month: int) -> bool:
+    if not isinstance(payload, dict):
+        return False
+    status = str(payload.get("status") or "").strip().lower()
+    if status != "success":
+        return False
+    try:
+        return int(payload.get("year")) == year and int(payload.get("month")) == month
+    except Exception:
+        return False
+
+
+def _workflow_state_for_ym(year: int, month: int) -> dict[str, Any]:
+    ym = f"{year:04d}-{month:02d}"
+    root = _artifact_root() / ym
+    reports_dir = root / "reports"
+    workflow = _read_workflow(reports_dir)
+
+    local_preflight = _read_json(reports_dir / "preflight.json")
+    global_preflight = _read_json(_preflight_global_path())
+    preflight_done = _is_preflight_success(local_preflight, year=year, month=month) or _is_preflight_success(
+        global_preflight,
+        year=year,
+        month=month,
+    )
+    amazon_downloaded = (root / "amazon" / "orders.jsonl").exists()
+    rakuten_downloaded = (root / "rakuten" / "orders.jsonl").exists()
+    amazon_confirmed = bool((workflow.get("amazon") or {}).get("confirmed_at"))
+    amazon_printed = bool((workflow.get("amazon") or {}).get("printed_at"))
+    rakuten_confirmed = bool((workflow.get("rakuten") or {}).get("confirmed_at"))
+    rakuten_printed = bool((workflow.get("rakuten") or {}).get("printed_at"))
+    mf_reconciled = (reports_dir / "missing_evidence_candidates.json").exists()
+
+    next_step = "done"
+    if not preflight_done:
+        next_step = "preflight"
+    elif not amazon_downloaded:
+        next_step = "amazon_download"
+    elif not (amazon_confirmed and amazon_printed):
+        next_step = "amazon_decide_print"
+    elif not rakuten_downloaded:
+        next_step = "rakuten_download"
+    elif not (rakuten_confirmed and rakuten_printed):
+        next_step = "rakuten_decide_print"
+    elif not mf_reconciled:
+        next_step = "mf_reconcile"
+
+    allowed_run_modes = {
+        "preflight": ["preflight"],
+        "amazon_download": ["amazon_download"],
+        "amazon_decide_print": ["amazon_print"],
+        "rakuten_download": ["rakuten_download"],
+        "rakuten_decide_print": ["rakuten_print"],
+        "mf_reconcile": ["mf_reconcile"],
+        "done": [],
+    }.get(next_step, [])
+
+    return {
+        "ym": ym,
+        "preflight": {"done": preflight_done},
+        "amazon": {"downloaded": amazon_downloaded, "confirmed": amazon_confirmed, "printed": amazon_printed},
+        "rakuten": {"downloaded": rakuten_downloaded, "confirmed": rakuten_confirmed, "printed": rakuten_printed},
+        "mf": {"reconciled": mf_reconciled},
+        "next_step": next_step,
+        "allowed_run_modes": allowed_run_modes,
+        "running_mode": _running_mode_for_ym(year, month),
+    }
+
+
+def _assert_run_mode_allowed(year: int, month: int, mode: str) -> None:
+    state = _workflow_state_for_ym(year, month)
+    allowed = state.get("allowed_run_modes") if isinstance(state.get("allowed_run_modes"), list) else []
+    if mode in allowed:
+        return
+    next_step = str(state.get("next_step") or "")
+    allowed_label = ", ".join(str(x) for x in allowed) if allowed else "none"
+    raise HTTPException(
+        status_code=409,
+        detail=(
+            "Workflow order violation: "
+            f"next_step={next_step}; allowed_modes={allowed_label}; requested_mode={mode}"
+        ),
+    )
+
+
+def _assert_source_action_allowed(year: int, month: int, source: str, action: str) -> None:
+    if source not in {"amazon", "rakuten"}:
+        raise HTTPException(status_code=400, detail="Invalid source.")
+    if action not in {"confirm", "print"}:
+        raise HTTPException(status_code=400, detail="Invalid action.")
+
+    state = _workflow_state_for_ym(year, month)
+    if not state["preflight"]["done"]:
+        raise HTTPException(
+            status_code=409,
+            detail="Workflow order violation: preflight is required before confirmation/print.",
+        )
+
+    if source == "amazon":
+        if not state["amazon"]["downloaded"]:
+            raise HTTPException(
+                status_code=409,
+                detail="Workflow order violation: amazon_download must be completed before amazon confirmation/print.",
+            )
+        if action == "print" and not state["amazon"]["confirmed"]:
+            raise HTTPException(
+                status_code=409,
+                detail="Workflow order violation: amazon confirmation is required before amazon print.",
+            )
+        return
+
+    if not (state["amazon"]["confirmed"] and state["amazon"]["printed"]):
+        raise HTTPException(
+            status_code=409,
+            detail="Workflow order violation: amazon decide/print must be completed before rakuten steps.",
+        )
+    if not state["rakuten"]["downloaded"]:
+        raise HTTPException(
+            status_code=409,
+            detail="Workflow order violation: rakuten_download must be completed before rakuten confirmation/print.",
+        )
+    if action == "print" and not state["rakuten"]["confirmed"]:
+        raise HTTPException(
+            status_code=409,
+            detail="Workflow order violation: rakuten confirmation is required before rakuten print.",
+        )
 
 
 def _tail_text(path: Path, max_bytes: int = 5000) -> str:
@@ -98,6 +291,22 @@ def _reconcile_running_jobs() -> None:
         if data.get("returncode") is None:
             data["returncode"] = -1
         _write_json(p, data)
+        params = data.get("params") if isinstance(data.get("params"), dict) else {}
+        year = _safe_int(params.get("year"))
+        month = _safe_int(params.get("month"))
+        if year is None or month is None:
+            continue
+        _append_audit_event(
+            year=year,
+            month=month,
+            event_type="run",
+            action=str(params.get("mode") or "unknown"),
+            status="failed",
+            actor=data.get("actor"),
+            mode=str(params.get("mode") or ""),
+            run_id=str(data.get("run_id") or ""),
+            details={"reason": "process_ended_without_final_status", "returncode": data.get("returncode")},
+        )
 
 
 def _scan_run_jobs() -> list[dict[str, Any]]:
@@ -136,6 +345,23 @@ def _run_worker(process: subprocess.Popen, meta_path: Path) -> None:
     meta["finished_at"] = datetime.now().isoformat(timespec="seconds")
     meta["returncode"] = exit_code
     _write_json(meta_path, meta)
+    params = meta.get("params") if isinstance(meta.get("params"), dict) else {}
+    year = _safe_int(params.get("year"))
+    month = _safe_int(params.get("month"))
+    if year is None or month is None:
+        return
+    mode = str(params.get("mode") or "unknown")
+    _append_audit_event(
+        year=year,
+        month=month,
+        event_type="run",
+        action=mode,
+        status="success" if exit_code == 0 else "failed",
+        actor=meta.get("actor"),
+        mode=mode,
+        run_id=str(meta.get("run_id") or ""),
+        details={"returncode": exit_code},
+    )
 
 
 def _start_run(payload: dict[str, Any]) -> dict[str, Any]:
@@ -154,8 +380,33 @@ def _start_run(payload: dict[str, Any]) -> dict[str, Any]:
         raise HTTPException(status_code=400, detail="Invalid year/month.") from exc
     if month < 1 or month > 12:
         raise HTTPException(status_code=400, detail="Month must be between 1 and 12.")
+    actor = _normalize_actor(payload.get("_audit_actor"))
+    try:
+        _assert_run_mode_allowed(year, month, mode)
+    except HTTPException as exc:
+        _append_audit_event(
+            year=year,
+            month=month,
+            event_type="run",
+            action=mode,
+            status="rejected",
+            actor=actor,
+            mode=mode,
+            details={"reason": str(exc.detail)},
+        )
+        raise
     mfcloud_url = str(payload.get("mfcloud_url") or "").strip()
     if mode == "mf_reconcile" and not mfcloud_url:
+        _append_audit_event(
+            year=year,
+            month=month,
+            event_type="run",
+            action=mode,
+            status="rejected",
+            actor=actor,
+            mode=mode,
+            details={"reason": "MF Cloud expense list URL is required."},
+        )
         raise HTTPException(status_code=400, detail="MF Cloud expense list URL is required.")
 
     rakuten_enabled = bool(payload.get("rakuten_enabled"))
@@ -233,6 +484,7 @@ def _start_run(payload: dict[str, Any]) -> dict[str, Any]:
         "status": "running",
         "started_at": datetime.now().isoformat(timespec="seconds"),
         "pid": process.pid,
+        "actor": actor,
         "log_path": str(log_path),
         "cmd": cmd,
         "params": {
@@ -248,6 +500,17 @@ def _start_run(payload: dict[str, Any]) -> dict[str, Any]:
         },
     }
     _write_json(meta_path, meta)
+    _append_audit_event(
+        year=year,
+        month=month,
+        event_type="run",
+        action=mode,
+        status="started",
+        actor=actor,
+        mode=mode,
+        run_id=run_id,
+        details={"auth_handoff": auth_handoff, "auto_receipt_name": auto_receipt_name},
+    )
 
     watcher = threading.Thread(target=_run_worker, args=(process, meta_path), daemon=True)
     watcher.start()
