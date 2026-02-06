@@ -163,17 +163,79 @@ def reconcile(
 ) -> dict[str, Any]:
     orders_in_month = [o for o in orders if _in_year_month(o.order_date, year, month)]
     mf_in_month = [e for e in mf_expenses if _in_year_month(e.use_date, year, month)]
-    mf_missing = [e for e in mf_in_month if not e.has_evidence]
+    mf_unknown_date = [e for e in mf_expenses if e.use_date is None]
+
+    # Keep one record per expense id and prioritize records that are already in target month.
+    mf_scope_by_id: dict[str, MfExpense] = {}
+    for expense in [*mf_in_month, *mf_unknown_date]:
+        if expense.expense_id in mf_scope_by_id:
+            continue
+        mf_scope_by_id[expense.expense_id] = expense
+    mf_scope = list(mf_scope_by_id.values())
+    mf_missing = [e for e in mf_scope if not e.has_evidence]
 
     amazon_all = [o for o in orders if o.source == "amazon"]
     rakuten_all = [o for o in orders if o.source == "rakuten"]
     amazon_in_month = [o for o in amazon_all if _in_year_month(o.order_date, year, month)]
     rakuten_in_month = [o for o in rakuten_all if _in_year_month(o.order_date, year, month)]
 
+    needs_review_missing_use_date = 0
+    needs_review_missing_amount = 0
+    needs_review_no_candidate = 0
+    needs_review_expense_ids: set[str] = set()
+    matched_expense_ids: set[str] = set()
+
     rows: list[dict[str, Any]] = []
     for expense in mf_missing:
-        if expense.amount_yen is None:
+        base = {
+            "mf_expense_id": expense.expense_id,
+            "mf_use_date": expense.use_date.isoformat() if expense.use_date else None,
+            "mf_amount_yen": expense.amount_yen,
+            "mf_vendor": expense.vendor,
+            "mf_memo": expense.memo,
+            "mf_detail_url": expense.detail_url,
+        }
+
+        if expense.use_date is None:
+            needs_review_missing_use_date += 1
+            needs_review_expense_ids.add(expense.expense_id)
+            rows.append(
+                {
+                    **base,
+                    "row_type": "needs_review",
+                    "review_reason": "missing_use_date",
+                    "rank": None,
+                    "order_id": None,
+                    "order_date": None,
+                    "total_yen": None,
+                    "order_source": None,
+                    "pdf_path": None,
+                    "diff_days": None,
+                    "score": None,
+                }
+            )
             continue
+
+        if expense.amount_yen is None:
+            needs_review_missing_amount += 1
+            needs_review_expense_ids.add(expense.expense_id)
+            rows.append(
+                {
+                    **base,
+                    "row_type": "needs_review",
+                    "review_reason": "missing_amount",
+                    "rank": None,
+                    "order_id": None,
+                    "order_date": None,
+                    "total_yen": None,
+                    "order_source": None,
+                    "pdf_path": None,
+                    "diff_days": None,
+                    "score": None,
+                }
+            )
+            continue
+
         candidates: list[dict[str, Any]] = []
         for order in orders_in_month:
             if order.total_yen is None:
@@ -209,43 +271,45 @@ def reconcile(
         candidates = candidates[: max(0, int(max_candidates_per_mf))]
 
         if not candidates:
+            needs_review_no_candidate += 1
+            needs_review_expense_ids.add(expense.expense_id)
             rows.append(
                 {
-                    "mf_expense_id": expense.expense_id,
-                    "mf_use_date": expense.use_date.isoformat() if expense.use_date else None,
-                    "mf_amount_yen": expense.amount_yen,
-                    "mf_vendor": expense.vendor,
-                    "mf_memo": expense.memo,
-                    "mf_detail_url": expense.detail_url,
+                    **base,
+                    "row_type": "needs_review",
+                    "review_reason": "no_candidate_in_window",
                     "rank": None,
                     "order_id": None,
                     "order_date": None,
                     "total_yen": None,
                     "order_source": None,
                     "pdf_path": None,
+                    "diff_days": None,
                     "score": None,
                 }
             )
             continue
 
+        matched_expense_ids.add(expense.expense_id)
         for rank, cand in enumerate(candidates, start=1):
             rows.append(
                 {
-                    "mf_expense_id": expense.expense_id,
-                    "mf_use_date": expense.use_date.isoformat() if expense.use_date else None,
-                    "mf_amount_yen": expense.amount_yen,
-                    "mf_vendor": expense.vendor,
-                    "mf_memo": expense.memo,
-                    "mf_detail_url": expense.detail_url,
+                    **base,
+                    "row_type": "candidate",
+                    "review_reason": None,
                     "rank": rank,
                     "order_id": cand["order_id"],
                     "order_date": cand["order_date"],
                     "total_yen": cand["total_yen"],
                     "order_source": cand["order_source"],
                     "pdf_path": cand["pdf_path"],
+                    "diff_days": cand["diff_days"],
                     "score": cand["score"],
                 }
             )
+
+    needs_review_count = len(needs_review_expense_ids)
+    matched_expenses = len(matched_expense_ids)
 
     return {
         "year": year,
@@ -259,7 +323,14 @@ def reconcile(
             "orders_in_month": len(orders_in_month),
             "mf_expenses_total": len(mf_expenses),
             "mf_expenses_in_month": len(mf_in_month),
+            "mf_expenses_unknown_date": len(mf_unknown_date),
+            "mf_scope_expenses": len(mf_scope),
             "mf_missing_evidence": len(mf_missing),
+            "matched_expenses": matched_expenses,
+            "needs_review_count": needs_review_count,
+            "needs_review_missing_use_date": needs_review_missing_use_date,
+            "needs_review_missing_amount": needs_review_missing_amount,
+            "needs_review_no_candidate_in_window": needs_review_no_candidate,
             "report_rows": len(rows),
         },
         "rows": rows,
@@ -277,12 +348,15 @@ def _write_csv(path: Path, rows: list[dict[str, Any]]) -> None:
         "mf_vendor",
         "mf_memo",
         "mf_detail_url",
+        "row_type",
+        "review_reason",
         "rank",
         "order_id",
         "order_source",
         "order_date",
         "total_yen",
         "pdf_path",
+        "diff_days",
         "score",
     ]
     with path.open("w", encoding="utf-8", newline="") as f:

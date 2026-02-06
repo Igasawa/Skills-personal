@@ -109,16 +109,15 @@ def execute_pipeline(
             ],
         )
         preflight_data = (preflight_out.get("data") if isinstance(preflight_out, dict) else None) or preflight_out
-        _write_json(
-            reports_dir / "preflight.json",
-            {
-                "status": "success",
-                "finished_at": datetime.now().isoformat(timespec="seconds"),
-                "year": year,
-                "month": month,
-                "data": preflight_data,
-            },
-        )
+        preflight_result = {
+            "status": "success",
+            "finished_at": datetime.now().isoformat(timespec="seconds"),
+            "year": year,
+            "month": month,
+            "data": preflight_data,
+        }
+        _write_json(reports_dir / "preflight.json", preflight_result)
+        _write_json(output_root.parent / "_preflight.json", preflight_result)
         print("[run] Preflight done", flush=True)
         return {"status": "success", "data": {"preflight": preflight_data}}
 

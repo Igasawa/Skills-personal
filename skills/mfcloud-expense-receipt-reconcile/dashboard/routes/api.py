@@ -23,7 +23,20 @@ def create_api_router() -> APIRouter:
         reports_dir = root / "reports"
         workflow = core._read_workflow(reports_dir)
 
-        preflight_done = (reports_dir / "preflight.json").exists() or core._preflight_global_path().exists()
+        def _is_preflight_success(payload: Any) -> bool:
+            if not isinstance(payload, dict):
+                return False
+            status = str(payload.get("status") or "").strip().lower()
+            if status != "success":
+                return False
+            try:
+                return int(payload.get("year")) == year and int(payload.get("month")) == month
+            except Exception:
+                return False
+
+        local_preflight = core._read_json(reports_dir / "preflight.json")
+        global_preflight = core._read_json(core._preflight_global_path())
+        preflight_done = _is_preflight_success(local_preflight) or _is_preflight_success(global_preflight)
         amazon_downloaded = (root / "amazon" / "orders.jsonl").exists()
         rakuten_downloaded = (root / "rakuten" / "orders.jsonl").exists()
         amazon_confirmed = bool((workflow.get("amazon") or {}).get("confirmed_at"))

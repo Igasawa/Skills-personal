@@ -93,7 +93,7 @@ def read_jsonl(path: Path, *, required: bool = False, strict: bool = False) -> l
             raise FileNotFoundError(f"JSONL not found: {path}")
         return []
     out: list[dict[str, Any]] = []
-    with path.open("r", encoding="utf-8") as f:
+    with path.open("r", encoding="utf-8-sig") as f:
         for i, line in enumerate(f, start=1):
             s = line.strip()
             if not s:

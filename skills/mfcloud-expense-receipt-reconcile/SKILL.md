@@ -135,11 +135,17 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "scripts\\archive_outputs.ps
 
 ```powershell
 Set-Location c:\Users\TatsuoIgasawa\.vscode\Skillpersonal\skills\mfcloud-expense-receipt-reconcile
-python -m pip install -r dashboard\requirements.txt
-python -m uvicorn dashboard.app:app --host 127.0.0.1 --port 8765
+powershell -NoProfile -ExecutionPolicy Bypass -File "scripts\start_dashboard.ps1"
 ```
 
 ブラウザで `http://127.0.0.1:8765/` を開く。
+
+オプション例:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File "scripts\start_dashboard.ps1" -NoOpen
+powershell -NoProfile -ExecutionPolicy Bypass -File "scripts\start_dashboard.ps1" -BindHost 127.0.0.1 -Port 8765 -WaitSeconds 120
+```
 
 ### 実行パターン
 
