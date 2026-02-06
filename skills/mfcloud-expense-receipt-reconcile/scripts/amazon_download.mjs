@@ -387,11 +387,24 @@ async function extractDetailLinks(page) {
   const links = page.locator("a[href*='order-details'], a[href*='orderID=']");
   const n = await links.count();
   const out = [];
+  const seen = new Set();
   for (let i = 0; i < n; i++) {
     const href = await links.nth(i).getAttribute("href");
     if (!href) continue;
     const url = href.startsWith("/") ? new URL(href, page.url()).toString() : href;
-    out.push(url);
+    let parsed = null;
+    try {
+      parsed = new URL(url);
+    } catch {
+      continue;
+    }
+    if (!parsed.pathname.includes("/your-orders/order-details")) continue;
+    const orderId = parsed.searchParams.get("orderID");
+    if (!orderId || !/^\d{3}-\d{7}-\d{7}$/.test(orderId)) continue;
+    const normalized = parsed.toString();
+    if (seen.has(normalized)) continue;
+    seen.add(normalized);
+    out.push(normalized);
   }
   return out;
 }
@@ -496,6 +509,36 @@ async function saveReceiptPdf(page, outPdfPath) {
   await page.pdf({ path: outPdfPath, format: "A4", printBackground: true });
 }
 
+function assessAmazonReceiptPageText(textRaw) {
+  const text = normalizeOrderText(textRaw).replace(/\s+/g, " ").trim();
+  const lower = text.toLowerCase();
+  if (!text || text.length < 20) {
+    return { ok: false, reason: "amazon_receipt_page_empty_or_too_short" };
+  }
+  const wrongPageKeywords = [
+    "ご迷惑をおかけしています",
+    "処理中にエラーが発生",
+    "Amazon.co.jp ホームへ",
+    "注文商品のキャンセル",
+    "個数変更・キャンセル",
+    "an error has occurred",
+  ];
+  for (const keyword of wrongPageKeywords) {
+    if (text.includes(keyword) || lower.includes(String(keyword).toLowerCase())) {
+      return { ok: false, reason: `amazon_receipt_invalid_page:${keyword}` };
+    }
+  }
+  return { ok: true, reason: null };
+}
+
+async function assertAmazonReceiptPage(page) {
+  const bodyText = await page.innerText("body").catch(() => "");
+  const checked = assessAmazonReceiptPageText(bodyText);
+  if (!checked.ok) {
+    throw new Error(checked.reason || "amazon_receipt_invalid_page");
+  }
+}
+
 async function main() {
   const args = parseArgs(process.argv);
   const storageState = args["storage-state"];
@@ -589,6 +632,7 @@ async function main() {
       let status = "ok";
       let receiptUrl = null;
       let pdfPath = null;
+      let errorReason = null;
 
       try {
         if (!order.detail_url) throw new Error("missing detail_url");
@@ -690,6 +734,7 @@ async function main() {
             await page.goto(receiptUrl, { waitUntil: "domcontentloaded" });
             await page.waitForLoadState("networkidle").catch(() => {});
             await ensureAuthenticated(page, authHandoff, "Amazon receipt page");
+            await assertAmazonReceiptPage(page);
             if (order.total_yen == null) {
               const t = await extractTotalFromPage(page);
               if (t != null) order.total_yen = t;
@@ -703,6 +748,7 @@ async function main() {
             }
             if (nameResult.applied) order.receipt_name = nameResult.name;
             order.receipt_name_applied = Boolean(nameResult.applied);
+            await assertAmazonReceiptPage(page);
             await saveReceiptPdf(page, pdfPath);
           } else {
             const pdfPage = await pdfContext.newPage();
@@ -712,6 +758,7 @@ async function main() {
               await pdfPage.goto(receiptUrl, { waitUntil: "domcontentloaded" });
               await pdfPage.waitForLoadState("networkidle").catch(() => {});
               await ensureAuthenticated(pdfPage, authHandoff, "Amazon receipt page");
+              await assertAmazonReceiptPage(pdfPage);
               if (order.total_yen == null) {
                 const t = await extractTotalFromPage(pdfPage);
                 if (t != null) order.total_yen = t;
@@ -725,6 +772,7 @@ async function main() {
               }
               if (nameResult.applied) order.receipt_name = nameResult.name;
               order.receipt_name_applied = Boolean(nameResult.applied);
+              await assertAmazonReceiptPage(pdfPage);
               await saveReceiptPdf(pdfPage, pdfPath);
             } finally {
               await pdfPage.close().catch(() => {});
@@ -734,6 +782,8 @@ async function main() {
         }
       } catch (e) {
         status = "error";
+        errorReason = String(e?.message || e);
+        console.error(`[amazon] order ${order.order_id || "unknown"} error: ${errorReason}`);
         if (debugDir) await writeDebug(page, debugDir, `order_${safeFilePart(order.order_id)}_error`);
       }
 
@@ -755,6 +805,7 @@ async function main() {
           receipt_url: receiptUrl,
           pdf_path: pdfPath,
           status,
+          error_reason: errorReason,
         })
       );
     }

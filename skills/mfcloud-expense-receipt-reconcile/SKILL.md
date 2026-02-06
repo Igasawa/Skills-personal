@@ -195,3 +195,9 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "scripts\start_dashboard.ps1
 - 自動登録OK例外一覧：`references/auto_register_exceptions.yaml`
 - 月次スレッドテンプレ：`assets/monthly_thread_template.md`
 - 成果物整理ルール：`references/output_policy.md`
+
+## UI言語方針
+
+- ダッシュボードのエンドユーザー向けUI文言（見出し、ボタン、説明、トースト、エラー表示）は、原則として日本語に統一する。
+- 英語を許容するのは、コード識別子・APIキー・ログ解析用の固定判定文字列など、機械処理上必要な箇所のみ。
+- UI文言を追加・変更する際は、日本語表示になっていることを確認してから反映する。

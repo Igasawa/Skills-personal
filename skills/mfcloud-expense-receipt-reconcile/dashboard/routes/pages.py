@@ -18,15 +18,24 @@ def create_pages_router(templates: Jinja2Templates) -> APIRouter:
         jobs = core._scan_run_jobs()
         running_job = core._get_latest_running_job()
         defaults = core._resolve_form_defaults()
-        latest_artifact = artifacts[0] if artifacts else None
         latest_job = jobs[0] if jobs else None
+        latest_job_ym = None
+        if isinstance(latest_job, dict):
+            params = latest_job.get("params") if isinstance(latest_job.get("params"), dict) else {}
+            try:
+                y = int(params.get("year"))
+                m = int(params.get("month"))
+                if 1 <= m <= 12:
+                    latest_job_ym = f"{y:04d}-{m:02d}"
+            except Exception:
+                latest_job_ym = None
         return templates.TemplateResponse(
             "index.html",
             {
                 "request": request,
                 "artifacts": artifacts,
-                "latest_artifact": latest_artifact,
                 "latest_job": latest_job,
+                "latest_job_ym": latest_job_ym,
                 "running_job": running_job,
                 "defaults": defaults,
                 "ax_home": str(core._ax_home()),

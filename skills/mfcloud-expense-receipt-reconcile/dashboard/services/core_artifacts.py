@@ -12,6 +12,9 @@ from .core_shared import (
     _ym_default,
 )
 
+DEFAULT_MFCLOUD_EXPENSE_LIST_URL = "https://expense.moneyforward.com/outgo_input"
+LEGACY_MFCLOUD_EXPENSE_LIST_URL = "https://expense.moneyforward.com/transactions"
+
 
 def _scan_artifacts() -> list[dict[str, Any]]:
     root = _artifact_root()
@@ -81,7 +84,7 @@ def _resolve_form_defaults() -> dict[str, Any]:
     defaults: dict[str, Any] = {
         "year": year,
         "month": month,
-        "mfcloud_url": "",
+        "mfcloud_url": DEFAULT_MFCLOUD_EXPENSE_LIST_URL,
         "rakuten_enabled": False,
         "notes": "",
         "rakuten_orders_url": DEFAULT_RAKUTEN_URL,
@@ -133,5 +136,9 @@ def _resolve_form_defaults() -> dict[str, Any]:
         or defaults["rakuten_orders_url"]
     )
     defaults["notes"] = cfg.get("monthly_notes") or defaults["notes"]
+
+    mfcloud_url = str(defaults.get("mfcloud_url") or "").strip()
+    if not mfcloud_url or mfcloud_url == LEGACY_MFCLOUD_EXPENSE_LIST_URL:
+        defaults["mfcloud_url"] = DEFAULT_MFCLOUD_EXPENSE_LIST_URL
 
     return defaults

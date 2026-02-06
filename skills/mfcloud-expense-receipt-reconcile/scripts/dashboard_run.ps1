@@ -2,7 +2,7 @@ $ErrorActionPreference = "Stop"
 
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $skillRoot = (Resolve-Path (Join-Path $scriptDir "..")).Path
-$mfUrl = "https://expense.moneyforward.com/transactions"
+$mfUrl = "https://expense.moneyforward.com/outgo_input"
 
 function Resolve-PythonRuntime {
   $cmd = $null

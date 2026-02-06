@@ -1,5 +1,6 @@
 param(
   [switch]$NoOpen,
+  [switch]$Restart,
   [string]$BindHost = "127.0.0.1",
   [int]$Port = 8765,
   [int]$WaitSeconds = 120
@@ -28,18 +29,18 @@ $url = "http://$BindHost`:$Port/"
 function Find-PythonRuntime {
   $python = $null
   $pythonPrefix = @()
-  try { $python = (Get-Command python -ErrorAction Stop).Source } catch {}
+  $venvPython = Join-Path $root ".venv\Scripts\python.exe"
+  if (Test-Path $venvPython) {
+    $python = $venvPython
+  }
+  if (-not $python) {
+    try { $python = (Get-Command python -ErrorAction Stop).Source } catch {}
+  }
   if (-not $python) {
     try {
       $python = (Get-Command py -ErrorAction Stop).Source
       $pythonPrefix = @("-3")
     } catch {}
-  }
-  if (-not $python) {
-    $venvPython = Join-Path $root ".venv\Scripts\python.exe"
-    if (Test-Path $venvPython) {
-      $python = $venvPython
-    }
   }
   if (-not $python) {
     $candidates = Get-ChildItem -Path "$env:LOCALAPPDATA\Programs\Python" -Recurse -Filter python.exe -ErrorAction SilentlyContinue |
@@ -53,6 +54,31 @@ function Find-PythonRuntime {
     Python = $python
     Prefix = $pythonPrefix
   }
+}
+
+function Test-UvicornAvailable {
+  param(
+    [string]$Python,
+    [string[]]$Prefix = @()
+  )
+  if (-not $Python) {
+    return $false
+  }
+  $probeArgs = @()
+  if ($Prefix) {
+    $probeArgs += $Prefix
+  }
+  $probeArgs += @("-c", "import uvicorn")
+  $prev = $ErrorActionPreference
+  $ErrorActionPreference = "Continue"
+  try {
+    & $Python @probeArgs 1>$null 2>$null
+  } catch {
+    return $false
+  } finally {
+    $ErrorActionPreference = $prev
+  }
+  return ($LASTEXITCODE -eq 0)
 }
 
 function Ensure-UvBinary {
@@ -81,20 +107,29 @@ function Ensure-UvBinary {
 try {
   $resp = Invoke-WebRequest -UseBasicParsing $url -TimeoutSec 2
   if ($resp.StatusCode -eq 200) {
-    if (-not $NoOpen) {
-      Start-Process $url
+    if ($Restart) {
+      $listener = Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1
+      if ($listener -and $listener.OwningProcess) {
+        try { Stop-Process -Id $listener.OwningProcess -Force -ErrorAction Stop } catch {}
+        Start-Sleep -Seconds 1
+      }
+    } else {
+      if (-not $NoOpen) {
+        Start-Process $url
+      }
+      return
     }
-    return
   }
 } catch {}
 
 $pythonInfo = Find-PythonRuntime
 $python = $pythonInfo.Python
 $pythonPrefix = @($pythonInfo.Prefix)
+$pythonHasUvicorn = Test-UvicornAvailable -Python $python -Prefix $pythonPrefix
 
 $launcher = $null
 $args = @()
-if ($python) {
+if ($python -and $pythonHasUvicorn) {
   $launcher = $python
   $args = @(
     $pythonPrefix + @(

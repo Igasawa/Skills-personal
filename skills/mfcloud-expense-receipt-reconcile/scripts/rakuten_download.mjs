@@ -256,9 +256,13 @@ async function applyReceiptName(page, receiptName) {
     .first();
   if ((await save.count()) > 0) {
     await save.click().catch(() => {});
-    await page.waitForTimeout(200);
-    await page.waitForLoadState("networkidle", { timeout: 10000 }).catch(() => {});
-    await acceptIssueConfirm(page, 2500);
+    // 楽天の確認カードは networkidle 前に出ることがあるため、先に即時処理する。
+    const confirmed = await acceptIssueConfirm(page, 3200);
+    if (!confirmed) {
+      await page.waitForLoadState("domcontentloaded", { timeout: 1500 }).catch(() => {});
+      await acceptIssueConfirm(page, 1200);
+    }
+    await page.waitForLoadState("networkidle", { timeout: 2500 }).catch(() => {});
   }
   return true;
 }
@@ -309,44 +313,149 @@ async function saveReceiptPdf(page, outPdfPath) {
   await page.pdf({ path: outPdfPath, format: "A4", printBackground: true });
 }
 
-async function acceptIssueConfirm(page, timeoutMs = 1200) {
+function assessRakutenReceiptPageText(textRaw) {
+  const text = normalizeText(textRaw);
+  const lower = text.toLowerCase();
+  if (!text || text.length < 20) {
+    return { ok: false, reason: "rakuten_receipt_page_empty_or_too_short" };
+  }
+  const wrongPageKeywords = [
+    "注文商品のキャンセル、数量の変更はできますか",
+    "個数変更・キャンセル",
+    "キャンセル処理完了",
+    "キャンセルする",
+  ];
+  for (const keyword of wrongPageKeywords) {
+    if (text.includes(keyword) || lower.includes(String(keyword).toLowerCase())) {
+      return { ok: false, reason: `rakuten_receipt_invalid_page:${keyword}` };
+    }
+  }
+  const receiptSignals = ["領収書", "請求書", "購入明細", "receipt", "invoice"];
+  if (!receiptSignals.some((k) => text.includes(k) || lower.includes(String(k).toLowerCase()))) {
+    return { ok: false, reason: "rakuten_receipt_page_missing_signal" };
+  }
+  return { ok: true, reason: null };
+}
+
+function assessRakutenReceiptContext({ url, title, pageAction, messageCode }) {
+  const rawUrl = String(url || "");
+  const normalizedTitle = normalizeText(title || "");
+  const normalizedPageAction = String(pageAction || "").trim().toLowerCase();
+  const normalizedMessageCode = String(messageCode || "").trim().toUpperCase();
+
+  if (/act=detail_page_view/i.test(rawUrl)) {
+    return { ok: false, reason: "rakuten_receipt_invalid_page:detail_page_view_url" };
+  }
+  if (normalizedPageAction === "detail_page_view") {
+    return { ok: false, reason: "rakuten_receipt_invalid_page:detail_page_view_state" };
+  }
+  if (normalizedTitle.includes("購入履歴詳細")) {
+    return { ok: false, reason: "rakuten_receipt_invalid_page:title_purchase_history_detail" };
+  }
+  if (normalizedMessageCode === "ORDER_INVOICE_DOWNLOAD" && normalizedPageAction === "detail_page_view") {
+    return { ok: false, reason: "rakuten_receipt_invalid_page:invoice_download_not_opened" };
+  }
+  return { ok: true, reason: null };
+}
+
+async function assertRakutenReceiptPage(page) {
+  const bodyText = await page.innerText("body").catch(() => "");
+  const byText = assessRakutenReceiptPageText(bodyText);
+  if (!byText.ok) {
+    throw new Error(byText.reason || "rakuten_receipt_invalid_page");
+  }
+
+  const pageTitle = await page.title().catch(() => "");
+  const pageUrl = page.url();
+  const state = await page
+    .evaluate(() => {
+      const s = window.__INITIAL_STATE__;
+      if (!s || typeof s !== "object") return null;
+      return {
+        pageAction: s.requestParams?.pageAction || "",
+        messageCode: s.orderData?.orderReceipt?.messageCode || "",
+      };
+    })
+    .catch(() => null);
+  const byContext = assessRakutenReceiptContext({
+    url: pageUrl,
+    title: pageTitle,
+    pageAction: state?.pageAction || "",
+    messageCode: state?.messageCode || "",
+  });
+  if (!byContext.ok) {
+    throw new Error(byContext.reason || "rakuten_receipt_invalid_page");
+  }
+}
+
+const confirmClickGuard = new WeakMap();
+
+async function findIssueConfirmButton(scope) {
+  const candidates = [
+    scope.locator("button, a", { hasText: /^この宛名で発行します$/ }).first(),
+    scope.locator("button, a", { hasText: /^OK$/ }).first(),
+    scope.locator("button, a", { hasText: /^はい$/ }).first(),
+    scope.locator("button, a", { hasText: /^発行する$/ }).first(),
+    scope.locator("button, a", { hasText: /^発行$/ }).first(),
+    scope.locator("input[type='button'][value='OK'], input[type='submit'][value='OK']").first(),
+    scope.locator("input[type='button'][value='はい'], input[type='submit'][value='はい']").first(),
+    scope.locator("input[type='button'][value*='この宛名で発行します'], input[type='submit'][value*='この宛名で発行します']").first(),
+    scope.locator("input[type='button'][value*='発行'], input[type='submit'][value*='発行']").first(),
+  ];
+  for (const locator of candidates) {
+    if ((await locator.count()) === 0) continue;
+    if (!(await locator.isVisible().catch(() => false))) continue;
+    return locator;
+  }
+  return null;
+}
+
+async function acceptIssueConfirm(page, timeoutMs = 1800) {
   const start = Date.now();
   const selectors = ["この宛名で発行します", "宛名の変更はできません", "一度発行したあとは"];
   while (Date.now() - start < timeoutMs) {
-    const dialog = page.locator("[role='dialog'], .modal, .MuiDialog-root").first();
-    if ((await dialog.count()) > 0 && (await dialog.isVisible().catch(() => false))) {
-      const btn = dialog
-        .locator("button, input[type='button'], input[type='submit'], a", { hasText: /OK|はい|発行/ })
-        .first();
-      if ((await btn.count()) > 0) {
-        await btn.click().catch(() => {});
-        await page.waitForTimeout(200);
+    const dialogs = page.locator(
+      "[role='dialog'], [aria-modal='true'], .modal, .MuiDialog-root, [class*='popup-container'][class*='show'], [class*='dialog--'][class*='show']"
+    );
+    const dialogCount = await dialogs.count();
+    for (let i = 0; i < dialogCount; i++) {
+      const dialog = dialogs.nth(i);
+      if (!(await dialog.isVisible().catch(() => false))) continue;
+      const dialogText = normalizeText(await dialog.innerText().catch(() => ""));
+      const hit = selectors.find((s) => dialogText.includes(s));
+      if (!hit) continue;
+      const confirmButton = await findIssueConfirmButton(dialog);
+      if (!confirmButton) continue;
+      const signature = `${page.url()}|dialog|${hit}`;
+      const guard = confirmClickGuard.get(page);
+      if (guard && guard.signature === signature && Date.now() - guard.at < 900) {
         return true;
       }
+      await confirmButton.click().catch(() => {});
+      confirmClickGuard.set(page, { signature, at: Date.now() });
+      await page.waitForTimeout(120);
+      return true;
     }
+
     for (const text of selectors) {
       const label = page.locator(`text=${text}`).first();
       if ((await label.count()) > 0 && (await label.isVisible().catch(() => false))) {
         const container = label.locator("xpath=ancestor::*[self::div or self::section or self::dialog][1]");
-        const ok = container
-          .locator("button, input[type='button'], input[type='submit'], a", { hasText: /OK|はい|発行/ })
-          .first();
-        if ((await ok.count()) > 0) {
-          await ok.click().catch(() => {});
-          await page.waitForTimeout(200);
-          return true;
-        }
-        const okGlobal = page
-          .locator("button, input[type='button'], input[type='submit'], a", { hasText: /OK|はい|発行/ })
-          .first();
-        if ((await okGlobal.count()) > 0) {
-          await okGlobal.click().catch(() => {});
-          await page.waitForTimeout(200);
-          return true;
+        const confirmButton = await findIssueConfirmButton(container);
+        if (confirmButton) {
+          const signature = `${page.url()}|${text}`;
+          const guard = confirmClickGuard.get(page);
+          if (!(guard && guard.signature === signature && Date.now() - guard.at < 900)) {
+            await confirmButton.click().catch(() => {});
+            confirmClickGuard.set(page, { signature, at: Date.now() });
+            await page.waitForTimeout(120);
+            return true;
+          }
         }
       }
     }
-    await page.waitForTimeout(200);
+
+    await page.waitForTimeout(80);
   }
   return false;
 }
@@ -374,11 +483,12 @@ async function isReceiptIssuePage(page) {
 async function waitForReceiptUrl(page, baseUrl, timeoutMs) {
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
-    await acceptIssueConfirm(page, 200);
-    if (await isReceiptIssuePage(page)) return page.url();
+    await acceptIssueConfirm(page, 250);
     const url = page.url();
-    if (url && url !== baseUrl) return url;
-    await page.waitForTimeout(500);
+    const normalized = normalizeReceiptUrlCandidate(url, baseUrl);
+    if (normalized) return normalized;
+    if (url && url !== baseUrl && (await isReceiptIssuePage(page))) return url;
+    await page.waitForTimeout(220);
   }
   return null;
 }
@@ -518,6 +628,218 @@ async function extractItemNamesFromDom(page) {
   return out.length ? out.join(" / ") : null;
 }
 
+function normalizeReceiptUrlCandidate(rawHref, baseUrl) {
+  const raw = String(rawHref || "").trim();
+  if (!raw) return null;
+  const lower = raw.toLowerCase();
+  if (raw === ":" || raw === "#" || lower.startsWith("javascript:") || lower === "void(0)") {
+    return null;
+  }
+  try {
+    if (raw.startsWith("http://") || raw.startsWith("https://")) {
+      if (raw === baseUrl) return null;
+      if (raw.includes("act=detail_page_view")) return null;
+      return raw;
+    }
+    if (raw.startsWith("/")) {
+      const resolved = new URL(raw, baseUrl).toString();
+      if (resolved === baseUrl) return null;
+      if (resolved.includes("act=detail_page_view")) return null;
+      return resolved;
+    }
+    const resolved = new URL(raw, baseUrl).toString();
+    if (!resolved || resolved === baseUrl) return null;
+    if (resolved.includes("act=detail_page_view")) return null;
+    return resolved;
+  } catch {
+    return null;
+  }
+}
+
+async function installWindowOpenCapture(page) {
+  await page
+    .evaluate(() => {
+      if (window.__axOpenCaptureInstalled) return;
+      const originalOpen = window.open ? window.open.bind(window) : null;
+      window.__axOpenCaptureInstalled = true;
+      window.__axOpenCalls = [];
+      window.open = function (...args) {
+        try {
+          const first = args.length > 0 ? String(args[0] || "") : "";
+          const target = args.length > 1 ? String(args[1] || "") : "";
+          window.__axOpenCalls.push({ url: first, target, at: Date.now() });
+        } catch {
+          // ignore
+        }
+        if (typeof originalOpen === "function") {
+          return originalOpen(...args);
+        }
+        return null;
+      };
+    })
+    .catch(() => {});
+}
+
+async function consumeCapturedWindowOpenUrl(page, baseUrl) {
+  const calls = await page
+    .evaluate(() => {
+      const list = Array.isArray(window.__axOpenCalls) ? window.__axOpenCalls.slice() : [];
+      window.__axOpenCalls = [];
+      return list;
+    })
+    .catch(() => []);
+  if (!Array.isArray(calls) || calls.length === 0) return null;
+
+  for (let i = calls.length - 1; i >= 0; i -= 1) {
+    const raw = String(calls[i]?.url || "").trim();
+    const normalized = normalizeReceiptUrlCandidate(raw, baseUrl);
+    if (!normalized) continue;
+    if (!/act=(order_invoice|order_receipt)/i.test(normalized)) continue;
+    return normalized;
+  }
+  return null;
+}
+
+function buildReceiptActionScript(rawHref, rawOnclick) {
+  const candidates = [rawHref, rawOnclick]
+    .map((v) => String(v || "").trim())
+    .filter(Boolean);
+  for (const candidate of candidates) {
+    if (candidate.toLowerCase().startsWith("javascript:")) {
+      const code = candidate.slice("javascript:".length).trim();
+      if (code) return code;
+      continue;
+    }
+    if (/postReceipt\s*\(/i.test(candidate)) {
+      return candidate;
+    }
+  }
+  return null;
+}
+
+async function invokeReceiptActionScript(page, actionScript) {
+  const script = String(actionScript || "").trim();
+  if (!script) return false;
+  return page
+    .evaluate((code) => {
+      try {
+        // Some Rakuten pages expose receipt actions as inline script snippets.
+        // Executing the same snippet is safer than introducing additional clicks.
+        const fn = new Function(code);
+        fn.call(window);
+        return true;
+      } catch {
+        try {
+          (0, eval)(code);
+          return true;
+        } catch {
+          return false;
+        }
+      }
+    }, script)
+    .catch(() => false);
+}
+
+function fileLooksLikePdf(filePath) {
+  try {
+    const fd = fs.openSync(filePath, "r");
+    try {
+      const buf = Buffer.alloc(4);
+      const read = fs.readSync(fd, buf, 0, 4, 0);
+      return read === 4 && buf.toString("ascii") === "%PDF";
+    } finally {
+      fs.closeSync(fd);
+    }
+  } catch {
+    return false;
+  }
+}
+
+async function capturePopupReceiptSource(popup, parentPage, baseUrl, timeoutMs, orderId = "unknown") {
+  const start = Date.now();
+  let lastCheckedBodyAt = 0;
+  while (Date.now() - start < timeoutMs) {
+    if (popup.isClosed()) return { page: null, url: null };
+
+    await acceptIssueConfirm(parentPage, 220).catch(() => {});
+    await acceptIssueConfirm(popup, 220).catch(() => {});
+
+    const normalizedUrl = normalizeReceiptUrlCandidate(popup.url(), baseUrl);
+    if (normalizedUrl) {
+      return { page: popup, url: normalizedUrl };
+    }
+
+    const now = Date.now();
+    if (now - lastCheckedBodyAt > 650) {
+      lastCheckedBodyAt = now;
+      const bodyText = await popup.innerText("body").catch(() => "");
+      if (bodyText) {
+        const checked = assessRakutenReceiptPageText(bodyText);
+        if (checked.ok) {
+          console.error(`[rakuten] order ${orderId} popup ready without navigated URL`);
+          return { page: popup, url: null };
+        }
+      }
+    }
+
+    await popup.waitForLoadState("domcontentloaded", { timeout: 800 }).catch(() => {});
+    await popup.waitForTimeout(140);
+  }
+  return { page: popup.isClosed() ? null : popup, url: null };
+}
+
+async function buildDirectReceiptUrl(page, primaryName, fallbackName) {
+  const context = await page
+    .evaluate(() => {
+      const state = window.__INITIAL_STATE__;
+      if (!state || typeof state !== "object") return null;
+      const requestParams = state.requestParams && typeof state.requestParams === "object" ? state.requestParams : {};
+      const orderData = state.orderData && typeof state.orderData === "object" ? state.orderData : {};
+      const flags = orderData.flags && typeof orderData.flags === "object" ? orderData.flags : {};
+      const orderReceipt = orderData.orderReceipt && typeof orderData.orderReceipt === "object" ? orderData.orderReceipt : {};
+      const invoiceStatus = orderReceipt.invoiceStatus && typeof orderReceipt.invoiceStatus === "object" ? orderReceipt.invoiceStatus : {};
+
+      const shopId =
+        requestParams.shopId != null ? String(requestParams.shopId) : orderData.shopId != null ? String(orderData.shopId) : "";
+      const orderNumber =
+        requestParams.orderNumber != null
+          ? String(requestParams.orderNumber)
+          : orderData.orderNumber != null
+            ? String(orderData.orderNumber)
+            : "";
+      const email = requestParams.email != null ? String(requestParams.email) : "";
+      return {
+        isGuestOrder: Boolean(flags.isGuestOrder),
+        isOrderInvoice: Boolean(flags.isOrderInvoice),
+        shopId,
+        orderNumber,
+        email,
+        receiptName: invoiceStatus.receiptName != null ? String(invoiceStatus.receiptName) : "",
+      };
+    })
+    .catch(() => null);
+
+  if (!context || !context.shopId || !context.orderNumber) return null;
+  const base = new URL("/purchase-history/", page.url()).toString();
+  const params = new URLSearchParams();
+  params.set("lang", "ja");
+  params.set("shop_id", context.shopId);
+  params.set("order_number", context.orderNumber);
+  params.set("act", context.isOrderInvoice ? "order_invoice" : "order_receipt");
+  params.set("page", context.isGuestOrder ? "search" : "myorder");
+  const nameKey = context.isOrderInvoice ? "receipt_name" : "name";
+  const preferredName =
+    (String(primaryName || "").trim() || String(fallbackName || "").trim() || String(context.receiptName || "").trim());
+  if (preferredName) {
+    params.set(nameKey, preferredName);
+  }
+  if (context.isGuestOrder && context.email) {
+    params.set("email", context.email);
+  }
+  params.set("from_member_detail_page", "true");
+  return `${base}?${params.toString()}`;
+}
+
 async function extractDetailLinks(page) {
   const links = page.locator("a[href]");
   const n = await links.count();
@@ -568,15 +890,29 @@ async function parseOrderDetail(page, fallbackYear, detailUrl) {
 }
 
 async function findReceiptAction(page) {
+  const primaryButtons = [
+    page.locator("button", { hasText: /^発行する$/ }).first(),
+    page.locator("button", { hasText: /領収書発行|発行/ }).first(),
+    page.locator("input[type='button'][value*='発行'], input[type='submit'][value*='発行']").first(),
+  ];
+  for (const btn of primaryButtons) {
+    if ((await btn.count()) > 0 && (await btn.isVisible().catch(() => false))) return btn;
+  }
+
   const section = page.locator("text=領収書").first();
   if ((await section.count()) > 0) {
     const container = section.locator("xpath=ancestor::*[self::section or self::div][1]");
-    const btn = container.locator("a,button", { hasText: /発行|表示|印刷|ダウンロード|領収書|請求書|購入明細/ }).first();
-    if ((await btn.count()) > 0) return btn;
+    const buttonLike = container
+      .locator(
+        "button, input[type='button'], input[type='submit'], a",
+        { hasText: /発行|表示|印刷|ダウンロード|領収書|請求書|購入明細/ }
+      )
+      .first();
+    if ((await buttonLike.count()) > 0) return buttonLike;
   }
   const labels = ["領収書", "領収書を発行", "領収書発行", "購入明細", "請求書", "発行する", "表示する", "印刷", "ダウンロード", "Receipt", "Invoice"];
   for (const label of labels) {
-    const a = page.locator("a,button", { hasText: label }).first();
+    const a = page.locator("button, input[type='button'], input[type='submit'], a", { hasText: label }).first();
     if ((await a.count()) > 0) return a;
   }
   return null;
@@ -683,6 +1019,7 @@ async function main() {
       let errorReason = null;
 
       try {
+        console.error(`[rakuten] order start detail=${detailUrl}`);
         const dateFromUrl = parseOrderDateFromUrl(detailUrl);
         if (dateFromUrl && !dateFromUrl.startsWith(ymPrefix)) {
           status = "out_of_month";
@@ -738,79 +1075,208 @@ async function main() {
           if (preApplied.name) {
             appliedName = preApplied.name;
           }
+          const allowDirectFallback = /books\.rakuten\.co\.jp/i.test(detailUrl || "");
+          const directReceiptUrl = allowDirectFallback
+            ? await buildDirectReceiptUrl(page, receiptName, receiptNameFallback)
+            : null;
+          if (directReceiptUrl) {
+            console.error(`[rakuten] order ${orderId || "unknown"} direct receipt url prepared`);
+          }
 
           const receiptAction = await findReceiptAction(page);
           if (!receiptAction) {
-            status = "no_receipt";
-            noReceipt += 1;
+            if (directReceiptUrl) {
+              receiptUrl = directReceiptUrl;
+              console.error(`[rakuten] order ${orderId || "unknown"} no receipt action, fallback to direct receipt url`);
+            } else {
+              status = "no_receipt";
+              noReceipt += 1;
+              console.error(`[rakuten] order ${orderId || "unknown"} no receipt action`);
+            }
           } else {
-            const receiptTimeoutMs = 20 * 1000;
-            let href = await receiptAction.getAttribute("href");
-            if (href && href.startsWith("javascript")) href = null;
-            receiptUrl = href ? (href.startsWith("/") ? new URL(href, page.url()).toString() : href) : null;
+            const receiptTimeoutMs = 30 * 1000;
+            const baseUrl = page.url();
+            const href = await receiptAction.getAttribute("href");
+            const onclick = await receiptAction.getAttribute("onclick");
+            const actionScript = buildReceiptActionScript(href, onclick);
+            receiptUrl = normalizeReceiptUrlCandidate(href, baseUrl);
+            let receiptPopup = null;
+            let receiptDownload = null;
+            console.error(
+              `[rakuten] order ${orderId || "unknown"} receipt action href=${String(href || "")} onclick=${String(
+                onclick || ""
+              )} normalized=${String(receiptUrl || "")}`
+            );
             if (!receiptUrl) {
-              const baseUrl = page.url();
-              const popupPromise = page.waitForEvent("popup", { timeout: 8000 }).catch(() => null);
+              let popupCaptured = null;
+              let downloadCaptured = null;
+              await installWindowOpenCapture(page);
+              page
+                .waitForEvent("popup", { timeout: receiptTimeoutMs })
+                .then((p) => {
+                  popupCaptured = p;
+                  return p;
+                })
+                .catch(() => null);
+              context
+                .waitForEvent("download", { timeout: receiptTimeoutMs })
+                .then((d) => {
+                  downloadCaptured = d;
+                  return d;
+                })
+                .catch(() => null);
+
               await receiptAction.click().catch(() => {});
-              await acceptIssueConfirm(page, 1200);
-              const popup = await popupPromise;
-              if (popup) {
-                await popup.waitForLoadState("domcontentloaded", { timeout: 15000 }).catch(() => {});
-                receiptUrl = popup.url();
-                await popup.close().catch(() => {});
-              } else {
-                await page.waitForTimeout(300);
-                receiptUrl = (await isReceiptIssuePage(page)) ? page.url() : page.url();
+              console.error(`[rakuten] order ${orderId || "unknown"} clicked receipt action on detail page`);
+              const primaryConfirmed = await acceptIssueConfirm(page, 5000);
+              console.error(`[rakuten] order ${orderId || "unknown"} confirm_primary=${String(primaryConfirmed)}`);
+              const openCapturedPrimary = await consumeCapturedWindowOpenUrl(page, baseUrl);
+              if (openCapturedPrimary && !receiptUrl) {
+                receiptUrl = openCapturedPrimary;
+                console.error(`[rakuten] order ${orderId || "unknown"} captured window.open url=${receiptUrl}`);
               }
-              if (!receiptUrl || receiptUrl === baseUrl) {
-                receiptUrl = await waitForReceiptUrl(page, baseUrl, receiptTimeoutMs);
+
+              if (!primaryConfirmed && actionScript) {
+                const invoked = await invokeReceiptActionScript(page, actionScript);
+                console.error(`[rakuten] order ${orderId || "unknown"} action_script_invoked=${String(invoked)}`);
+                if (invoked) {
+                  await acceptIssueConfirm(page, 4000);
+                  const openCapturedInvoked = await consumeCapturedWindowOpenUrl(page, baseUrl);
+                  if (openCapturedInvoked && !receiptUrl) {
+                    receiptUrl = openCapturedInvoked;
+                    console.error(`[rakuten] order ${orderId || "unknown"} captured window.open url after invoke=${receiptUrl}`);
+                  }
+                }
+              }
+
+              const startAt = Date.now();
+              while (Date.now() - startAt < receiptTimeoutMs) {
+                if (!receiptPopup && popupCaptured) {
+                  receiptPopup = popupCaptured;
+                }
+                if (!receiptDownload && downloadCaptured) {
+                  receiptDownload = downloadCaptured;
+                  console.error(`[rakuten] order ${orderId || "unknown"} download captured`);
+                }
+
+                if (receiptPopup && !receiptPopup.isClosed()) {
+                  const source = await capturePopupReceiptSource(receiptPopup, page, baseUrl, 1000, orderId || "unknown");
+                  receiptPopup = source.page || receiptPopup;
+                  receiptUrl = source.url || receiptUrl;
+                  const popupCurrentUrl = receiptPopup && !receiptPopup.isClosed() ? receiptPopup.url() : "closed";
+                  console.error(
+                    `[rakuten] order ${orderId || "unknown"} popup url=${popupCurrentUrl} normalized=${String(receiptUrl || "")}`
+                  );
+                }
+
+                if (!receiptUrl) {
+                  const maybe = normalizeReceiptUrlCandidate(page.url(), baseUrl);
+                  if (maybe) {
+                    receiptUrl = maybe;
+                  }
+                }
+                if (!receiptUrl) {
+                  const openCapturedLoop = await consumeCapturedWindowOpenUrl(page, baseUrl);
+                  if (openCapturedLoop) {
+                    receiptUrl = openCapturedLoop;
+                    console.error(`[rakuten] order ${orderId || "unknown"} captured window.open url in loop=${receiptUrl}`);
+                  }
+                }
+
+                if (receiptUrl || receiptDownload) {
+                  break;
+                }
+                await acceptIssueConfirm(page, 260);
+                await page.waitForTimeout(180);
+              }
+
+              const hasOpenPopup = Boolean(receiptPopup && !receiptPopup.isClosed());
+              if (!receiptUrl && !hasOpenPopup && !receiptDownload) {
+                receiptUrl = await waitForReceiptUrl(page, baseUrl, 5000);
+                console.error(`[rakuten] order ${orderId || "unknown"} waitForReceiptUrl result=${String(receiptUrl || "")}`);
+              }
+
+              if (!receiptUrl && directReceiptUrl) {
+                receiptUrl = directReceiptUrl;
+                console.error(`[rakuten] order ${orderId || "unknown"} fallback to direct receipt url`);
               }
             }
 
-            if (!receiptUrl) {
+            const hasReceiptSource = Boolean(receiptUrl || (receiptPopup && !receiptPopup.isClosed()) || receiptDownload);
+            if (!hasReceiptSource) {
               status = "error";
               include = false;
-              errorReason = "receipt_timeout";
-              console.error(`[rakuten] receipt timeout: ${orderId || "unknown"}`);
+              const currentUrl = page.url();
+              errorReason = `receipt_timeout (detail_url=${detailUrl}, current_url=${currentUrl})`;
+              console.error(`[rakuten] receipt timeout: ${orderId || "unknown"} detail=${detailUrl} current=${currentUrl}`);
+              if (debugDir) {
+                await writeDebug(page, debugDir, `order_${safeFilePart(orderId || "unknown")}_timeout`);
+              }
             } else {
-            const ymd = orderDate || `${year}-??-??`;
-            const total = totalYen ?? "unknown";
-            const fileName = `${safeFilePart(ymd)}_rakuten_${safeFilePart(orderId || "unknown")}_${safeFilePart(total)}.pdf`;
-            pdfPath = path.join(outPdfsDir, fileName);
+              const ymd = orderDate || `${year}-??-??`;
+              const total = totalYen ?? "unknown";
+              const fileName = `${safeFilePart(ymd)}_rakuten_${safeFilePart(orderId || "unknown")}_${safeFilePart(total)}.pdf`;
+              pdfPath = path.join(outPdfsDir, fileName);
 
-            const pdfPage = pdfContext === context ? page : await pdfContext.newPage();
-            try {
-              await withTimeout(
-                (async () => {
-                  if (pdfContext !== context) {
-                    await pdfPage.goto(receiptUrl, { waitUntil: "domcontentloaded", timeout: 30000 });
-                    await pdfPage.waitForLoadState("networkidle", { timeout: 15000 }).catch(() => {});
+              try {
+                if (receiptDownload) {
+                  await withTimeout(
+                    (async () => {
+                      await receiptDownload.saveAs(pdfPath);
+                    })(),
+                    receiptTimeoutMs,
+                    "receipt_download_save"
+                  );
+                  if (!fileLooksLikePdf(pdfPath)) {
+                    throw new Error("rakuten_downloaded_file_not_pdf");
                   }
-                  await ensureAuthenticated(pdfPage, authHandoff, "Rakuten receipt page");
-                  await acceptIssueConfirm(pdfPage, 1200);
-                  if (totalYen == null) {
-                    const t = await extractTotalFromText(await pdfPage.innerText("body").catch(() => ""));
-                    if (t != null) totalYen = t;
+                } else {
+                  const usingPopup = Boolean(receiptPopup && !receiptPopup.isClosed());
+                  const needsNewPage = !usingPopup && pdfContext !== context;
+                  const pdfPage = usingPopup ? receiptPopup : needsNewPage ? await pdfContext.newPage() : page;
+                  try {
+                    await withTimeout(
+                      (async () => {
+                        if (receiptUrl) {
+                          const shouldNavigate = !usingPopup || pdfPage.url() !== receiptUrl;
+                          if (shouldNavigate) {
+                            await pdfPage.goto(receiptUrl, { waitUntil: "domcontentloaded", timeout: 30000 });
+                            await pdfPage.waitForLoadState("networkidle", { timeout: 15000 }).catch(() => {});
+                          }
+                        }
+                        await ensureAuthenticated(pdfPage, authHandoff, "Rakuten receipt page");
+                        await acceptIssueConfirm(pdfPage, 1200);
+                        await assertRakutenReceiptPage(pdfPage);
+                        if (totalYen == null) {
+                          const t = await extractTotalFromText(await pdfPage.innerText("body").catch(() => ""));
+                          if (t != null) totalYen = t;
+                        }
+                        let nameResult = await applyReceiptNameWithFallback(pdfPage, receiptName, receiptNameFallback);
+                        const locked = await isReceiptNameLocked(pdfPage);
+                        if (!nameResult.applied && receiptName && authHandoff && !locked) {
+                          await promptUserReceiptName(pdfPage);
+                          const manualValue = await readReceiptNameValue(pdfPage);
+                          if (manualValue) nameResult = { applied: true, name: manualValue };
+                        }
+                        receiptNameApplied = Boolean(nameResult.applied);
+                        if (nameResult.name) appliedName = nameResult.name;
+                        await acceptIssueConfirm(pdfPage, 1200);
+                        await assertRakutenReceiptPage(pdfPage);
+                        await saveReceiptPdf(pdfPage, pdfPath);
+                      })(),
+                      receiptTimeoutMs,
+                      "receipt_pdf"
+                    );
+                  } finally {
+                    if (needsNewPage) await pdfPage.close().catch(() => {});
                   }
-                  let nameResult = await applyReceiptNameWithFallback(pdfPage, receiptName, receiptNameFallback);
-                  const locked = await isReceiptNameLocked(pdfPage);
-                  if (!nameResult.applied && receiptName && authHandoff && !locked) {
-                    await promptUserReceiptName(pdfPage);
-                    const manualValue = await readReceiptNameValue(pdfPage);
-                    if (manualValue) nameResult = { applied: true, name: manualValue };
-                  }
-                  receiptNameApplied = Boolean(nameResult.applied);
-                  if (nameResult.name) appliedName = nameResult.name;
-                  await acceptIssueConfirm(pdfPage, 1200);
-                  await saveReceiptPdf(pdfPage, pdfPath);
-                })(),
-                receiptTimeoutMs,
-                "receipt_pdf"
-              );
-            } finally {
-              if (pdfContext !== context) await pdfPage.close().catch(() => {});
-            }
-            pdfSaved += 1;
+                }
+                pdfSaved += 1;
+              } finally {
+                if (receiptPopup && !receiptPopup.isClosed()) {
+                  await receiptPopup.close().catch(() => {});
+                }
+              }
             }
           }
         } else {

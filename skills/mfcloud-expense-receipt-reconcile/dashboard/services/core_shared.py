@@ -22,7 +22,7 @@ from common import (  # noqa: E402
 )
 
 YM_RE = re.compile(r"^\d{4}-\d{2}$")
-RUN_ID_RE = re.compile(r"^run_\d{8}_\d{6}$")
+RUN_ID_RE = re.compile(r"^run_\d{8}_\d{6}(?:_\d{6})?$")
 ORDER_ID_RE = re.compile(r"^[0-9A-Za-z-]+$")
 SAFE_NAME_RE = re.compile(r"^[^/\\\\]+$")
 

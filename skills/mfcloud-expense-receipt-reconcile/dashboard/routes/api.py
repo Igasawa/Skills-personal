@@ -40,7 +40,7 @@ def create_api_router() -> APIRouter:
         ym = core._safe_ym(ym)
         year, month = core._split_ym(ym)
         state = core._workflow_state_for_ym(year, month)
-        return JSONResponse(state)
+        return JSONResponse(state, headers={"Cache-Control": "no-store"})
 
     @router.get("/api/exclusions/{ym}")
     def api_get_exclusions(ym: str) -> JSONResponse:
@@ -329,6 +329,6 @@ def create_api_router() -> APIRouter:
 
         log_path = Path(meta.get("log_path") or "")
         log_text = core._tail_text(log_path, max_bytes=8000)
-        return JSONResponse({"run": meta, "log_tail": log_text})
+        return JSONResponse({"run": meta, "log_tail": log_text}, headers={"Cache-Control": "no-store"})
 
     return router

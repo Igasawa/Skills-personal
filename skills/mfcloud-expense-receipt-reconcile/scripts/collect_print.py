@@ -5,8 +5,6 @@ import argparse
 import json
 from pathlib import Path
 import re
-import shutil
-import subprocess
 import sys
 from typing import Any
 
@@ -25,6 +23,7 @@ from common import (  # noqa: E402
     ym_default as _ym_default,
     ym_to_dirname as _ym_to_dirname,
 )
+from run_core_playwright import run_node_playwright_script as _run_node_playwright_script  # noqa: E402
 
 
 def _read_json_input(path: str | None) -> dict[str, Any]:
@@ -37,37 +36,6 @@ def _read_json_input(path: str | None) -> dict[str, Any]:
             with open(default_path, "r", encoding="utf-8-sig") as f:
                 return json.load(f)
     return {}
-
-
-def _run_node_playwright_script(*, script_path: Path, args: list[str], cwd: Path) -> dict[str, Any]:
-    npx = None
-    for name in ("npx.cmd", "npx.exe", "npx"):
-        npx = shutil.which(name)
-        if npx:
-            break
-    if not npx:
-        raise FileNotFoundError("npx not found in PATH. Please install Node.js/npm and ensure npx is available.")
-    cmd = [npx, "--yes", "-p", "playwright", "node", str(script_path), *args]
-    res = subprocess.run(
-        cmd,
-        cwd=str(cwd),
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-        check=False,
-    )
-    if res.returncode != 0:
-        raise RuntimeError(
-            "Node script failed:\n"
-            f"cmd: {cmd}\n"
-            f"exit: {res.returncode}\n"
-            f"stdout:\n{res.stdout}\n"
-            f"stderr:\n{res.stderr}\n"
-        )
-    try:
-        return json.loads(res.stdout) if res.stdout.strip() else {}
-    except Exception as e:  # noqa: BLE001
-        raise RuntimeError(f"Node script returned non-JSON stdout:\n{res.stdout}") from e
 
 
 def _parse_date_from_filename(name: str) -> tuple[int, int] | None:

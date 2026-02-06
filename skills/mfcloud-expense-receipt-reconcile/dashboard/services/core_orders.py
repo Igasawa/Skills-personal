@@ -37,6 +37,15 @@ NOISE_TOKENS = [
 ]
 
 
+def _safe_external_url(value: Any) -> str | None:
+    url = str(value or "").strip()
+    if not url:
+        return None
+    if url.startswith("https://") or url.startswith("http://"):
+        return url
+    return None
+
+
 def _compact_mf_summary(vendor: str, memo: str) -> str:
     raw = f"{vendor} {memo}".strip()
     raw = raw.replace("\t", " ").replace("\r", " ").replace("\n", " ")
@@ -86,6 +95,31 @@ def _write_workflow(reports_dir: Path, data: dict[str, Any]) -> None:
     _write_json(_workflow_path(reports_dir), data)
 
 
+def _resolve_pdf_path_from_order(root: Path, source: str, name_or_path: Any) -> Path | None:
+    resolved = _resolve_pdf_path(root, source, name_or_path)
+    if resolved:
+        return resolved
+    if not name_or_path:
+        return None
+    base_name = Path(str(name_or_path)).name
+    if not base_name:
+        return None
+    return _resolve_pdf_path(root, source, base_name)
+
+
+def _is_low_confidence_item_name(value: Any) -> bool:
+    text = str(value or "").strip()
+    if not text:
+        return True
+    if re.match(r"^\d{4}[-/]", text):
+        return True
+    if re.match(r"^\d{4}\D+\d{1,2}\D+\d{1,2}", text):
+        return True
+    if re.match(r"^\d{4}.*?/\s*[\u00A5\uFFE5]?\d", text):
+        return True
+    return False
+
+
 def _collect_orders(root: Path, ym: str, exclusions: set[tuple[str, str]]) -> list[dict[str, Any]]:
     raw: list[dict[str, Any]] = []
     for source in ("amazon", "rakuten"):
@@ -98,6 +132,9 @@ def _collect_orders(root: Path, ym: str, exclusions: set[tuple[str, str]]) -> li
             status = str(obj.get("status") or "").strip() or "ok"
             total = obj.get("total_yen") if obj.get("total_yen") is not None else obj.get("total")
             item_name = str(obj.get("item_name") or "").strip() or None
+            raw_pdf_path = obj.get("pdf_path")
+            pdf_path = _resolve_pdf_path_from_order(root, source, raw_pdf_path)
+            pdf_name = pdf_path.name if pdf_path else None
             raw.append(
                 {
                     "source": source,
@@ -107,7 +144,10 @@ def _collect_orders(root: Path, ym: str, exclusions: set[tuple[str, str]]) -> li
                     "status": status,
                     "item_name": item_name,
                     "include_flag": obj.get("include"),
-                    "has_pdf": bool(obj.get("pdf_path")),
+                    "has_pdf": bool(pdf_path),
+                    "pdf_name": pdf_name,
+                    "detail_url": _safe_external_url(obj.get("detail_url")),
+                    "receipt_url": _safe_external_url(obj.get("receipt_url")),
                 }
             )
 
@@ -131,17 +171,23 @@ def _collect_orders(root: Path, ym: str, exclusions: set[tuple[str, str]]) -> li
             base["total_yen"] = other["total_yen"]
         if not base.get("item_name") and other.get("item_name"):
             base["item_name"] = other["item_name"]
-        elif base.get("item_name") and other.get("item_name") and base.get("item_name") != other.get("item_name"):
-            names: list[str] = []
-            for name in (base.get("item_name"), other.get("item_name")):
-                if name and name not in names:
-                    names.append(name)
-            base["item_name"] = " / ".join(names[:2])
+        elif (
+            _is_low_confidence_item_name(base.get("item_name"))
+            and not _is_low_confidence_item_name(other.get("item_name"))
+            and (other.get("has_pdf") or str(other.get("status") or "") == "ok")
+        ):
+            base["item_name"] = other.get("item_name")
         if base.get("status") in {"unknown_date", "error"} and other.get("status") not in {"unknown_date", "error"}:
             base["status"] = other["status"]
         base["has_pdf"] = base.get("has_pdf") or other.get("has_pdf")
+        if not base.get("pdf_name") and other.get("pdf_name"):
+            base["pdf_name"] = other.get("pdf_name")
         if base.get("include_flag") is None and other.get("include_flag") is not None:
             base["include_flag"] = other.get("include_flag")
+        if not base.get("detail_url") and other.get("detail_url"):
+            base["detail_url"] = other.get("detail_url")
+        if not base.get("receipt_url") and other.get("receipt_url"):
+            base["receipt_url"] = other.get("receipt_url")
         return base
 
     merged: dict[tuple[str, str], dict[str, Any]] = {}
@@ -168,6 +214,13 @@ def _collect_orders(root: Path, ym: str, exclusions: set[tuple[str, str]]) -> li
         default_excluded = rec.get("include_flag") is False and not auto_excluded
         excluded = auto_excluded or default_excluded or (order_id and (rec.get("source"), order_id) in exclusions)
         can_toggle = bool(order_id) and not auto_excluded
+        item_name = rec.get("item_name")
+        if _is_low_confidence_item_name(item_name):
+            item_name = None
+        status_label = STATUS_LABELS.get(status, status)
+        has_pdf = bool(rec.get("has_pdf"))
+        if status == "ok" and not has_pdf:
+            status_label = "\u8981\u518d\u53d6\u5f97\uff08PDF\u306a\u3057\uff09"
         out.append(
             {
                 "source": rec.get("source"),
@@ -175,10 +228,13 @@ def _collect_orders(root: Path, ym: str, exclusions: set[tuple[str, str]]) -> li
                 "order_id": order_id,
                 "order_date": rec.get("order_date"),
                 "total_yen": rec.get("total_yen"),
-                "item_name": rec.get("item_name"),
+                "item_name": item_name,
                 "status": status,
-                "status_label": STATUS_LABELS.get(status, status),
-                "has_pdf": bool(rec.get("has_pdf")),
+                "status_label": status_label,
+                "has_pdf": has_pdf,
+                "pdf_name": rec.get("pdf_name"),
+                "detail_url": rec.get("detail_url"),
+                "receipt_url": rec.get("receipt_url"),
                 "excluded": excluded,
                 "auto_excluded": auto_excluded,
                 "can_toggle": can_toggle,
@@ -235,7 +291,7 @@ def _collect_excluded_pdfs(root: Path, ym: str, exclusions: set[tuple[str, str]]
             excluded = auto_excluded or default_excluded or (order_id and (source, order_id) in exclusions)
             if not excluded:
                 continue
-            pdf_path = _resolve_pdf_path(root, source, obj.get("pdf_path"))
+            pdf_path = _resolve_pdf_path_from_order(root, source, obj.get("pdf_path"))
             if not pdf_path:
                 continue
             key = (source, order_id or "", pdf_path.name)

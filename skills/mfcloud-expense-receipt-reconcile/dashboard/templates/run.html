@@ -122,6 +122,7 @@
                 <th>商品名</th>
                 <th>状態</th>
                 <th>PDF</th>
+                <th>ショートカット</th>
               </tr>
             </thead>
             <tbody>
@@ -146,7 +147,22 @@
                 <td>{{ order.total_yen or "-" }}</td>
                 <td>{{ order.item_name or "-" }}</td>
                 <td>{{ order.status_label }}</td>
-                <td>{% if order.has_pdf %}あり{% else %}なし{% endif %}</td>
+                <td>
+                  {% if order.has_pdf and order.pdf_name %}
+                  <a href="/files/{{ ym }}/pdf/{{ order.source }}/{{ order.pdf_name }}" target="_blank" rel="noopener">プレビュー</a>
+                  {% else %}
+                  なし
+                  {% endif %}
+                </td>
+                <td>
+                  {% if order.receipt_url %}
+                  <a href="{{ order.receipt_url }}" target="_blank" rel="noopener">領収書ページ</a>
+                  {% elif order.detail_url %}
+                  <a href="{{ order.detail_url }}" target="_blank" rel="noopener">注文詳細</a>
+                  {% else %}
+                  なし
+                  {% endif %}
+                </td>
               </tr>
               {% endfor %}
             </tbody>

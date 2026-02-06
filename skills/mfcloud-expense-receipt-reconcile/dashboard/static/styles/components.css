@@ -36,6 +36,16 @@
   border-color: var(--accent);
 }
 
+.secondary.disabled,
+.secondary[aria-disabled="true"] {
+  opacity: 0.5;
+  background: #f8f2e9;
+  border-color: #e2d6c8;
+  color: #857a6f;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
 .primary {
   background: var(--primary);
   color: #fff;
@@ -49,6 +59,11 @@
 
 .primary:hover {
   background: var(--primary-dark);
+}
+
+.primary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 .danger {
@@ -211,8 +226,10 @@ select {
   padding: 16px;
   border-radius: 14px;
   min-height: 200px;
+  max-height: min(60vh, 520px);
   overflow: auto;
   font-size: 12px;
+  line-height: 1.45;
   white-space: pre-wrap;
 }
 

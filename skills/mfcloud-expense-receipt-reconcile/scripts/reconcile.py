@@ -368,7 +368,7 @@ def _write_csv(path: Path, rows: list[dict[str, Any]]) -> None:
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="Reconcile MF expenses with Amazon/Rakuten receipt PDFs")
-    ap.add_argument("--amazon-orders-jsonl", required=True)
+    ap.add_argument("--amazon-orders-jsonl")
     ap.add_argument("--rakuten-orders-jsonl")
     ap.add_argument("--exclude-orders-json", help="path to exclude orders json")
     ap.add_argument("--mf-expenses-jsonl", required=True)
@@ -380,7 +380,10 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--max-candidates-per-mf", type=int, default=5)
     args = ap.parse_args(argv)
 
-    amazon_raw = _read_jsonl(Path(args.amazon_orders_jsonl), required=True, strict=True)
+    if not args.amazon_orders_jsonl and not args.rakuten_orders_jsonl:
+        raise ValueError("Either --amazon-orders-jsonl or --rakuten-orders-jsonl is required.")
+
+    amazon_raw = _read_jsonl(Path(args.amazon_orders_jsonl), required=True, strict=True) if args.amazon_orders_jsonl else []
     rakuten_raw = _read_jsonl(Path(args.rakuten_orders_jsonl), required=True, strict=True) if args.rakuten_orders_jsonl else []
     exclusions = _load_exclusions(args.exclude_orders_json)
     if exclusions:

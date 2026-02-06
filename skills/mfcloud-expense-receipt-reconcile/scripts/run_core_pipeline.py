@@ -254,16 +254,19 @@ def execute_pipeline(
     rec_json: dict[str, Any] = {}
     if not args.skip_reconcile:
         print("[run] Reconcile start", flush=True)
-        if not amazon_orders_jsonl.exists():
-            raise RuntimeError("Missing amazon/orders.jsonl. Run Amazon download or provide existing data.")
+        amazon_orders_exists = amazon_orders_jsonl.exists()
+        rakuten_orders_exists = rakuten_orders_jsonl.exists()
+        if not amazon_orders_exists and not rakuten_orders_exists:
+            raise RuntimeError(
+                "Missing orders.jsonl for both amazon/rakuten. "
+                "Run at least one receipt download+print step before reconcile."
+            )
         if not mf_expenses_jsonl.exists():
             raise RuntimeError("Missing mfcloud/expenses.jsonl. Run MF extract or provide existing data.")
 
         rec_cmd = [
             sys.executable,
             str(SCRIPT_DIR / "reconcile.py"),
-            "--amazon-orders-jsonl",
-            str(amazon_orders_jsonl),
             "--mf-expenses-jsonl",
             str(mf_expenses_jsonl),
             "--out-json",
@@ -279,7 +282,9 @@ def execute_pipeline(
             "--max-candidates-per-mf",
             str(rc.max_candidates_per_mf),
         ]
-        if rakuten_orders_jsonl.exists():
+        if amazon_orders_exists:
+            rec_cmd += ["--amazon-orders-jsonl", str(amazon_orders_jsonl)]
+        if rakuten_orders_exists:
             rec_cmd += ["--rakuten-orders-jsonl", str(rakuten_orders_jsonl)]
         if exclude_orders_json.exists():
             rec_cmd += ["--exclude-orders-json", str(exclude_orders_json)]

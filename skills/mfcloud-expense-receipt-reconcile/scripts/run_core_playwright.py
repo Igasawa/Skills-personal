@@ -12,6 +12,50 @@ import threading
 from typing import Any
 
 
+def _which_any(candidates: tuple[str, ...]) -> str | None:
+    for name in candidates:
+        path = shutil.which(name)
+        if path:
+            return path
+    return None
+
+
+def _find_package_root(start_dir: Path) -> Path:
+    current = start_dir.resolve()
+    for candidate in (current, *current.parents):
+        if (candidate / "package.json").exists():
+            return candidate
+    return current
+
+
+def _ensure_playwright_installed(*, package_root: Path, env: dict[str, str]) -> None:
+    if (package_root / "node_modules" / "playwright" / "package.json").exists():
+        return
+    npm = _which_any(("npm.cmd", "npm.exe", "npm"))
+    if not npm:
+        raise FileNotFoundError("npm not found in PATH. Please install Node.js/npm.")
+    install_cmd = [npm, "install", "--no-audit", "--no-fund"]
+    res = subprocess.run(
+        install_cmd,
+        cwd=str(package_root),
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        check=False,
+    )
+    if res.returncode != 0:
+        raise RuntimeError(
+            "Failed to install Node dependencies:\n"
+            f"cmd: {install_cmd}\n"
+            f"exit: {res.returncode}\n"
+            f"stdout:\n{res.stdout}\n"
+            f"stderr:\n{res.stderr}\n"
+        )
+    if not (package_root / "node_modules" / "playwright" / "package.json").exists():
+        raise RuntimeError("playwright package is still missing after npm install.")
+
+
 def run_node_playwright_script(
     *,
     script_path: Path,
@@ -19,20 +63,18 @@ def run_node_playwright_script(
     cwd: Path,
     env: dict[str, str] | None = None,
 ) -> dict[str, Any]:
-    npx = None
-    for name in ("npx.cmd", "npx.exe", "npx"):
-        npx = shutil.which(name)
-        if npx:
-            break
-    if not npx:
-        raise FileNotFoundError("npx not found in PATH. Please install Node.js/npm and ensure npx is available.")
-    cmd = [npx, "--yes", "-p", "playwright", "node", str(script_path), *args]
     merged_env = os.environ.copy()
     if env:
         merged_env.update(env)
+    package_root = _find_package_root(cwd)
+    _ensure_playwright_installed(package_root=package_root, env=merged_env)
+    node = _which_any(("node.exe", "node"))
+    if not node:
+        raise FileNotFoundError("node not found in PATH. Please install Node.js.")
+    cmd = [node, str(script_path), *args]
     proc = subprocess.Popen(
         cmd,
-        cwd=str(cwd),
+        cwd=str(package_root),
         env=merged_env,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,

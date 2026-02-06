@@ -46,6 +46,7 @@
                   <span class="subvalue">A {{ item.amazon_pdf_count }} / R {{ item.rakuten_pdf_count }}</span>
                 </div>
               </div>
+              <div class="muted">成果物を見る</div>
             </a>
             {% endfor %}
           </div>
@@ -67,6 +68,9 @@
               <div>Run ID: {{ latest_job.run_id }}</div>
               <div>対象: {{ latest_job.params.year }}-{{ "%02d"|format(latest_job.params.month) }}</div>
             </div>
+            {% if latest_job_ym %}
+            <a class="secondary" href="/runs/{{ latest_job_ym }}">成果物を見る</a>
+            {% endif %}
             {% if running_job %}
             <button type="button" id="stop-run" class="danger" data-run-id="{{ running_job.run_id }}">停止する</button>
             {% endif %}
@@ -106,8 +110,8 @@
               <div class="muted">このフォームの年月・URLがウィザード実行に使われます。</div>
             </div>
             <p class="muted">
-              Amazon/楽天の領収書取得→除外判断→印刷→MF抽出＋突合の順で進めてください。<br />
-              MF抽出＋突合は、Amazon/楽天の除外確定後に実行してください。
+              Amazonと楽天は並行で進められます（各サイト内では「取得→除外判断→印刷」の順）。<br />
+              MF抽出＋突合は、Amazonまたは楽天の除外判断＋印刷が完了した後に実行してください。
             </p>
           </form>
         </div>
@@ -128,7 +132,7 @@
 
       <section class="card" id="wizard" data-ym="">
         <h2>経費精算ステップウィザード</h2>
-        <p class="muted">上から順にボタンを押すと作業が完遂します。</p>
+        <p class="muted">基本は上から順で、Amazon/楽天の枝は並行実行できます。</p>
         <div id="wizard-next" class="next-step hidden" aria-live="polite"></div>
         <div class="wizard-steps">
           <div class="wizard-step" data-step-id="preflight">
@@ -196,39 +200,6 @@
         </div>
       </section>
 
-      {% if latest_artifact %}
-      <section class="card">
-        <h2>成果物ダウンロード</h2>
-        <div class="download-grid">
-          <div class="download-card">
-            <a href="/files/{{ latest_artifact.ym }}/missing_csv" class="download">未添付候補CSV</a>
-            <div class="muted">MF未添付候補の一覧</div>
-          </div>
-          <div class="download-card">
-            <a href="/files/{{ latest_artifact.ym }}/missing_json" class="download">未添付候補JSON</a>
-            <div class="muted">未添付候補の詳細データ</div>
-          </div>
-          <div class="download-card">
-            <a href="/files/{{ latest_artifact.ym }}/monthly_thread" class="download">月次メモ</a>
-            <div class="muted">月次の整理メモ</div>
-          </div>
-          <div class="download-card">
-            <a href="/files/{{ latest_artifact.ym }}/run_config" class="download">実行設定</a>
-            <div class="muted">実行に使ったURLなど</div>
-          </div>
-          <div class="download-card">
-            <a href="/files/{{ latest_artifact.ym }}/audit_log" class="download">監査ログ(JSONL)</a>
-            <div class="muted">実行・確認・印刷の操作履歴</div>
-          </div>
-          {% if latest_artifact.has_reports %}
-          <div class="download-card">
-            <a href="/files/{{ latest_artifact.ym }}/print_script" class="download">印刷スクリプト</a>
-            <div class="muted">印刷用PowerShell</div>
-          </div>
-          {% endif %}
-        </div>
-      </section>
-      {% endif %}
     </div>
 
     <div id="toast" class="toast" aria-live="polite"></div>

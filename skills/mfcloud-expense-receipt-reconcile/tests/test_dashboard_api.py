@@ -123,6 +123,23 @@ def test_api_confirm_and_print_success_write_audit(monkeypatch: pytest.MonkeyPat
     assert ("print", "success", "amazon") in actions
 
 
+def test_api_rakuten_confirm_allowed_without_amazon_print(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    client = _create_client(monkeypatch, tmp_path)
+    ym = "2026-01"
+    _write_json(_reports_dir(tmp_path, ym) / "preflight.json", {"status": "success", "year": 2026, "month": 1})
+    _touch(_artifact_root(tmp_path) / ym / "rakuten" / "orders.jsonl")
+
+    res_confirm = client.post(
+        "/api/exclusions/2026-01",
+        json={"source": "rakuten", "exclude": [{"source": "rakuten", "order_id": "R-1"}]},
+    )
+    assert res_confirm.status_code == 200
+    assert res_confirm.json()["status"] == "ok"
+
+    workflow = json.loads((_reports_dir(tmp_path, ym) / "workflow.json").read_text(encoding="utf-8"))
+    assert (workflow.get("rakuten") or {}).get("confirmed_at")
+
+
 def test_api_stop_run_writes_audit(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     client = _create_client(monkeypatch, tmp_path)
     run_id = "run_20260206_120000"

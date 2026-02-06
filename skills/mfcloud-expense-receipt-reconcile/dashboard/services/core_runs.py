@@ -125,30 +125,37 @@ def _workflow_state_for_ym(year: int, month: int) -> dict[str, Any]:
     rakuten_confirmed = bool((workflow.get("rakuten") or {}).get("confirmed_at"))
     rakuten_printed = bool((workflow.get("rakuten") or {}).get("printed_at"))
     mf_reconciled = (reports_dir / "missing_evidence_candidates.json").exists()
+    amazon_done = amazon_confirmed and amazon_printed
+    rakuten_done = rakuten_confirmed and rakuten_printed
 
     next_step = "done"
     if not preflight_done:
         next_step = "preflight"
+    elif mf_reconciled:
+        next_step = "done"
+    elif amazon_done or rakuten_done:
+        next_step = "mf_reconcile"
+    elif amazon_downloaded and not amazon_done:
+        next_step = "amazon_decide_print"
+    elif rakuten_downloaded and not rakuten_done:
+        next_step = "rakuten_decide_print"
+    elif not amazon_downloaded and not rakuten_downloaded:
+        next_step = "amazon_or_rakuten_download"
     elif not amazon_downloaded:
         next_step = "amazon_download"
-    elif not (amazon_confirmed and amazon_printed):
-        next_step = "amazon_decide_print"
     elif not rakuten_downloaded:
         next_step = "rakuten_download"
-    elif not (rakuten_confirmed and rakuten_printed):
-        next_step = "rakuten_decide_print"
-    elif not mf_reconciled:
-        next_step = "mf_reconcile"
 
-    allowed_run_modes = {
-        "preflight": ["preflight"],
-        "amazon_download": ["amazon_download"],
-        "amazon_decide_print": ["amazon_print"],
-        "rakuten_download": ["rakuten_download"],
-        "rakuten_decide_print": ["rakuten_print"],
-        "mf_reconcile": ["mf_reconcile"],
-        "done": [],
-    }.get(next_step, [])
+    allowed_run_modes: list[str] = ["preflight"]
+    if preflight_done:
+        allowed_run_modes.extend(["amazon_download", "rakuten_download"])
+        if amazon_downloaded:
+            allowed_run_modes.append("amazon_print")
+        if rakuten_downloaded:
+            allowed_run_modes.append("rakuten_print")
+        if amazon_done or rakuten_done:
+            allowed_run_modes.append("mf_reconcile")
+    allowed_run_modes = list(dict.fromkeys(allowed_run_modes))
 
     return {
         "ym": ym,
@@ -162,7 +169,29 @@ def _workflow_state_for_ym(year: int, month: int) -> dict[str, Any]:
     }
 
 
+def _reset_workflow_for_redownload(year: int, month: int, source: str) -> None:
+    ym = f"{year:04d}-{month:02d}"
+    reports_dir = _artifact_root() / ym / "reports"
+    workflow = _read_workflow(reports_dir)
+    if not isinstance(workflow, dict):
+        workflow = {}
+    changed = False
+    if source == "amazon":
+        for key in ("amazon", "rakuten"):
+            if key in workflow:
+                workflow.pop(key, None)
+                changed = True
+    elif source == "rakuten":
+        if "rakuten" in workflow:
+            workflow.pop("rakuten", None)
+            changed = True
+    if changed:
+        _write_json(reports_dir / "workflow.json", workflow)
+
+
 def _assert_run_mode_allowed(year: int, month: int, mode: str) -> None:
+    if mode == "preflight":
+        return
     state = _workflow_state_for_ym(year, month)
     allowed = state.get("allowed_run_modes") if isinstance(state.get("allowed_run_modes"), list) else []
     if mode in allowed:
@@ -191,33 +220,17 @@ def _assert_source_action_allowed(year: int, month: int, source: str, action: st
             detail="Workflow order violation: preflight is required before confirmation/print.",
         )
 
-    if source == "amazon":
-        if not state["amazon"]["downloaded"]:
-            raise HTTPException(
-                status_code=409,
-                detail="Workflow order violation: amazon_download must be completed before amazon confirmation/print.",
-            )
-        if action == "print" and not state["amazon"]["confirmed"]:
-            raise HTTPException(
-                status_code=409,
-                detail="Workflow order violation: amazon confirmation is required before amazon print.",
-            )
-        return
-
-    if not (state["amazon"]["confirmed"] and state["amazon"]["printed"]):
+    branch = state["amazon"] if source == "amazon" else state["rakuten"]
+    label = "amazon" if source == "amazon" else "rakuten"
+    if not branch["downloaded"]:
         raise HTTPException(
             status_code=409,
-            detail="Workflow order violation: amazon decide/print must be completed before rakuten steps.",
+            detail=f"Workflow order violation: {label}_download must be completed before {label} confirmation/print.",
         )
-    if not state["rakuten"]["downloaded"]:
+    if action == "print" and not branch["confirmed"]:
         raise HTTPException(
             status_code=409,
-            detail="Workflow order violation: rakuten_download must be completed before rakuten confirmation/print.",
-        )
-    if action == "print" and not state["rakuten"]["confirmed"]:
-        raise HTTPException(
-            status_code=409,
-            detail="Workflow order violation: rakuten confirmation is required before rakuten print.",
+            detail=f"Workflow order violation: {label} confirmation is required before {label} print.",
         )
 
 
@@ -261,7 +274,7 @@ def _pid_alive(pid: Any) -> bool:
             )
         except Exception:
             return True
-        return re.search(rf"\\b{pid_int}\\b", out) is not None
+        return re.search(rf"\b{pid_int}\b", out) is not None
     try:
         os.kill(pid_int, 0)
     except ProcessLookupError:
@@ -416,7 +429,7 @@ def _start_run(payload: dict[str, Any]) -> dict[str, Any]:
     runs_root = _runs_root()
     runs_root.mkdir(parents=True, exist_ok=True)
 
-    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
     run_id = f"run_{ts}"
     log_path = runs_root / f"{run_id}.log"
     meta_path = runs_root / f"{run_id}.json"
@@ -448,10 +461,14 @@ def _start_run(payload: dict[str, Any]) -> dict[str, Any]:
         _mark_preflight_started(year, month)
         cmd += ["--preflight", "--mfcloud-accounts-url", DEFAULT_MFCLOUD_ACCOUNTS_URL]
     elif mode in {"amazon_download", "amazon_print"}:
+        if mode == "amazon_download":
+            _reset_workflow_for_redownload(year, month, "amazon")
         cmd += ["--skip-mfcloud", "--skip-rakuten", "--skip-reconcile"]
         if mode == "amazon_print":
             cmd += ["--print-list", "--print-sources", "amazon"]
     elif mode in {"rakuten_download", "rakuten_print"}:
+        if mode == "rakuten_download":
+            _reset_workflow_for_redownload(year, month, "rakuten")
         cmd += [
             "--skip-mfcloud",
             "--skip-amazon",
