@@ -84,6 +84,22 @@ def _collect_orders_pdfs(
     rows = _read_jsonl(orders_jsonl)
     files: list[dict[str, Any]] = []
     seen: set[str] = set()
+
+    def _iter_pdf_paths(row: dict[str, Any]) -> list[str]:
+        out: list[str] = []
+        primary = str(row.get("pdf_path") or "").strip()
+        if primary:
+            out.append(primary)
+        docs = row.get("documents")
+        if isinstance(docs, list):
+            for doc in docs:
+                if not isinstance(doc, dict):
+                    continue
+                p = str(doc.get("pdf_path") or "").strip()
+                if p:
+                    out.append(p)
+        return out
+
     for r in rows:
         if r.get("include") is False:
             continue
@@ -93,18 +109,20 @@ def _collect_orders_pdfs(
         order_id = str(r.get("order_id") or "").strip()
         if order_id and (source, order_id) in exclusions:
             continue
-        pdf_path = str(r.get("pdf_path") or "").strip()
-        if not pdf_path:
+        pdf_paths = _iter_pdf_paths(r)
+        if not pdf_paths:
             continue
         ym = _parse_date(r.get("order_date") or r.get("date"))
-        if ym is None:
-            ym = _parse_date_from_filename(Path(pdf_path).name)
-        if ym != (year, month):
-            continue
-        if pdf_path in seen:
-            continue
-        seen.add(pdf_path)
-        files.append({"path": pdf_path, "source": source, "order_id": order_id})
+        for pdf_path in pdf_paths:
+            entry_ym = ym
+            if entry_ym is None:
+                entry_ym = _parse_date_from_filename(Path(pdf_path).name)
+            if entry_ym != (year, month):
+                continue
+            if pdf_path in seen:
+                continue
+            seen.add(pdf_path)
+            files.append({"path": pdf_path, "source": source, "order_id": order_id})
     return files
 
 
@@ -180,6 +198,22 @@ def _collect_missing_shortcut_orders(
     rows = _read_jsonl(orders_jsonl)
     pending: list[dict[str, Any]] = []
     seen: set[tuple[str, str]] = set()
+
+    def _iter_pdf_paths(row: dict[str, Any]) -> list[str]:
+        out: list[str] = []
+        primary = str(row.get("pdf_path") or "").strip()
+        if primary:
+            out.append(primary)
+        docs = row.get("documents")
+        if isinstance(docs, list):
+            for doc in docs:
+                if not isinstance(doc, dict):
+                    continue
+                p = str(doc.get("pdf_path") or "").strip()
+                if p:
+                    out.append(p)
+        return out
+
     for r in rows:
         if r.get("include") is False:
             continue
@@ -195,8 +229,12 @@ def _collect_missing_shortcut_orders(
         if ym != (year, month):
             continue
 
-        pdf_path = str(r.get("pdf_path") or "").strip()
-        if pdf_path and Path(pdf_path).exists():
+        existing_pdf = False
+        for pdf_path in _iter_pdf_paths(r):
+            if Path(pdf_path).exists():
+                existing_pdf = True
+                break
+        if existing_pdf:
             continue
 
         detail_url = str(r.get("detail_url") or "").strip()

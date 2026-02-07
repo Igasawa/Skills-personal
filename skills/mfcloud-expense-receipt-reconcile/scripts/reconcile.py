@@ -101,7 +101,7 @@ class Order:
         return Order(
             order_id=order_id,
             order_date=_to_date(obj.get("order_date") or obj.get("date")),
-            total_yen=_to_int_yen(obj.get("total_yen") or obj.get("total")),
+            total_yen=_to_int_yen(obj.get("order_total_yen") or obj.get("total_yen") or obj.get("total")),
             pdf_path=(str(obj.get("pdf_path")).strip() if obj.get("pdf_path") else None),
             receipt_url=(str(obj.get("receipt_url")).strip() if obj.get("receipt_url") else None),
             source=str(obj.get("source") or default_source),

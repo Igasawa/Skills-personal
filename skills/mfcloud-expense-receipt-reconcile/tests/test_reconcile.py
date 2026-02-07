@@ -213,6 +213,63 @@ def test_reconcile_main_applies_order_exclusions(tmp_path: Path) -> None:
     assert candidate_order_ids == ["AMZ-B"]
 
 
+def test_reconcile_main_prefers_order_total_yen_when_present(tmp_path: Path) -> None:
+    amazon_orders_jsonl = tmp_path / "amazon_orders.jsonl"
+    mf_expenses_jsonl = tmp_path / "mf_expenses.jsonl"
+    out_json = tmp_path / "out.json"
+    out_csv = tmp_path / "out.csv"
+
+    _write_jsonl(
+        amazon_orders_jsonl,
+        [
+            {
+                "order_id": "AMZ-SPLIT-1",
+                "order_date": "2026-01-15",
+                "total_yen": 700,
+                "order_total_yen": 1200,
+                "pdf_path": "amazon/pdfs/AMZ-SPLIT-1_invoice.pdf",
+                "doc_type": "tax_invoice",
+            }
+        ],
+    )
+    _write_jsonl(
+        mf_expenses_jsonl,
+        [
+            {
+                "expense_id": "MF-AMZ-SPLIT",
+                "use_date": "2026-01-15",
+                "amount_yen": 1200,
+                "vendor": "Amazon",
+                "memo": "split",
+                "has_evidence": False,
+            }
+        ],
+    )
+
+    exit_code = reconcile_main(
+        [
+            "--amazon-orders-jsonl",
+            str(amazon_orders_jsonl),
+            "--mf-expenses-jsonl",
+            str(mf_expenses_jsonl),
+            "--out-json",
+            str(out_json),
+            "--out-csv",
+            str(out_csv),
+            "--year",
+            "2026",
+            "--month",
+            "1",
+        ]
+    )
+
+    assert exit_code == 0
+    data = json.loads(out_json.read_text(encoding="utf-8"))
+    candidates = [row for row in data["rows"] if row["row_type"] == "candidate"]
+    assert len(candidates) == 1
+    assert candidates[0]["order_id"] == "AMZ-SPLIT-1"
+
+
 def test_reconcile_main_accepts_rakuten_only_input(tmp_path: Path) -> None:
     rakuten_orders_jsonl = tmp_path / "rakuten_orders.jsonl"
     mf_expenses_jsonl = tmp_path / "mf_expenses.jsonl"

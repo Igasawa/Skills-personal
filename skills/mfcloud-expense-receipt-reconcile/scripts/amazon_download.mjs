@@ -442,6 +442,18 @@ async function findReceiptLink(page) {
 }
 
 async function findReceiptLinkInCard(card) {
+  const invoiceSelectors = [
+    "a[href*='/your-orders/invoice/popover']",
+    "a[href*='ref_=fed_invoice_ajax']",
+    "[data-a-popover*='/your-orders/invoice/popover']",
+    "[data-a-popover*='fed_invoice_ajax']",
+    "[data-a-popover*='fed_digi_order_invoice_ajax']",
+  ];
+  for (const selector of invoiceSelectors) {
+    const candidate = card.locator(selector).first();
+    if ((await candidate.count()) > 0) return candidate;
+  }
+
   const labels = ["領収書等", "領収書", "購入明細書", "Invoice", "Receipt"];
   for (const label of labels) {
     const clickable = card.locator("a,button", { hasText: label }).first();
@@ -460,10 +472,6 @@ async function findPopoverReceiptUrl(page, receiptLink) {
       const ancestor = receiptLink.locator("xpath=ancestor-or-self::*[@data-a-popover]").first();
       if ((await ancestor.count()) > 0) popover = await ancestor.getAttribute("data-a-popover");
     }
-  }
-  if (!popover) {
-    const anyPopover = page.locator("[data-a-popover*='invoice'], [data-a-popover*='Invoice']");
-    if ((await anyPopover.count()) > 0) popover = await anyPopover.first().getAttribute("data-a-popover");
   }
   if (!popover) return null;
   try {
@@ -536,6 +544,8 @@ function looksLikeAmazonReceiptUrl(rawUrl) {
   if (joined.includes("/your-orders/order-details")) return false;
   if (joined.includes("/invoice/popover")) return false;
   if (joined.includes("fed_invoice_ajax")) return false;
+  if (joined.includes("/gcx/-/ty/gr/")) return false;
+  if (joined.includes("gift_receipt")) return false;
   const positiveMarkers = [
     "invoice",
     "receipt",
@@ -578,6 +588,8 @@ function classifyAmazonDocumentCandidate(rawUrl, rawText) {
   if (urlLower.includes("/your-orders/order-details")) return null;
   if (urlLower.includes("/invoice/popover")) return null;
   if (urlLower.includes("fed_invoice_ajax")) return null;
+  if (urlLower.includes("/gcx/-/ty/gr/")) return null;
+  if (urlLower.includes("gift_receipt")) return null;
 
   const taxTextMarkers = [
     "\u9069\u683c\u8acb\u6c42\u66f8",
@@ -624,8 +636,24 @@ async function collectAmazonDocumentCandidates(page) {
     seen.add(currentCandidate.url);
   }
 
+  const focusedAnchors = page.locator(
+    ".invoice-list a[href], a[href*='/documents/download/'], a[href*='/summary/print'], a[href*='order-summary']"
+  );
+  const focusedCount = Math.min(await focusedAnchors.count().catch(() => 0), 240);
+  for (let i = 0; i < focusedCount; i++) {
+    const a = focusedAnchors.nth(i);
+    const href = await a.getAttribute("href").catch(() => null);
+    const text = await a.innerText().catch(() => "");
+    const abs = toAbsoluteUrl(href, currentUrl);
+    const candidate = classifyAmazonDocumentCandidate(abs, text);
+    if (!candidate) continue;
+    if (seen.has(candidate.url)) continue;
+    seen.add(candidate.url);
+    out.push(candidate);
+  }
+
   const anchors = page.locator("a[href]");
-  const n = Math.min(await anchors.count().catch(() => 0), 120);
+  const n = Math.min(await anchors.count().catch(() => 0), 400);
   for (let i = 0; i < n; i++) {
     const a = anchors.nth(i);
     const href = await a.getAttribute("href").catch(() => null);
@@ -640,20 +668,62 @@ async function collectAmazonDocumentCandidates(page) {
   return out;
 }
 
+function buildAmazonDocumentPlan(candidates, fallbackUrl = null) {
+  const normalized = [];
+  const seenUrls = new Set();
+
+  const pushCandidate = (raw) => {
+    if (!raw || typeof raw !== "object") return;
+    const url = toAbsoluteUrl(raw.url, undefined);
+    if (!url || seenUrls.has(url)) return;
+    seenUrls.add(url);
+    normalized.push({
+      kind: raw.kind || "receipt_like",
+      score: Number(raw.score || 0),
+      url,
+    });
+  };
+
+  for (const c of candidates || []) {
+    pushCandidate(c);
+  }
+  if (fallbackUrl) {
+    pushCandidate(classifyAmazonDocumentCandidate(fallbackUrl, ""));
+  }
+
+  if (!normalized.length) return [];
+
+  const bestByKind = new Map();
+  for (const c of normalized) {
+    const prev = bestByKind.get(c.kind);
+    if (!prev || c.score > prev.score) {
+      bestByKind.set(c.kind, c);
+    }
+  }
+
+  const out = [];
+  const summary = bestByKind.get("order_summary");
+  const taxInvoice = bestByKind.get("tax_invoice");
+  const receiptLike = bestByKind.get("receipt_like");
+
+  if (summary) out.push(summary);
+  if (taxInvoice && (!summary || taxInvoice.url !== summary.url)) out.push(taxInvoice);
+  if (!summary && !taxInvoice && receiptLike) out.push(receiptLike);
+
+  if (!out.length) {
+    const bestOverall = normalized.sort((a, b) => b.score - a.score)[0];
+    if (bestOverall) out.push(bestOverall);
+  }
+  return out;
+}
+
 async function resolvePreferredAmazonDocumentPage(page, fallbackUrl, options = {}) {
   const navigate = options.navigate !== false;
   const currentUrl = page.url() || fallbackUrl || "";
   const candidates = await collectAmazonDocumentCandidates(page);
+  const plan = buildAmazonDocumentPlan(candidates, fallbackUrl);
 
-  let best = null;
-  for (const candidate of candidates) {
-    if (!best || candidate.score > best.score) {
-      best = candidate;
-    }
-  }
-  if (!best && fallbackUrl) {
-    best = classifyAmazonDocumentCandidate(fallbackUrl, "");
-  }
+  const best = plan.length ? plan[0] : null;
   if (!best || !best.url) {
     return { kind: "none", url: currentUrl };
   }
@@ -673,8 +743,14 @@ async function resolveReceiptSource(context, page, receiptLink) {
   const popoverUrl = await findPopoverReceiptUrl(page, receiptLink);
   const hrefAbs = toAbsoluteUrl(href, baseUrl);
   const popoverAbs = toAbsoluteUrl(popoverUrl, baseUrl);
-  const directUrl = [hrefAbs, popoverAbs].find((u) => looksLikeAmazonReceiptUrl(u)) || null;
-  if (directUrl) return { receiptUrl: directUrl, popupPage: null, download: null };
+  const directCandidates = [hrefAbs, popoverAbs]
+    .map((u) => classifyAmazonDocumentCandidate(u, ""))
+    .filter(Boolean);
+  const directPlan = buildAmazonDocumentPlan(directCandidates, null);
+  const directUrl = directPlan.length ? directPlan[0].url : null;
+  if (directUrl) {
+    return { receiptUrl: directUrl, popupPage: null, download: null, documentPlan: directPlan };
+  }
 
   const popupPromise = page.waitForEvent("popup", { timeout: 2500 }).catch(() => null);
   const downloadPromise = context.waitForEvent("download", { timeout: 2500 }).catch(() => null);
@@ -686,6 +762,7 @@ async function resolveReceiptSource(context, page, receiptLink) {
   const [popupPage, download] = await Promise.all([popupPromise, downloadPromise]);
 
   let receiptUrl = null;
+  let documentPlan = [];
   const afterUrl = page.url();
   if (afterUrl !== baseUrl && looksLikeAmazonReceiptUrl(afterUrl)) {
     receiptUrl = afterUrl;
@@ -697,7 +774,32 @@ async function resolveReceiptSource(context, page, receiptLink) {
       receiptUrl = popupUrl;
     }
   }
-  return { receiptUrl, popupPage, download };
+
+  if (!receiptUrl) {
+    const popoverAnchors = page.locator(".a-popover[aria-hidden='false'] a[href], .a-popover:not([aria-hidden='true']) a[href]");
+    const popoverCount = Math.min(await popoverAnchors.count().catch(() => 0), 24);
+    const popoverCandidates = [];
+    for (let i = 0; i < popoverCount; i++) {
+      const a = popoverAnchors.nth(i);
+      const href2 = await a.getAttribute("href").catch(() => null);
+      const text2 = await a.innerText().catch(() => "");
+      const abs2 = toAbsoluteUrl(href2, afterUrl || baseUrl);
+      const candidate = classifyAmazonDocumentCandidate(abs2, text2);
+      if (candidate) popoverCandidates.push(candidate);
+    }
+    const planned = buildAmazonDocumentPlan(popoverCandidates, null);
+    if (planned.length) {
+      documentPlan = planned;
+      receiptUrl = planned[0].url;
+    }
+  }
+
+  if (!documentPlan.length && receiptUrl) {
+    const fallbackCandidate = classifyAmazonDocumentCandidate(receiptUrl, "");
+    documentPlan = buildAmazonDocumentPlan(fallbackCandidate ? [fallbackCandidate] : [], receiptUrl);
+  }
+
+  return { receiptUrl, popupPage, download, documentPlan };
 }
 
 async function saveReceiptPdf(page, outPdfPath) {
@@ -970,6 +1072,11 @@ async function main() {
         let pdfPath = null;
         let errorReason = null;
         order.receipt_name_applied = false;
+        let documents = [];
+        let docType = null;
+        let docTotalYen = null;
+        let orderTotalYen = order.total_yen ?? null;
+        let splitInvoice = false;
 
         console.log(`[amazon] processing order ${monthlyOrdersTotal} id=${order.order_id || "unknown"}`);
 
@@ -986,6 +1093,7 @@ async function main() {
               receiptUrl = source.receiptUrl;
               const popupPage = source.popupPage;
               const download = source.download;
+              const sourceDocumentPlan = buildAmazonDocumentPlan(source.documentPlan || [], receiptUrl);
 
               const ymd = order.order_date || `${year}-??-??`;
               const total = order.total_yen ?? "unknown";
@@ -999,6 +1107,17 @@ async function main() {
                     throw new Error("amazon_downloaded_file_not_pdf");
                   }
                   pdfPath = plannedPdfPath;
+                  docType = "receipt_like";
+                  docTotalYen = orderTotalYen;
+                  documents = [
+                    {
+                      doc_type: docType,
+                      doc_url: receiptUrl,
+                      pdf_path: plannedPdfPath,
+                      total_yen: docTotalYen,
+                      primary: true,
+                    },
+                  ];
                   pdfSaved += 1;
                 } else {
                   if (!receiptUrl) {
@@ -1012,10 +1131,46 @@ async function main() {
                     noReceipt += 1;
                     errorReason = "link_not_resolved";
                   } else {
-                    if (isDirectAmazonPdfUrl(receiptUrl)) {
-                      await savePdfFromDirectUrl(context, receiptUrl, plannedPdfPath);
-                      pdfPath = plannedPdfPath;
-                      pdfSaved += 1;
+                    const hasNonDirectDoc = sourceDocumentPlan.some((doc) => !isDirectAmazonPdfUrl(doc.url));
+                    if (isDirectAmazonPdfUrl(receiptUrl) && !hasNonDirectDoc) {
+                      const directPlan = sourceDocumentPlan.length
+                        ? sourceDocumentPlan
+                        : buildAmazonDocumentPlan([classifyAmazonDocumentCandidate(receiptUrl, "")].filter(Boolean), receiptUrl);
+                      for (let directIndex = 0; directIndex < Math.max(1, directPlan.length); directIndex++) {
+                        const directDoc = directPlan[directIndex] || { kind: "receipt_like", url: receiptUrl };
+                        const directUrl = directDoc.url || receiptUrl;
+                        if (!directUrl || !isDirectAmazonPdfUrl(directUrl)) continue;
+                        let outPdfPath = plannedPdfPath;
+                        if (directIndex > 0) {
+                          const parsed = path.parse(plannedPdfPath);
+                          const ext = parsed.ext || ".pdf";
+                          let suffix = "receipt";
+                          if (directDoc.kind === "tax_invoice") suffix = "invoice";
+                          else if (directDoc.kind === "order_summary") suffix = "summary";
+                          outPdfPath = path.join(parsed.dir, `${parsed.name}_${suffix}_${directIndex + 1}${ext}`);
+                        }
+                        await savePdfFromDirectUrl(context, directUrl, outPdfPath);
+                        documents.push({
+                          doc_type: directDoc.kind || "receipt_like",
+                          doc_url: directUrl,
+                          pdf_path: outPdfPath,
+                          total_yen: null,
+                          primary: false,
+                        });
+                      }
+                      if (documents.length) {
+                        const summaryDoc = documents.find((d) => d.doc_type === "order_summary") || null;
+                        const primaryDoc = summaryDoc || documents[0];
+                        for (const d of documents) d.primary = d === primaryDoc;
+                        pdfPath = primaryDoc.pdf_path;
+                        docType = primaryDoc.doc_type;
+                        docTotalYen = null;
+                        pdfSaved += 1;
+                      } else {
+                        status = "no_receipt";
+                        noReceipt += 1;
+                        errorReason = "link_not_resolved";
+                      }
                     } else {
                       const usePopup = Boolean(popupPage && !popupPage.isClosed());
                       const targetPage = usePopup ? popupPage : await pdfContext.newPage();
@@ -1028,34 +1183,103 @@ async function main() {
                           await targetPage.waitForLoadState("networkidle").catch(() => {});
                         }
                         await ensureAuthenticated(targetPage, authHandoff, "Amazon receipt page");
-                        const preferredDoc = await resolvePreferredAmazonDocumentPage(targetPage, receiptUrl, { navigate: true });
-                        if (preferredDoc.url) {
-                          receiptUrl = preferredDoc.url;
+                        let documentPlan = sourceDocumentPlan;
+                        if (!documentPlan.length) {
+                          const candidates = await collectAmazonDocumentCandidates(targetPage);
+                          documentPlan = buildAmazonDocumentPlan(candidates, receiptUrl);
+                        }
+                        if (!documentPlan.length && receiptUrl) {
+                          documentPlan.push({ kind: "receipt_like", score: 0, url: receiptUrl });
                         }
 
-                        await assertAmazonReceiptPage(targetPage);
-                        const parsedReceipt = await parseOrderDetail(targetPage, year);
-                        mergeReceiptMetaIntoOrder(order, parsedReceipt);
-                        if (order.total_yen == null) {
-                          const t = await extractTotalFromPage(targetPage);
-                          if (t != null) order.total_yen = t;
-                        }
+                        for (let planIndex = 0; planIndex < documentPlan.length; planIndex++) {
+                          const doc = documentPlan[planIndex];
+                          const docUrl = doc && doc.url ? doc.url : receiptUrl;
+                          if (!docUrl) continue;
 
-                        if (!skipReceiptName) {
-                          const input = await findReceiptNameInput(targetPage);
-                          if (input) {
-                            const nameResult = await applyReceiptNameWithFallback(targetPage, receiptName, receiptNameFallback);
-                            if (nameResult.applied) {
-                              order.receipt_name = nameResult.name;
+                          let outPdfPath = plannedPdfPath;
+                          if (planIndex > 0) {
+                            const parsed = path.parse(plannedPdfPath);
+                            const ext = parsed.ext || ".pdf";
+                            let suffix = "doc";
+                            if (doc.kind === "order_summary") suffix = "summary";
+                            else if (doc.kind === "tax_invoice") suffix = "invoice";
+                            else if (doc.kind === "receipt_like") suffix = "receipt";
+                            outPdfPath = path.join(parsed.dir, `${parsed.name}_${suffix}${ext}`);
+                            if (outPdfPath === plannedPdfPath || documents.some((x) => x.pdf_path === outPdfPath)) {
+                              outPdfPath = path.join(parsed.dir, `${parsed.name}_${suffix}_${planIndex + 1}${ext}`);
                             }
-                            order.receipt_name_applied = Boolean(nameResult.applied);
                           }
+
+                          let currentDocTotal = null;
+                          if (isDirectAmazonPdfUrl(docUrl)) {
+                            await savePdfFromDirectUrl(context, docUrl, outPdfPath);
+                          } else {
+                            if (targetPage.url() !== docUrl) {
+                              await targetPage.goto(docUrl, { waitUntil: "domcontentloaded" });
+                              await targetPage.waitForLoadState("networkidle").catch(() => {});
+                            }
+                            await ensureAuthenticated(targetPage, authHandoff, "Amazon receipt page");
+                            await assertAmazonReceiptPage(targetPage);
+
+                            const parsedReceipt = await parseOrderDetail(targetPage, year);
+                            mergeReceiptMetaIntoOrder(order, parsedReceipt);
+                            currentDocTotal = parsedReceipt.totalYen;
+                            if (currentDocTotal == null) {
+                              currentDocTotal = await extractTotalFromPage(targetPage);
+                            }
+                            if (currentDocTotal != null && (doc.kind === "order_summary" || orderTotalYen == null)) {
+                              orderTotalYen = currentDocTotal;
+                            }
+
+                            if (!skipReceiptName && !order.receipt_name_applied) {
+                              const input = await findReceiptNameInput(targetPage);
+                              if (input) {
+                                const nameResult = await applyReceiptNameWithFallback(targetPage, receiptName, receiptNameFallback);
+                                if (nameResult.applied) {
+                                  order.receipt_name = nameResult.name;
+                                }
+                                order.receipt_name_applied = Boolean(nameResult.applied);
+                              }
+                            }
+
+                            await assertAmazonReceiptPage(targetPage);
+                            await saveReceiptPdf(targetPage, outPdfPath);
+                          }
+
+                          documents.push({
+                            doc_type: doc.kind || "receipt_like",
+                            doc_url: docUrl,
+                            pdf_path: outPdfPath,
+                            total_yen: currentDocTotal,
+                            primary: false,
+                          });
                         }
 
-                        await assertAmazonReceiptPage(targetPage);
-                        await saveReceiptPdf(targetPage, plannedPdfPath);
-                        pdfPath = plannedPdfPath;
-                        pdfSaved += 1;
+                        if (!documents.length) {
+                          status = "no_receipt";
+                          noReceipt += 1;
+                          errorReason = "link_not_resolved";
+                        } else {
+                          const summaryDoc = documents.find((d) => d.doc_type === "order_summary") || null;
+                          const primaryDoc = summaryDoc || documents[0];
+                          for (const d of documents) {
+                            d.primary = d === primaryDoc;
+                          }
+                          pdfPath = primaryDoc.pdf_path;
+                          docType = primaryDoc.doc_type;
+                          docTotalYen = primaryDoc.total_yen == null ? null : primaryDoc.total_yen;
+                          if (orderTotalYen == null && docTotalYen != null) {
+                            orderTotalYen = docTotalYen;
+                          }
+                          if (orderTotalYen != null) {
+                            order.total_yen = orderTotalYen;
+                          }
+                          splitInvoice = documents.some(
+                            (d) => d.doc_type === "tax_invoice" && d.total_yen != null && order.total_yen != null && d.total_yen !== order.total_yen
+                          );
+                          pdfSaved += 1;
+                        }
                       } finally {
                         if (!usePopup) {
                           await targetPage.close().catch(() => {});
@@ -1083,10 +1307,26 @@ async function main() {
           debugDetailSaved = true;
         }
 
+        if (pdfPath && !documents.length) {
+          documents = [
+            {
+              doc_type: docType || "receipt_like",
+              doc_url: receiptUrl,
+              pdf_path: pdfPath,
+              total_yen: docTotalYen,
+              primary: true,
+            },
+          ];
+        }
+        if (orderTotalYen != null) {
+          order.total_yen = orderTotalYen;
+        }
+
         const row = {
           order_id: order.order_id,
           order_date: order.order_date,
           total_yen: order.total_yen,
+          order_total_yen: order.total_yen,
           item_name: order.item_name || null,
           receipt_name: order.receipt_name || receiptName || null,
           receipt_name_applied: Boolean(order.receipt_name_applied),
@@ -1094,6 +1334,11 @@ async function main() {
           detail_url: order.detail_url,
           receipt_url: receiptUrl,
           pdf_path: pdfPath,
+          doc_type: docType,
+          doc_total_yen: docTotalYen,
+          doc_count: documents.length,
+          documents,
+          split_invoice: splitInvoice,
           status,
           error_reason: errorReason,
           history_only_flow: true,
@@ -1156,6 +1401,7 @@ async function main() {
 export {
   assessAmazonReceiptPageText,
   assertCoverageThreshold,
+  buildAmazonDocumentPlan,
   classifyAmazonDocumentCandidate,
   computeCoverageSummary,
   extractOrderIdFromUrl,

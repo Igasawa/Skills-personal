@@ -59,6 +59,34 @@ def test_classify_amazon_document_candidate_ignores_invoice_popover_url() -> Non
     assert data["candidate"] is None
 
 
+def test_classify_amazon_document_candidate_ignores_gift_receipt_url() -> None:
+    data = _node_json(
+        """({
+  candidate: mod.classifyAmazonDocumentCandidate(
+    "https://www.amazon.co.jp/gcx/-/ty/gr/503-6793934-9131038/shipment?ref=ppx_yo2ov_dt_b_gift_receipt",
+    "Gift receipt"
+  )
+})"""
+    )
+    assert data["candidate"] is None
+
+
+def test_build_amazon_document_plan_prioritizes_summary_then_invoice() -> None:
+    data = _node_json(
+        """(() => {
+  const candidates = [
+    mod.classifyAmazonDocumentCandidate("https://www.amazon.co.jp/documents/download/abc/invoice.pdf", "明細書/適格請求書"),
+    mod.classifyAmazonDocumentCandidate("https://www.amazon.co.jp/gp/css/summary/print.html?orderID=503", "印刷可能な注文概要"),
+    mod.classifyAmazonDocumentCandidate("https://www.amazon.co.jp/gcx/-/ty/gr/503/shipment?ref=gift_receipt", "Gift receipt")
+  ].filter(Boolean);
+  return mod.buildAmazonDocumentPlan(candidates, null);
+})()"""
+    )
+    assert len(data) >= 2
+    assert data[0]["kind"] == "order_summary"
+    assert data[1]["kind"] == "tax_invoice"
+
+
 def test_assess_amazon_receipt_page_rejects_selection_screen() -> None:
     data = _node_json(
         """mod.assessAmazonReceiptPageText("明細書/適格請求書 印刷可能な注文概要 適格請求書 選択してください")"""
