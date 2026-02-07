@@ -185,6 +185,9 @@ def test_api_step_reset_download_clears_source_and_mf_reports(monkeypatch: pytes
     _touch(reports_dir / "missing_evidence_candidates.csv", "h1\n")
     _touch(reports_dir / "quality_gate.json", "{}")
     _touch(reports_dir / "monthly_thread.md", "# monthly\n")
+    _touch(reports_dir / "print_manifest.json", "{}")
+    _touch(reports_dir / "print_list.txt", "C:\\dummy.pdf\n")
+    _touch(reports_dir / "print_all.ps1", "Write-Host 'print'\n")
 
     res = client.post("/api/steps/2026-01/reset/amazon_download")
     assert res.status_code == 200
@@ -207,6 +210,9 @@ def test_api_step_reset_download_clears_source_and_mf_reports(monkeypatch: pytes
     assert not (reports_dir / "missing_evidence_candidates.csv").exists()
     assert not (reports_dir / "quality_gate.json").exists()
     assert not (reports_dir / "monthly_thread.md").exists()
+    assert not (reports_dir / "print_manifest.json").exists()
+    assert not (reports_dir / "print_list.txt").exists()
+    assert not (reports_dir / "print_all.ps1").exists()
 
     entries = _read_audit_entries(tmp_path, ym)
     assert entries

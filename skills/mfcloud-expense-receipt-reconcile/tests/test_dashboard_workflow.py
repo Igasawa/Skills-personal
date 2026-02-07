@@ -249,7 +249,7 @@ def test_safe_run_id_accepts_legacy_and_microsecond_ids() -> None:
     assert _safe_run_id("run_20260207_050353_123456") == "run_20260207_050353_123456"
 
 
-def test_start_run_amazon_download_resets_amazon_and_rakuten_workflow(
+def test_start_run_amazon_download_resets_only_amazon_workflow(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     monkeypatch.setenv("AX_HOME", str(tmp_path))
@@ -292,4 +292,4 @@ def test_start_run_amazon_download_resets_amazon_and_rakuten_workflow(
 
     workflow = json.loads((_reports_dir(tmp_path, ym) / "workflow.json").read_text(encoding="utf-8"))
     assert "amazon" not in workflow
-    assert "rakuten" not in workflow
+    assert "rakuten" in workflow

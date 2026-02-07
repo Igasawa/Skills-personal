@@ -374,6 +374,15 @@ function assessRakutenReceiptPageText(textRaw) {
   if (!text || text.length < 20) {
     return { ok: false, reason: "rakuten_receipt_page_empty_or_too_short" };
   }
+  const strongReceiptSignals = [
+    "楽天ブックス 領収書発行",
+    "領収書発行",
+    "receiptinputform",
+    "receiptprint",
+  ];
+  if (strongReceiptSignals.some((k) => text.includes(k) || lower.includes(String(k).toLowerCase()))) {
+    return { ok: true, reason: null };
+  }
   const wrongPageKeywords = [
     "注文商品のキャンセル、数量の変更はできますか",
     "個数変更・キャンセル",
@@ -392,11 +401,29 @@ function assessRakutenReceiptPageText(textRaw) {
   return { ok: true, reason: null };
 }
 
+function shouldDowngradeRakutenReceiptError(reasonRaw, detailUrlRaw) {
+  const reason = String(reasonRaw || "");
+  if (!reason) return false;
+  const isBooksOrder = /books\.rakuten\.co\.jp/i.test(String(detailUrlRaw || ""));
+  if (!isBooksOrder) return false;
+  if (reason.startsWith("rakuten_receipt_invalid_page:")) return true;
+  if (reason === "rakuten_receipt_page_missing_signal") return true;
+  return false;
+}
+
 function assessRakutenReceiptContext({ url, title, pageAction, messageCode }) {
   const rawUrl = String(url || "");
   const normalizedTitle = normalizeText(title || "");
   const normalizedPageAction = String(pageAction || "").trim().toLowerCase();
   const normalizedMessageCode = String(messageCode || "").trim().toUpperCase();
+  const lowerUrl = rawUrl.toLowerCase();
+
+  if (lowerUrl.includes("books.rakuten.co.jp/mypage/delivery/status")) {
+    return { ok: false, reason: "rakuten_receipt_invalid_page:books_status_page" };
+  }
+  if (lowerUrl.includes("books.faq.rakuten.net")) {
+    return { ok: false, reason: "rakuten_receipt_invalid_page:books_faq_page" };
+  }
 
   if (/act=detail_page_view/i.test(rawUrl)) {
     return { ok: false, reason: "rakuten_receipt_invalid_page:detail_page_view_url" };
@@ -1438,10 +1465,20 @@ async function main() {
           filtered += 1;
         }
       } catch (e) {
-        status = "error";
-        errorReason = String(e?.message || e);
-        errorCount += 1;
-        if (debugDir) await writeDebug(page, debugDir, `order_${safeFilePart(orderId || "unknown")}_error`);
+        const reason = String(e?.message || e);
+        if (include && shouldDowngradeRakutenReceiptError(reason, detailUrl)) {
+          status = "no_receipt";
+          errorReason = reason;
+          noReceipt += 1;
+          console.error(
+            `[rakuten] order ${orderId || "unknown"} downgraded error to no_receipt reason=${reason}`
+          );
+        } else {
+          status = "error";
+          errorReason = reason;
+          errorCount += 1;
+          if (debugDir) await writeDebug(page, debugDir, `order_${safeFilePart(orderId || "unknown")}_error`);
+        }
       }
 
       if (include && status === "ok") included += 1;
@@ -1497,8 +1534,11 @@ async function main() {
 }
 
 export {
+  assessRakutenReceiptContext,
+  assessRakutenReceiptPageText,
   isDirectRakutenDownloadUrl,
   normalizeReceiptUrlCandidate,
+  shouldDowngradeRakutenReceiptError,
 };
 
 const isMainModule = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;

@@ -201,10 +201,9 @@ def _reset_workflow_for_redownload(year: int, month: int, source: str) -> None:
         workflow = {}
     changed = False
     if source == "amazon":
-        for key in ("amazon", "rakuten"):
-            if key in workflow:
-                workflow.pop(key, None)
-                changed = True
+        if "amazon" in workflow:
+            workflow.pop("amazon", None)
+            changed = True
     elif source == "rakuten":
         if "rakuten" in workflow:
             workflow.pop("rakuten", None)
@@ -439,6 +438,9 @@ def _remove_mf_outputs(reports_dir: Path) -> list[str]:
         "missing_evidence_candidates.csv",
         "quality_gate.json",
         "monthly_thread.md",
+        "print_manifest.json",
+        "print_list.txt",
+        "print_all.ps1",
     ):
         path = reports_dir / name
         if _delete_path(path):
