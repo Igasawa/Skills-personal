@@ -2,6 +2,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
+import { pathToFileURL } from "node:url";
 import { chromium } from "playwright";
 import { ensureDir, locatorVisible, parseArgs, safeFilePart, writeDebug } from "./mjs_common.mjs";
 
@@ -311,6 +312,60 @@ async function promptUserReceiptName(page) {
 async function saveReceiptPdf(page, outPdfPath) {
   await page.emulateMedia({ media: "print" });
   await page.pdf({ path: outPdfPath, format: "A4", printBackground: true });
+}
+
+function isDirectRakutenDownloadUrl(rawUrl) {
+  const url = String(rawUrl || "").trim();
+  if (!url) return false;
+  try {
+    const u = new URL(url);
+    const lower = `${u.pathname}${u.search}`.toLowerCase();
+    if (u.pathname.toLowerCase().endsWith(".pdf")) return true;
+    if (lower.includes("act=order_invoice") || lower.includes("act=order_receipt")) return true;
+    if (lower.includes("receiptdownload") || lower.includes("download")) return true;
+    return false;
+  } catch {
+    return false;
+  }
+}
+
+async function saveReceiptFromDirectUrl(context, receiptUrl, outPdfPath, timeoutMs) {
+  if (!isDirectRakutenDownloadUrl(receiptUrl)) return false;
+
+  let response = null;
+  try {
+    response = await context.request.get(receiptUrl, {
+      timeout: timeoutMs,
+      failOnStatusCode: false,
+    });
+  } catch {
+    response = null;
+  }
+  if (response && response.ok()) {
+    const body = await response.body().catch(() => null);
+    if (body && body.length >= 4 && body.subarray(0, 4).toString("ascii") === "%PDF") {
+      fs.writeFileSync(outPdfPath, body);
+      if (!fileLooksLikePdf(outPdfPath)) {
+        throw new Error("rakuten_downloaded_file_not_pdf");
+      }
+      return true;
+    }
+  }
+
+  const tempPage = await context.newPage();
+  try {
+    const downloadPromise = context.waitForEvent("download", { timeout: timeoutMs }).catch(() => null);
+    await tempPage.goto(receiptUrl, { waitUntil: "domcontentloaded", timeout: 30000 }).catch(() => {});
+    const dl = await downloadPromise;
+    if (!dl) return false;
+    await dl.saveAs(outPdfPath);
+    if (!fileLooksLikePdf(outPdfPath)) {
+      throw new Error("rakuten_downloaded_file_not_pdf");
+    }
+    return true;
+  } finally {
+    await tempPage.close().catch(() => {});
+  }
 }
 
 function assessRakutenReceiptPageText(textRaw) {
@@ -1087,6 +1142,8 @@ async function main() {
     let noReceipt = 0;
     let included = 0;
     let filtered = 0;
+    let errorCount = 0;
+    let inMonthOrders = 0;
 
     const ymPrefix = `${year}-${String(month).padStart(2, "0")}-`;
     for (const detailUrl of detailUrls) {
@@ -1113,6 +1170,7 @@ async function main() {
           include = false;
           orderDate = dateFromUrl;
           orderId = detailUrl.match(/order_number=([^&]+)/)?.[1] || null;
+          filtered += 1;
           const record = {
             order_id: orderId,
             order_date: orderDate,
@@ -1155,6 +1213,7 @@ async function main() {
         }
 
         if (include) {
+          inMonthOrders += 1;
           let preApplied = await applyReceiptNameWithFallback(page, receiptName, receiptNameFallback);
           if (preApplied.applied) {
             receiptNameApplied = true;
@@ -1303,21 +1362,30 @@ async function main() {
               const ymd = orderDate || `${year}-??-??`;
               const total = totalYen ?? "unknown";
               const fileName = `${safeFilePart(ymd)}_rakuten_${safeFilePart(orderId || "unknown")}_${safeFilePart(total)}.pdf`;
-              pdfPath = path.join(outPdfsDir, fileName);
+              const plannedPdfPath = path.join(outPdfsDir, fileName);
 
               try {
                 if (receiptDownload) {
                   await withTimeout(
                     (async () => {
-                      await receiptDownload.saveAs(pdfPath);
+                      await receiptDownload.saveAs(plannedPdfPath);
                     })(),
                     receiptTimeoutMs,
                     "receipt_download_save"
                   );
-                  if (!fileLooksLikePdf(pdfPath)) {
+                  if (!fileLooksLikePdf(plannedPdfPath)) {
                     throw new Error("rakuten_downloaded_file_not_pdf");
                   }
+                  pdfPath = plannedPdfPath;
                 } else {
+                  if (receiptUrl && isDirectRakutenDownloadUrl(receiptUrl)) {
+                    const saved = await saveReceiptFromDirectUrl(context, receiptUrl, plannedPdfPath, receiptTimeoutMs);
+                    if (saved) {
+                      pdfPath = plannedPdfPath;
+                    } else {
+                      throw new Error("rakuten_direct_download_not_saved");
+                    }
+                  } else {
                   const usingPopup = Boolean(receiptPopup && !receiptPopup.isClosed());
                   const needsNewPage = !usingPopup && pdfContext !== context;
                   const pdfPage = usingPopup ? receiptPopup : needsNewPage ? await pdfContext.newPage() : page;
@@ -1340,22 +1408,22 @@ async function main() {
                         }
                         let nameResult = await applyReceiptNameWithFallback(pdfPage, receiptName, receiptNameFallback);
                         const locked = await isReceiptNameLocked(pdfPage);
-                        if (!nameResult.applied && receiptName && authHandoff && !locked) {
-                          await promptUserReceiptName(pdfPage);
-                          const manualValue = await readReceiptNameValue(pdfPage);
-                          if (manualValue) nameResult = { applied: true, name: manualValue };
+                        if (!nameResult.applied && receiptName && !locked) {
+                          // Do not block automation with interactive prompt. Keep running and capture state.
                         }
                         receiptNameApplied = Boolean(nameResult.applied);
                         if (nameResult.name) appliedName = nameResult.name;
                         await acceptIssueConfirm(pdfPage, 1200);
                         await assertRakutenReceiptPage(pdfPage);
-                        await saveReceiptPdf(pdfPage, pdfPath);
+                        await saveReceiptPdf(pdfPage, plannedPdfPath);
                       })(),
                       receiptTimeoutMs,
                       "receipt_pdf"
                     );
                   } finally {
                     if (needsNewPage) await pdfPage.close().catch(() => {});
+                  }
+                  pdfPath = plannedPdfPath;
                   }
                 }
                 pdfSaved += 1;
@@ -1372,6 +1440,7 @@ async function main() {
       } catch (e) {
         status = "error";
         errorReason = String(e?.message || e);
+        errorCount += 1;
         if (debugDir) await writeDebug(page, debugDir, `order_${safeFilePart(orderId || "unknown")}_error`);
       }
 
@@ -1399,11 +1468,13 @@ async function main() {
     outStream.end();
     console.log(
       JSON.stringify({
-        status: "success",
+        status: errorCount > 0 ? "failed" : "success",
         data: {
           orders_total: detailUrls.length,
+          in_month_orders: inMonthOrders,
           included,
           filtered,
+          error_count: errorCount,
           pdf_saved: pdfSaved,
           no_receipt: noReceipt,
           out_jsonl: outJsonl,
@@ -1411,6 +1482,9 @@ async function main() {
         },
       })
     );
+    if (errorCount > 0) {
+      throw new Error(`RAKUTEN_DOWNLOAD_ERRORS error_count=${errorCount} in_month_orders=${inMonthOrders} pdf_saved=${pdfSaved}`);
+    }
   } catch (e) {
     if (debugDir) await writeDebug(page, debugDir, "fatal");
     throw e;
@@ -1422,7 +1496,15 @@ async function main() {
   }
 }
 
-main().catch((err) => {
-  console.error(String(err && err.stack ? err.stack : err));
-  process.exit(1);
-});
+export {
+  isDirectRakutenDownloadUrl,
+  normalizeReceiptUrlCandidate,
+};
+
+const isMainModule = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
+if (isMainModule) {
+  main().catch((err) => {
+    console.error(String(err && err.stack ? err.stack : err));
+    process.exit(1);
+  });
+}

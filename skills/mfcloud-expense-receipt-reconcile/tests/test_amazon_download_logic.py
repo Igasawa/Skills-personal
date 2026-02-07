@@ -47,6 +47,18 @@ def test_extract_order_id_from_url_works_for_order_details_query() -> None:
     assert data["id"] == "503-6793934-9131038"
 
 
+def test_classify_amazon_document_candidate_ignores_invoice_popover_url() -> None:
+    data = _node_json(
+        """({
+  candidate: mod.classifyAmazonDocumentCandidate(
+    "https://www.amazon.co.jp/your-orders/invoice/popover?orderId=503-6793934-9131038&ref_=fed_invoice_ajax",
+    "明細書/適格請求書"
+  )
+})"""
+    )
+    assert data["candidate"] is None
+
+
 def test_assess_amazon_receipt_page_rejects_selection_screen() -> None:
     data = _node_json(
         """mod.assessAmazonReceiptPageText("明細書/適格請求書 印刷可能な注文概要 適格請求書 選択してください")"""

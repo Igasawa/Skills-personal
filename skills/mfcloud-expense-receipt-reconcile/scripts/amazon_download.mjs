@@ -534,6 +534,8 @@ function looksLikeAmazonReceiptUrl(rawUrl) {
   }
   const joined = `${u.pathname}${u.search}`.toLowerCase();
   if (joined.includes("/your-orders/order-details")) return false;
+  if (joined.includes("/invoice/popover")) return false;
+  if (joined.includes("fed_invoice_ajax")) return false;
   const positiveMarkers = [
     "invoice",
     "receipt",
@@ -544,6 +546,19 @@ function looksLikeAmazonReceiptUrl(rawUrl) {
     "document",
   ];
   return positiveMarkers.some((marker) => joined.includes(marker));
+}
+
+function isDirectAmazonPdfUrl(rawUrl) {
+  if (!rawUrl) return false;
+  try {
+    const u = new URL(String(rawUrl));
+    const pathLower = String(u.pathname || "").toLowerCase();
+    if (pathLower.endsWith(".pdf")) return true;
+    if (pathLower.includes("/documents/download/")) return true;
+    return false;
+  } catch {
+    return false;
+  }
 }
 
 function normalizeTextForMatch(value) {
@@ -561,6 +576,8 @@ function classifyAmazonDocumentCandidate(rawUrl, rawText) {
   const urlLower = normalizeTextForMatch(url);
 
   if (urlLower.includes("/your-orders/order-details")) return null;
+  if (urlLower.includes("/invoice/popover")) return null;
+  if (urlLower.includes("fed_invoice_ajax")) return null;
 
   const taxTextMarkers = [
     "\u9069\u683c\u8acb\u6c42\u66f8",
@@ -691,6 +708,47 @@ async function saveReceiptPdf(page, outPdfPath) {
   }
 }
 
+async function savePdfFromDirectUrl(context, receiptUrl, outPdfPath) {
+  if (!isDirectAmazonPdfUrl(receiptUrl)) return false;
+
+  let response = null;
+  try {
+    response = await context.request.get(receiptUrl, {
+      timeout: 30000,
+      failOnStatusCode: false,
+    });
+  } catch {
+    response = null;
+  }
+  if (response && response.ok()) {
+    const body = await response.body().catch(() => null);
+    if (body && body.length >= 5 && body.subarray(0, 5).toString("utf-8") === "%PDF-") {
+      fs.writeFileSync(outPdfPath, body);
+      if (!fileLooksLikePdf(outPdfPath)) {
+        throw new Error("amazon_downloaded_file_not_pdf");
+      }
+      return true;
+    }
+  }
+
+  const tempPage = await context.newPage();
+  try {
+    const downloadPromise = context.waitForEvent("download", { timeout: 10000 }).catch(() => null);
+    await tempPage.goto(receiptUrl, { waitUntil: "domcontentloaded" }).catch(() => {});
+    const download = await downloadPromise;
+    if (!download) {
+      throw new Error("amazon_direct_pdf_download_event_missing");
+    }
+    await download.saveAs(outPdfPath);
+    if (!fileLooksLikePdf(outPdfPath)) {
+      throw new Error("amazon_downloaded_file_not_pdf");
+    }
+    return true;
+  } finally {
+    await tempPage.close().catch(() => {});
+  }
+}
+
 function assessAmazonReceiptPageText(textRaw) {
   const text = normalizeOrderText(textRaw).replace(/\s+/g, " ").trim();
   const lower = text.toLowerCase();
@@ -765,6 +823,7 @@ function normalizeAmazonOrderErrorReason(rawError) {
   if (!msg) return "unknown_error";
   if (msg.includes("menu_not_found")) return "menu_not_found";
   if (msg.includes("link_not_resolved")) return "link_not_resolved";
+  if (msg.includes("Download is starting")) return "save_failed:download_started";
   if (msg.includes("amazon_downloaded_file_not_pdf") || msg.includes("amazon_pdf_not_created_or_invalid")) return "save_failed";
   if (
     msg.includes("amazon_receipt_selection_page") ||
@@ -953,48 +1012,54 @@ async function main() {
                     noReceipt += 1;
                     errorReason = "link_not_resolved";
                   } else {
-                    const usePopup = Boolean(popupPage && !popupPage.isClosed());
-                    const targetPage = usePopup ? popupPage : await pdfContext.newPage();
-                    targetPage.setDefaultTimeout(navTimeoutMs);
-                    targetPage.setDefaultNavigationTimeout(navTimeoutMs);
-
-                    try {
-                      if (!usePopup || targetPage.url() !== receiptUrl) {
-                        await targetPage.goto(receiptUrl, { waitUntil: "domcontentloaded" });
-                        await targetPage.waitForLoadState("networkidle").catch(() => {});
-                      }
-                      await ensureAuthenticated(targetPage, authHandoff, "Amazon receipt page");
-                      const preferredDoc = await resolvePreferredAmazonDocumentPage(targetPage, receiptUrl, { navigate: true });
-                      if (preferredDoc.url) {
-                        receiptUrl = preferredDoc.url;
-                      }
-
-                      await assertAmazonReceiptPage(targetPage);
-                      const parsedReceipt = await parseOrderDetail(targetPage, year);
-                      mergeReceiptMetaIntoOrder(order, parsedReceipt);
-                      if (order.total_yen == null) {
-                        const t = await extractTotalFromPage(targetPage);
-                        if (t != null) order.total_yen = t;
-                      }
-
-                      if (!skipReceiptName) {
-                        const input = await findReceiptNameInput(targetPage);
-                        if (input) {
-                          const nameResult = await applyReceiptNameWithFallback(targetPage, receiptName, receiptNameFallback);
-                          if (nameResult.applied) {
-                            order.receipt_name = nameResult.name;
-                          }
-                          order.receipt_name_applied = Boolean(nameResult.applied);
-                        }
-                      }
-
-                      await assertAmazonReceiptPage(targetPage);
-                      await saveReceiptPdf(targetPage, plannedPdfPath);
+                    if (isDirectAmazonPdfUrl(receiptUrl)) {
+                      await savePdfFromDirectUrl(context, receiptUrl, plannedPdfPath);
                       pdfPath = plannedPdfPath;
                       pdfSaved += 1;
-                    } finally {
-                      if (!usePopup) {
-                        await targetPage.close().catch(() => {});
+                    } else {
+                      const usePopup = Boolean(popupPage && !popupPage.isClosed());
+                      const targetPage = usePopup ? popupPage : await pdfContext.newPage();
+                      targetPage.setDefaultTimeout(navTimeoutMs);
+                      targetPage.setDefaultNavigationTimeout(navTimeoutMs);
+
+                      try {
+                        if (!usePopup || targetPage.url() !== receiptUrl) {
+                          await targetPage.goto(receiptUrl, { waitUntil: "domcontentloaded" });
+                          await targetPage.waitForLoadState("networkidle").catch(() => {});
+                        }
+                        await ensureAuthenticated(targetPage, authHandoff, "Amazon receipt page");
+                        const preferredDoc = await resolvePreferredAmazonDocumentPage(targetPage, receiptUrl, { navigate: true });
+                        if (preferredDoc.url) {
+                          receiptUrl = preferredDoc.url;
+                        }
+
+                        await assertAmazonReceiptPage(targetPage);
+                        const parsedReceipt = await parseOrderDetail(targetPage, year);
+                        mergeReceiptMetaIntoOrder(order, parsedReceipt);
+                        if (order.total_yen == null) {
+                          const t = await extractTotalFromPage(targetPage);
+                          if (t != null) order.total_yen = t;
+                        }
+
+                        if (!skipReceiptName) {
+                          const input = await findReceiptNameInput(targetPage);
+                          if (input) {
+                            const nameResult = await applyReceiptNameWithFallback(targetPage, receiptName, receiptNameFallback);
+                            if (nameResult.applied) {
+                              order.receipt_name = nameResult.name;
+                            }
+                            order.receipt_name_applied = Boolean(nameResult.applied);
+                          }
+                        }
+
+                        await assertAmazonReceiptPage(targetPage);
+                        await saveReceiptPdf(targetPage, plannedPdfPath);
+                        pdfPath = plannedPdfPath;
+                        pdfSaved += 1;
+                      } finally {
+                        if (!usePopup) {
+                          await targetPage.close().catch(() => {});
+                        }
                       }
                     }
                   }
