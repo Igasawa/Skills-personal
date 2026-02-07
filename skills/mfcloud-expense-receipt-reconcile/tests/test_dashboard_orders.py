@@ -3,7 +3,10 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from dashboard.services.core_orders import _collect_orders
+import pytest
+
+import dashboard.services.core_orders as core_orders
+from dashboard.services.core_orders import _collect_orders, _extract_item_name_from_text
 
 
 def _write_jsonl(path: Path, rows: list[dict]) -> None:
@@ -130,6 +133,47 @@ def test_collect_orders_does_not_adopt_no_receipt_item_when_primary_is_low_confi
     orders = _collect_orders(root, "2026-01", set())
     assert len(orders) == 1
     assert orders[0]["item_name"] is None
+
+
+def test_collect_orders_uses_pdf_fallback_item_name_when_low_confidence(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    root = tmp_path / "2026-01"
+    pdf_path = root / "amazon" / "pdfs" / "AMZ-PDF-FALLBACK.pdf"
+    _touch_pdf(pdf_path)
+    _write_jsonl(
+        root / "amazon" / "orders.jsonl",
+        [
+            {
+                "order_id": "AMZ-PDF-FALLBACK",
+                "order_date": "2026-01-10",
+                "status": "ok",
+                "item_name": "2026/01/10 / \u00A51599",
+                "pdf_path": str(pdf_path),
+            }
+        ],
+    )
+
+    monkeypatch.setattr(core_orders, "_extract_item_name_from_pdf", lambda _p: "NANAMI マグネット式ワイヤレス充電器")
+
+    orders = _collect_orders(root, "2026-01", set())
+    assert len(orders) == 1
+    assert orders[0]["item_name"] == "NANAMI マグネット式ワイヤレス充電器"
+
+
+def test_extract_item_name_from_text_uses_delivered_section() -> None:
+    text = "\n".join(
+        [
+            "領収書",
+            "注文概要",
+            "商品の小計: ¥1,599",
+            "ご請求額: ¥1,599",
+            "1月30日にお届け済み",
+            "NANAMI マグネット式 ワイヤレス充電器",
+            "販売: nanamihome",
+        ]
+    )
+    assert _extract_item_name_from_text(text) == "NANAMI マグネット式 ワイヤレス充電器"
 
 
 def test_collect_orders_keeps_shortcut_urls_when_pdf_missing(tmp_path: Path) -> None:

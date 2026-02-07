@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+from functools import lru_cache
 from pathlib import Path
 import re
 from typing import Any
+import unicodedata
 
 from .core_shared import (
     ORDER_ID_RE,
@@ -128,6 +130,106 @@ def _is_missing_total(value: Any) -> bool:
     return False
 
 
+def _normalize_pdf_line(text: str) -> str:
+    return re.sub(r"\s+", " ", unicodedata.normalize("NFKC", text or "")).strip()
+
+
+def _extract_item_name_from_text(text: str) -> str | None:
+    lines = [_normalize_pdf_line(line) for line in str(text or "").splitlines()]
+    lines = [line for line in lines if line]
+    if not lines:
+        return None
+
+    stop_tokens = (
+        "販売:",
+        "商品の返品",
+        "トップへ戻る",
+        "利用規約",
+        "プライバシー",
+        "©",
+    )
+    noise_tokens = (
+        "領収書",
+        "注文日",
+        "注文 #",
+        "お届け先",
+        "お支払い方法",
+        "注文概要",
+        "商品の小計",
+        "配送料",
+        "手数料",
+        "注文合計",
+        "ご請求額",
+        "まで有効",
+    )
+
+    def is_price_line(line: str) -> bool:
+        return bool(re.match(r"^[¥￥]?\s*\d[\d,]*(?:\.\d+)?$", line))
+
+    def is_noise(line: str) -> bool:
+        if is_price_line(line):
+            return True
+        if any(tok in line for tok in stop_tokens):
+            return True
+        if any(tok in line for tok in noise_tokens):
+            return True
+        return False
+
+    start_index = None
+    for i, line in enumerate(lines):
+        if "お届け済" in line or "にお届け" in line:
+            start_index = i + 1
+            break
+
+    if start_index is None:
+        for i, line in enumerate(lines):
+            if "ご請求額" in line or "注文合計" in line:
+                start_index = i + 1
+                break
+
+    if start_index is None:
+        return None
+
+    parts: list[str] = []
+    for line in lines[start_index:]:
+        if is_noise(line):
+            break
+        parts.append(line)
+        if len(" ".join(parts)) >= 180:
+            break
+
+    if not parts:
+        return None
+
+    candidate = re.sub(r"\s+", " ", " ".join(parts)).strip()
+    return candidate or None
+
+
+@lru_cache(maxsize=512)
+def _extract_item_name_from_pdf_cached(path_str: str, mtime_ns: int, size: int) -> str | None:
+    try:
+        from pypdf import PdfReader  # type: ignore
+    except Exception:
+        return None
+
+    try:
+        reader = PdfReader(path_str)
+        text = ""
+        for page in reader.pages[:2]:
+            text += "\n" + (page.extract_text() or "")
+        return _extract_item_name_from_text(text)
+    except Exception:
+        return None
+
+
+def _extract_item_name_from_pdf(pdf_path: Path) -> str | None:
+    try:
+        st = pdf_path.stat()
+    except Exception:
+        return None
+    return _extract_item_name_from_pdf_cached(str(pdf_path), int(st.st_mtime_ns), int(st.st_size))
+
+
 def _collect_orders(root: Path, ym: str, exclusions: set[tuple[str, str]]) -> list[dict[str, Any]]:
     raw: list[dict[str, Any]] = []
     for source in ("amazon", "rakuten"):
@@ -154,6 +256,7 @@ def _collect_orders(root: Path, ym: str, exclusions: set[tuple[str, str]]) -> li
                     "include_flag": obj.get("include"),
                     "has_pdf": bool(pdf_path),
                     "pdf_name": pdf_name,
+                    "pdf_path": pdf_path,
                     "detail_url": _safe_external_url(obj.get("detail_url")),
                     "receipt_url": _safe_external_url(obj.get("receipt_url")),
                 }
@@ -190,6 +293,8 @@ def _collect_orders(root: Path, ym: str, exclusions: set[tuple[str, str]]) -> li
         base["has_pdf"] = base.get("has_pdf") or other.get("has_pdf")
         if not base.get("pdf_name") and other.get("pdf_name"):
             base["pdf_name"] = other.get("pdf_name")
+        if not base.get("pdf_path") and other.get("pdf_path"):
+            base["pdf_path"] = other.get("pdf_path")
         if base.get("include_flag") is None and other.get("include_flag") is not None:
             base["include_flag"] = other.get("include_flag")
         if not base.get("detail_url") and other.get("detail_url"):
@@ -225,7 +330,11 @@ def _collect_orders(root: Path, ym: str, exclusions: set[tuple[str, str]]) -> li
         can_toggle = bool(order_id) and not auto_excluded
         item_name = rec.get("item_name")
         if _is_low_confidence_item_name(item_name):
-            item_name = None
+            pdf_path = rec.get("pdf_path")
+            if rec.get("source") == "amazon" and rec.get("has_pdf") and isinstance(pdf_path, Path):
+                item_name = _extract_item_name_from_pdf(pdf_path)
+            if _is_low_confidence_item_name(item_name):
+                item_name = None
         status_label = STATUS_LABELS.get(status, status)
         has_pdf = bool(rec.get("has_pdf"))
         if status == "ok" and not has_pdf:
