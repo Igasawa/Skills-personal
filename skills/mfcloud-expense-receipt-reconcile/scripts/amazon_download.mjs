@@ -2,6 +2,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
+import { pathToFileURL } from "node:url";
 import { chromium } from "playwright";
 import { ensureDir, locatorVisible, parseArgs, safeFilePart, writeDebug } from "./mjs_common.mjs";
 
@@ -327,86 +328,45 @@ async function trySelectYear(page, year) {
   return false;
 }
 
-async function extractOrdersFromPage(page, year, targetMonth) {
-  let orderCards = page.locator(".order-card, .js-order-card");
-  let n = await orderCards.count();
-  if (n === 0) {
-    orderCards = page.locator("div").filter({ hasText: "注文番号" });
-    n = await orderCards.count();
+async function extractOrderFromCard(card, pageUrl, year) {
+  const cardText = await card.innerText().catch(() => "");
+  const cardTextNorm = normalizeOrderText(cardText);
+
+  const idMatch = cardTextNorm.match(/注文番号\s*[:：]?\s*([0-9-]{10,})/);
+  const orderId = idMatch ? idMatch[1] : null;
+
+  const dateMatch =
+    cardTextNorm.match(/注文日\s*[:：]?\s*([0-9/年月日()]+)/) ||
+    cardTextNorm.match(/注文日\s*([0-9/年月日()]+)/) ||
+    cardTextNorm.match(/(\d{4}[/-]\d{1,2}[/-]\d{1,2})/);
+  const dateParts = dateMatch ? parseJapaneseDate(dateMatch[1], year) : null;
+  const orderDate = dateParts
+    ? `${String(dateParts.y).padStart(4, "0")}-${String(dateParts.m).padStart(2, "0")}-${String(dateParts.d).padStart(2, "0")}`
+    : null;
+
+  const totalMatch =
+    cardTextNorm.match(/合計\s*[:：]?\s*([0-9,]+)\s*円/) ||
+    cardTextNorm.match(/注文合計\s*[:：]?\s*([0-9,]+)\s*円/) ||
+    cardTextNorm.match(/合計\s*([0-9,]+)\s*円/);
+  const totalYen = totalMatch ? yenToInt(totalMatch[1]) : null;
+  const itemName = await extractItemNamesFromCard(card);
+
+  let detailUrl = null;
+  const detailLink = card.locator("a[href*='order-details'], a", { hasText: "注文内容を表示" }).first();
+  if ((await detailLink.count()) > 0) detailUrl = await detailLink.getAttribute("href");
+  if (detailUrl) {
+    detailUrl = toAbsoluteUrl(detailUrl, pageUrl);
   }
-  const orders = [];
+  const orderIdFromUrl = extractOrderIdFromUrl(detailUrl);
 
-  for (let i = 0; i < n; i++) {
-    const card = orderCards.nth(i);
-    const cardText = await card.innerText().catch(() => "");
-    const cardTextNorm = normalizeOrderText(cardText);
-
-    const idMatch = cardTextNorm.match(/注文番号\s*[:：]?\s*([0-9-]{10,})/);
-    const orderId = idMatch ? idMatch[1] : null;
-
-    const dateMatch =
-      cardTextNorm.match(/注文日\s*[:：]?\s*([0-9/年月日()]+)/) ||
-      cardTextNorm.match(/注文日\s*([0-9/年月日()]+)/) ||
-      cardTextNorm.match(/(\d{4}[/-]\d{1,2}[/-]\d{1,2})/);
-    const dateParts = dateMatch ? parseJapaneseDate(dateMatch[1], year) : null;
-    const orderDate = dateParts
-      ? `${String(dateParts.y).padStart(4, "0")}-${String(dateParts.m).padStart(2, "0")}-${String(dateParts.d).padStart(2, "0")}`
-      : null;
-
-    if (!orderDate) continue;
-    const m = Number.parseInt(orderDate.slice(5, 7), 10);
-    if (m !== targetMonth) continue;
-
-    const totalMatch =
-      cardTextNorm.match(/合計\s*[:：]?\s*([0-9,]+)\s*円/) ||
-      cardTextNorm.match(/注文合計\s*[:：]?\s*([0-9,]+)\s*円/) ||
-      cardTextNorm.match(/合計\s*([0-9,]+)\s*円/);
-    const totalYen = totalMatch ? yenToInt(totalMatch[1]) : null;
-    const itemName = await extractItemNamesFromCard(card);
-
-    let detailUrl = null;
-    const detailLink = card.locator("a[href*='order-details'], a", { hasText: "注文内容を表示" }).first();
-    if ((await detailLink.count()) > 0) detailUrl = await detailLink.getAttribute("href");
-    if (detailUrl && detailUrl.startsWith("/")) {
-      detailUrl = new URL(detailUrl, page.url()).toString();
-    }
-
-    orders.push({
-      order_id: orderId,
-      order_date: orderDate,
-      total_yen: totalYen,
-      detail_url: detailUrl,
-      item_name: itemName,
-    });
-  }
-
-  return orders;
-}
-
-async function extractDetailLinks(page) {
-  const links = page.locator("a[href*='order-details'], a[href*='orderID=']");
-  const n = await links.count();
-  const out = [];
-  const seen = new Set();
-  for (let i = 0; i < n; i++) {
-    const href = await links.nth(i).getAttribute("href");
-    if (!href) continue;
-    const url = href.startsWith("/") ? new URL(href, page.url()).toString() : href;
-    let parsed = null;
-    try {
-      parsed = new URL(url);
-    } catch {
-      continue;
-    }
-    if (!parsed.pathname.includes("/your-orders/order-details")) continue;
-    const orderId = parsed.searchParams.get("orderID");
-    if (!orderId || !/^\d{3}-\d{7}-\d{7}$/.test(orderId)) continue;
-    const normalized = parsed.toString();
-    if (seen.has(normalized)) continue;
-    seen.add(normalized);
-    out.push(normalized);
-  }
-  return out;
+  return {
+    order_id: orderId || orderIdFromUrl,
+    order_date: orderDate,
+    total_yen: totalYen,
+    detail_url: detailUrl,
+    item_name: itemName,
+    card_text: cardText,
+  };
 }
 
 function isGiftCardOrder(textRaw) {
@@ -481,6 +441,17 @@ async function findReceiptLink(page) {
   return null;
 }
 
+async function findReceiptLinkInCard(card) {
+  const labels = ["領収書等", "領収書", "購入明細書", "Invoice", "Receipt"];
+  for (const label of labels) {
+    const clickable = card.locator("a,button", { hasText: label }).first();
+    if ((await clickable.count()) > 0) return clickable;
+  }
+  const popoverHost = card.locator("[data-a-popover], [data-action*='a-popover']").first();
+  if ((await popoverHost.count()) > 0) return popoverHost;
+  return null;
+}
+
 async function findPopoverReceiptUrl(page, receiptLink) {
   let popover = null;
   if (receiptLink) {
@@ -527,6 +498,21 @@ function extractOrderIdFromText(textRaw) {
   const text = String(textRaw || "");
   const m = text.match(/\b\d{3}-\d{7}-\d{7}\b/);
   return m ? m[0] : null;
+}
+
+function extractOrderIdFromUrl(rawUrl) {
+  if (!rawUrl) return null;
+  try {
+    const u = new URL(String(rawUrl));
+    const byQuery = u.searchParams.get("orderID") || u.searchParams.get("orderId");
+    if (byQuery && /^\d{3}-\d{7}-\d{7}$/.test(byQuery)) return byQuery;
+    const byPath = u.pathname.match(/\b\d{3}-\d{7}-\d{7}\b/);
+    if (byPath) return byPath[0];
+    return null;
+  } catch {
+    const byText = String(rawUrl).match(/\b\d{3}-\d{7}-\d{7}\b/);
+    return byText ? byText[0] : null;
+  }
 }
 
 function toAbsoluteUrl(rawUrl, baseUrl) {
@@ -637,7 +623,8 @@ async function collectAmazonDocumentCandidates(page) {
   return out;
 }
 
-async function resolvePreferredAmazonDocumentPage(page, fallbackUrl) {
+async function resolvePreferredAmazonDocumentPage(page, fallbackUrl, options = {}) {
+  const navigate = options.navigate !== false;
   const currentUrl = page.url() || fallbackUrl || "";
   const candidates = await collectAmazonDocumentCandidates(page);
 
@@ -654,11 +641,11 @@ async function resolvePreferredAmazonDocumentPage(page, fallbackUrl) {
     return { kind: "none", url: currentUrl };
   }
 
-  if (best.url !== currentUrl) {
+  if (navigate && best.url !== currentUrl) {
     await page.goto(best.url, { waitUntil: "domcontentloaded" });
     await page.waitForLoadState("networkidle").catch(() => {});
   }
-  return { kind: best.kind, url: page.url() || best.url };
+  return { kind: best.kind, url: navigate ? page.url() || best.url : best.url };
 }
 
 async function resolveReceiptSource(context, page, receiptLink) {
@@ -773,6 +760,53 @@ function mergeReceiptMetaIntoOrder(order, parsed) {
   }
 }
 
+function normalizeAmazonOrderErrorReason(rawError) {
+  const msg = String(rawError || "");
+  if (!msg) return "unknown_error";
+  if (msg.includes("menu_not_found")) return "menu_not_found";
+  if (msg.includes("link_not_resolved")) return "link_not_resolved";
+  if (msg.includes("amazon_downloaded_file_not_pdf") || msg.includes("amazon_pdf_not_created_or_invalid")) return "save_failed";
+  if (
+    msg.includes("amazon_receipt_selection_page") ||
+    msg.includes("amazon_receipt_missing_signal") ||
+    msg.includes("amazon_receipt_missing_order_id") ||
+    msg.includes("amazon_receipt_page_empty_or_too_short") ||
+    msg.includes("amazon_receipt_invalid_page")
+  ) {
+    return `document_validation_failed:${msg}`;
+  }
+  if (msg.includes("AUTH_REQUIRED")) return "auth_required";
+  return msg;
+}
+
+function computeCoverageSummary({ monthlyOrdersTotal, pdfSaved, noReceipt, failedOrders }) {
+  const total = Number.isFinite(monthlyOrdersTotal) ? monthlyOrdersTotal : 0;
+  const saved = Number.isFinite(pdfSaved) ? pdfSaved : 0;
+  const coverage = total > 0 ? saved / total : 1;
+  return {
+    monthly_orders_total: total,
+    pdf_saved: saved,
+    no_receipt: Number.isFinite(noReceipt) ? noReceipt : 0,
+    failed_orders: Array.isArray(failedOrders) ? failedOrders : [],
+    failed_orders_count: Array.isArray(failedOrders) ? failedOrders.length : 0,
+    coverage,
+  };
+}
+
+function assertCoverageThreshold(summary, minPdfSuccessRate) {
+  const threshold = Number.isFinite(minPdfSuccessRate) ? minPdfSuccessRate : 0.8;
+  if (summary.coverage < threshold) {
+    const msg = [
+      "AMAZON_COVERAGE_THRESHOLD_NOT_MET",
+      `coverage=${summary.coverage.toFixed(3)}`,
+      `threshold=${threshold.toFixed(3)}`,
+      `monthly_orders_total=${summary.monthly_orders_total}`,
+      `pdf_saved=${summary.pdf_saved}`,
+    ].join(" ");
+    throw new Error(msg);
+  }
+}
+
 async function main() {
   const args = parseArgs(process.argv);
   const storageState = args["storage-state"];
@@ -790,11 +824,19 @@ async function main() {
     : process.env.RECEIPT_NAME_FALLBACK || "";
   const skipReceiptName = Boolean(args["skip-receipt-name"]);
   const authHandoff = Boolean(args["auth-handoff"]);
+  const historyOnlyReceiptFlow = args["history-only-receipt-flow"] !== false;
+  const minPdfSuccessRate = Number.parseFloat(args["min-pdf-success-rate"] || "0.8");
 
   if (!storageState) throw new Error("Missing --storage-state");
   if (!outJsonl) throw new Error("Missing --out-jsonl");
   if (!outPdfsDir) throw new Error("Missing --out-pdfs-dir");
   if (!year || !month) throw new Error("Missing --year/--month");
+  if (!Number.isFinite(minPdfSuccessRate) || minPdfSuccessRate < 0 || minPdfSuccessRate > 1) {
+    throw new Error("Invalid --min-pdf-success-rate (expected 0.0 to 1.0)");
+  }
+  if (!historyOnlyReceiptFlow) {
+    console.warn("[amazon] detail-page fallback is disabled by policy. history-only flow is always used.");
+  }
 
   ensureDir(path.dirname(outJsonl));
   ensureDir(outPdfsDir);
@@ -810,7 +852,14 @@ async function main() {
   page.setDefaultNavigationTimeout(navTimeoutMs);
   console.log("[amazon] open orders page");
 
-  let allOrders = [];
+  const lines = [];
+  const failedOrders = [];
+  let monthlyOrdersTotal = 0;
+  let pdfSaved = 0;
+  let noReceipt = 0;
+  let debugDetailSaved = false;
+  const seenOrderKeys = new Set();
+
   try {
     await page.goto(ordersUrl, { waitUntil: "domcontentloaded" });
     await page.waitForLoadState("networkidle").catch(() => {});
@@ -820,225 +869,156 @@ async function main() {
     await trySelectYear(page, year);
     await page.waitForSelector(".order-card, .js-order-card", { timeout: 15000 }).catch(() => {});
 
-    const seenOrderIds = new Set();
-    const seenDetailUrls = new Set();
     for (let pageNo = 1; pageNo <= 50; pageNo++) {
       await page.waitForTimeout(300);
-      const orders = await extractOrdersFromPage(page, year, month);
-      const detailLinks = await extractDetailLinks(page);
-
-      if (pageNo === 1 && orders.length === 0 && detailLinks.length === 0 && debugDir) {
+      let orderCards = page.locator(".order-card, .js-order-card");
+      let cardCount = await orderCards.count();
+      if (cardCount === 0) {
+        orderCards = page.locator("div").filter({ hasText: "注文番号" });
+        cardCount = await orderCards.count();
+      }
+      if (pageNo === 1 && cardCount === 0 && debugDir) {
         await writeDebug(page, debugDir, "orders_page_empty");
       }
 
-      for (const o of orders) {
-        if (!seenOrderIds.has(o.order_id)) {
-          seenOrderIds.add(o.order_id);
-          allOrders.push(o);
-          if (o.detail_url) seenDetailUrls.add(o.detail_url);
+      for (let cardIndex = 0; cardIndex < cardCount; cardIndex++) {
+        orderCards = page.locator(".order-card, .js-order-card");
+        if ((await orderCards.count()) === 0) {
+          orderCards = page.locator("div").filter({ hasText: "注文番号" });
         }
-      }
+        const card = orderCards.nth(cardIndex);
+        if ((await card.count()) === 0) continue;
 
-      for (const url of detailLinks) {
-        if (!seenDetailUrls.has(url)) {
-          seenDetailUrls.add(url);
-          allOrders.push({ order_id: null, order_date: null, total_yen: null, detail_url: url });
-        }
-      }
+        const order = await extractOrderFromCard(card, page.url(), year);
+        if (!order.order_date) continue;
+        const m = Number.parseInt(order.order_date.slice(5, 7), 10);
+        if (m !== month) continue;
 
-      const next = page.locator("a", { hasText: "次へ" }).first();
-      if ((await next.count()) === 0) break;
-      const disabled = await next.getAttribute("aria-disabled");
-      if (disabled === "true") break;
-      await next.click();
-      await page.waitForLoadState("networkidle").catch(() => {});
-    }
+        const dedupeKey =
+          order.order_id ||
+          order.detail_url ||
+          `${order.order_date}|${order.total_yen ?? ""}|${order.item_name ?? ""}|${pageNo}|${cardIndex}`;
+        if (seenOrderKeys.has(dedupeKey)) continue;
+        seenOrderKeys.add(dedupeKey);
 
-    const lines = [];
-    let debugDetailSaved = false;
-    let pdfSaved = 0;
-    let noReceipt = 0;
-
-    console.log(`[amazon] total orders to process: ${allOrders.length}`);
-    for (let i = 0; i < allOrders.length; i++) {
-      const order = allOrders[i];
-      console.log(`[amazon] processing ${i + 1}/${allOrders.length}`);
-      let status = "ok";
-      let receiptUrl = null;
-      let pdfPath = null;
-      let errorReason = null;
-
-      try {
-        if (!order.detail_url) throw new Error("missing detail_url");
-        await page.goto(order.detail_url, { waitUntil: "domcontentloaded" });
-        await page.waitForLoadState("networkidle").catch(() => {});
-        await ensureAuthenticated(page, authHandoff, "Amazon order detail");
-
-        const parsed = await parseOrderDetail(page, year);
-        if (!order.order_id || !order.order_date || order.total_yen == null) {
-          order.order_id = order.order_id || parsed.orderId;
-          order.order_date = order.order_date || parsed.orderDate;
-          if (order.total_yen == null && parsed.totalYen != null) order.total_yen = parsed.totalYen;
-          if (!order.item_name && parsed.itemName) order.item_name = parsed.itemName;
+        monthlyOrdersTotal += 1;
+        if (!order.order_id) {
+          order.order_id = extractOrderIdFromUrl(order.detail_url);
         }
 
-        if (order.order_date) {
-          const m = Number.parseInt(order.order_date.slice(5, 7), 10);
-          if (m !== month) {
-            status = "out_of_month";
-            lines.push(
-              JSON.stringify({
-                order_id: order.order_id,
-                order_date: order.order_date,
-                total_yen: order.total_yen,
-                item_name: order.item_name || null,
-                receipt_name: receiptName || null,
-                receipt_name_applied: false,
-                source: "amazon",
-                detail_url: order.detail_url,
-                receipt_url: null,
-                pdf_path: null,
-                status,
-              })
-            );
-            continue;
-          }
-        } else {
-          status = "unknown_date";
-          lines.push(
-            JSON.stringify({
-              order_id: order.order_id,
-              order_date: order.order_date,
-              total_yen: order.total_yen,
-              receipt_name: receiptName || null,
-              receipt_name_applied: false,
-              source: "amazon",
-              detail_url: order.detail_url,
-              receipt_url: null,
-              pdf_path: null,
-              status,
-            })
-          );
-          continue;
-        }
+        let status = "ok";
+        let receiptUrl = null;
+        let pdfPath = null;
+        let errorReason = null;
+        order.receipt_name_applied = false;
 
-        if (parsed.isGiftCard) {
-          status = "gift_card";
-          lines.push(
-            JSON.stringify({
-              order_id: order.order_id,
-              order_date: order.order_date,
-              total_yen: order.total_yen,
-              receipt_name: receiptName || null,
-              receipt_name_applied: false,
-              source: "amazon",
-              detail_url: order.detail_url,
-              receipt_url: null,
-              pdf_path: null,
-              status,
-              include: false,
-              gift_card: true,
-            })
-          );
-          continue;
-        }
+        console.log(`[amazon] processing order ${monthlyOrdersTotal} id=${order.order_id || "unknown"}`);
 
-        const receiptLink = await findReceiptLink(page);
-        if (!receiptLink) {
-          status = "no_receipt";
-          noReceipt += 1;
-        } else {
-          const source = await resolveReceiptSource(context, page, receiptLink);
-          receiptUrl = source.receiptUrl;
-          const popupPage = source.popupPage;
-          const download = source.download;
-
-          const ymd = order.order_date || `${year}-??-??`;
-          const total = order.total_yen ?? "unknown";
-          const fileName = `${safeFilePart(ymd)}_amazon_${safeFilePart(order.order_id || "unknown")}_${safeFilePart(total)}.pdf`;
-          const plannedPdfPath = path.join(outPdfsDir, fileName);
-
-          try {
-            if (download) {
-              await download.saveAs(plannedPdfPath);
-              if (!fileLooksLikePdf(plannedPdfPath)) {
-                throw new Error("amazon_downloaded_file_not_pdf");
-              }
-              pdfPath = plannedPdfPath;
-              pdfSaved += 1;
-            } else if (!receiptUrl) {
-              status = "no_receipt";
-              noReceipt += 1;
+        try {
+          if (isGiftCardOrder(order.card_text || "")) {
+            status = "gift_card";
+          } else {
+            const receiptLink = await findReceiptLinkInCard(card);
+            if (!receiptLink) {
+              status = "error";
+              errorReason = "menu_not_found";
             } else {
-              const usePopup = Boolean(popupPage && !popupPage.isClosed());
-              const needsNewPage = !usePopup && pdfContext !== context;
-              const targetPage = usePopup ? popupPage : needsNewPage ? await pdfContext.newPage() : page;
-              if (needsNewPage) {
-                targetPage.setDefaultTimeout(navTimeoutMs);
-                targetPage.setDefaultNavigationTimeout(navTimeoutMs);
-              }
+              const source = await resolveReceiptSource(context, page, receiptLink);
+              receiptUrl = source.receiptUrl;
+              const popupPage = source.popupPage;
+              const download = source.download;
+
+              const ymd = order.order_date || `${year}-??-??`;
+              const total = order.total_yen ?? "unknown";
+              const fileName = `${safeFilePart(ymd)}_amazon_${safeFilePart(order.order_id || "unknown")}_${safeFilePart(total)}.pdf`;
+              const plannedPdfPath = path.join(outPdfsDir, fileName);
+
               try {
-                if (!usePopup || targetPage.url() !== receiptUrl) {
-                  await targetPage.goto(receiptUrl, { waitUntil: "domcontentloaded" });
-                  await targetPage.waitForLoadState("networkidle").catch(() => {});
-                }
-                await ensureAuthenticated(targetPage, authHandoff, "Amazon receipt page");
-                const preferredDoc = await resolvePreferredAmazonDocumentPage(targetPage, receiptUrl);
-                if (preferredDoc.url) {
-                  receiptUrl = preferredDoc.url;
-                }
-                console.log(
-                  `[amazon] order ${order.order_id || "unknown"} document_page kind=${preferredDoc.kind} url=${receiptUrl || "unknown"}`
-                );
-                await assertAmazonReceiptPage(targetPage);
+                if (download) {
+                  await download.saveAs(plannedPdfPath);
+                  if (!fileLooksLikePdf(plannedPdfPath)) {
+                    throw new Error("amazon_downloaded_file_not_pdf");
+                  }
+                  pdfPath = plannedPdfPath;
+                  pdfSaved += 1;
+                } else {
+                  if (!receiptUrl) {
+                    const preferredFromHistory = await resolvePreferredAmazonDocumentPage(page, null, { navigate: false });
+                    if (preferredFromHistory.url && preferredFromHistory.kind !== "none") {
+                      receiptUrl = preferredFromHistory.url;
+                    }
+                  }
+                  if (!receiptUrl) {
+                    status = "no_receipt";
+                    noReceipt += 1;
+                    errorReason = "link_not_resolved";
+                  } else {
+                    const usePopup = Boolean(popupPage && !popupPage.isClosed());
+                    const targetPage = usePopup ? popupPage : await pdfContext.newPage();
+                    targetPage.setDefaultTimeout(navTimeoutMs);
+                    targetPage.setDefaultNavigationTimeout(navTimeoutMs);
 
-                const parsedReceipt = await parseOrderDetail(targetPage, year);
-                mergeReceiptMetaIntoOrder(order, parsedReceipt);
-                if (order.total_yen == null) {
-                  const t = await extractTotalFromPage(targetPage);
-                  if (t != null) order.total_yen = t;
-                }
+                    try {
+                      if (!usePopup || targetPage.url() !== receiptUrl) {
+                        await targetPage.goto(receiptUrl, { waitUntil: "domcontentloaded" });
+                        await targetPage.waitForLoadState("networkidle").catch(() => {});
+                      }
+                      await ensureAuthenticated(targetPage, authHandoff, "Amazon receipt page");
+                      const preferredDoc = await resolvePreferredAmazonDocumentPage(targetPage, receiptUrl, { navigate: true });
+                      if (preferredDoc.url) {
+                        receiptUrl = preferredDoc.url;
+                      }
 
-                let nameResult = { applied: false, name: null };
-                if (!skipReceiptName) {
-                  const input = await findReceiptNameInput(targetPage);
-                  if (input) {
-                    nameResult = await applyReceiptNameWithFallback(targetPage, receiptName, receiptNameFallback);
+                      await assertAmazonReceiptPage(targetPage);
+                      const parsedReceipt = await parseOrderDetail(targetPage, year);
+                      mergeReceiptMetaIntoOrder(order, parsedReceipt);
+                      if (order.total_yen == null) {
+                        const t = await extractTotalFromPage(targetPage);
+                        if (t != null) order.total_yen = t;
+                      }
+
+                      if (!skipReceiptName) {
+                        const input = await findReceiptNameInput(targetPage);
+                        if (input) {
+                          const nameResult = await applyReceiptNameWithFallback(targetPage, receiptName, receiptNameFallback);
+                          if (nameResult.applied) {
+                            order.receipt_name = nameResult.name;
+                          }
+                          order.receipt_name_applied = Boolean(nameResult.applied);
+                        }
+                      }
+
+                      await assertAmazonReceiptPage(targetPage);
+                      await saveReceiptPdf(targetPage, plannedPdfPath);
+                      pdfPath = plannedPdfPath;
+                      pdfSaved += 1;
+                    } finally {
+                      if (!usePopup) {
+                        await targetPage.close().catch(() => {});
+                      }
+                    }
                   }
                 }
-                if (nameResult.applied) order.receipt_name = nameResult.name;
-                order.receipt_name_applied = Boolean(nameResult.applied);
-
-                await assertAmazonReceiptPage(targetPage);
-                await saveReceiptPdf(targetPage, plannedPdfPath);
-                pdfPath = plannedPdfPath;
-                pdfSaved += 1;
               } finally {
-                if (needsNewPage) {
-                  await targetPage.close().catch(() => {});
+                if (popupPage && !popupPage.isClosed()) {
+                  await popupPage.close().catch(() => {});
                 }
               }
             }
-          } finally {
-            if (popupPage && !popupPage.isClosed()) {
-              await popupPage.close().catch(() => {});
-            }
           }
+        } catch (e) {
+          status = "error";
+          errorReason = normalizeAmazonOrderErrorReason(e?.message || e);
+          console.error(`[amazon] order ${order.order_id || "unknown"} error: ${errorReason}`);
+          if (debugDir) await writeDebug(page, debugDir, `order_${safeFilePart(order.order_id || "unknown")}_error`);
         }
-      } catch (e) {
-        status = "error";
-        errorReason = String(e?.message || e);
-        console.error(`[amazon] order ${order.order_id || "unknown"} error: ${errorReason}`);
-        if (debugDir) await writeDebug(page, debugDir, `order_${safeFilePart(order.order_id)}_error`);
-      }
 
-      if (debugDir && !debugDetailSaved && order.total_yen == null) {
-        await writeDebug(page, debugDir, `order_${safeFilePart(order.order_id || "unknown")}_detail`);
-        debugDetailSaved = true;
-      }
+        if (debugDir && !debugDetailSaved && order.total_yen == null) {
+          await writeDebug(page, debugDir, `order_${safeFilePart(order.order_id || "unknown")}_detail`);
+          debugDetailSaved = true;
+        }
 
-      lines.push(
-        JSON.stringify({
+        const row = {
           order_id: order.order_id,
           order_date: order.order_date,
           total_yen: order.total_yen,
@@ -1051,17 +1031,52 @@ async function main() {
           pdf_path: pdfPath,
           status,
           error_reason: errorReason,
-        })
-      );
+          history_only_flow: true,
+        };
+        if (status === "gift_card") {
+          row.include = false;
+          row.gift_card = true;
+        }
+        lines.push(JSON.stringify(row));
+
+        if (!pdfPath) {
+          failedOrders.push({
+            order_id: order.order_id || null,
+            status,
+            error_reason: errorReason || null,
+          });
+        }
+      }
+
+      const next = page.locator("a", { hasText: "次へ" }).first();
+      if ((await next.count()) === 0) break;
+      const disabled = await next.getAttribute("aria-disabled");
+      if (disabled === "true") break;
+      await next.click();
+      await page.waitForLoadState("networkidle").catch(() => {});
     }
 
     fs.writeFileSync(outJsonl, lines.join("\n") + (lines.length ? "\n" : ""), "utf-8");
-    console.log(
-      JSON.stringify({
-        status: "success",
-        data: { orders_total: allOrders.length, pdf_saved: pdfSaved, no_receipt: noReceipt, out_jsonl: outJsonl, out_pdfs_dir: outPdfsDir },
-      })
-    );
+
+    const summary = computeCoverageSummary({
+      monthlyOrdersTotal,
+      pdfSaved,
+      noReceipt,
+      failedOrders,
+    });
+    const resultData = {
+      ...summary,
+      min_pdf_success_rate: minPdfSuccessRate,
+      history_only_receipt_flow: true,
+      out_jsonl: outJsonl,
+      out_pdfs_dir: outPdfsDir,
+    };
+    if (summary.coverage < minPdfSuccessRate) {
+      console.error(JSON.stringify({ status: "failed", data: resultData }));
+    }
+    assertCoverageThreshold(summary, minPdfSuccessRate);
+
+    console.log(JSON.stringify({ status: "success", data: resultData }));
   } catch (e) {
     if (debugDir) await writeDebug(page, debugDir, "fatal");
     throw e;
@@ -1073,7 +1088,19 @@ async function main() {
   }
 }
 
-main().catch((err) => {
-  console.error(String(err && err.stack ? err.stack : err));
-  process.exit(1);
-});
+export {
+  assessAmazonReceiptPageText,
+  assertCoverageThreshold,
+  classifyAmazonDocumentCandidate,
+  computeCoverageSummary,
+  extractOrderIdFromUrl,
+  normalizeAmazonOrderErrorReason,
+};
+
+const isMainModule = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
+if (isMainModule) {
+  main().catch((err) => {
+    console.error(String(err && err.stack ? err.stack : err));
+    process.exit(1);
+  });
+}

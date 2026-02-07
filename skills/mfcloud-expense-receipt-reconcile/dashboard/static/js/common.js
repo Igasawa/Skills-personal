@@ -43,6 +43,11 @@
     if (text.includes("Invalid mode")) return "実行モードが不正です。";
     if (text.includes("Workflow order violation")) return "実行順序が正しくありません。画面の次ステップ案内に従ってください。";
     if (text.includes("Run not found")) return "対象月の実行成果物がありません。先に領収書取得を実行してください。";
+    if (text.includes("AMAZON_COVERAGE_THRESHOLD_NOT_MET")) return "Amazon取得率が基準(80%)未満のため失敗しました。再取得してください。";
+    if (text.includes("menu_not_found")) return "Amazonの「領収書等」メニューが見つかりませんでした。画面表示を確認して再実行してください。";
+    if (text.includes("link_not_resolved")) return "領収書リンクを解決できませんでした。注文カードの「領収書等」を確認してください。";
+    if (text.includes("document_validation_failed")) return "領収書文書ページの検証に失敗しました。取得対象ページを確認してください。";
+    if (text.includes("save_failed")) return "PDF保存に失敗しました。再実行してください。";
     if (text.includes("Cannot find package 'playwright'") || text.includes("ERR_MODULE_NOT_FOUND")) {
       return "Playwright依存が見つかりませんでした。初回起動の準備を行ってから再実行してください。";
     }

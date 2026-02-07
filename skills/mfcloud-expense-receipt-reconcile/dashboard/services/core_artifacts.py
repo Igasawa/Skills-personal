@@ -34,12 +34,14 @@ def _derive_order_counts_from_jsonl(root: Any, ym: str) -> dict[str, int]:
             if not isinstance(obj, dict):
                 continue
             order_id = str(obj.get("order_id") or "").strip()
-            if not order_id:
+            detail_url = str(obj.get("detail_url") or "").strip()
+            record_key = order_id or detail_url
+            if not record_key:
                 continue
-            per_source[source]["total"].add(order_id)
+            per_source[source]["total"].add(record_key)
             order_date = str(obj.get("order_date") or "").strip()
             if order_date.startswith(ym):
-                per_source[source]["in_month"].add(order_id)
+                per_source[source]["in_month"].add(record_key)
     amazon_total = len(per_source["amazon"]["total"])
     rakuten_total = len(per_source["rakuten"]["total"])
     amazon_in_month = len(per_source["amazon"]["in_month"])

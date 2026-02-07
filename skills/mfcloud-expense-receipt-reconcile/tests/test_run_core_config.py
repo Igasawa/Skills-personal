@@ -21,6 +21,8 @@ def _base_args(**overrides: object) -> argparse.Namespace:
         "monthly_notes": None,
         "receipt_name": None,
         "receipt_name_fallback": None,
+        "min_pdf_success_rate": None,
+        "history_only_receipt_flow": None,
         "skip_receipt_name": False,
         "enable_rakuten": None,
         "rakuten_orders_url": None,
@@ -141,3 +143,29 @@ def test_parse_config_cli_overrides_tenant() -> None:
     assert rc.mfcloud_expense_list_url == "https://cli.example/expenses"
     assert rc.resolved_sources["receipt_name"] == "cli.receipt_name"
     assert rc.resolved_sources["amazon_orders_url"] == "cli.amazon_orders_url"
+
+
+def test_parse_config_amazon_threshold_prefers_cli_then_tenant() -> None:
+    args = _base_args(min_pdf_success_rate=0.9)
+    raw = {
+        "config": {
+            "tenant": {
+                "urls": {"mfcloud_expense_list": "https://tenant.example/expenses"},
+                "amazon": {"min_pdf_success_rate": 0.7},
+            },
+            "amazon": {"min_pdf_success_rate": 0.6},
+        }
+    }
+
+    rc, _, _ = _parse_config(args, raw)
+    assert rc.amazon_min_pdf_success_rate == 0.9
+    assert rc.resolved_sources["amazon_min_pdf_success_rate"] == "cli.min_pdf_success_rate"
+
+
+def test_parse_config_amazon_history_flow_defaults_true() -> None:
+    args = _base_args()
+    raw = {"config": {"urls": {"mfcloud_expense_list": "https://example/expenses"}}}
+
+    rc, _, _ = _parse_config(args, raw)
+    assert rc.history_only_receipt_flow is True
+    assert rc.resolved_sources["history_only_receipt_flow"] == "default.history_only_receipt_flow"

@@ -55,6 +55,8 @@ class RunConfig:
     monthly_notes: str
     receipt_name: str
     receipt_name_fallback: str
+    amazon_min_pdf_success_rate: float
+    history_only_receipt_flow: bool
     rakuten_enabled: bool
     rakuten_orders_url: str
     rakuten_storage_state: Path
@@ -88,10 +90,12 @@ def _parse_config(args: argparse.Namespace, raw: dict[str, Any]) -> tuple[RunCon
     sessions = _as_dict(config.get("sessions"))
     pw = _as_dict(config.get("playwright"))
     matching = _as_dict(config.get("matching"))
+    amazon_cfg = _as_dict(config.get("amazon"))
     rakuten_cfg = _as_dict(config.get("rakuten"))
     tenant = _as_dict(config.get("tenant"))
     tenant_urls = _as_dict(tenant.get("urls"))
     tenant_receipt = _as_dict(tenant.get("receipt"))
+    tenant_amazon = _as_dict(tenant.get("amazon"))
 
     resolved_sources: dict[str, str] = {}
 
@@ -120,6 +124,32 @@ def _parse_config(args: argparse.Namespace, raw: dict[str, Any]) -> tuple[RunCon
     resolved_sources["receipt_name_fallback"] = receipt_name_fallback_source
     receipt_name_fallback = receipt_name_fallback_raw
     receipt_name_fallback = str(receipt_name_fallback).strip() if receipt_name_fallback is not None else ""
+    min_pdf_success_rate_raw, min_pdf_success_rate_source = _pick_with_source(
+        [
+            (args.min_pdf_success_rate, "cli.min_pdf_success_rate"),
+            (tenant_amazon.get("min_pdf_success_rate"), "config.tenant.amazon.min_pdf_success_rate"),
+            (amazon_cfg.get("min_pdf_success_rate"), "config.amazon.min_pdf_success_rate"),
+            (0.8, "default.min_pdf_success_rate"),
+        ]
+    )
+    resolved_sources["amazon_min_pdf_success_rate"] = min_pdf_success_rate_source
+    try:
+        amazon_min_pdf_success_rate = float(min_pdf_success_rate_raw)
+    except Exception as exc:
+        raise ValueError("min_pdf_success_rate must be a float between 0 and 1.") from exc
+    if amazon_min_pdf_success_rate < 0 or amazon_min_pdf_success_rate > 1:
+        raise ValueError("min_pdf_success_rate must be between 0 and 1.")
+
+    history_only_receipt_flow_raw, history_only_receipt_flow_source = _pick_with_source(
+        [
+            (args.history_only_receipt_flow, "cli.history_only_receipt_flow"),
+            (tenant_amazon.get("history_only_receipt_flow"), "config.tenant.amazon.history_only_receipt_flow"),
+            (amazon_cfg.get("history_only_receipt_flow"), "config.amazon.history_only_receipt_flow"),
+            (True, "default.history_only_receipt_flow"),
+        ]
+    )
+    resolved_sources["history_only_receipt_flow"] = history_only_receipt_flow_source
+    history_only_receipt_flow = bool(history_only_receipt_flow_raw)
 
     dry_run = bool(_coalesce(args.dry_run, config.get("dry_run", False)))
     preflight = bool(getattr(args, "preflight", False))
@@ -236,6 +266,8 @@ def _parse_config(args: argparse.Namespace, raw: dict[str, Any]) -> tuple[RunCon
         monthly_notes=monthly_notes,
         receipt_name=receipt_name,
         receipt_name_fallback=receipt_name_fallback,
+        amazon_min_pdf_success_rate=amazon_min_pdf_success_rate,
+        history_only_receipt_flow=history_only_receipt_flow,
         rakuten_enabled=rakuten_enabled,
         tenant_name=tenant_name,
         tenant_key=tenant_key,
@@ -266,6 +298,20 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--notes", dest="monthly_notes", help="monthly notes for thread template")
     ap.add_argument("--receipt-name", dest="receipt_name", help="receipt addressee name for Amazon invoices")
     ap.add_argument("--receipt-name-fallback", dest="receipt_name_fallback", help="fallback receipt name when primary fails")
+    ap.add_argument(
+        "--min-pdf-success-rate",
+        dest="min_pdf_success_rate",
+        type=float,
+        help="minimum Amazon PDF success rate threshold (0.0-1.0, default: 0.8)",
+    )
+    ap.add_argument(
+        "--history-only-receipt-flow",
+        dest="history_only_receipt_flow",
+        action="store_const",
+        const=True,
+        default=None,
+        help="force Amazon receipt acquisition from order history cards only",
+    )
     ap.add_argument("--skip-receipt-name", action="store_true", help="skip auto input of receipt addressee name")
     ap.add_argument("--enable-rakuten", dest="enable_rakuten", action="store_const", const=True, default=None, help="enable Rakuten download")
     ap.add_argument("--rakuten-orders-url", dest="rakuten_orders_url", help="Rakuten order history URL")

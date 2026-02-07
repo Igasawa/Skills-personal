@@ -17,6 +17,7 @@
   let activeLogRunId = "";
   let stepRefreshInFlight = false;
   let stepRefreshStartedAt = 0;
+  let autoReloadScheduled = false;
   const REQUEST_TIMEOUT_MS = 12000;
   const STEP_REFRESH_STALE_MS = 15000;
 
@@ -132,11 +133,20 @@
     }
 
     if (status && status !== "running") {
+      const shouldAutoReload = awaitingRunFinalization && status === "success" && !autoReloadScheduled;
       awaitingRunFinalization = false;
       stopLogPolling(runId);
       scheduleStepSync();
       const finishedMode = String(data.run?.params?.mode || "");
-      syncAfterRunCompletion(finishedMode).catch(() => {});
+      syncAfterRunCompletion(finishedMode)
+        .catch(() => {})
+        .finally(() => {
+          if (!shouldAutoReload) return;
+          autoReloadScheduled = true;
+          setTimeout(() => {
+            window.location.reload();
+          }, 1200);
+        });
     }
   }
 

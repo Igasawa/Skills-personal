@@ -91,6 +91,27 @@ def test_scan_artifacts_order_counts_override_stale_report_counts(
     assert counts["mf_missing_evidence"] == 7
 
 
+def test_scan_artifacts_counts_rows_with_missing_order_id_using_detail_url(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("AX_HOME", str(tmp_path))
+    root = _artifact_root(tmp_path) / "2026-01"
+
+    _write_jsonl(
+        root / "amazon" / "orders.jsonl",
+        [
+            {"order_id": None, "detail_url": "https://example.invalid/order?orderID=503-0000000-0000000", "order_date": "2026-01-03"},
+            {"order_id": "A-1", "order_date": "2026-01-03"},
+        ],
+    )
+
+    items = _scan_artifacts()
+    item = next(x for x in items if x["ym"] == "2026-01")
+    counts = item["counts"]
+    assert counts["amazon_orders_in_month"] == 2
+    assert counts["orders_in_month"] == 2
+
+
 def test_scan_artifacts_derives_exclusion_counts_from_orders_and_exclusions(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
