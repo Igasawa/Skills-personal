@@ -743,6 +743,30 @@ def _reset_step_state(year: int, month: int, step: str, actor: Any = None) -> di
         if _delete_path(pdfs_dir):
             cleared_paths.append(str(pdfs_dir))
         pdfs_dir.mkdir(parents=True, exist_ok=True)
+        exclude_path = reports_dir / "exclude_orders.json"
+        exclude_payload = _read_json(exclude_path)
+        if isinstance(exclude_payload, dict):
+            items = exclude_payload.get("exclude")
+            if isinstance(items, list):
+                kept_items: list[Any] = []
+                removed = False
+                for item in items:
+                    if not isinstance(item, dict):
+                        kept_items.append(item)
+                        continue
+                    item_source = str(item.get("source") or "").strip()
+                    if item_source == clear_source:
+                        removed = True
+                        continue
+                    kept_items.append(item)
+                if removed:
+                    if kept_items:
+                        exclude_payload["exclude"] = kept_items
+                        exclude_payload["updated_at"] = datetime.now().isoformat(timespec="seconds")
+                        _write_json(exclude_path, exclude_payload)
+                        cleared_paths.append(str(exclude_path))
+                    elif _delete_path(exclude_path):
+                        cleared_paths.append(str(exclude_path))
 
     workflow = _read_workflow(reports_dir)
     changed_workflow = False

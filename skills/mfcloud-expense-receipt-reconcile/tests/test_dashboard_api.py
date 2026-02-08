@@ -313,6 +313,17 @@ def test_api_step_reset_download_clears_source_and_mf_reports(monkeypatch: pytes
     _touch(reports_dir / "print_manifest.json", "{}")
     _touch(reports_dir / "print_list.txt", "C:\\dummy.pdf\n")
     _touch(reports_dir / "print_all.ps1", "Write-Host 'print'\n")
+    _write_json(
+        reports_dir / "exclude_orders.json",
+        {
+            "ym": ym,
+            "exclude": [
+                {"source": "amazon", "order_id": "A-1"},
+                {"source": "rakuten", "order_id": "R-1"},
+            ],
+            "updated_at": "2026-02-08T10:00:00",
+        },
+    )
 
     res = client.post("/api/steps/2026-01/reset/amazon_download")
     assert res.status_code == 200
@@ -338,6 +349,8 @@ def test_api_step_reset_download_clears_source_and_mf_reports(monkeypatch: pytes
     assert not (reports_dir / "print_manifest.json").exists()
     assert not (reports_dir / "print_list.txt").exists()
     assert not (reports_dir / "print_all.ps1").exists()
+    exclusions = json.loads((reports_dir / "exclude_orders.json").read_text(encoding="utf-8"))
+    assert exclusions["exclude"] == [{"source": "rakuten", "order_id": "R-1"}]
 
     entries = _read_audit_entries(tmp_path, ym)
     assert entries
@@ -353,6 +366,33 @@ def test_api_step_reset_rejects_invalid_step(monkeypatch: pytest.MonkeyPatch, tm
     res = client.post("/api/steps/2026-01/reset/unknown_step")
     assert res.status_code == 400
     assert "Invalid step id for reset." in str(res.json().get("detail"))
+
+
+def test_api_step_reset_download_removes_exclusion_file_when_only_target_source(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    client = _create_client(monkeypatch, tmp_path)
+    ym = "2026-01"
+    root = _artifact_root(tmp_path) / ym
+    reports_dir = _reports_dir(tmp_path, ym)
+
+    _touch(root / "amazon" / "orders.jsonl", '{"order_id":"A-1"}\n')
+    _touch(root / "amazon" / "pdfs" / "A-1.pdf", "%PDF-1.4\n")
+    _write_json(
+        reports_dir / "exclude_orders.json",
+        {
+            "ym": ym,
+            "exclude": [
+                {"source": "amazon", "order_id": "A-1"},
+                {"source": "amazon", "order_id": "A-2"},
+            ],
+            "updated_at": "2026-02-08T10:00:00",
+        },
+    )
+
+    res = client.post("/api/steps/2026-01/reset/amazon_download")
+    assert res.status_code == 200
+    assert not (reports_dir / "exclude_orders.json").exists()
 
 
 def test_api_archive_success_with_include_pdfs_and_audit(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
