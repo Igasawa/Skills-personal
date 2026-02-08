@@ -176,6 +176,22 @@ def test_extract_item_name_from_text_uses_delivered_section() -> None:
     assert _extract_item_name_from_text(text) == "NANAMI マグネット式 ワイヤレス充電器"
 
 
+def test_extract_item_name_from_text_handles_rakuten_books_receipt_table() -> None:
+    text = "\n".join(
+        [
+            "領収書（再発行） 発行日 ： 2026年02月08日",
+            "利用明細",
+            "注文番号 ： 213310-20260125-0555903016 注文日 ： 2026/01/25 発送日 ： 2026/01/26",
+            "商品明細",
+            "商品コード 商品名 数量 単価(税込) 金額(税込)",
+            "9784473046963 こころが軽くなる 大人のなぞり書き 1 1,320 1,320",
+            "合計金額(税込・10%) 1,320",
+            "支払額 1,320",
+        ]
+    )
+    assert _extract_item_name_from_text(text) == "こころが軽くなる 大人のなぞり書き"
+
+
 def test_collect_orders_keeps_shortcut_urls_when_pdf_missing(tmp_path: Path) -> None:
     root = tmp_path / "2026-01"
     _write_jsonl(
@@ -197,6 +213,64 @@ def test_collect_orders_keeps_shortcut_urls_when_pdf_missing(tmp_path: Path) -> 
     assert orders[0]["pdf_name"] is None
     assert orders[0]["detail_url"] == "https://order.my.rakuten.co.jp/purchase-history/?order_number=RAK-URL-001"
     assert orders[0]["receipt_url"] == "https://order.my.rakuten.co.jp/purchase-history/?act=order_invoice"
+
+
+def test_collect_orders_uses_pdf_fallback_item_name_for_rakuten_books(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    root = tmp_path / "2026-01"
+    pdf_path = root / "rakuten" / "pdfs" / "RAK-BOOKS.pdf"
+    _touch_pdf(pdf_path)
+    _write_jsonl(
+        root / "rakuten" / "orders.jsonl",
+        [
+            {
+                "order_id": "RAK-BOOKS",
+                "order_date": "2026-01-25",
+                "status": "ok",
+                "item_name": "2026/01/25 / ¥1320",
+                "pdf_path": str(pdf_path),
+                "detail_url": "https://books.rakuten.co.jp/mypage/delivery/status?order_number=RAK-BOOKS",
+                "receipt_url": "https://books.rakuten.co.jp/mypage/delivery/receiptPrint?order_number=RAK-BOOKS",
+            }
+        ],
+    )
+
+    monkeypatch.setattr(core_orders, "_extract_item_name_from_pdf", lambda _p: "こころが軽くなる 大人のなぞり書き")
+
+    orders = _collect_orders(root, "2026-01", set())
+    assert len(orders) == 1
+    assert orders[0]["item_name"] == "こころが軽くなる 大人のなぞり書き"
+
+
+def test_collect_orders_does_not_use_pdf_fallback_for_non_books_rakuten(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    root = tmp_path / "2026-01"
+    pdf_path = root / "rakuten" / "pdfs" / "RAK-REGULAR.pdf"
+    _touch_pdf(pdf_path)
+    _write_jsonl(
+        root / "rakuten" / "orders.jsonl",
+        [
+            {
+                "order_id": "RAK-REGULAR",
+                "order_date": "2026-01-25",
+                "status": "ok",
+                "item_name": "2026/01/25 / ¥1320",
+                "pdf_path": str(pdf_path),
+                "detail_url": "https://order.my.rakuten.co.jp/purchase-history/?order_number=RAK-REGULAR",
+            }
+        ],
+    )
+
+    def _should_not_call(_p: Path) -> str:
+        raise AssertionError("pdf fallback must not be used for non-books rakuten")
+
+    monkeypatch.setattr(core_orders, "_extract_item_name_from_pdf", _should_not_call)
+
+    orders = _collect_orders(root, "2026-01", set())
+    assert len(orders) == 1
+    assert orders[0]["item_name"] is None
 
 
 def test_collect_orders_defaults_to_excluded_when_total_is_dash(tmp_path: Path) -> None:

@@ -134,11 +134,61 @@ def _normalize_pdf_line(text: str) -> str:
     return re.sub(r"\s+", " ", unicodedata.normalize("NFKC", text or "")).strip()
 
 
+def _extract_rakuten_books_item_name_from_lines(lines: list[str]) -> str | None:
+    if not lines:
+        return None
+
+    header_index = None
+    for i, line in enumerate(lines):
+        if "商品コード" in line and "商品名" in line and ("数量" in line or "金額" in line):
+            header_index = i
+            break
+    if header_index is None:
+        for i, line in enumerate(lines):
+            if "商品明細" in line:
+                header_index = i
+                break
+    if header_index is None:
+        return None
+
+    stop_tokens = ("合計金額", "消費税額", "支払額", "利用明細", "注文番号", "領収書")
+    names: list[str] = []
+    seen: set[str] = set()
+    for line in lines[header_index + 1 :]:
+        if any(tok in line for tok in stop_tokens):
+            if names:
+                break
+            continue
+        candidate = line
+        candidate = re.sub(r"^\d{8,13}\s*", "", candidate)
+        candidate = re.sub(r"\s+\d+\s+[\d,]+(?:円)?\s+[\d,]+(?:円)?$", "", candidate)
+        candidate = re.sub(r"\s+\d+\s+[\d,]+(?:円)?$", "", candidate)
+        candidate = re.sub(r"\s+", " ", candidate).strip(" -・")
+        if not candidate:
+            continue
+        if re.fullmatch(r"[\d,円]+", candidate):
+            continue
+        if candidate in seen:
+            continue
+        seen.add(candidate)
+        names.append(candidate)
+        if len(names) >= 3:
+            break
+
+    if not names:
+        return None
+    return " / ".join(names)
+
+
 def _extract_item_name_from_text(text: str) -> str | None:
     lines = [_normalize_pdf_line(line) for line in str(text or "").splitlines()]
     lines = [line for line in lines if line]
     if not lines:
         return None
+
+    rakuten_books_name = _extract_rakuten_books_item_name_from_lines(lines)
+    if rakuten_books_name:
+        return rakuten_books_name
 
     stop_tokens = (
         "販売:",
@@ -228,6 +278,14 @@ def _extract_item_name_from_pdf(pdf_path: Path) -> str | None:
     except Exception:
         return None
     return _extract_item_name_from_pdf_cached(str(pdf_path), int(st.st_mtime_ns), int(st.st_size))
+
+
+def _is_rakuten_books_order(rec: dict[str, Any]) -> bool:
+    if rec.get("source") != "rakuten":
+        return False
+    detail_url = str(rec.get("detail_url") or "").lower()
+    receipt_url = str(rec.get("receipt_url") or "").lower()
+    return "books.rakuten.co.jp" in detail_url or "books.rakuten.co.jp" in receipt_url
 
 
 def _collect_orders(root: Path, ym: str, exclusions: set[tuple[str, str]]) -> list[dict[str, Any]]:
@@ -331,7 +389,8 @@ def _collect_orders(root: Path, ym: str, exclusions: set[tuple[str, str]]) -> li
         item_name = rec.get("item_name")
         if _is_low_confidence_item_name(item_name):
             pdf_path = rec.get("pdf_path")
-            if rec.get("source") == "amazon" and rec.get("has_pdf") and isinstance(pdf_path, Path):
+            can_use_pdf_fallback = rec.get("source") == "amazon" or _is_rakuten_books_order(rec)
+            if can_use_pdf_fallback and rec.get("has_pdf") and isinstance(pdf_path, Path):
                 item_name = _extract_item_name_from_pdf(pdf_path)
             if _is_low_confidence_item_name(item_name):
                 item_name = None

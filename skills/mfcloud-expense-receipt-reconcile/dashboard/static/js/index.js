@@ -10,6 +10,14 @@
   const errorBox = document.getElementById("error-box");
   const stopButton = document.getElementById("stop-run");
   const wizardNext = document.getElementById("wizard-next");
+  const latestRunDotEl = document.querySelector("[data-latest-run-dot]");
+  const latestRunStatusEl = document.querySelector("[data-latest-run-status]");
+  const latestRunTimeEl = document.querySelector("[data-latest-run-time]");
+  const latestRunIdEl = document.querySelector("[data-latest-run-id]");
+  const latestRunYmEl = document.querySelector("[data-latest-run-ym]");
+  const latestRunLinkEl = document.querySelector("[data-latest-run-link]");
+  const logRunIdEl = document.querySelector("[data-log-run-id]");
+  const logRunStatusEl = document.querySelector("[data-log-run-status]");
 
   const runStatusById = {};
   let awaitingRunFinalization = false;
@@ -107,11 +115,61 @@
     activeLogRunId = "";
   }
 
+  function normalizeStatusForDot(statusRaw) {
+    const status = String(statusRaw || "").trim().toLowerCase();
+    if (!status) return "";
+    if (status === "running" || status === "started") return "running";
+    if (status === "success" || status === "ok") return "success";
+    if (status === "failed" || status === "error" || status === "cancelled") return "failed";
+    return "";
+  }
+
+  function toYmText(params) {
+    if (!params || typeof params !== "object") return "";
+    const year = Number.parseInt(params.year, 10);
+    const month = Number.parseInt(params.month, 10);
+    if (!Number.isInteger(year) || !Number.isInteger(month) || month < 1 || month > 12) return "";
+    return `${year}-${String(month).padStart(2, "0")}`;
+  }
+
+  function updateRunSummary(meta) {
+    if (!meta || typeof meta !== "object") return;
+    const runId = String(meta.run_id || "").trim();
+    const statusRaw = String(meta.status || "").trim();
+    const startedAt = String(meta.started_at || "").trim();
+    const ymText = toYmText(meta.params);
+
+    if (latestRunDotEl) {
+      latestRunDotEl.classList.remove("success", "failed", "running");
+      const dotClass = normalizeStatusForDot(statusRaw);
+      if (dotClass) latestRunDotEl.classList.add(dotClass);
+    }
+    if (latestRunStatusEl && statusRaw) latestRunStatusEl.textContent = statusRaw;
+    if (latestRunTimeEl && startedAt) latestRunTimeEl.textContent = startedAt;
+    if (latestRunIdEl && runId) latestRunIdEl.textContent = runId;
+    if (latestRunYmEl && ymText) latestRunYmEl.textContent = ymText;
+    if (latestRunLinkEl && ymText) {
+      latestRunLinkEl.href = `/runs/${ymText}`;
+      latestRunLinkEl.classList.remove("disabled");
+      latestRunLinkEl.removeAttribute("aria-disabled");
+      latestRunLinkEl.removeAttribute("tabindex");
+    }
+
+    if (logRunIdEl && runId) logRunIdEl.textContent = `Run: ${runId}`;
+    if (logRunStatusEl && statusRaw) logRunStatusEl.textContent = statusRaw;
+
+    if (stopButton) {
+      if (runId) stopButton.dataset.runId = runId;
+      stopButton.disabled = statusRaw !== "running";
+    }
+  }
+
   async function refreshLog(runId) {
     if (!runId) return;
     if (activeLogRunId && String(runId) !== activeLogRunId) return;
     const data = await fetchStatus(runId);
     if (!data) return;
+    updateRunSummary(data.run);
 
     if (logEl) logEl.textContent = data.log_tail || "";
 
@@ -198,6 +256,12 @@
       }
 
       awaitingRunFinalization = true;
+      updateRunSummary({
+        run_id: data.run_id,
+        status: "running",
+        started_at: new Date().toLocaleString("ja-JP", { hour12: false }),
+        params: { year: payload.year, month: payload.month },
+      });
       runStatusById[data.run_id] = "running";
       showToast("実行を開始しました。", "success");
 
@@ -342,22 +406,23 @@
     if (!data.preflight?.done) return "preflight";
     const amazonDone = Boolean(data.amazon?.confirmed && data.amazon?.printed);
     const rakutenDone = Boolean(data.rakuten?.confirmed && data.rakuten?.printed);
-    if (!data.mf?.reconciled && (amazonDone || rakutenDone)) return "mf_reconcile";
-    if (data.amazon?.downloaded && !amazonDone) return "amazon_decide_print";
-    if (data.rakuten?.downloaded && !rakutenDone) return "rakuten_decide_print";
+    const amazonPending = Boolean(data.amazon?.downloaded && !amazonDone);
+    const rakutenPending = Boolean(data.rakuten?.downloaded && !rakutenDone);
+    const bothDownloaded = Boolean(data.amazon?.downloaded && data.rakuten?.downloaded);
+    if (amazonPending) return "amazon_decide_print";
+    if (rakutenPending) return "rakuten_decide_print";
     if (!data.amazon?.downloaded && !data.rakuten?.downloaded) return "amazon_or_rakuten_download";
     if (!data.amazon?.downloaded) return "amazon_download";
     if (!data.rakuten?.downloaded) return "rakuten_download";
+    if (!data.mf?.reconciled && bothDownloaded && (amazonDone || rakutenDone)) return "mf_reconcile";
     if (!data.mf?.reconciled) return "mf_reconcile";
     return "done";
   }
 
   function resolveNextStep(data) {
-    const hinted = String(data.next_step || "").trim();
     const inferred = inferNextStepFromFlags(data);
-    if (!hinted) return inferred;
-    if (hinted === "done" && inferred !== "done") return inferred;
-    return hinted;
+    // Keep UI guidance consistent with current flags even if API next_step lags.
+    return inferred;
   }
 
   function computeNextStep(data, ym) {
@@ -380,13 +445,18 @@
     if (!data.preflight?.done) return allowed;
     allowed.push("amazon_download");
     allowed.push("rakuten_download");
+    const amazonDone = Boolean(data.amazon?.confirmed && data.amazon?.printed);
+    const rakutenDone = Boolean(data.rakuten?.confirmed && data.rakuten?.printed);
+    const amazonPending = Boolean(data.amazon?.downloaded && !amazonDone);
+    const rakutenPending = Boolean(data.rakuten?.downloaded && !rakutenDone);
+    const bothDownloaded = Boolean(data.amazon?.downloaded && data.rakuten?.downloaded);
     if (data.amazon?.downloaded) {
       allowed.push("amazon_print");
     }
     if (data.rakuten?.downloaded) {
       allowed.push("rakuten_print");
     }
-    if ((data.amazon?.confirmed && data.amazon?.printed) || (data.rakuten?.confirmed && data.rakuten?.printed)) {
+    if ((amazonDone || rakutenDone) && bothDownloaded && !(amazonPending || rakutenPending)) {
       allowed.push("mf_reconcile");
     }
     return allowed;
@@ -394,9 +464,7 @@
 
   function applyActionAvailability(data) {
     const runningMode = String(data.running_mode || "");
-    const hintedAllowedModes = Array.isArray(data.allowed_run_modes) ? data.allowed_run_modes : [];
-    const inferred = inferAllowedModes(data);
-    const allowedModes = Array.from(new Set([...inferred, ...hintedAllowedModes]));
+    const allowedModes = inferAllowedModes(data);
     document.querySelectorAll("[data-step-action]").forEach((button) => {
       const mode = String(button.dataset.stepAction || "");
       const allowed = allowedModes.includes(mode);

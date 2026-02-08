@@ -24,7 +24,7 @@ from .core_shared import (
     _runs_root,
     _write_json,
 )
-from .core_orders import _read_workflow
+from .core_orders import _collect_excluded_pdfs, _load_exclusions, _read_workflow
 
 STEP_RESET_SPECS: dict[str, dict[str, Any]] = {
     "amazon_download": {
@@ -134,6 +134,8 @@ def _workflow_state_for_ym(year: int, month: int) -> dict[str, Any]:
     root = _artifact_root() / ym
     reports_dir = root / "reports"
     workflow = _read_workflow(reports_dir)
+    amazon_section = workflow.get("amazon") if isinstance(workflow.get("amazon"), dict) else {}
+    rakuten_section = workflow.get("rakuten") if isinstance(workflow.get("rakuten"), dict) else {}
 
     local_preflight = _read_json(reports_dir / "preflight.json")
     global_preflight = _read_json(_preflight_global_path())
@@ -142,26 +144,38 @@ def _workflow_state_for_ym(year: int, month: int) -> dict[str, Any]:
         year=year,
         month=month,
     )
-    amazon_downloaded = (root / "amazon" / "orders.jsonl").exists()
-    rakuten_downloaded = (root / "rakuten" / "orders.jsonl").exists()
-    amazon_confirmed = bool((workflow.get("amazon") or {}).get("confirmed_at"))
-    amazon_printed = bool((workflow.get("amazon") or {}).get("printed_at"))
-    rakuten_confirmed = bool((workflow.get("rakuten") or {}).get("confirmed_at"))
-    rakuten_printed = bool((workflow.get("rakuten") or {}).get("printed_at"))
+    amazon_orders_exists = (root / "amazon" / "orders.jsonl").exists()
+    rakuten_orders_exists = (root / "rakuten" / "orders.jsonl").exists()
+
+    def _resolve_downloaded(section: dict[str, Any], orders_exists: bool) -> bool:
+        status = str(section.get("download_status") or "").strip().lower()
+        if status == "failed":
+            return False
+        if status == "success":
+            return bool(section.get("downloaded_at")) or orders_exists
+        return orders_exists
+
+    amazon_downloaded = _resolve_downloaded(amazon_section, amazon_orders_exists)
+    rakuten_downloaded = _resolve_downloaded(rakuten_section, rakuten_orders_exists)
+    amazon_confirmed = bool(amazon_section.get("confirmed_at"))
+    amazon_printed = bool(amazon_section.get("printed_at"))
+    rakuten_confirmed = bool(rakuten_section.get("confirmed_at"))
+    rakuten_printed = bool(rakuten_section.get("printed_at"))
     mf_reconciled = (reports_dir / "missing_evidence_candidates.json").exists()
     amazon_done = amazon_confirmed and amazon_printed
     rakuten_done = rakuten_confirmed and rakuten_printed
+    amazon_pending = amazon_downloaded and not amazon_done
+    rakuten_pending = rakuten_downloaded and not rakuten_done
+    both_downloaded = amazon_downloaded and rakuten_downloaded
 
     next_step = "done"
     if not preflight_done:
         next_step = "preflight"
     elif mf_reconciled:
         next_step = "done"
-    elif amazon_done or rakuten_done:
-        next_step = "mf_reconcile"
-    elif amazon_downloaded and not amazon_done:
+    elif amazon_pending:
         next_step = "amazon_decide_print"
-    elif rakuten_downloaded and not rakuten_done:
+    elif rakuten_pending:
         next_step = "rakuten_decide_print"
     elif not amazon_downloaded and not rakuten_downloaded:
         next_step = "amazon_or_rakuten_download"
@@ -169,6 +183,8 @@ def _workflow_state_for_ym(year: int, month: int) -> dict[str, Any]:
         next_step = "amazon_download"
     elif not rakuten_downloaded:
         next_step = "rakuten_download"
+    elif both_downloaded and (amazon_done or rakuten_done):
+        next_step = "mf_reconcile"
 
     allowed_run_modes: list[str] = ["preflight"]
     if preflight_done:
@@ -177,7 +193,7 @@ def _workflow_state_for_ym(year: int, month: int) -> dict[str, Any]:
             allowed_run_modes.append("amazon_print")
         if rakuten_downloaded:
             allowed_run_modes.append("rakuten_print")
-        if amazon_done or rakuten_done:
+        if both_downloaded and (amazon_done or rakuten_done) and not (amazon_pending or rakuten_pending):
             allowed_run_modes.append("mf_reconcile")
     allowed_run_modes = list(dict.fromkeys(allowed_run_modes))
 
@@ -296,6 +312,20 @@ def _archive_outputs_for_ym(
     if not has_artifacts:
         raise HTTPException(status_code=404, detail="Artifacts for target month were not found.")
 
+    reports_dir = output_root / "reports"
+    exclusions = _load_exclusions(reports_dir)
+    excluded_rows = _collect_excluded_pdfs(output_root, ym, exclusions)
+    excluded_manifest_path = reports_dir / "excluded_pdfs.json"
+    _write_json(
+        excluded_manifest_path,
+        {
+            "ym": ym,
+            "generated_at": datetime.now().isoformat(timespec="seconds"),
+            "count": len(excluded_rows),
+            "rows": excluded_rows,
+        },
+    )
+
     script = SKILL_ROOT / "scripts" / "archive_outputs.ps1"
     if not script.exists():
         raise HTTPException(status_code=500, detail=f"archive script not found: {script}")
@@ -364,6 +394,8 @@ def _archive_outputs_for_ym(
         "archived_to": archived_to,
         "include_pdfs": bool(include_pdfs),
         "include_debug": bool(include_debug),
+        "excluded_pdfs_manifest": str(excluded_manifest_path),
+        "excluded_pdfs_count": len(excluded_rows),
     }
 
 
@@ -379,6 +411,68 @@ def _tail_text(path: Path, max_bytes: int = 5000) -> str:
         return data.decode("utf-8", errors="replace")
     except Exception:
         return ""
+
+
+def _infer_run_exit_code_from_log(log_path: Path) -> tuple[int | None, str | None]:
+    text = _tail_text(log_path, max_bytes=200_000)
+    if not text:
+        return None, None
+
+    # scripts/run.py prints a final pretty JSON object; prefer it when present.
+    for marker in ('{\n  "status"', '{\r\n  "status"'):
+        idx = text.rfind(marker)
+        if idx < 0:
+            continue
+        candidate = text[idx:].strip()
+        try:
+            payload = json.loads(candidate)
+        except Exception:
+            continue
+        if isinstance(payload, dict):
+            status = str(payload.get("status") or "").strip().lower()
+            if status == "success":
+                return 0, "final_json"
+            if status in {"failed", "error"}:
+                return 1, "final_json"
+
+    # Fallback: inspect trailing single-line JSON emitted by child scripts.
+    for line in reversed(text.splitlines()):
+        item = line.strip()
+        if not item.startswith("{") or not item.endswith("}"):
+            continue
+        try:
+            payload = json.loads(item)
+        except Exception:
+            continue
+        if not isinstance(payload, dict):
+            continue
+        status = str(payload.get("status") or "").strip().lower()
+        if status == "success":
+            return 0, "line_json"
+        if status in {"failed", "error"}:
+            return 1, "line_json"
+    return None, None
+
+
+def _record_download_result(year: int, month: int, mode: str, exit_code: int) -> None:
+    source = "amazon" if mode == "amazon_download" else "rakuten" if mode == "rakuten_download" else ""
+    if not source:
+        return
+    reports_dir = _artifact_root() / f"{year:04d}-{month:02d}" / "reports"
+    workflow = _read_workflow(reports_dir)
+    section = workflow.get(source) if isinstance(workflow.get(source), dict) else {}
+    ts = datetime.now().isoformat(timespec="seconds")
+    section["download_status"] = "success" if exit_code == 0 else "failed"
+    section["download_updated_at"] = ts
+    if exit_code == 0:
+        section["downloaded_at"] = ts
+    else:
+        section.pop("downloaded_at", None)
+        section.pop("confirmed_at", None)
+        section.pop("print_prepared_at", None)
+        section.pop("printed_at", None)
+    workflow[source] = section
+    _write_json(reports_dir / "workflow.json", workflow)
 
 
 def _mark_preflight_started(year: int, month: int) -> None:
@@ -431,27 +525,51 @@ def _reconcile_running_jobs() -> None:
             continue
         if _pid_alive(data.get("pid")):
             continue
-        data["status"] = "failed"
+        # Re-read to avoid racing with worker thread finalization.
+        latest = _read_json(p)
+        if not isinstance(latest, dict):
+            continue
+        if latest.get("status") != "running":
+            continue
+        data = latest
+        log_path = Path(str(data.get("log_path") or ""))
+        inferred_returncode, inferred_from = _infer_run_exit_code_from_log(log_path)
+        if inferred_returncode is None:
+            data["status"] = "failed"
+            if data.get("returncode") is None:
+                data["returncode"] = -1
+            reason = "process_ended_without_final_status"
+        else:
+            data["status"] = "success" if inferred_returncode == 0 else "failed"
+            data["returncode"] = inferred_returncode
+            reason = "process_ended_reconciled_from_log"
         if not data.get("finished_at"):
             data["finished_at"] = datetime.now().isoformat(timespec="seconds")
-        if data.get("returncode") is None:
-            data["returncode"] = -1
         _write_json(p, data)
         params = data.get("params") if isinstance(data.get("params"), dict) else {}
         year = _safe_int(params.get("year"))
         month = _safe_int(params.get("month"))
         if year is None or month is None:
             continue
+        mode = str(params.get("mode") or "unknown")
+        returncode = _safe_int(data.get("returncode"))
+        if returncode is None:
+            returncode = -1
+        _record_download_result(year, month, mode, returncode)
         _append_audit_event(
             year=year,
             month=month,
             event_type="run",
-            action=str(params.get("mode") or "unknown"),
-            status="failed",
+            action=mode,
+            status=str(data.get("status") or "failed"),
             actor=data.get("actor"),
-            mode=str(params.get("mode") or ""),
+            mode=mode,
             run_id=str(data.get("run_id") or ""),
-            details={"reason": "process_ended_without_final_status", "returncode": data.get("returncode")},
+            details={
+                "reason": reason,
+                "returncode": returncode,
+                "inferred_from": inferred_from,
+            },
         )
 
 
@@ -497,6 +615,7 @@ def _run_worker(process: subprocess.Popen, meta_path: Path) -> None:
     if year is None or month is None:
         return
     mode = str(params.get("mode") or "unknown")
+    _record_download_result(year, month, mode, exit_code)
     _append_audit_event(
         year=year,
         month=month,

@@ -132,6 +132,14 @@ def create_pages_router(templates: Jinja2Templates) -> APIRouter:
         reports_dir = root / "reports"
         exclusions = core._load_exclusions(reports_dir)
         rows = core._collect_excluded_pdfs(root, ym, exclusions)
+        available_months = [
+            str(item.get("ym"))
+            for item in core._scan_artifacts()
+            if isinstance(item, dict) and isinstance(item.get("ym"), str)
+        ]
+        if ym not in available_months:
+            available_months.insert(0, ym)
+        available_months = list(dict.fromkeys(available_months))
         amazon_count = sum(1 for r in rows if r.get("source") == "amazon")
         rakuten_count = sum(1 for r in rows if r.get("source") == "rakuten")
         return templates.TemplateResponse(
@@ -143,6 +151,7 @@ def create_pages_router(templates: Jinja2Templates) -> APIRouter:
                 "total": len(rows),
                 "amazon_count": amazon_count,
                 "rakuten_count": rakuten_count,
+                "available_months": available_months,
             },
         )
 

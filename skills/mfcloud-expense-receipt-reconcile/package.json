@@ -4,7 +4,8 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "python -m pytest -q"
+    "test": "python -m pytest -q",
+    "check:encoding": "python -m pytest -q tests/test_text_encoding_policy.py"
   },
   "keywords": [],
   "author": "",

@@ -101,8 +101,10 @@ def test_api_confirm_print_prepare_and_complete_success_write_audit(
     _touch(_artifact_root(tmp_path) / ym / "amazon" / "orders.jsonl")
     _touch(reports / "print_all.ps1", "Write-Host 'print'")
     _write_json(reports / "print_manifest.json", {"count": 2})
+    calls: list[list[str]] = []
 
     def _fake_run(cmd: Any, *args: Any, **kwargs: Any) -> subprocess.CompletedProcess[str]:
+        calls.append([str(c) for c in cmd])
         return subprocess.CompletedProcess(args=cmd, returncode=0, stdout="", stderr="")
 
     monkeypatch.setattr(api_routes.subprocess, "run", _fake_run)
@@ -122,6 +124,9 @@ def test_api_confirm_print_prepare_and_complete_success_write_audit(
     assert body_prepare["count"] == 2
     assert body_prepare["print_script"].endswith("print_all.ps1")
     assert "powershell -NoProfile -ExecutionPolicy Bypass -File" in body_prepare["print_command"]
+    assert calls
+    assert any(any("collect_print.py" in part for part in call) for call in calls)
+    assert any("--skip-shortcut-download" in call for call in calls)
 
     workflow = json.loads((reports / "workflow.json").read_text(encoding="utf-8"))
     assert (workflow.get("amazon") or {}).get("confirmed_at")
@@ -364,6 +369,56 @@ def test_api_archive_success_with_include_pdfs_and_audit(monkeypatch: pytest.Mon
     assert details.get("archived_to") == "C:\\archive\\20260208_101530"
     assert details.get("include_pdfs") is True
     assert details.get("include_debug") is False
+
+
+def test_api_archive_writes_excluded_pdfs_manifest(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    client = _create_client(monkeypatch, tmp_path)
+    ym = "2026-01"
+    reports = _reports_dir(tmp_path, ym)
+    root = _artifact_root(tmp_path) / ym
+    _write_json(
+        reports / "workflow.json",
+        {"amazon": {"confirmed_at": "2026-02-08T10:00:00", "printed_at": "2026-02-08T10:10:00"}},
+    )
+    pdf_path = root / "amazon" / "pdfs" / "AMZ-EXCLUDED.pdf"
+    _touch(pdf_path, "%PDF-1.4\n")
+    _touch(
+        root / "amazon" / "orders.jsonl",
+        json.dumps(
+            {
+                "order_id": "AMZ-EX-1",
+                "order_date": "2026-01-25",
+                "status": "ok",
+                "include": False,
+                "pdf_path": str(pdf_path),
+            },
+            ensure_ascii=False,
+        )
+        + "\n",
+    )
+
+    def _fake_run(cmd: Any, *args: Any, **kwargs: Any) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(
+            args=cmd,
+            returncode=0,
+            stdout="Archived to: C:\\archive\\20260208_101530\n",
+            stderr="",
+        )
+
+    monkeypatch.setattr(core_runs.subprocess, "run", _fake_run)
+
+    res = client.post("/api/archive/2026-01")
+    assert res.status_code == 200
+    body = res.json()
+    assert body["excluded_pdfs_count"] == 1
+
+    manifest_path = Path(str(body["excluded_pdfs_manifest"]))
+    assert manifest_path.exists()
+    payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert payload["ym"] == "2026-01"
+    assert payload["count"] == 1
+    assert payload["rows"][0]["order_id"] == "AMZ-EX-1"
+    assert payload["rows"][0]["pdf_name"] == "AMZ-EXCLUDED.pdf"
 
 
 def test_api_archive_rejects_when_confirm_print_not_completed(

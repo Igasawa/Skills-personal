@@ -58,6 +58,22 @@
               <option value="no">なし</option>
             </select>
           </label>
+          <label>
+            月
+            <select id="filter-month" data-current-ym="{{ ym }}">
+              {% for month_ym in available_months %}
+              <option value="{{ month_ym }}" {% if month_ym == ym %}selected{% endif %}>{{ month_ym }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <label>
+            並び順
+            <select id="sort-order">
+              <option value="date_desc">注文日（新しい順）</option>
+              <option value="date_asc">注文日（古い順）</option>
+              <option value="source_date_asc">種別 + 注文日</option>
+            </select>
+          </label>
           <span class="muted">表示中 <span id="excluded-count">{{ total }}</span> 件</span>
         </div>
         {% if rows %}
@@ -75,13 +91,16 @@
                 <th>印刷</th>
               </tr>
             </thead>
-            <tbody>
+            <tbody id="excluded-table-body">
               {% for row in rows %}
               <tr
                 class="excluded-row"
                 data-search="{{ row.source_label }} {{ row.order_date }} {{ row.order_id }} {{ row.total_yen }} {{ row.item_name }} {{ row.excluded_reason }} {{ row.status_label }} {{ row.pdf_name }}"
                 data-source="{{ row.source }}"
                 data-has-pdf="yes"
+                data-order-date="{{ row.order_date or '' }}"
+                data-order-id="{{ row.order_id or '' }}"
+                data-order-month="{{ (row.order_date or '')[:7] }}"
               >
                 <td>{{ row.source_label }}</td>
                 <td>{{ row.order_date or "-" }}</td>

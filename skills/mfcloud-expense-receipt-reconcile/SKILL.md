@@ -183,18 +183,21 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "scripts\start_dashboard.ps1
 
 ### 実行パターン
 
-- Amazonのみプリントアウトまで
-- 楽天のみプリントアウトまで
+- Amazonのみ（印刷準備まで自動、プリントアウト実行は手動）
+- 楽天のみ（印刷準備まで自動、プリントアウト実行は手動）
 - MF抽出+突合（既存の `orders.jsonl` が必要）
 
 ※ ダッシュボードAPIはワークフロー順序を検証し、順序外の実行依頼は `409 Workflow order violation` で拒否する。
+※ 印刷フローの統一方針は `references/operation_policy.md` の「8. 印刷フロー統一ポリシー」を参照。
 
 ## 運用ルール（参照）
 
 - 恒久ルール：`references/operation_policy.md`
+- フェーズ計画：`references/roadmap.md`
 - 自動登録OK例外一覧：`references/auto_register_exceptions.yaml`
 - 月次スレッドテンプレ：`assets/monthly_thread_template.md`
 - 成果物整理ルール：`references/output_policy.md`
+- Webフォーム実装は「調査 → 計画 → 実装 → 検証」を標準手順とする（`references/operation_policy.md` の「10. Webフォーム実装の調査・計画先行ルール」）
 
 ## UI言語方針
 

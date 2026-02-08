@@ -7,10 +7,14 @@
   const printStatus = document.getElementById("print-status");
   const excludedSearch = document.getElementById("excluded-search");
   const excludedRows = document.querySelectorAll(".excluded-row");
+  const excludedRowsList = Array.from(excludedRows);
   const excludedCount = document.getElementById("excluded-count");
   const filterAmazon = document.getElementById("filter-amazon");
   const filterRakuten = document.getElementById("filter-rakuten");
   const filterPdf = document.getElementById("filter-pdf");
+  const filterMonth = document.getElementById("filter-month");
+  const sortOrder = document.getElementById("sort-order");
+  const excludedTableBody = document.getElementById("excluded-table-body");
 
   function setPrintStatus(message, kind) {
     if (!printStatus) return;
@@ -22,20 +26,55 @@
   function updateExcludedCount() {
     if (!excludedCount) return;
     let visible = 0;
-    excludedRows.forEach((row) => {
+    excludedRowsList.forEach((row) => {
       if (!row.classList.contains("hidden")) visible += 1;
     });
     excludedCount.textContent = String(visible);
   }
 
+  function compareText(a, b) {
+    if (a === b) return 0;
+    return a < b ? -1 : 1;
+  }
+
+  function sortExcludedRows() {
+    if (!excludedTableBody || !excludedRowsList.length) return;
+    const mode = sortOrder ? String(sortOrder.value || "date_desc") : "date_desc";
+    excludedRowsList.sort((left, right) => {
+      const leftDate = String(left.dataset.orderDate || "");
+      const rightDate = String(right.dataset.orderDate || "");
+      const leftSource = String(left.dataset.source || "");
+      const rightSource = String(right.dataset.source || "");
+      const leftOrder = String(left.dataset.orderId || "");
+      const rightOrder = String(right.dataset.orderId || "");
+
+      if (mode === "date_asc") {
+        return compareText(leftDate, rightDate) || compareText(leftOrder, rightOrder);
+      }
+      if (mode === "source_date_asc") {
+        return (
+          compareText(leftSource, rightSource) ||
+          compareText(leftDate, rightDate) ||
+          compareText(leftOrder, rightOrder)
+        );
+      }
+      return compareText(rightDate, leftDate) || compareText(rightOrder, leftOrder);
+    });
+
+    excludedRowsList.forEach((row) => {
+      excludedTableBody.appendChild(row);
+    });
+  }
+
   function applyExcludedFilters() {
-    if (!excludedRows.length) return;
+    if (!excludedRowsList.length) return;
+    sortExcludedRows();
     const query = normalize(excludedSearch?.value || "");
     const tokens = query ? query.split(" ") : [];
     const amazonOn = filterAmazon ? filterAmazon.checked : true;
     const rakutenOn = filterRakuten ? filterRakuten.checked : true;
     const pdfMode = filterPdf ? filterPdf.value : "all";
-    excludedRows.forEach((row) => {
+    excludedRowsList.forEach((row) => {
       const source = row.dataset.source || "";
       const hasPdf = row.dataset.hasPdf || "yes";
       const sourceMatch = (source === "amazon" && amazonOn) || (source === "rakuten" && rakutenOn);
@@ -76,6 +115,13 @@
     filterAmazon?.addEventListener("change", applyExcludedFilters);
     filterRakuten?.addEventListener("change", applyExcludedFilters);
     filterPdf?.addEventListener("change", applyExcludedFilters);
+    sortOrder?.addEventListener("change", applyExcludedFilters);
+    filterMonth?.addEventListener("change", () => {
+      const targetYm = String(filterMonth.value || "").trim();
+      const currentYm = String(filterMonth.dataset.currentYm || "").trim();
+      if (!/^\d{4}-\d{2}$/.test(targetYm) || targetYm === currentYm) return;
+      window.location.href = `/runs/${targetYm}/excluded-pdfs`;
+    });
     applyExcludedFilters();
   }
 })();

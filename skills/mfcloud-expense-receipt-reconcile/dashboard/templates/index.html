@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="ja">
   <head>
     <meta charset="utf-8" />
@@ -65,16 +65,16 @@
           {% if latest_job %}
           <div class="stack">
             <div class="status-row">
-              <span class="status-dot {{ latest_job.status }}"></span>
-              <span class="status-label">{{ latest_job.status }}</span>
-              <span class="status-time">{{ latest_job.started_at }}</span>
+              <span class="status-dot {{ latest_job.status }}" data-latest-run-dot></span>
+              <span class="status-label" data-latest-run-status>{{ latest_job.status }}</span>
+              <span class="status-time" data-latest-run-time>{{ latest_job.started_at }}</span>
             </div>
             <div class="detail">
-              <div>Run ID: {{ latest_job.run_id }}</div>
-              <div>対象: {{ latest_job.params.year }}-{{ "%02d"|format(latest_job.params.month) }}</div>
+              <div>Run ID: <span data-latest-run-id>{{ latest_job.run_id }}</span></div>
+              <div>対象: <span data-latest-run-ym>{{ latest_job.params.year }}-{{ "%02d"|format(latest_job.params.month) }}</span></div>
             </div>
             {% if latest_job_ym %}
-            <a class="secondary" href="/runs/{{ latest_job_ym }}">成果物を見る</a>
+            <a class="secondary" data-latest-run-link href="/runs/{{ latest_job_ym }}">成果物を見る</a>
             {% endif %}
             {% if running_job %}
             <button type="button" id="stop-run" class="danger" data-run-id="{{ running_job.run_id }}">停止する</button>
@@ -125,8 +125,8 @@
           <h2>実行ログ</h2>
           {% if latest_job %}
           <div class="log-meta">
-            <span>Run: {{ latest_job.run_id }}</span>
-            <span class="status-label">{{ latest_job.status }}</span>
+            <span data-log-run-id>Run: {{ latest_job.run_id }}</span>
+            <span class="status-label" data-log-run-status>{{ latest_job.status }}</span>
           </div>
           <pre id="run-log" class="log" data-run-id="{{ latest_job.run_id }}"></pre>
           {% else %}

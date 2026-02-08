@@ -111,6 +111,8 @@
         if (!ym || !source) return;
         printPreparedBySource[source] = false;
         setActionButtonsDisabled(true);
+        setExcludeStatus("印刷準備を作成中です。完了までお待ちください。", "success");
+        showToast("印刷準備を作成中です...", "success");
         try {
           await saveExclusions(ym, source);
           const printResult = await preparePrint(ym, source);

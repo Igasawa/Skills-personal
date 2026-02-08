@@ -33,6 +33,53 @@ function normalizeTextLines(s) {
     .replace(/\r/g, "");
 }
 
+function isLowConfidenceItemName(value) {
+  const text = normalizeTextLines(String(value || "")).replace(/\s+/g, " ").trim();
+  if (!text) return true;
+  if (/^\d{4}[-/]/.test(text)) return true;
+  if (/^\d{4}\D+\d{1,2}\D+\d{1,2}/.test(text)) return true;
+  if (/^\d{4}.*?\/\s*[￥¥]?\d/.test(text)) return true;
+  return false;
+}
+
+function extractRakutenBooksItemNameFromText(textRaw) {
+  const lines = normalizeTextLines(textRaw)
+    .split("\n")
+    .map((line) => line.replace(/\s+/g, " ").trim())
+    .filter(Boolean);
+  if (!lines.length) return null;
+
+  let headerIndex = lines.findIndex(
+    (line) => line.includes("商品コード") && line.includes("商品名") && (line.includes("数量") || line.includes("金額"))
+  );
+  if (headerIndex < 0) {
+    headerIndex = lines.findIndex((line) => line.includes("商品明細"));
+  }
+  if (headerIndex < 0) return null;
+
+  const stopTokens = ["合計金額", "消費税額", "支払額", "利用明細", "注文番号", "領収書"];
+  const names = [];
+  const seen = new Set();
+  for (const line of lines.slice(headerIndex + 1)) {
+    if (stopTokens.some((token) => line.includes(token))) {
+      if (names.length) break;
+      continue;
+    }
+    let candidate = line;
+    candidate = candidate.replace(/^\d{8,13}\s*/, "");
+    candidate = candidate.replace(/\s+\d+\s+[\d,]+(?:円)?\s+[\d,]+(?:円)?$/, "");
+    candidate = candidate.replace(/\s+\d+\s+[\d,]+(?:円)?$/, "");
+    candidate = candidate.replace(/\s+/g, " ").trim().replace(/^[\-・\s]+|[\-・\s]+$/g, "");
+    if (!candidate) continue;
+    if (/^[\d,円]+$/.test(candidate)) continue;
+    if (seen.has(candidate)) continue;
+    seen.add(candidate);
+    names.push(candidate);
+    if (names.length >= 3) break;
+  }
+  return names.length ? names.join(" / ") : null;
+}
+
 function yenToInt(s) {
   if (s == null) return null;
   const normalized = String(s).replace(/[，,]/g, "").replace(/[円\s]/g, "");
@@ -322,6 +369,7 @@ function isDirectRakutenDownloadUrl(rawUrl) {
     const lower = `${u.pathname}${u.search}`.toLowerCase();
     if (u.pathname.toLowerCase().endsWith(".pdf")) return true;
     if (lower.includes("act=order_invoice") || lower.includes("act=order_receipt")) return true;
+    if (lower.includes("/mypage/delivery/receiptprint")) return true;
     if (lower.includes("receiptdownload") || lower.includes("download")) return true;
     return false;
   } catch {
@@ -329,8 +377,45 @@ function isDirectRakutenDownloadUrl(rawUrl) {
   }
 }
 
-async function saveReceiptFromDirectUrl(context, receiptUrl, outPdfPath, timeoutMs) {
+function extractDirectDownloadUrlsFromHtml(htmlRaw, baseUrlRaw) {
+  const html = String(htmlRaw || "");
+  if (!html) return [];
+
+  let baseUrl = String(baseUrlRaw || "").trim();
+  try {
+    // Validate and normalize base URL once.
+    baseUrl = new URL(baseUrl).toString();
+  } catch {
+    baseUrl = "";
+  }
+
+  const candidates = new Set();
+  const urlPatterns = [
+    /(?:href|src|action)\s*=\s*["']([^"']+)["']/gi,
+    /\b(?:window\.open|location\.href|location\.replace)\s*\(\s*["']([^"']+)["']/gi,
+    /["']([^"']*(?:receiptdownload|download|\.pdf)[^"']*)["']/gi,
+  ];
+  for (const re of urlPatterns) {
+    let match = null;
+    while ((match = re.exec(html)) !== null) {
+      const raw = String(match[1] || "").trim();
+      if (!raw || raw.startsWith("javascript:") || raw.startsWith("#")) continue;
+      if (!isDirectRakutenDownloadUrl(raw) && !/receiptprint/i.test(raw)) continue;
+      try {
+        const resolved = baseUrl ? new URL(raw, baseUrl).toString() : new URL(raw).toString();
+        candidates.add(resolved);
+      } catch {
+        // ignore invalid candidate URLs
+      }
+    }
+  }
+  return [...candidates];
+}
+
+async function saveReceiptFromDirectUrl(context, receiptUrl, outPdfPath, timeoutMs, seenUrls = new Set()) {
   if (!isDirectRakutenDownloadUrl(receiptUrl)) return false;
+  if (seenUrls.has(receiptUrl)) return false;
+  seenUrls.add(receiptUrl);
 
   let response = null;
   try {
@@ -349,6 +434,12 @@ async function saveReceiptFromDirectUrl(context, receiptUrl, outPdfPath, timeout
         throw new Error("rakuten_downloaded_file_not_pdf");
       }
       return true;
+    }
+    const bodyText = body ? body.toString("utf-8") : "";
+    const nestedUrls = extractDirectDownloadUrlsFromHtml(bodyText, String(response.url?.() || receiptUrl));
+    for (const nestedUrl of nestedUrls) {
+      const nestedSaved = await saveReceiptFromDirectUrl(context, nestedUrl, outPdfPath, timeoutMs, seenUrls);
+      if (nestedSaved) return true;
     }
   }
 
@@ -406,12 +497,24 @@ function shouldDowngradeRakutenReceiptError(reasonRaw, detailUrlRaw) {
   if (!reason) return false;
   const isBooksOrder = /books\.rakuten\.co\.jp/i.test(String(detailUrlRaw || ""));
   if (!isBooksOrder) return false;
-  if (reason.startsWith("rakuten_receipt_invalid_page:")) return true;
+  // Keep downgrade narrow for known non-fatal pages only.
+  // books_faq_page and other invalid transitions should remain hard errors.
+  if (reason === "rakuten_receipt_invalid_page:books_status_page") return true;
   if (reason === "rakuten_receipt_page_missing_signal") return true;
   return false;
 }
 
-function assessRakutenReceiptContext({ url, title, pageAction, messageCode }) {
+function isRakutenBooksReceiptInputUrl(rawUrl) {
+  const lower = String(rawUrl || "").toLowerCase();
+  return lower.includes("books.rakuten.co.jp/mypage/delivery/receiptinput");
+}
+
+function isRakutenBooksReceiptPrintUrl(rawUrl) {
+  const lower = String(rawUrl || "").toLowerCase();
+  return lower.includes("books.rakuten.co.jp/mypage/delivery/receiptprint");
+}
+
+function assessRakutenReceiptContext({ url, title, pageAction, messageCode, requireBooksPrint = false }) {
   const rawUrl = String(url || "");
   const normalizedTitle = normalizeText(title || "");
   const normalizedPageAction = String(pageAction || "").trim().toLowerCase();
@@ -423,6 +526,15 @@ function assessRakutenReceiptContext({ url, title, pageAction, messageCode }) {
   }
   if (lowerUrl.includes("books.faq.rakuten.net")) {
     return { ok: false, reason: "rakuten_receipt_invalid_page:books_faq_page" };
+  }
+  if (isRakutenBooksReceiptPrintUrl(rawUrl)) {
+    return { ok: true, reason: null };
+  }
+  if (isRakutenBooksReceiptInputUrl(rawUrl)) {
+    if (requireBooksPrint) {
+      return { ok: false, reason: "rakuten_receipt_invalid_page:books_receipt_input_page" };
+    }
+    return { ok: true, reason: null };
   }
 
   if (/act=detail_page_view/i.test(rawUrl)) {
@@ -440,13 +552,8 @@ function assessRakutenReceiptContext({ url, title, pageAction, messageCode }) {
   return { ok: true, reason: null };
 }
 
-async function assertRakutenReceiptPage(page) {
-  const bodyText = await page.innerText("body").catch(() => "");
-  const byText = assessRakutenReceiptPageText(bodyText);
-  if (!byText.ok) {
-    throw new Error(byText.reason || "rakuten_receipt_invalid_page");
-  }
-
+async function assertRakutenReceiptPage(page, options = {}) {
+  const requireBooksPrint = Boolean(options && options.requireBooksPrint);
   const pageTitle = await page.title().catch(() => "");
   const pageUrl = page.url();
   const state = await page
@@ -464,10 +571,471 @@ async function assertRakutenReceiptPage(page) {
     title: pageTitle,
     pageAction: state?.pageAction || "",
     messageCode: state?.messageCode || "",
+    requireBooksPrint,
   });
   if (!byContext.ok) {
     throw new Error(byContext.reason || "rakuten_receipt_invalid_page");
   }
+  if (requireBooksPrint && isRakutenBooksReceiptInputUrl(pageUrl)) {
+    throw new Error("rakuten_receipt_invalid_page:books_receipt_input_page");
+  }
+
+  const bodyText = await page.innerText("body").catch(() => "");
+  const byText = assessRakutenReceiptPageText(bodyText);
+  if (byText.ok) return;
+
+  const booksReceiptLikely = await page
+    .evaluate(() => {
+      const hasBooksHost = /books\.rakuten\.co\.jp/i.test(window.location.hostname);
+      if (!hasBooksHost) return { likely: false, isInput: false, isPrint: false };
+      const pathname = String(window.location.pathname || "").toLowerCase();
+      const isInput = pathname.includes("/mypage/delivery/receiptinput");
+      const isPrint = pathname.includes("/mypage/delivery/receiptprint");
+      if (isInput || isPrint) return { likely: true, isInput, isPrint };
+      if (document.querySelector("#receiptInputForm")) return { likely: true, isInput: true, isPrint: false };
+      if (document.querySelector("#receiptInputFormButton")) return { likely: true, isInput: true, isPrint: false };
+      if (document.querySelector("input[name='receiptSubmit']")) return { likely: true, isInput: true, isPrint: false };
+      const title = String(document.title || "");
+      if (title.includes("領収書")) return { likely: true, isInput: false, isPrint: false };
+      return { likely: false, isInput: false, isPrint: false };
+    })
+    .catch(() => ({ likely: false, isInput: false, isPrint: false }));
+  if (booksReceiptLikely.likely) {
+    if (requireBooksPrint && booksReceiptLikely.isInput && !booksReceiptLikely.isPrint) {
+      throw new Error("rakuten_receipt_invalid_page:books_receipt_input_page");
+    }
+    return;
+  }
+  throw new Error(byText.reason || "rakuten_receipt_invalid_page");
+}
+
+async function applyRakutenBooksReceiptName(page, primaryName, fallbackName) {
+  if (!isRakutenBooksReceiptInputUrl(page.url())) {
+    return { applied: false, name: null };
+  }
+  const input = page.locator("#receiptInputForm input[name='customerName'], input[name='customerName']").first();
+  if ((await input.count()) === 0 || !(await input.isVisible().catch(() => false))) {
+    return { applied: false, name: null };
+  }
+  const existing = String(await input.inputValue().catch(() => "")).trim();
+  if (existing) {
+    return { applied: false, name: existing };
+  }
+  const target = String(primaryName || "").trim() || String(fallbackName || "").trim();
+  if (!target) {
+    return { applied: false, name: null };
+  }
+  try {
+    await input.fill(target);
+    return { applied: true, name: target };
+  } catch {
+    return { applied: false, name: null };
+  }
+}
+
+async function saveRakutenBooksReceiptFromInputViaRequest(
+  page,
+  outPdfPath,
+  timeoutMs = 15000,
+  orderId = "unknown",
+  stage = ""
+) {
+  if (!isRakutenBooksReceiptInputUrl(page.url())) return false;
+
+  const formPayload = await page
+    .evaluate(() => {
+      const form =
+        document.querySelector("#receiptInputForm") || document.querySelector("form[action*='receiptPrint']");
+      if (!form) return null;
+      const action = String(form.getAttribute("action") || "./receiptPrint");
+      const method = String(form.getAttribute("method") || "POST").toUpperCase();
+      const data = {};
+      const fd = new FormData(form);
+      for (const [key, value] of fd.entries()) {
+        if (typeof value === "string") data[String(key)] = value;
+      }
+      return { action, method, data };
+    })
+    .catch(() => null);
+  if (!formPayload || formPayload.method !== "POST") return false;
+
+  const actionUrl = new URL(formPayload.action || "./receiptPrint", page.url()).toString();
+  let response = null;
+  try {
+    response = await page.context().request.post(actionUrl, {
+      timeout: timeoutMs,
+      failOnStatusCode: false,
+      headers: { referer: page.url() },
+      form: formPayload.data || {},
+    });
+  } catch {
+    response = null;
+  }
+  if (!response) {
+    console.error(`[rakuten] order ${orderId} books direct post request failed stage=${stage} action=${actionUrl}`);
+    return false;
+  }
+  if (!response.ok()) {
+    const responseStatus = Number(response.status?.() || 0);
+    const responseUrl = String(response.url?.() || actionUrl);
+    const responseContentType = String(response.headers?.()["content-type"] || "");
+    console.error(
+      `[rakuten] order ${orderId} books direct post bad status stage=${stage} status=${responseStatus} content_type=${responseContentType} response_url=${responseUrl}`
+    );
+    return false;
+  }
+
+  const responseStatus = Number(response.status?.() || 0);
+  const responseUrl = String(response.url?.() || actionUrl);
+  const responseContentType = String(response.headers?.()["content-type"] || "");
+
+  const body = await response.body().catch(() => null);
+  if (!body || body.length < 4 || body.subarray(0, 4).toString("ascii") !== "%PDF") {
+    const prefixHex = body && body.length > 0 ? body.subarray(0, Math.min(body.length, 16)).toString("hex") : "";
+    console.error(
+      `[rakuten] order ${orderId} books direct post no pdf stage=${stage} status=${responseStatus} content_type=${responseContentType} response_url=${responseUrl} body_prefix_hex=${prefixHex}`
+    );
+    return false;
+  }
+  fs.writeFileSync(outPdfPath, body);
+  if (!fileLooksLikePdf(outPdfPath)) {
+    return false;
+  }
+  return true;
+}
+
+function assessRakutenBooksReceiptPrintTransition({ url, pathnameHint, title }) {
+  const rawUrl = String(url || "");
+  if (isRakutenBooksReceiptPrintUrl(rawUrl)) {
+    return { ok: true, reason: "books_receipt_print_url" };
+  }
+  const normalizedPathname = String(pathnameHint || "").toLowerCase();
+  if (normalizedPathname.includes("/mypage/delivery/receiptprint")) {
+    return { ok: true, reason: "books_receipt_print_pathname" };
+  }
+  const normalizedTitle = normalizeText(title || "").toLowerCase();
+  const hasReceiptTitle = normalizedTitle.includes("receipt") || normalizedTitle.includes("invoice");
+  if (!isRakutenBooksReceiptInputUrl(rawUrl) && hasReceiptTitle) {
+    return { ok: true, reason: "books_receipt_title_non_input_url" };
+  }
+  return { ok: false, reason: "books_receipt_print_not_ready" };
+}
+
+async function waitForRakutenBooksReceiptPrintTransition(page, timeoutMs = 15000) {
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < timeoutMs) {
+    const currentUrl = page.url();
+    const currentTitle = await page.title().catch(() => "");
+    const pathnameHint = await page
+      .evaluate(() => String(window.location?.pathname || ""))
+      .catch(() => "");
+    const state = assessRakutenBooksReceiptPrintTransition({
+      url: currentUrl,
+      pathnameHint,
+      title: currentTitle,
+    });
+    if (state.ok) {
+      return { ok: true, reason: state.reason, url: currentUrl };
+    }
+
+    await page.waitForLoadState("domcontentloaded", { timeout: 1200 }).catch(() => {});
+    await page.waitForLoadState("networkidle", { timeout: 1000 }).catch(() => {});
+    await page.waitForTimeout(180);
+  }
+  return { ok: false, reason: "books_receipt_print_timeout", url: page.url() };
+}
+
+async function withSoftTimeout(promise, timeoutMs) {
+  return Promise.race([promise, new Promise((resolve) => setTimeout(() => resolve(null), Math.max(0, timeoutMs)))]);
+}
+
+async function resolveRakutenBooksPrintCandidatePage(candidatePage, timeoutMs = 9000) {
+  if (!candidatePage || candidatePage.isClosed()) {
+    return { ok: false, reason: "books_candidate_missing", page: null, url: "" };
+  }
+  await candidatePage.waitForLoadState("domcontentloaded", { timeout: 6000 }).catch(() => {});
+  await candidatePage.waitForLoadState("networkidle", { timeout: 3000 }).catch(() => {});
+  const transition = await waitForRakutenBooksReceiptPrintTransition(candidatePage, timeoutMs);
+  if (!transition.ok) {
+    return { ok: false, reason: transition.reason, page: candidatePage, url: transition.url || candidatePage.url() };
+  }
+  return { ok: true, reason: transition.reason, page: candidatePage, url: transition.url || candidatePage.url() };
+}
+
+async function forceSubmitRakutenBooksReceiptInSameTab(page) {
+  return page
+    .evaluate(() => {
+      const form =
+        document.querySelector("#receiptInputForm") || document.querySelector("form[action*='receiptPrint']");
+      if (!form) return { ok: false, mode: "missing_form" };
+      const previousTarget = String(form.getAttribute("target") || "");
+      form.setAttribute("target", "_self");
+      if (typeof form.submit === "function") {
+        form.submit();
+        return { ok: true, mode: "form_submit_self", previousTarget };
+      }
+      if (typeof form.requestSubmit === "function") {
+        form.requestSubmit();
+        return { ok: true, mode: "request_submit_self", previousTarget };
+      }
+      return { ok: false, mode: "submit_unavailable" };
+    })
+    .catch(() => ({ ok: false, mode: "submit_eval_error" }));
+}
+
+async function openRakutenBooksReceiptPrintPage(page, orderId = "unknown", timeoutMs = 15000) {
+  if (isRakutenBooksReceiptPrintUrl(page.url())) {
+    return { opened: true, page, download: null, source: "already_print" };
+  }
+  if (!isRakutenBooksReceiptInputUrl(page.url())) {
+    return { opened: false, page, download: null, source: "not_input_page" };
+  }
+  await page.waitForLoadState("domcontentloaded", { timeout: 5000 }).catch(() => {});
+
+  const inputReady = await page
+    .locator("#receiptInputForm, form[action*='receiptPrint'], #receiptInputFormButton, input[name='receiptSubmit']")
+    .first()
+    .waitFor({ state: "attached", timeout: 7000 })
+    .then(() => true)
+    .catch(() => false);
+  if (!inputReady) {
+    console.error(`[rakuten] order ${orderId} books receipt form missing on receiptInput`);
+    return { opened: false, page, download: null, source: "input_form_missing" };
+  }
+
+  const context = page.context();
+  const startedAt = Date.now();
+  const popupPromise = page.waitForEvent("popup", { timeout: timeoutMs }).catch(() => null);
+  const contextPagePromise = context.waitForEvent("page", { timeout: timeoutMs }).catch(() => null);
+  const downloadPromise = context.waitForEvent("download", { timeout: timeoutMs }).catch(() => null);
+
+  const selfSubmit = await forceSubmitRakutenBooksReceiptInSameTab(page);
+  if (selfSubmit.ok) {
+    const selfTransition = await waitForRakutenBooksReceiptPrintTransition(page, Math.min(15000, timeoutMs));
+    if (selfTransition.ok) {
+      console.error(
+        `[rakuten] order ${orderId} books self-submit mode=${selfSubmit.mode} transition_ok=true reason=${
+          selfTransition.reason
+        } current=${String(selfTransition.url || page.url())}`
+      );
+      return { opened: true, page, download: null, source: "same_tab_forced_self" };
+    }
+    console.error(
+      `[rakuten] order ${orderId} books self-submit mode=${selfSubmit.mode} transition_ok=false reason=${selfTransition.reason} current=${String(
+        selfTransition.url || page.url()
+      )}`
+    );
+  } else {
+    console.error(`[rakuten] order ${orderId} books self-submit skipped mode=${selfSubmit.mode}`);
+  }
+
+  let submitResult = { ok: false, mode: "unknown" };
+  const submitButton = page.locator("#receiptInputFormButton, input[name='receiptSubmit']").first();
+  if ((await submitButton.count()) > 0 && (await submitButton.isVisible().catch(() => false))) {
+    try {
+      await submitButton.click({ timeout: 8000 });
+      submitResult = { ok: true, mode: "locator_click" };
+    } catch {
+      submitResult = { ok: false, mode: "locator_click_failed" };
+    }
+  }
+  if (!submitResult.ok) {
+    submitResult = await page
+      .evaluate(() => {
+        const submitButton =
+          document.querySelector("#receiptInputFormButton") || document.querySelector("input[name='receiptSubmit']");
+        const form =
+          (submitButton && submitButton.form) ||
+          document.querySelector("#receiptInputForm") ||
+          document.querySelector("form[action*='receiptPrint']");
+        if (submitButton && typeof submitButton.click === "function") {
+          submitButton.click();
+          return { ok: true, mode: "button_click_eval" };
+        }
+        if (!form) return { ok: false, mode: "missing_form_after_wait" };
+        if (typeof form.requestSubmit === "function") {
+          form.requestSubmit();
+          return { ok: true, mode: "request_submit" };
+        }
+        form.submit();
+        return { ok: true, mode: "form_submit_fallback" };
+      })
+      .catch(() => ({ ok: false, mode: "submit_eval_error" }));
+  }
+
+  const submitTriggered = Boolean(submitResult && submitResult.ok);
+  const submitMode = submitResult?.mode || "unknown";
+
+  const quickTransition = await waitForRakutenBooksReceiptPrintTransition(page, Math.min(9000, timeoutMs));
+  if (quickTransition.ok) {
+    console.error(
+      `[rakuten] order ${orderId} books receipt submit_triggered=${String(submitTriggered)} mode=${submitMode} transition_ok=true reason=${
+        quickTransition.reason
+      } current=${String(quickTransition.url || page.url())}`
+    );
+    return { opened: true, page, download: null, source: "same_tab_quick" };
+  }
+
+  const earlyPopup = await withSoftTimeout(popupPromise, 2500);
+  if (earlyPopup && !earlyPopup.isClosed()) {
+    const popupTransition = await resolveRakutenBooksPrintCandidatePage(earlyPopup, Math.min(9000, timeoutMs));
+    if (popupTransition.ok && popupTransition.page) {
+      console.error(
+        `[rakuten] order ${orderId} books receipt submit_triggered=${String(
+          submitTriggered
+        )} mode=${submitMode} transition_ok=true reason=${popupTransition.reason} popup_current=${String(
+          popupTransition.url || popupTransition.page.url()
+        )}`
+      );
+      return { opened: true, page: popupTransition.page, download: null, source: "popup_early" };
+    }
+    console.error(
+      `[rakuten] order ${orderId} books popup transition failed reason=${popupTransition.reason} popup_current=${String(
+        popupTransition.url || earlyPopup.url()
+      )}`
+    );
+  }
+
+  const earlyContextPage = await withSoftTimeout(contextPagePromise, 1200);
+  if (earlyContextPage && earlyContextPage !== page && !earlyContextPage.isClosed()) {
+    const contextTransition = await resolveRakutenBooksPrintCandidatePage(earlyContextPage, Math.min(9000, timeoutMs));
+    if (contextTransition.ok && contextTransition.page) {
+      console.error(
+        `[rakuten] order ${orderId} books receipt context_page transition_ok=true reason=${contextTransition.reason} current=${String(
+          contextTransition.url || contextTransition.page.url()
+        )}`
+      );
+      return { opened: true, page: contextTransition.page, download: null, source: "context_page_early" };
+    }
+  }
+
+  const earlyDownload = await withSoftTimeout(downloadPromise, 1200);
+  if (earlyDownload) {
+    console.error(`[rakuten] order ${orderId} books receipt captured direct download`);
+    return { opened: true, page, download: earlyDownload, source: "download_early" };
+  }
+
+  const elapsedMs = Date.now() - startedAt;
+  const remainingMs = Math.max(1200, timeoutMs - elapsedMs);
+  const transition = await waitForRakutenBooksReceiptPrintTransition(page, remainingMs);
+  if (transition.ok) {
+    console.error(
+      `[rakuten] order ${orderId} books receipt submit_triggered=${String(submitTriggered)} mode=${submitMode} transition_ok=true reason=${
+        transition.reason
+      } current=${String(transition.url || page.url())}`
+    );
+    return { opened: true, page, download: null, source: "same_tab_late" };
+  }
+
+  const latePopup = earlyPopup || (await withSoftTimeout(popupPromise, 1200));
+  if (latePopup && !latePopup.isClosed()) {
+    const popupTransition = await resolveRakutenBooksPrintCandidatePage(latePopup, 6000);
+    if (popupTransition.ok && popupTransition.page) {
+      console.error(
+        `[rakuten] order ${orderId} books receipt submit_triggered=${String(
+          submitTriggered
+        )} mode=${submitMode} transition_ok=true reason=${popupTransition.reason} popup_current=${String(
+          popupTransition.url || popupTransition.page.url()
+        )}`
+      );
+      return { opened: true, page: popupTransition.page, download: null, source: "popup_late" };
+    }
+  }
+
+  const lateContextPage = earlyContextPage || (await withSoftTimeout(contextPagePromise, 1200));
+  if (lateContextPage && lateContextPage !== page && !lateContextPage.isClosed()) {
+    const contextTransition = await resolveRakutenBooksPrintCandidatePage(lateContextPage, 6000);
+    if (contextTransition.ok && contextTransition.page) {
+      console.error(
+        `[rakuten] order ${orderId} books receipt context_page transition_ok=true reason=${contextTransition.reason} current=${String(
+          contextTransition.url || contextTransition.page.url()
+        )}`
+      );
+      return { opened: true, page: contextTransition.page, download: null, source: "context_page_late" };
+    }
+  }
+
+  const lateDownload = earlyDownload || (await withSoftTimeout(downloadPromise, 1200));
+  if (lateDownload) {
+    console.error(`[rakuten] order ${orderId} books receipt captured direct download`);
+    return { opened: true, page, download: lateDownload, source: "download_late" };
+  }
+
+  console.error(
+    `[rakuten] order ${orderId} books receipt submit_triggered=${String(submitTriggered)} mode=${submitMode} transition_ok=${String(
+      transition.ok
+    )} reason=${transition.reason} current=${String(transition.url || page.url())}`
+  );
+  return { opened: false, page, download: null, source: "transition_timeout" };
+}
+
+async function waitForRakutenBooksReceiptInputOrPrint(page, timeoutMs = 15000) {
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < timeoutMs) {
+    const currentUrl = String(page.url() || "");
+    if (isRakutenBooksReceiptInputUrl(currentUrl) || isRakutenBooksReceiptPrintUrl(currentUrl)) {
+      return { ok: true, url: currentUrl };
+    }
+    await page.waitForLoadState("domcontentloaded", { timeout: 1200 }).catch(() => {});
+    await page.waitForLoadState("networkidle", { timeout: 1000 }).catch(() => {});
+    await page.waitForTimeout(160);
+  }
+  return { ok: false, url: String(page.url() || "") };
+}
+
+async function reopenRakutenBooksReceiptFromDetail(
+  page,
+  detailUrl,
+  orderId = "unknown",
+  authHandoff = false,
+  timeoutMs = 15000
+) {
+  const targetDetailUrl = String(detailUrl || "").trim();
+  if (!targetDetailUrl || !/books\.rakuten\.co\.jp/i.test(targetDetailUrl)) {
+    return false;
+  }
+  console.error(`[rakuten] order ${orderId} books fallback: reopen via detail page`);
+  await page.goto(targetDetailUrl, { waitUntil: "domcontentloaded", timeout: 30000 }).catch(() => {});
+  await page.waitForLoadState("networkidle", { timeout: 15000 }).catch(() => {});
+  await ensureAuthenticated(page, authHandoff, "Rakuten books detail page");
+
+  const receiptAction = await findReceiptAction(page);
+  if (!receiptAction) {
+    console.error(`[rakuten] order ${orderId} books fallback: receipt action not found on detail`);
+    return false;
+  }
+
+  const baseUrl = page.url();
+  const href = await receiptAction.getAttribute("href");
+  const onclick = await receiptAction.getAttribute("onclick");
+  const actionScript = buildReceiptActionScript(href, onclick);
+
+  await installWindowOpenCapture(page);
+  await receiptAction.click().catch(() => {});
+  const primaryConfirmed = await acceptIssueConfirm(page, 5000);
+  if (!primaryConfirmed && actionScript) {
+    const invoked = await invokeReceiptActionScript(page, actionScript);
+    console.error(`[rakuten] order ${orderId} books fallback action_script_invoked=${String(invoked)}`);
+    if (invoked) {
+      await acceptIssueConfirm(page, 3500);
+    }
+  }
+
+  let transition = await waitForRakutenBooksReceiptInputOrPrint(page, timeoutMs);
+  if (transition.ok) return true;
+
+  const captured = await consumeCapturedWindowOpenUrl(page, baseUrl);
+  if (captured) {
+    await page.goto(captured, { waitUntil: "domcontentloaded", timeout: 30000 }).catch(() => {});
+    await page.waitForLoadState("networkidle", { timeout: 12000 }).catch(() => {});
+    transition = await waitForRakutenBooksReceiptInputOrPrint(page, 6000);
+    if (transition.ok) return true;
+  }
+
+  console.error(
+    `[rakuten] order ${orderId} books fallback failed current=${String(page.url() || "")} last=${String(transition.url || "")}`
+  );
+  return false;
 }
 
 const confirmClickGuard = new WeakMap();
@@ -1267,7 +1835,10 @@ async function main() {
               console.error(`[rakuten] order ${orderId || "unknown"} no receipt action`);
             }
           } else {
-            const receiptTimeoutMs = 30 * 1000;
+            const isBooksDetail = /books\.rakuten\.co\.jp/i.test(String(detailUrl || ""));
+            // Rakuten Books has an extra receiptInput -> receiptPrint flow and can take longer
+            // when fallback/reopen logic is needed.
+            const receiptTimeoutMs = isBooksDetail ? 90 * 1000 : 30 * 1000;
             const baseUrl = page.url();
             const href = await receiptAction.getAttribute("href");
             const onclick = await receiptAction.getAttribute("onclick");
@@ -1414,8 +1985,15 @@ async function main() {
                     }
                   } else {
                   const usingPopup = Boolean(receiptPopup && !receiptPopup.isClosed());
-                  const needsNewPage = !usingPopup && pdfContext !== context;
-                  const pdfPage = usingPopup ? receiptPopup : needsNewPage ? await pdfContext.newPage() : page;
+                  // Rakuten Books receiptInput/receiptPrint intermittently fails in headless context
+                  // ("注文・配送状況の確認エラー"), so keep that flow on the visible context page.
+                  const booksDetailFlow = /books\.rakuten\.co\.jp/i.test(String(detailUrl || ""));
+                  if (booksDetailFlow && !usingPopup) {
+                    console.error(`[rakuten] order ${orderId || "unknown"} books using visible context page`);
+                  }
+                  const needsNewPage = !usingPopup && pdfContext !== context && !booksDetailFlow;
+                  const createdPdfPage = needsNewPage ? await pdfContext.newPage() : null;
+                  let pdfPage = usingPopup ? receiptPopup : createdPdfPage || page;
                   try {
                     await withTimeout(
                       (async () => {
@@ -1428,7 +2006,142 @@ async function main() {
                         }
                         await ensureAuthenticated(pdfPage, authHandoff, "Rakuten receipt page");
                         await acceptIssueConfirm(pdfPage, 1200);
-                        await assertRakutenReceiptPage(pdfPage);
+                        const booksFlowCandidate =
+                          isRakutenBooksReceiptInputUrl(receiptUrl || pdfPage.url()) ||
+                          isRakutenBooksReceiptPrintUrl(receiptUrl || pdfPage.url()) ||
+                          /books\.rakuten\.co\.jp\/mypage\/delivery\/status/i.test(String(detailUrl || ""));
+
+                        const booksNameResult = await applyRakutenBooksReceiptName(pdfPage, receiptName, receiptNameFallback);
+                        if (booksNameResult.applied) receiptNameApplied = true;
+                        if (!appliedName && booksNameResult.name) appliedName = booksNameResult.name;
+
+                        let booksSavedAsPdf = false;
+
+                        let booksPrintResult = { opened: false, page: pdfPage, download: null, source: "skipped_after_post" };
+                        if (!booksSavedAsPdf) {
+                          booksPrintResult = await openRakutenBooksReceiptPrintPage(
+                            pdfPage,
+                            orderId || "unknown",
+                            Math.min(30000, receiptTimeoutMs)
+                          );
+                          if (!booksPrintResult.opened && booksFlowCandidate) {
+                            const reopened = await reopenRakutenBooksReceiptFromDetail(
+                              pdfPage,
+                              detailUrl,
+                              orderId || "unknown",
+                              authHandoff,
+                              30000
+                            );
+                            console.error(`[rakuten] order ${orderId || "unknown"} books fallback_reopen=${String(reopened)}`);
+                            if (reopened) {
+                              const retryBooksNameResult = await applyRakutenBooksReceiptName(
+                                pdfPage,
+                                receiptName,
+                                receiptNameFallback
+                              );
+                              if (retryBooksNameResult.applied) receiptNameApplied = true;
+                              if (!appliedName && retryBooksNameResult.name) appliedName = retryBooksNameResult.name;
+                              booksPrintResult = await openRakutenBooksReceiptPrintPage(
+                                pdfPage,
+                                orderId || "unknown",
+                                Math.min(30000, receiptTimeoutMs)
+                              );
+                            }
+                          }
+                        }
+                        if (booksPrintResult.page && booksPrintResult.page !== pdfPage) {
+                          if (createdPdfPage && pdfPage === createdPdfPage && !createdPdfPage.isClosed()) {
+                            await createdPdfPage.close().catch(() => {});
+                          }
+                          pdfPage = booksPrintResult.page;
+                          if (pdfPage !== page) {
+                            receiptPopup = pdfPage;
+                          }
+                        }
+                        if (booksPrintResult.download) {
+                          await booksPrintResult.download.saveAs(plannedPdfPath);
+                          if (!fileLooksLikePdf(plannedPdfPath)) {
+                            throw new Error("rakuten_books_downloaded_file_not_pdf");
+                          }
+                          const dlUrl = booksPrintResult.download.url ? String(booksPrintResult.download.url() || "") : "";
+                          if (dlUrl) receiptUrl = dlUrl;
+                          booksSavedAsPdf = true;
+                          console.error(
+                            `[rakuten] order ${orderId || "unknown"} books receipt saved via download source=${String(
+                              booksPrintResult.source || ""
+                            )}`
+                          );
+                        }
+                        if (booksPrintResult.opened) {
+                          receiptUrl = pdfPage.url();
+                          console.error(
+                            `[rakuten] order ${orderId || "unknown"} books receipt print url=${String(receiptUrl || "")}`
+                          );
+                          await ensureAuthenticated(pdfPage, authHandoff, "Rakuten books receipt print page");
+                          await acceptIssueConfirm(pdfPage, 1200);
+                        }
+                        if (booksFlowCandidate && isLowConfidenceItemName(itemName)) {
+                          const booksReceiptText = await pdfPage.innerText("body").catch(() => "");
+                          const booksItemName = extractRakutenBooksItemNameFromText(booksReceiptText);
+                          if (booksItemName) {
+                            itemName = booksItemName;
+                            console.error(
+                              `[rakuten] order ${orderId || "unknown"} books item_name captured from receipt text`
+                            );
+                          }
+                        }
+                        if (
+                          !booksSavedAsPdf &&
+                          booksFlowCandidate &&
+                          booksPrintResult.opened &&
+                          receiptUrl &&
+                          isDirectRakutenDownloadUrl(receiptUrl)
+                        ) {
+                          console.error(
+                            `[rakuten] order ${orderId || "unknown"} books try direct save from receiptPrint url`
+                          );
+                          const savedFromReceiptPrintUrl = await saveReceiptFromDirectUrl(
+                            context,
+                            receiptUrl,
+                            plannedPdfPath,
+                            Math.min(receiptTimeoutMs, 15000)
+                          );
+                          if (!savedFromReceiptPrintUrl) {
+                            throw new Error("rakuten_books_receiptprint_direct_download_not_saved");
+                          }
+                          booksSavedAsPdf = true;
+                          console.error(
+                            `[rakuten] order ${orderId || "unknown"} books receipt saved via direct receiptPrint url`
+                          );
+                        }
+                        if (!booksSavedAsPdf && booksFlowCandidate && !booksPrintResult.opened) {
+                          console.error(
+                            `[rakuten] order ${orderId || "unknown"} books try direct post from receiptInput (late)`
+                          );
+                          const posted = await saveRakutenBooksReceiptFromInputViaRequest(
+                            pdfPage,
+                            plannedPdfPath,
+                            Math.min(receiptTimeoutMs, 10000),
+                            orderId || "unknown",
+                            "late"
+                          );
+                          if (posted) {
+                            booksSavedAsPdf = true;
+                            receiptUrl = receiptUrl || String(pdfPage.url() || "");
+                            console.error(`[rakuten] order ${orderId || "unknown"} books receipt saved via direct post (late)`);
+                          } else {
+                            console.error(
+                              `[rakuten] order ${orderId || "unknown"} books direct post (late) returned no pdf`
+                            );
+                          }
+                        }
+                        if (booksSavedAsPdf) {
+                          return;
+                        }
+                        if (booksFlowCandidate) {
+                          throw new Error("rakuten_books_receipt_direct_download_required");
+                        }
+                        await assertRakutenReceiptPage(pdfPage, { requireBooksPrint: booksFlowCandidate });
                         if (totalYen == null) {
                           const t = await extractTotalFromText(await pdfPage.innerText("body").catch(() => ""));
                           if (t != null) totalYen = t;
@@ -1438,17 +2151,17 @@ async function main() {
                         if (!nameResult.applied && receiptName && !locked) {
                           // Do not block automation with interactive prompt. Keep running and capture state.
                         }
-                        receiptNameApplied = Boolean(nameResult.applied);
-                        if (nameResult.name) appliedName = nameResult.name;
+                        receiptNameApplied = receiptNameApplied || Boolean(nameResult.applied);
+                        if (!appliedName && nameResult.name) appliedName = nameResult.name;
                         await acceptIssueConfirm(pdfPage, 1200);
-                        await assertRakutenReceiptPage(pdfPage);
+                        await assertRakutenReceiptPage(pdfPage, { requireBooksPrint: booksFlowCandidate });
                         await saveReceiptPdf(pdfPage, plannedPdfPath);
                       })(),
                       receiptTimeoutMs,
                       "receipt_pdf"
                     );
                   } finally {
-                    if (needsNewPage) await pdfPage.close().catch(() => {});
+                    if (createdPdfPage && !createdPdfPage.isClosed()) await createdPdfPage.close().catch(() => {});
                   }
                   pdfPath = plannedPdfPath;
                   }
@@ -1536,6 +2249,10 @@ async function main() {
 export {
   assessRakutenReceiptContext,
   assessRakutenReceiptPageText,
+  assessRakutenBooksReceiptPrintTransition,
+  extractRakutenBooksItemNameFromText,
+  isRakutenBooksReceiptInputUrl,
+  isRakutenBooksReceiptPrintUrl,
   isDirectRakutenDownloadUrl,
   normalizeReceiptUrlCandidate,
   shouldDowngradeRakutenReceiptError,

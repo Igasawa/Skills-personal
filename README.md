@@ -8,6 +8,13 @@
 - 英語を許容するのは、コード識別子・APIキー・ログ解析用の固定判定文字列など、機械処理上必要な箇所のみ。
 - UI文言を追加・変更する際は、日本語表示になっていることを確認してから反映する。
 
+## 文字コード方針（文字化け防止）
+
+- テキストファイルは `UTF-8（BOMなし）` を標準とする。
+- 改行は原則 `LF`、`*.ps1` / `*.bat` / `*.cmd` は `CRLF` とする。
+- エディタ設定は `/.editorconfig`、Git属性は `/.gitattributes` を正とする。
+- UTF-8/BOM違反はテストで検知し、修正後にマージする。
+
 ## 収録スキル
 
 - `skills/mfcloud-expense-receipt-reconcile/`  
@@ -69,5 +76,6 @@ python scripts/run.py --mfcloud-expense-list-url "<経費明細一覧URL>" --not
 Set-Location c:\Users\TatsuoIgasawa\.vscode\Skillpersonal\skills\mfcloud-expense-receipt-reconcile
 python -m pip install -r requirements-dev.txt
 python -m pytest -q
+npm run check:encoding
 ```
 

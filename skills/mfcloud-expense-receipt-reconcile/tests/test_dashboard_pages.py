@@ -52,12 +52,76 @@ def test_run_page_shows_pdf_preview_link_in_exclusion_table(
     assert 'target="_blank"' in res.text
 
 
+def test_excluded_pdfs_page_supports_month_switch_and_sort_controls(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    client = _create_client(monkeypatch, tmp_path)
+    ym = "2026-01"
+    run_root = _artifact_root(tmp_path) / ym
+    pdf_path = run_root / "amazon" / "pdfs" / "AMZ-EX-1.pdf"
+    pdf_path.parent.mkdir(parents=True, exist_ok=True)
+    pdf_path.write_bytes(b"%PDF-1.4\n")
+    _write_jsonl(
+        run_root / "amazon" / "orders.jsonl",
+        [
+            {
+                "order_id": "AMZ-EX-1",
+                "order_date": "2026-01-12",
+                "status": "ok",
+                "include": False,
+                "total_yen": 1200,
+                "pdf_path": str(pdf_path),
+            }
+        ],
+    )
+    (_artifact_root(tmp_path) / "2026-02" / "reports").mkdir(parents=True, exist_ok=True)
+
+    res = client.get(f"/runs/{ym}/excluded-pdfs")
+    assert res.status_code == 200
+    assert 'id="filter-month"' in res.text
+    assert '<option value="2026-01" selected' in res.text
+    assert '<option value="2026-02"' in res.text
+    assert 'id="sort-order"' in res.text
+    assert 'id="excluded-table-body"' in res.text
+    assert 'data-order-date="2026-01-12"' in res.text
+    assert 'data-order-month="2026-01"' in res.text
+
+
 def test_index_page_shows_manual_archive_button(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     client = _create_client(monkeypatch, tmp_path)
     res = client.get("/")
     assert res.status_code == 200
     assert "アーカイブ作成（成果物+PDF）" in res.text
     assert 'data-archive-action="archive_outputs"' in res.text
+
+
+def test_index_page_exposes_latest_run_status_hooks(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    client = _create_client(monkeypatch, tmp_path)
+    runs_root = _artifact_root(tmp_path) / "_runs"
+    runs_root.mkdir(parents=True, exist_ok=True)
+    run_id = "run_20260208_173457_465605"
+    (runs_root / f"{run_id}.json").write_text(
+        json.dumps(
+            {
+                "run_id": run_id,
+                "status": "failed",
+                "started_at": "2026-02-08T17:34:57",
+                "params": {"year": 2026, "month": 1, "mode": "rakuten_download"},
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    res = client.get("/")
+    assert res.status_code == 200
+    assert "data-latest-run-dot" in res.text
+    assert "data-latest-run-status" in res.text
+    assert "data-latest-run-time" in res.text
+    assert "data-latest-run-id" in res.text
+    assert "data-latest-run-ym" in res.text
+    assert "data-log-run-id" in res.text
+    assert "data-log-run-status" in res.text
 
 
 def test_run_page_shows_detail_shortcut_when_pdf_missing(

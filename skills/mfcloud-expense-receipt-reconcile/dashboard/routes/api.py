@@ -166,6 +166,7 @@ def create_api_router() -> APIRouter:
             str(output_root),
             "--sources",
             source,
+            "--skip-shortcut-download",
         ]
         if exclude_orders_json.exists():
             cmd += ["--exclude-orders-json", str(exclude_orders_json)]
