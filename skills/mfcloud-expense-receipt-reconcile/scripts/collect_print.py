@@ -146,12 +146,29 @@ def _write_print_script(path: Path, files: list[str]) -> None:
     lines += [f'  "{p}"' for p in files]
     lines += [
         ")",
+        "$printed = 0",
+        "$failed = 0",
+        "$missing = 0",
         "foreach ($f in $files) {",
-        "  if (Test-Path $f) {",
-        "    Start-Process -FilePath $f -Verb Print",
-        "    Start-Sleep -Milliseconds 300",
+        "  if (-not (Test-Path $f)) {",
+        "    Write-Warning (\"missing: \" + $f)",
+        "    $missing += 1",
+        "    continue",
         "  }",
+        "  try {",
+        "    Start-Process -FilePath $f -Verb Print -ErrorAction Stop",
+        "    $printed += 1",
+        "  } catch {",
+        "    Write-Warning (\"print_failed: \" + $f + \" :: \" + $_.Exception.Message)",
+        "    $failed += 1",
+        "  }",
+        "  Start-Sleep -Milliseconds 300",
         "}",
+        "Write-Output (\"print_summary printed=\" + $printed + \" failed=\" + $failed + \" missing=\" + $missing + \" total=\" + $files.Count)",
+        "if ($failed -gt 0) {",
+        "  exit 1",
+        "}",
+        "exit 0",
     ]
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 

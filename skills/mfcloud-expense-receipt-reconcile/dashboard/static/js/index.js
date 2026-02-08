@@ -212,6 +212,44 @@
     }
   }
 
+  async function archiveOutputs(buttonEl) {
+    const ym = getYmFromForm();
+    if (!ym) {
+      showToast("年月が未設定です。", "error");
+      return;
+    }
+
+    clearError();
+    if (buttonEl) {
+      buttonEl.disabled = true;
+      buttonEl.dataset.busy = "1";
+    }
+    showToast("アーカイブを作成しています...", "success");
+
+    try {
+      const res = await fetch(`/api/archive/${ym}`, { method: "POST" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const message = toFriendlyMessage(data.detail || "アーカイブ作成に失敗しました。");
+        showError(message);
+        showToast(message, "error");
+        return;
+      }
+      const archivedTo = String(data.archived_to || "").trim();
+      const message = archivedTo ? `アーカイブ作成完了: ${archivedTo}` : "アーカイブ作成完了";
+      showToast(message, "success");
+    } catch {
+      const message = "アーカイブ作成に失敗しました。";
+      showError(message);
+      showToast(message, "error");
+    } finally {
+      if (buttonEl) {
+        delete buttonEl.dataset.busy;
+      }
+      refreshSteps({ force: true });
+    }
+  }
+
   async function resetStep(stepId, buttonEl) {
     const ym = getYmFromForm();
     if (!ym) {
@@ -375,6 +413,28 @@
     });
   }
 
+  function applyArchiveAvailability(data) {
+    document.querySelectorAll("[data-archive-action]").forEach((button) => {
+      if (button.dataset.busy === "1") {
+        button.disabled = true;
+        return;
+      }
+      const runningMode = String(data.running_mode || "");
+      const amazonDone = Boolean(data.amazon?.confirmed && data.amazon?.printed);
+      const rakutenDone = Boolean(data.rakuten?.confirmed && data.rakuten?.printed);
+      const allowed = amazonDone || rakutenDone;
+      const blockedByRunning = Boolean(runningMode);
+      button.disabled = blockedByRunning || !allowed;
+      if (blockedByRunning) {
+        button.title = "他のステップ実行中はアーカイブできません。";
+      } else if (!allowed) {
+        button.title = "Amazonまたは楽天の確認+印刷完了後に実行できます。";
+      } else {
+        button.title = "";
+      }
+    });
+  }
+
   function setStepLinkState(link, enabled, href) {
     if (!link) return;
     if (enabled) {
@@ -448,6 +508,7 @@
       if (!raw) {
         renderNextStep("ステップ状態の取得に失敗しました。再読み込みしてください。", null);
         document.querySelectorAll("[data-step-link]").forEach((link) => setStepLinkState(link, false, "#"));
+        applyArchiveAvailability({ running_mode: "", amazon: {}, rakuten: {} });
         if (!stepRetryTimer) {
           stepRetryTimer = setTimeout(() => {
             stepRetryTimer = null;
@@ -470,6 +531,7 @@
       const runningMode = String(data.running_mode || "");
 
       applyActionAvailability(data);
+      applyArchiveAvailability(data);
       applyLinkAvailability(data, ym);
 
       const stepStates = buildStepStates(data, runningMode);
@@ -511,6 +573,7 @@
     } catch {
       renderNextStep("ステップ状態の取得に失敗しました。再読み込みしてください。", null);
       document.querySelectorAll("[data-step-link]").forEach((link) => setStepLinkState(link, false, "#"));
+      applyArchiveAvailability({ running_mode: "", amazon: {}, rakuten: {} });
       if (!stepRetryTimer) {
         stepRetryTimer = setTimeout(() => {
           stepRetryTimer = null;
@@ -535,6 +598,15 @@
       button.addEventListener("click", (event) => {
         event.preventDefault();
         if (button.dataset.stepAction) startRun(button.dataset.stepAction);
+      });
+    });
+
+    document.querySelectorAll("[data-archive-action]").forEach((button) => {
+      button.addEventListener("click", (event) => {
+        event.preventDefault();
+        if (button.dataset.archiveAction === "archive_outputs") {
+          archiveOutputs(button);
+        }
       });
     });
 

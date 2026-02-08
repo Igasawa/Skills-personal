@@ -52,6 +52,14 @@ def test_run_page_shows_pdf_preview_link_in_exclusion_table(
     assert 'target="_blank"' in res.text
 
 
+def test_index_page_shows_manual_archive_button(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    client = _create_client(monkeypatch, tmp_path)
+    res = client.get("/")
+    assert res.status_code == 200
+    assert "アーカイブ作成（成果物+PDF）" in res.text
+    assert 'data-archive-action="archive_outputs"' in res.text
+
+
 def test_run_page_shows_detail_shortcut_when_pdf_missing(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -76,3 +84,23 @@ def test_run_page_shows_detail_shortcut_when_pdf_missing(
     assert "注文詳細" in res.text
     assert "未保存（Webあり）" in res.text
     assert "https://order.my.rakuten.co.jp/purchase-history/?order_number=RAK-001" in res.text
+
+
+def test_run_page_shows_manual_print_prepare_and_complete_controls(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    client = _create_client(monkeypatch, tmp_path)
+    ym = "2026-01"
+    run_root = _artifact_root(tmp_path) / ym
+    _write_jsonl(
+        run_root / "amazon" / "orders.jsonl",
+        [{"order_id": "AMZ-001", "order_date": "2026-01-12", "status": "ok"}],
+    )
+
+    res = client.get(f"/runs/{ym}")
+    assert res.status_code == 200
+    assert "Amazonで保存して印刷準備" in res.text
+    assert "楽天で保存して印刷準備" in res.text
+    assert "Amazon印刷完了を記録" in res.text
+    assert "楽天印刷完了を記録" in res.text
+    assert "印刷は自動実行しません" in res.text

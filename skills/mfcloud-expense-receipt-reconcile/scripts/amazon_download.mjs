@@ -41,22 +41,97 @@ function parseJapaneseDate(s, fallbackYear) {
   return null;
 }
 
+const AMAZON_ORDER_ID_FULL_REGEX = /^[A-Za-z0-9]{3}-\d{7}-\d{7}$/i;
+const AMAZON_ORDER_ID_REGEX = /\b[A-Za-z0-9]{3}-\d{7}-\d{7}\b/i;
+const AMAZON_ORDER_DATE_LABELS = ["注文日", "サブスクリプション課金日", "課金日"];
+
+function toYmd(dateParts) {
+  if (!dateParts) return null;
+  return `${String(dateParts.y).padStart(4, "0")}-${String(dateParts.m).padStart(2, "0")}-${String(dateParts.d).padStart(2, "0")}`;
+}
+
+function extractOrderDateFromText(textRaw, fallbackYear) {
+  const text = normalizeOrderText(textRaw);
+  for (const label of AMAZON_ORDER_DATE_LABELS) {
+    const escaped = String(label || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    if (!escaped) continue;
+    const labeledMatch =
+      text.match(new RegExp(`${escaped}\\s*[:：]?\\s*([^\\n]+)`)) ||
+      text.match(new RegExp(`${escaped}\\s*([0-9/年月日()]+)`));
+    const dateParts = labeledMatch ? parseJapaneseDate(labeledMatch[1], fallbackYear) : null;
+    if (dateParts) return toYmd(dateParts);
+  }
+  const fallbackMatch = text.match(/(\d{4}[/-]\d{1,2}[/-]\d{1,2})/);
+  const fallbackParts = fallbackMatch ? parseJapaneseDate(fallbackMatch[1], fallbackYear) : null;
+  return toYmd(fallbackParts);
+}
+
 function extractTotalFromText(text) {
   if (!text) return null;
+  const totals = extractSummaryTotalsFromText(text);
+  if (totals.billingTotalYen != null) return totals.billingTotalYen;
+  if (totals.orderTotalYen != null) return totals.orderTotalYen;
+  if (totals.totalAmountYen != null) return totals.totalAmountYen;
+
   const t = normalizeOrderText(text);
-  const patterns = [
-    /合計\s*[:：]?\s*([0-9,]+)\s*円/,
-    /ご請求額\s*[:：]?\s*([0-9,]+)\s*円/,
-    /注文合計\s*[:：]?\s*([0-9,]+)\s*円/,
-    /合計金額\s*[:：]?\s*([0-9,]+)\s*円/,
+  const all = [
+    ...t.matchAll(/(?:[¥￥円]\s*)?([0-9][0-9,]*)\s*円/g),
+    ...t.matchAll(/(?:[¥￥円]\s*)+([0-9][0-9,]*)/g),
   ];
-  for (const p of patterns) {
-    const m = t.match(p);
-    if (m) return yenToInt(m[1]);
+  if (all.length) {
+    const last = all[all.length - 1];
+    if (last && last[1]) return yenToInt(last[1]);
   }
-  const all = [...t.matchAll(/([0-9][0-9,]*)\s*円/g)];
-  if (all.length) return yenToInt(all[all.length - 1][1]);
   return null;
+}
+
+function extractLabeledAmount(text, labels) {
+  if (!text || !Array.isArray(labels) || !labels.length) return null;
+  const t = normalizeOrderText(text);
+  for (const label of labels) {
+    const escaped = String(label || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    if (!escaped) continue;
+    const patterns = [
+      new RegExp(`${escaped}\\s*[:：]?\\s*(?:[¥￥円]\\s*)?([0-9][0-9,]*)`, "m"),
+      new RegExp(`${escaped}\\s*[:：]?\\s*([0-9][0-9,]*)\\s*(?:円)?`, "m"),
+    ];
+    for (const pattern of patterns) {
+      const m = t.match(pattern);
+      if (m && m[1]) {
+        const parsed = yenToInt(m[1]);
+        if (parsed != null) return parsed;
+      }
+    }
+  }
+  return null;
+}
+
+function extractSummaryTotalsFromText(text) {
+  const billingTotalYen = extractLabeledAmount(text, ["ご請求額", "請求額"]);
+  const orderTotalYen = extractLabeledAmount(text, ["注文合計", "お支払い金額", "支払金額"]);
+  const totalAmountYen = extractLabeledAmount(text, ["合計金額", "合計"]);
+  return { billingTotalYen, orderTotalYen, totalAmountYen };
+}
+
+function chooseAmazonOrderTotal({
+  billingTotalYen = null,
+  summaryTotalYen = null,
+  invoiceTotalSumYen = null,
+  fallbackTotalYen = null,
+} = {}) {
+  if (billingTotalYen != null) {
+    return { totalYen: billingTotalYen, totalSource: "billing_total" };
+  }
+  if (summaryTotalYen != null) {
+    return { totalYen: summaryTotalYen, totalSource: "summary_total" };
+  }
+  if (invoiceTotalSumYen != null) {
+    return { totalYen: invoiceTotalSumYen, totalSource: "invoice_sum" };
+  }
+  if (fallbackTotalYen != null) {
+    return { totalYen: fallbackTotalYen, totalSource: "card_fallback" };
+  }
+  return { totalYen: null, totalSource: "unknown" };
 }
 
 async function extractTotalFromPage(page) {
@@ -332,22 +407,13 @@ async function extractOrderFromCard(card, pageUrl, year) {
   const cardText = await card.innerText().catch(() => "");
   const cardTextNorm = normalizeOrderText(cardText);
 
-  const idMatch = cardTextNorm.match(/注文番号\s*[:：]?\s*([0-9-]{10,})/);
-  const orderId = idMatch ? idMatch[1] : null;
-
-  const dateMatch =
-    cardTextNorm.match(/注文日\s*[:：]?\s*([0-9/年月日()]+)/) ||
-    cardTextNorm.match(/注文日\s*([0-9/年月日()]+)/) ||
-    cardTextNorm.match(/(\d{4}[/-]\d{1,2}[/-]\d{1,2})/);
-  const dateParts = dateMatch ? parseJapaneseDate(dateMatch[1], year) : null;
-  const orderDate = dateParts
-    ? `${String(dateParts.y).padStart(4, "0")}-${String(dateParts.m).padStart(2, "0")}-${String(dateParts.d).padStart(2, "0")}`
-    : null;
+  const orderId = extractOrderIdFromText(cardTextNorm);
+  const orderDate = extractOrderDateFromText(cardTextNorm, year);
 
   const totalMatch =
-    cardTextNorm.match(/合計\s*[:：]?\s*([0-9,]+)\s*円/) ||
-    cardTextNorm.match(/注文合計\s*[:：]?\s*([0-9,]+)\s*円/) ||
-    cardTextNorm.match(/合計\s*([0-9,]+)\s*円/);
+    cardTextNorm.match(/合計\s*[:：]?\s*(?:[¥￥円]\s*)?([0-9,]+)\s*(?:円)?/) ||
+    cardTextNorm.match(/注文合計\s*[:：]?\s*(?:[¥￥円]\s*)?([0-9,]+)\s*(?:円)?/) ||
+    cardTextNorm.match(/合計\s*(?:[¥￥円]\s*)?([0-9,]+)\s*(?:円)?/);
   const totalYen = totalMatch ? yenToInt(totalMatch[1]) : null;
   const itemName = await extractItemNamesFromCard(card);
 
@@ -415,21 +481,25 @@ function isGiftCardOrder(textRaw) {
 async function parseOrderDetail(page, fallbackYear) {
   const textRaw = await page.innerText("body").catch(() => "");
   const text = normalizeOrderText(textRaw);
-  const idMatch = text.match(/注文番号\s*[:：]?\s*([0-9-]{10,})/);
-  const orderId = idMatch ? idMatch[1] : null;
+  const orderId = extractOrderIdFromText(text);
+  const orderDate = extractOrderDateFromText(text, fallbackYear);
 
-  const dateMatch = text.match(/注文日\s*[:：]?\s*([^\n]+)/) || text.match(/注文日\s*([^\n]+)/);
-  const dateParts = dateMatch ? parseJapaneseDate(dateMatch[1], fallbackYear) : null;
-  const orderDate = dateParts
-    ? `${String(dateParts.y).padStart(4, "0")}-${String(dateParts.m).padStart(2, "0")}-${String(dateParts.d).padStart(2, "0")}`
-    : null;
-
-  const totalYen = extractTotalFromText(text);
+  const summaryTotals = extractSummaryTotalsFromText(text);
+  const totalYen =
+    summaryTotals.billingTotalYen ?? summaryTotals.orderTotalYen ?? summaryTotals.totalAmountYen ?? extractTotalFromText(text);
   const itemName = await extractItemNamesFromDom(page);
 
   const isGiftCard = isGiftCardOrder(textRaw);
 
-  return { orderId, orderDate, totalYen, itemName, isGiftCard };
+  return {
+    orderId,
+    orderDate,
+    totalYen,
+    billingTotalYen: summaryTotals.billingTotalYen,
+    summaryTotalYen: summaryTotals.orderTotalYen ?? summaryTotals.totalAmountYen,
+    itemName,
+    isGiftCard,
+  };
 }
 
 async function findReceiptLink(page) {
@@ -503,8 +573,8 @@ function fileLooksLikePdf(filePath) {
 }
 
 function extractOrderIdFromText(textRaw) {
-  const text = String(textRaw || "");
-  const m = text.match(/\b\d{3}-\d{7}-\d{7}\b/);
+  const text = normalizeOrderText(textRaw);
+  const m = text.match(AMAZON_ORDER_ID_REGEX);
   return m ? m[0] : null;
 }
 
@@ -513,12 +583,12 @@ function extractOrderIdFromUrl(rawUrl) {
   try {
     const u = new URL(String(rawUrl));
     const byQuery = u.searchParams.get("orderID") || u.searchParams.get("orderId");
-    if (byQuery && /^\d{3}-\d{7}-\d{7}$/.test(byQuery)) return byQuery;
-    const byPath = u.pathname.match(/\b\d{3}-\d{7}-\d{7}\b/);
+    if (byQuery && AMAZON_ORDER_ID_FULL_REGEX.test(byQuery.trim())) return byQuery.trim();
+    const byPath = u.pathname.match(AMAZON_ORDER_ID_REGEX);
     if (byPath) return byPath[0];
     return null;
   } catch {
-    const byText = String(rawUrl).match(/\b\d{3}-\d{7}-\d{7}\b/);
+    const byText = normalizeOrderText(rawUrl).match(AMAZON_ORDER_ID_REGEX);
     return byText ? byText[0] : null;
   }
 }
@@ -802,12 +872,176 @@ async function resolveReceiptSource(context, page, receiptLink) {
   return { receiptUrl, popupPage, download, documentPlan };
 }
 
-async function saveReceiptPdf(page, outPdfPath) {
-  await page.emulateMedia({ media: "print" });
-  await page.pdf({ path: outPdfPath, format: "A4", printBackground: true });
+const AMAZON_HEAD_ONLY_STYLE_ID = "ax-amazon-head-only-style";
+const AMAZON_HEAD_ONLY_HIDDEN_ATTR = "data-ax-head-hidden";
+const AMAZON_HEAD_ONLY_PDF_ENABLED = false;
+const AMAZON_RECEIPT_DETAIL_MARKERS = [
+  "お届け済み",
+  "お届け予定",
+  "購入明細",
+  "注文情報",
+  "注文内容",
+];
+
+function detectAmazonReceiptCutoffFromBlocks(blocks, markers = AMAZON_RECEIPT_DETAIL_MARKERS) {
+  if (!Array.isArray(blocks) || !Array.isArray(markers) || !markers.length) return null;
+  const normalizedMarkers = markers
+    .map((m) => normalizeOrderText(m).replace(/\s+/g, "").trim())
+    .filter(Boolean);
+  if (!normalizedMarkers.length) return null;
+
+  let cutoff = null;
+  for (const block of blocks) {
+    if (!block || typeof block !== "object") continue;
+    const top = Number(block.top);
+    if (!Number.isFinite(top) || top <= 0) continue;
+    const textNorm = normalizeOrderText(block.text || "").replace(/\s+/g, "").trim();
+    if (!textNorm) continue;
+    if (!normalizedMarkers.some((needle) => textNorm.includes(needle))) continue;
+    if (cutoff == null || top < cutoff) {
+      cutoff = top;
+    }
+  }
+  return cutoff == null ? null : Math.max(0, Math.floor(cutoff));
+}
+
+async function detectAmazonReceiptCutoff(page, markers = AMAZON_RECEIPT_DETAIL_MARKERS) {
+  const markerList = Array.isArray(markers) ? markers : AMAZON_RECEIPT_DETAIL_MARKERS;
+  const blocks = await page.evaluate((needleKeywords) => {
+    const needles = Array.isArray(needleKeywords) ? needleKeywords : [];
+    if (!needles.length || !document || !document.body) return [];
+
+    const out = [];
+    const nodes = document.querySelectorAll("h1, h2, h3, h4, h5, section, div, p, li, span");
+    for (const node of nodes) {
+      if (!(node instanceof HTMLElement)) continue;
+      const text = (node.innerText || node.textContent || "").replace(/\s+/g, " ").trim();
+      if (!text || text.length > 160) continue;
+      if (!needles.some((needle) => text.includes(needle))) continue;
+      const rect = node.getBoundingClientRect();
+      if (!rect || rect.width <= 0 || rect.height <= 0) continue;
+      if (rect.bottom <= 0) continue;
+      out.push({ text: text.slice(0, 160), top: rect.top });
+    }
+    return out;
+  }, markerList);
+  return detectAmazonReceiptCutoffFromBlocks(blocks, markerList);
+}
+
+async function applyAmazonHeadOnlyMask(page, cutoffY) {
+  return page.evaluate(
+    ({ cutoff, styleId, hiddenAttr }) => {
+      if (!Number.isFinite(cutoff) || !document || !document.body) {
+        return { applied: false, hiddenCount: 0 };
+      }
+
+      let style = document.getElementById(styleId);
+      if (!style) {
+        style = document.createElement("style");
+        style.id = styleId;
+        style.textContent = `@media print {
+  [${hiddenAttr}="1"] { display: none !important; visibility: hidden !important; }
+}`;
+        document.head.appendChild(style);
+      }
+
+      const hidden = [];
+      for (const node of document.body.querySelectorAll("*")) {
+        if (!(node instanceof HTMLElement)) continue;
+        node.removeAttribute(hiddenAttr);
+      }
+
+      for (const node of document.body.querySelectorAll("*")) {
+        if (!(node instanceof HTMLElement)) continue;
+        if (node.id === styleId) continue;
+        const rect = node.getBoundingClientRect();
+        if (!rect || rect.width <= 0 || rect.height <= 0) continue;
+        if (rect.top >= cutoff - 1) {
+          node.setAttribute(hiddenAttr, "1");
+          hidden.push(node);
+        }
+      }
+      return { applied: hidden.length > 0, hiddenCount: hidden.length };
+    },
+    { cutoff: cutoffY, styleId: AMAZON_HEAD_ONLY_STYLE_ID, hiddenAttr: AMAZON_HEAD_ONLY_HIDDEN_ATTR }
+  );
+}
+
+async function clearAmazonHeadOnlyMask(page) {
+  return page.evaluate(
+    ({ styleId, hiddenAttr }) => {
+      const style = document.getElementById(styleId);
+      if (style) style.remove();
+      for (const node of document.querySelectorAll(`[${hiddenAttr}="1"]`)) {
+        if (node instanceof HTMLElement) node.removeAttribute(hiddenAttr);
+      }
+      return true;
+    },
+    { styleId: AMAZON_HEAD_ONLY_STYLE_ID, hiddenAttr: AMAZON_HEAD_ONLY_HIDDEN_ATTR }
+  );
+}
+
+async function saveReceiptPdf(page, outPdfPath, options = {}) {
+  const headOnly = Boolean(options && options.headOnly);
+  let headOnlyApplied = false;
+  let cutoffY = null;
+  let hiddenCount = 0;
+  let maskApplied = false;
+
+  if (headOnly) {
+    try {
+      cutoffY = await detectAmazonReceiptCutoff(page);
+      if (cutoffY == null) {
+        console.warn("[amazon] head-only cutoff detection failed; fallback to full-page PDF.");
+      } else {
+        const masked = await applyAmazonHeadOnlyMask(page, cutoffY);
+        hiddenCount = Number(masked && masked.hiddenCount) || 0;
+        headOnlyApplied = Boolean(masked && masked.applied);
+        maskApplied = headOnlyApplied;
+        if (headOnlyApplied) {
+          console.log(`[amazon] head-only mask applied cutoffY=${cutoffY} hidden=${hiddenCount}`);
+        } else {
+          console.warn("[amazon] head-only mask did not hide elements; fallback to full-page PDF.");
+        }
+      }
+    } catch (err) {
+      console.warn(`[amazon] head-only mask failed; fallback to full-page PDF. reason=${String(err)}`);
+      headOnlyApplied = false;
+      maskApplied = false;
+      cutoffY = null;
+      hiddenCount = 0;
+    }
+  }
+
+  try {
+    await page.emulateMedia({ media: "print" });
+    await page.pdf({ path: outPdfPath, format: "A4", printBackground: true });
+  } catch (err) {
+    if (!headOnly || !maskApplied) {
+      throw err;
+    }
+    console.warn(`[amazon] head-only PDF failed, retrying full-page PDF. reason=${String(err)}`);
+    try {
+      await clearAmazonHeadOnlyMask(page);
+    } catch {
+      // ignore mask cleanup failures during fallback
+    }
+    headOnlyApplied = false;
+    maskApplied = false;
+    cutoffY = null;
+    hiddenCount = 0;
+    await page.emulateMedia({ media: "print" });
+    await page.pdf({ path: outPdfPath, format: "A4", printBackground: true });
+  } finally {
+    if (maskApplied) {
+      await clearAmazonHeadOnlyMask(page).catch(() => {});
+    }
+  }
+
   if (!fileLooksLikePdf(outPdfPath)) {
     throw new Error("amazon_pdf_not_created_or_invalid");
   }
+  return { headOnlyApplied, cutoffY, hiddenCount };
 }
 
 async function savePdfFromDirectUrl(context, receiptUrl, outPdfPath) {
@@ -1075,8 +1309,15 @@ async function main() {
         let documents = [];
         let docType = null;
         let docTotalYen = null;
-        let orderTotalYen = order.total_yen ?? null;
+        const cardTotalYen = order.total_yen ?? null;
+        let orderTotalYen = cardTotalYen;
+        let billingTotalYen = null;
+        let summaryTotalYen = null;
+        let invoiceTotalSumYen = null;
+        let totalSource = orderTotalYen != null ? "card_fallback" : "unknown";
+        let totalConflict = false;
         let splitInvoice = false;
+        let pdfHeadOnlyApplied = false;
 
         console.log(`[amazon] processing order ${monthlyOrdersTotal} id=${order.order_id || "unknown"}`);
 
@@ -1115,6 +1356,7 @@ async function main() {
                       doc_url: receiptUrl,
                       pdf_path: plannedPdfPath,
                       total_yen: docTotalYen,
+                      pdf_head_only_applied: false,
                       primary: true,
                     },
                   ];
@@ -1155,6 +1397,7 @@ async function main() {
                           doc_url: directUrl,
                           pdf_path: outPdfPath,
                           total_yen: null,
+                          pdf_head_only_applied: false,
                           primary: false,
                         });
                       }
@@ -1225,11 +1468,29 @@ async function main() {
                             const parsedReceipt = await parseOrderDetail(targetPage, year);
                             mergeReceiptMetaIntoOrder(order, parsedReceipt);
                             currentDocTotal = parsedReceipt.totalYen;
+                            if (doc.kind === "order_summary") {
+                              if (parsedReceipt.billingTotalYen != null) {
+                                billingTotalYen = parsedReceipt.billingTotalYen;
+                              }
+                              if (parsedReceipt.summaryTotalYen != null) {
+                                summaryTotalYen = parsedReceipt.summaryTotalYen;
+                              }
+                            }
                             if (currentDocTotal == null) {
                               currentDocTotal = await extractTotalFromPage(targetPage);
                             }
-                            if (currentDocTotal != null && (doc.kind === "order_summary" || orderTotalYen == null)) {
+                            if (doc.kind === "order_summary") {
+                              if (summaryTotalYen == null && currentDocTotal != null) {
+                                summaryTotalYen = currentDocTotal;
+                              }
+                              const summaryPreferred = billingTotalYen ?? summaryTotalYen ?? currentDocTotal;
+                              if (summaryPreferred != null) {
+                                orderTotalYen = summaryPreferred;
+                                totalSource = billingTotalYen != null ? "billing_total" : "summary_total";
+                              }
+                            } else if (orderTotalYen == null && currentDocTotal != null) {
                               orderTotalYen = currentDocTotal;
+                              totalSource = "card_fallback";
                             }
 
                             if (!skipReceiptName && !order.receipt_name_applied) {
@@ -1244,7 +1505,31 @@ async function main() {
                             }
 
                             await assertAmazonReceiptPage(targetPage);
-                            await saveReceiptPdf(targetPage, outPdfPath);
+                            const headOnlyRequested = AMAZON_HEAD_ONLY_PDF_ENABLED && doc.kind === "order_summary";
+                            const saveResult = await saveReceiptPdf(targetPage, outPdfPath, {
+                              headOnly: headOnlyRequested,
+                            });
+                            const currentDocHeadOnlyApplied = Boolean(saveResult && saveResult.headOnlyApplied);
+                            if (headOnlyRequested && currentDocHeadOnlyApplied) {
+                              console.log(
+                                `[amazon] order ${order.order_id || "unknown"} doc=${doc.kind || "receipt_like"} head-only saved`
+                              );
+                            }
+                            if (headOnlyRequested && doc.kind === "order_summary" && !currentDocHeadOnlyApplied) {
+                              console.warn(
+                                `[amazon] order ${order.order_id || "unknown"} doc=order_summary head-only fallback to full-page`
+                              );
+                            }
+                            docType = doc.kind || docType;
+                            documents.push({
+                              doc_type: doc.kind || "receipt_like",
+                              doc_url: docUrl,
+                              pdf_path: outPdfPath,
+                              total_yen: currentDocTotal,
+                              pdf_head_only_applied: currentDocHeadOnlyApplied,
+                              primary: false,
+                            });
+                            continue;
                           }
 
                           documents.push({
@@ -1252,6 +1537,7 @@ async function main() {
                             doc_url: docUrl,
                             pdf_path: outPdfPath,
                             total_yen: currentDocTotal,
+                            pdf_head_only_applied: false,
                             primary: false,
                           });
                         }
@@ -1269,15 +1555,40 @@ async function main() {
                           pdfPath = primaryDoc.pdf_path;
                           docType = primaryDoc.doc_type;
                           docTotalYen = primaryDoc.total_yen == null ? null : primaryDoc.total_yen;
-                          if (orderTotalYen == null && docTotalYen != null) {
-                            orderTotalYen = docTotalYen;
+                          pdfHeadOnlyApplied = Boolean(primaryDoc.pdf_head_only_applied);
+                          const taxInvoiceDocs = documents.filter(
+                            (d) => d.doc_type === "tax_invoice" && Number.isFinite(d.total_yen)
+                          );
+                          const taxInvoiceDocCount = documents.filter((d) => d.doc_type === "tax_invoice").length;
+                          if (taxInvoiceDocCount > 0 && taxInvoiceDocs.length === taxInvoiceDocCount) {
+                            invoiceTotalSumYen = taxInvoiceDocs.reduce((sum, d) => sum + Number(d.total_yen), 0);
+                          } else {
+                            invoiceTotalSumYen = null;
                           }
+
+                          const finalTotal = chooseAmazonOrderTotal({
+                            billingTotalYen,
+                            summaryTotalYen,
+                            invoiceTotalSumYen,
+                            fallbackTotalYen: orderTotalYen,
+                          });
+                          orderTotalYen = finalTotal.totalYen;
+                          totalSource = finalTotal.totalSource;
                           if (orderTotalYen != null) {
                             order.total_yen = orderTotalYen;
                           }
-                          splitInvoice = documents.some(
-                            (d) => d.doc_type === "tax_invoice" && d.total_yen != null && order.total_yen != null && d.total_yen !== order.total_yen
+                          totalConflict = Boolean(
+                            billingTotalYen != null && invoiceTotalSumYen != null && billingTotalYen !== invoiceTotalSumYen
                           );
+                          splitInvoice =
+                            totalConflict ||
+                            documents.some(
+                              (d) =>
+                                d.doc_type === "tax_invoice" &&
+                                d.total_yen != null &&
+                                order.total_yen != null &&
+                                d.total_yen !== order.total_yen
+                            );
                           pdfSaved += 1;
                         }
                       } finally {
@@ -1314,6 +1625,7 @@ async function main() {
               doc_url: receiptUrl,
               pdf_path: pdfPath,
               total_yen: docTotalYen,
+              pdf_head_only_applied: false,
               primary: true,
             },
           ];
@@ -1336,8 +1648,13 @@ async function main() {
           pdf_path: pdfPath,
           doc_type: docType,
           doc_total_yen: docTotalYen,
+          billing_total_yen: billingTotalYen,
+          invoice_total_sum_yen: invoiceTotalSumYen,
+          total_source: totalSource,
+          total_conflict: totalConflict,
           doc_count: documents.length,
           documents,
+          pdf_head_only_applied: Boolean(pdfHeadOnlyApplied),
           split_invoice: splitInvoice,
           status,
           error_reason: errorReason,
@@ -1399,13 +1716,23 @@ async function main() {
 }
 
 export {
+  applyAmazonHeadOnlyMask,
   assessAmazonReceiptPageText,
   assertCoverageThreshold,
   buildAmazonDocumentPlan,
+  clearAmazonHeadOnlyMask,
   classifyAmazonDocumentCandidate,
+  chooseAmazonOrderTotal,
   computeCoverageSummary,
+  detectAmazonReceiptCutoff,
+  detectAmazonReceiptCutoffFromBlocks,
+  extractOrderDateFromText,
+  extractOrderIdFromText,
+  extractTotalFromText,
+  extractSummaryTotalsFromText,
   extractOrderIdFromUrl,
   normalizeAmazonOrderErrorReason,
+  saveReceiptPdf,
 };
 
 const isMainModule = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;

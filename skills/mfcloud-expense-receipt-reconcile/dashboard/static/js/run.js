@@ -6,11 +6,13 @@
 
   const excludeSection = document.getElementById("exclude-section");
   const excludeButtons = document.querySelectorAll(".exclude-save");
+  const printCompleteButtons = document.querySelectorAll(".print-complete");
   const excludeStatus = document.getElementById("exclude-status");
   const excludeSummary = document.getElementById("exclude-summary");
   const excludeSummaryCount = document.getElementById("exclude-summary-count");
   const statExcluded = document.getElementById("stat-excluded");
   const statIncluded = document.getElementById("stat-included");
+  const printPreparedBySource = { amazon: false, rakuten: false };
 
   function setExcludeStatus(message, kind) {
     if (!excludeStatus) return;
@@ -43,6 +45,17 @@
     if (statIncluded) statIncluded.textContent = String(included);
   }
 
+  function setActionButtonsDisabled(isBusy) {
+    excludeButtons.forEach((btn) => {
+      btn.disabled = isBusy;
+    });
+    printCompleteButtons.forEach((btn) => {
+      const source = btn.dataset.source;
+      const prepared = source ? Boolean(printPreparedBySource[source]) : false;
+      btn.disabled = isBusy || !prepared;
+    });
+  }
+
   async function saveExclusions(ym, source) {
     const items = [];
     document.querySelectorAll(".exclude-toggle").forEach((el) => {
@@ -62,38 +75,94 @@
     }
   }
 
-  async function runPrint(ym, source) {
+  async function preparePrint(ym, source) {
     const res = await fetch(`/api/print/${ym}/${source}`, { method: "POST" });
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
       throw new Error(data.detail || "print failed");
     }
+    return await res.json().catch(() => ({}));
   }
 
-  if (excludeSection && excludeButtons.length) {
+  async function completePrint(ym, source) {
+    const res = await fetch(`/api/print/${ym}/${source}/complete`, { method: "POST" });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.detail || "print complete failed");
+    }
+    return await res.json().catch(() => ({}));
+  }
+
+  if (excludeSection && (excludeButtons.length || printCompleteButtons.length)) {
+    printCompleteButtons.forEach((btn) => {
+      const source = btn.dataset.source;
+      if (source) printPreparedBySource[source] = !btn.disabled;
+    });
     document.querySelectorAll(".exclude-toggle").forEach((el) => {
       el.addEventListener("change", updateExcludeCounters);
     });
     updateExcludeCounters();
+    setActionButtonsDisabled(false);
 
     excludeButtons.forEach((button) => {
       button.addEventListener("click", async () => {
         const ym = excludeSection.dataset.ym;
         const source = button.dataset.source;
         if (!ym || !source) return;
-        excludeButtons.forEach((btn) => (btn.disabled = true));
+        printPreparedBySource[source] = false;
+        setActionButtonsDisabled(true);
         try {
           await saveExclusions(ym, source);
-          await runPrint(ym, source);
+          const printResult = await preparePrint(ym, source);
+          printPreparedBySource[source] = true;
           updateExcludeCounters();
-          setExcludeStatus(excludeStatus?.dataset.success || "除外設定を保存しました。印刷を実行しました。", "success");
-          showToast("除外設定を保存し印刷を開始しました。", "success");
+          const count = Number.parseInt(String(printResult?.count ?? ""), 10);
+          const sourceLabel = source === "amazon" ? "Amazon" : "楽天";
+          let successMessage = excludeStatus?.dataset.success || "除外設定を保存しました。印刷準備が完了しました。";
+          let toastMessage = "除外設定を保存し印刷準備が完了しました。";
+          if (Number.isFinite(count)) {
+            if (count > 0) {
+              toastMessage = `除外設定を保存し ${count} 件の印刷準備が完了しました。`;
+              successMessage = `除外設定を保存しました。${sourceLabel} 印刷対象 ${count} 件を準備しました。手動印刷後に「${sourceLabel}印刷完了を記録」を押してください。`;
+            } else {
+              toastMessage = "除外設定を保存しました。印刷対象は 0 件です。";
+              successMessage = "除外設定を保存しました。印刷対象は 0 件です。";
+            }
+          }
+          setExcludeStatus(successMessage, "success");
+          showToast(toastMessage, "success");
         } catch (error) {
           const message = toFriendlyMessage(error?.message);
-          setExcludeStatus(message || excludeStatus?.dataset.error || "保存または印刷に失敗しました。", "error");
-          showToast(message || "保存または印刷に失敗しました。", "error");
+          setExcludeStatus(message || excludeStatus?.dataset.error || "保存または印刷準備に失敗しました。", "error");
+          showToast(message || "保存または印刷準備に失敗しました。", "error");
         } finally {
-          excludeButtons.forEach((btn) => (btn.disabled = false));
+          setActionButtonsDisabled(false);
+        }
+      });
+    });
+
+    printCompleteButtons.forEach((button) => {
+      button.addEventListener("click", async () => {
+        const ym = excludeSection.dataset.ym;
+        const source = button.dataset.source;
+        if (!ym || !source) return;
+        setActionButtonsDisabled(true);
+        try {
+          const result = await completePrint(ym, source);
+          const count = Number.parseInt(String(result?.count ?? ""), 10);
+          const sourceLabel = source === "amazon" ? "Amazon" : "楽天";
+          const doneMessage =
+            Number.isFinite(count) && count >= 0
+              ? `${sourceLabel} の手動印刷完了を記録しました（対象 ${count} 件）。`
+              : `${sourceLabel} の手動印刷完了を記録しました。`;
+          setExcludeStatus(doneMessage, "success");
+          showToast(doneMessage, "success");
+        } catch (error) {
+          const message = toFriendlyMessage(error?.message);
+          setExcludeStatus(message || "印刷完了の記録に失敗しました。", "error");
+          showToast(message || "印刷完了の記録に失敗しました。", "error");
+        } finally {
+          setActionButtonsDisabled(false);
         }
       });
     });

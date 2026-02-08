@@ -12,7 +12,8 @@ AMAZON_MODULE_URL = (SKILL_ROOT / "scripts" / "amazon_download.mjs").resolve().a
 def _node_json(expr: str) -> dict:
     script = f"""
 import * as mod from {json.dumps(AMAZON_MODULE_URL)};
-const out = {expr};
+const outMaybe = {expr};
+const out = outMaybe && typeof outMaybe.then === "function" ? await outMaybe : outMaybe;
 console.log(JSON.stringify(out));
 """
     res = subprocess.run(
@@ -23,7 +24,9 @@ console.log(JSON.stringify(out));
         check=False,
     )
     assert res.returncode == 0, f"node eval failed\nstdout:\n{res.stdout}\nstderr:\n{res.stderr}"
-    return json.loads(res.stdout.strip())
+    lines = [line for line in res.stdout.splitlines() if line.strip()]
+    assert lines, f"node eval produced no stdout\nstderr:\n{res.stderr}"
+    return json.loads(lines[-1])
 
 
 def test_classify_amazon_document_candidate_prefers_tax_invoice() -> None:
@@ -45,6 +48,24 @@ def test_extract_order_id_from_url_works_for_order_details_query() -> None:
 })"""
     )
     assert data["id"] == "503-6793934-9131038"
+
+
+def test_extract_order_id_from_url_supports_subscription_order_id() -> None:
+    data = _node_json(
+        """({
+  id: mod.extractOrderIdFromUrl("https://www.amazon.co.jp/your-orders/invoice/popover?orderId=D01-6742697-2645837&ref_=fed_digi_order_invoice_ajax")
+})"""
+    )
+    assert data["id"] == "D01-6742697-2645837"
+
+
+def test_extract_order_date_from_text_supports_subscription_billing_date_label() -> None:
+    data = _node_json(
+        """({
+  date: mod.extractOrderDateFromText("サブスクリプション課金日 2026年1月27日 合計 ￥1,680", 2026)
+})"""
+    )
+    assert data["date"] == "2026-01-27"
 
 
 def test_classify_amazon_document_candidate_ignores_invoice_popover_url() -> None:
@@ -95,6 +116,13 @@ def test_assess_amazon_receipt_page_rejects_selection_screen() -> None:
     assert "selection_page" in str(data["reason"])
 
 
+def test_assess_amazon_receipt_page_accepts_subscription_order_id() -> None:
+    data = _node_json(
+        """mod.assessAmazonReceiptPageText("領収書 注文番号 D01-6742697-2645837 サブスクリプション課金日 2026年1月27日")"""
+    )
+    assert data["ok"] is True
+
+
 def test_coverage_threshold_failure_and_success() -> None:
     failed = _node_json(
         """(() => {
@@ -119,3 +147,198 @@ def test_coverage_threshold_failure_and_success() -> None:
 })()"""
     )
     assert passed["coverage"] == 0.9
+
+
+def test_detect_amazon_receipt_cutoff_from_blocks_returns_first_match() -> None:
+    data = _node_json(
+        """({
+  cutoff: mod.detectAmazonReceiptCutoffFromBlocks([
+    { text: "領収書", top: 20 },
+    { text: "1月30日にお届け済み", top: 420 },
+    { text: "注文内容", top: 640 }
+  ])
+})"""
+    )
+    assert data["cutoff"] == 420
+
+
+def test_detect_amazon_receipt_cutoff_from_blocks_returns_null_when_not_found() -> None:
+    data = _node_json(
+        """({
+  cutoff: mod.detectAmazonReceiptCutoffFromBlocks([
+    { text: "領収書", top: 20 },
+    { text: "お支払い方法", top: 80 }
+  ])
+})"""
+    )
+    assert data["cutoff"] is None
+
+
+def test_save_receipt_pdf_head_only_applies_mask_when_cutoff_detected() -> None:
+    data = _node_json(
+        """await (async () => {
+  const fs = await import("node:fs");
+  const os = await import("node:os");
+  const path = await import("node:path");
+  const outPdfPath = path.join(os.tmpdir(), `ax_head_only_${Date.now()}_${Math.random().toString(16).slice(2)}.pdf`);
+  const calls = { detect: 0, apply: 0, clear: 0, pdf: 0 };
+  const page = {
+    emulateMedia: async () => {},
+    evaluate: async (_fn, arg) => {
+      if (Array.isArray(arg)) {
+        calls.detect += 1;
+        return [{ text: "1月30日にお届け済み", top: 360 }];
+      }
+      if (arg && typeof arg === "object" && Object.prototype.hasOwnProperty.call(arg, "cutoff")) {
+        calls.apply += 1;
+        return { applied: true, hiddenCount: 12 };
+      }
+      if (arg && typeof arg === "object" && Object.prototype.hasOwnProperty.call(arg, "styleId")) {
+        calls.clear += 1;
+        return true;
+      }
+      return null;
+    },
+    pdf: async ({ path: savePath }) => {
+      calls.pdf += 1;
+      fs.writeFileSync(savePath, "%PDF-1.4\\n");
+    },
+  };
+  const result = await mod.saveReceiptPdf(page, outPdfPath, { headOnly: true });
+  const exists = fs.existsSync(outPdfPath);
+  if (exists) fs.unlinkSync(outPdfPath);
+  return { result, calls, exists };
+})()"""
+    )
+    assert data["result"]["headOnlyApplied"] is True
+    assert data["calls"]["detect"] == 1
+    assert data["calls"]["apply"] == 1
+    assert data["calls"]["clear"] == 1
+    assert data["calls"]["pdf"] == 1
+    assert data["exists"] is True
+
+
+def test_save_receipt_pdf_head_only_falls_back_to_full_page_when_cutoff_missing() -> None:
+    data = _node_json(
+        """await (async () => {
+  const fs = await import("node:fs");
+  const os = await import("node:os");
+  const path = await import("node:path");
+  const outPdfPath = path.join(os.tmpdir(), `ax_head_only_fallback_${Date.now()}_${Math.random().toString(16).slice(2)}.pdf`);
+  const calls = { detect: 0, apply: 0, clear: 0, pdf: 0 };
+  const page = {
+    emulateMedia: async () => {},
+    evaluate: async (_fn, arg) => {
+      if (Array.isArray(arg)) {
+        calls.detect += 1;
+        return [];
+      }
+      if (arg && typeof arg === "object" && Object.prototype.hasOwnProperty.call(arg, "cutoff")) {
+        calls.apply += 1;
+        return { applied: true, hiddenCount: 3 };
+      }
+      if (arg && typeof arg === "object" && Object.prototype.hasOwnProperty.call(arg, "styleId")) {
+        calls.clear += 1;
+        return true;
+      }
+      return null;
+    },
+    pdf: async ({ path: savePath }) => {
+      calls.pdf += 1;
+      fs.writeFileSync(savePath, "%PDF-1.4\\n");
+    },
+  };
+  const result = await mod.saveReceiptPdf(page, outPdfPath, { headOnly: true });
+  const exists = fs.existsSync(outPdfPath);
+  if (exists) fs.unlinkSync(outPdfPath);
+  return { result, calls, exists };
+})()"""
+    )
+    assert data["result"]["headOnlyApplied"] is False
+    assert data["calls"]["detect"] == 1
+    assert data["calls"]["apply"] == 0
+    assert data["calls"]["clear"] == 0
+    assert data["calls"]["pdf"] == 1
+    assert data["exists"] is True
+
+
+def test_extract_summary_totals_prefers_billing_total_with_currency_symbol() -> None:
+    data = _node_json(
+        """(() => {
+  const text = [
+    "注文概要",
+    "商品の小計: ¥6,554",
+    "注文合計: ¥6,554",
+    "ご請求額: ¥6,554",
+    "1月30日にお届け済み",
+    "¥873",
+    "¥5,681"
+  ].join("\\n");
+  const totals = mod.extractSummaryTotalsFromText(text);
+  const extracted = mod.extractTotalFromText(text);
+  return { totals, extracted };
+})()"""
+    )
+    assert data["totals"]["billingTotalYen"] == 6554
+    assert data["totals"]["orderTotalYen"] == 6554
+    assert data["extracted"] == 6554
+
+
+def test_extract_summary_totals_supports_yen_suffix_style() -> None:
+    data = _node_json(
+        """(() => {
+  const text = [
+    "ご請求額: 6,554円",
+    "注文合計: 6,554円"
+  ].join("\\n");
+  return mod.extractSummaryTotalsFromText(text);
+})()"""
+    )
+    assert data["billingTotalYen"] == 6554
+    assert data["orderTotalYen"] == 6554
+
+
+def test_choose_amazon_order_total_priority_order() -> None:
+    billing = _node_json(
+        """mod.chooseAmazonOrderTotal({
+  billingTotalYen: 6554,
+  summaryTotalYen: 6400,
+  invoiceTotalSumYen: 6554,
+  fallbackTotalYen: 5681
+})"""
+    )
+    assert billing["totalYen"] == 6554
+    assert billing["totalSource"] == "billing_total"
+
+    summary = _node_json(
+        """mod.chooseAmazonOrderTotal({
+  billingTotalYen: null,
+  summaryTotalYen: 6554,
+  invoiceTotalSumYen: 6500,
+  fallbackTotalYen: 5681
+})"""
+    )
+    assert summary["totalYen"] == 6554
+    assert summary["totalSource"] == "summary_total"
+
+    invoice_sum = _node_json(
+        """mod.chooseAmazonOrderTotal({
+  billingTotalYen: null,
+  summaryTotalYen: null,
+  invoiceTotalSumYen: 6554,
+  fallbackTotalYen: 5681
+})"""
+    )
+    assert invoice_sum["totalYen"] == 6554
+    assert invoice_sum["totalSource"] == "invoice_sum"
+
+    fallback = _node_json(
+        """mod.chooseAmazonOrderTotal({
+  billingTotalYen: null,
+  summaryTotalYen: null,
+  invoiceTotalSumYen: null,
+  fallbackTotalYen: 5681
+})"""
+    )
+    assert fallback["totalYen"] == 5681
+    assert fallback["totalSource"] == "card_fallback"

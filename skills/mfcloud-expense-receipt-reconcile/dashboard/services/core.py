@@ -15,8 +15,10 @@ from .core_orders import (
     _write_workflow,
 )
 from .core_runs import (
+    _archive_outputs_for_ym,
     _append_audit_event,
     _audit_log_path,
+    _assert_archive_allowed,
     _assert_run_mode_allowed,
     _assert_source_action_allowed,
     _get_latest_running_job,
@@ -49,9 +51,11 @@ __all__ = [
     "ORDER_ID_RE",
     "SAFE_NAME_RE",
     "SKILL_ROOT",
+    "_archive_outputs_for_ym",
     "_append_audit_event",
     "_artifact_root",
     "_audit_log_path",
+    "_assert_archive_allowed",
     "_assert_run_mode_allowed",
     "_assert_source_action_allowed",
     "_ax_home",

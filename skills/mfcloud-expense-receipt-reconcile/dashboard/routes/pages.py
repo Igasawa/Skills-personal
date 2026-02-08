@@ -81,6 +81,9 @@ def create_pages_router(templates: Jinja2Templates) -> APIRouter:
                 "included_orders": included_count,
             }
         )
+        workflow = core._read_workflow(reports_dir)
+        amazon_workflow = workflow.get("amazon") if isinstance(workflow.get("amazon"), dict) else {}
+        rakuten_workflow = workflow.get("rakuten") if isinstance(workflow.get("rakuten"), dict) else {}
 
         amazon_pdfs = list((root / "amazon" / "pdfs").glob("*.pdf")) if (root / "amazon" / "pdfs").exists() else []
         rakuten_pdfs = list((root / "rakuten" / "pdfs").glob("*.pdf")) if (root / "rakuten" / "pdfs").exists() else []
@@ -107,6 +110,8 @@ def create_pages_router(templates: Jinja2Templates) -> APIRouter:
                 "has_reports": reports_dir.exists(),
                 "print_script": str(print_script) if print_script.exists() else None,
                 "print_command": print_command,
+                "amazon_print_prepared": bool(amazon_workflow.get("print_prepared_at")),
+                "rakuten_print_prepared": bool(rakuten_workflow.get("print_prepared_at")),
                 "file_labels": {
                     "missing_csv": "未添付候補CSV",
                     "missing_json": "未添付候補JSON",

@@ -105,17 +105,39 @@
       </section>
 
       <section class="card" id="exclude-section" data-ym="{{ ym }}">
-        <h2>除外設定（保存後に印刷）</h2>
+        <h2>除外設定（保存後に印刷準備）</h2>
         <p class="muted">
-          MFに入力しない／印刷しないものだけにチェックを付けて保存してください。保存後、自動で印刷リストを作成し印刷を実行します。
+          MFに入力しない／印刷しないものだけにチェックを付けて保存してください。保存後、自動で印刷リストを作成します（印刷は自動実行しません）。
+          <br />印刷コマンドまたは印刷用PowerShellを手動実行し、印刷が完了したら「印刷完了を記録」を押してください。
           <br />PDF未保存だがショートカットがある注文は、印刷前に不足PDFの再取得を試みます。
           <br />MFとの突合はこの画面では行いません（ダッシュボードのステップ5で実行します）。
         </p>
         <div class="form-row">
-          <button type="button" class="primary exclude-save" data-source="amazon">Amazonで保存して印刷</button>
-          <button type="button" class="primary exclude-save" data-source="rakuten">楽天で保存して印刷</button>
+          <button type="button" class="primary exclude-save" data-source="amazon">Amazonで保存して印刷準備</button>
+          <button type="button" class="primary exclude-save" data-source="rakuten">楽天で保存して印刷準備</button>
+          <button
+            type="button"
+            class="secondary print-complete"
+            data-source="amazon"
+            {% if not amazon_print_prepared %}disabled{% endif %}
+          >
+            Amazon印刷完了を記録
+          </button>
+          <button
+            type="button"
+            class="secondary print-complete"
+            data-source="rakuten"
+            {% if not rakuten_print_prepared %}disabled{% endif %}
+          >
+            楽天印刷完了を記録
+          </button>
           <a class="secondary" href="/runs/{{ ym }}/excluded-pdfs">除外PDF一覧</a>
-          <span id="exclude-status" class="status-note" data-success="除外設定を保存しました。印刷を実行しました。" data-error="保存または印刷に失敗しました。ログを確認してください。"></span>
+          <span
+            id="exclude-status"
+            class="status-note"
+            data-success="除外設定を保存しました。印刷準備が完了しました。"
+            data-error="保存または印刷準備に失敗しました。ログを確認してください。"
+          ></span>
           <span id="exclude-summary" class="muted" data-orders-total="{{ orders_total }}">
             注文 {{ orders_total }} 件 / 除外 <span id="exclude-summary-count">{{ excluded_count }}</span> 件
           </span>

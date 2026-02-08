@@ -109,6 +109,8 @@ def create_api_router() -> APIRouter:
         wf = core._read_workflow(reports_dir)
         section = wf.get(source) if isinstance(wf.get(source), dict) else {}
         section["confirmed_at"] = datetime.now().isoformat(timespec="seconds")
+        section.pop("printed_at", None)
+        section.pop("print_prepared_at", None)
         wf[source] = section
         core._write_workflow(reports_dir, wf)
         core._append_audit_event(
@@ -139,7 +141,7 @@ def create_api_router() -> APIRouter:
                 year=year,
                 month=month,
                 event_type="source_action",
-                action="print",
+                action="print_prepare",
                 status="rejected",
                 actor=actor,
                 source=source,
@@ -148,7 +150,10 @@ def create_api_router() -> APIRouter:
             raise
         output_root = core._artifact_root() / ym
         scripts_dir = core.SKILL_ROOT / "scripts"
+        reports_dir = output_root / "reports"
         exclude_orders_json = output_root / "reports" / "exclude_orders.json"
+        print_script = reports_dir / "print_all.ps1"
+        print_count: int | None = None
 
         cmd = [
             sys.executable,
@@ -165,58 +170,194 @@ def create_api_router() -> APIRouter:
         if exclude_orders_json.exists():
             cmd += ["--exclude-orders-json", str(exclude_orders_json)]
 
-        res = subprocess.run(cmd, cwd=str(scripts_dir), capture_output=True, text=True, check=False)
-        if res.returncode != 0:
-            raise HTTPException(
-                status_code=500,
-                detail=(
-                    "collect_print.py failed:\n"
-                    f"cmd: {cmd}\n"
-                    f"exit: {res.returncode}\n"
-                    f"stdout:\n{res.stdout}\n"
-                    f"stderr:\n{res.stderr}\n"
-                ),
+        try:
+            res = subprocess.run(cmd, cwd=str(scripts_dir), capture_output=True, text=True, check=False)
+            if res.returncode != 0:
+                raise HTTPException(
+                    status_code=500,
+                    detail=(
+                        "collect_print.py failed:\n"
+                        f"cmd: {cmd}\n"
+                        f"exit: {res.returncode}\n"
+                        f"stdout:\n{res.stdout}\n"
+                        f"stderr:\n{res.stderr}\n"
+                    ),
+                )
+
+            manifest = core._read_json(reports_dir / "print_manifest.json")
+            if isinstance(manifest, dict):
+                try:
+                    print_count = int(manifest.get("count"))
+                except Exception:
+                    print_count = None
+
+            if not print_script.exists():
+                raise HTTPException(status_code=404, detail="print_all.ps1 not found.")
+            print_command = f'powershell -NoProfile -ExecutionPolicy Bypass -File "{print_script}"'
+            wf = core._read_workflow(reports_dir)
+            section = wf.get(source) if isinstance(wf.get(source), dict) else {}
+            section["print_prepared_at"] = datetime.now().isoformat(timespec="seconds")
+            wf[source] = section
+            core._write_workflow(reports_dir, wf)
+            core._append_audit_event(
+                year=year,
+                month=month,
+                event_type="source_action",
+                action="print_prepare",
+                status="success",
+                actor=actor,
+                source=source,
+                details={"print_script": str(print_script), "count": print_count},
             )
 
-        print_script = output_root / "reports" / "print_all.ps1"
-        if not print_script.exists():
-            raise HTTPException(status_code=404, detail="print_all.ps1 not found.")
-
-        ps = subprocess.run(
-            ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(print_script)],
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        if ps.returncode != 0:
-            raise HTTPException(
-                status_code=500,
-                detail=(
-                    "print script failed:\n"
-                    f"exit: {ps.returncode}\n"
-                    f"stdout:\n{ps.stdout}\n"
-                    f"stderr:\n{ps.stderr}\n"
-                ),
+            return JSONResponse(
+                {
+                    "status": "ok",
+                    "source": source,
+                    "count": print_count,
+                    "print_script": str(print_script),
+                    "print_command": print_command,
+                    "excluded_pdfs_url": f"/runs/{ym}/excluded-pdfs",
+                }
             )
+        except HTTPException as exc:
+            core._append_audit_event(
+                year=year,
+                month=month,
+                event_type="source_action",
+                action="print_prepare",
+                status="failed",
+                actor=actor,
+                source=source,
+                details={
+                    "reason": str(exc.detail),
+                    "print_script": str(print_script),
+                    "count": print_count,
+                },
+            )
+            raise
 
+    @router.post("/api/print/{ym}/{source}/complete")
+    def api_print_complete(ym: str, source: str, request: Request) -> JSONResponse:
+        ym = core._safe_ym(ym)
+        if source not in {"amazon", "rakuten"}:
+            raise HTTPException(status_code=400, detail="Invalid source.")
+
+        year, month = core._split_ym(ym)
+        actor = _actor_from_request(request)
+        output_root = core._artifact_root() / ym
         reports_dir = output_root / "reports"
-        wf = core._read_workflow(reports_dir)
-        section = wf.get(source) if isinstance(wf.get(source), dict) else {}
-        section["printed_at"] = datetime.now().isoformat(timespec="seconds")
-        wf[source] = section
-        core._write_workflow(reports_dir, wf)
+        print_script = reports_dir / "print_all.ps1"
+        print_count: int | None = None
+
+        try:
+            core._assert_source_action_allowed(year, month, source, "print")
+        except HTTPException as exc:
+            core._append_audit_event(
+                year=year,
+                month=month,
+                event_type="source_action",
+                action="print_complete",
+                status="rejected",
+                actor=actor,
+                source=source,
+                details={"reason": str(exc.detail)},
+            )
+            raise
+
+        try:
+            wf = core._read_workflow(reports_dir)
+            section = wf.get(source) if isinstance(wf.get(source), dict) else {}
+            if not section.get("print_prepared_at"):
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"Print preparation is required before marking {source} print completion.",
+                )
+            if not print_script.exists():
+                raise HTTPException(
+                    status_code=404,
+                    detail="Print preparation not found. Run print preparation first.",
+                )
+
+            manifest = core._read_json(reports_dir / "print_manifest.json")
+            if isinstance(manifest, dict):
+                try:
+                    print_count = int(manifest.get("count"))
+                except Exception:
+                    print_count = None
+
+            section["printed_at"] = datetime.now().isoformat(timespec="seconds")
+            wf[source] = section
+            core._write_workflow(reports_dir, wf)
+            core._append_audit_event(
+                year=year,
+                month=month,
+                event_type="source_action",
+                action="print_complete",
+                status="success",
+                actor=actor,
+                source=source,
+                details={"count": print_count},
+            )
+
+            return JSONResponse({"status": "ok", "source": source, "count": print_count})
+        except HTTPException as exc:
+            core._append_audit_event(
+                year=year,
+                month=month,
+                event_type="source_action",
+                action="print_complete",
+                status="rejected" if exc.status_code in {400, 404, 409} else "failed",
+                actor=actor,
+                source=source,
+                details={"reason": str(exc.detail), "count": print_count},
+            )
+            raise
+
+    @router.post("/api/archive/{ym}")
+    def api_archive(ym: str, request: Request) -> JSONResponse:
+        ym = core._safe_ym(ym)
+        year, month = core._split_ym(ym)
+        actor = _actor_from_request(request)
+        include_pdfs = True
+        include_debug = False
+        try:
+            core._assert_archive_allowed(year, month)
+            result = core._archive_outputs_for_ym(
+                year,
+                month,
+                include_pdfs=include_pdfs,
+                include_debug=include_debug,
+            )
+        except HTTPException as exc:
+            core._append_audit_event(
+                year=year,
+                month=month,
+                event_type="archive",
+                action="manual_archive",
+                status="rejected" if exc.status_code in {400, 404, 409} else "failed",
+                actor=actor,
+                details={
+                    "reason": str(exc.detail),
+                    "include_pdfs": include_pdfs,
+                    "include_debug": include_debug,
+                },
+            )
+            raise
         core._append_audit_event(
             year=year,
             month=month,
-            event_type="source_action",
-            action="print",
+            event_type="archive",
+            action="manual_archive",
             status="success",
             actor=actor,
-            source=source,
-            details={"print_script": str(print_script)},
+            details={
+                "archived_to": result.get("archived_to"),
+                "include_pdfs": include_pdfs,
+                "include_debug": include_debug,
+            },
         )
-
-        return JSONResponse({"status": "ok", "source": source})
+        return JSONResponse(result)
 
     @router.post("/api/print-pdf/{ym}/{source}/{filename}")
     def api_print_pdf(ym: str, source: str, filename: str, request: Request) -> JSONResponse:

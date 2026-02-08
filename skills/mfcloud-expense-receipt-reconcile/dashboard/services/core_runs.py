@@ -257,6 +257,116 @@ def _assert_source_action_allowed(year: int, month: int, source: str, action: st
         )
 
 
+def _assert_archive_allowed(year: int, month: int) -> None:
+    state = _workflow_state_for_ym(year, month)
+    amazon_done = bool(state.get("amazon", {}).get("confirmed") and state.get("amazon", {}).get("printed"))
+    rakuten_done = bool(state.get("rakuten", {}).get("confirmed") and state.get("rakuten", {}).get("printed"))
+    if amazon_done or rakuten_done:
+        return
+    raise HTTPException(
+        status_code=409,
+        detail=(
+            "Workflow order violation: archive requires Amazon or Rakuten "
+            "confirmation and print completion."
+        ),
+    )
+
+
+def _archive_outputs_for_ym(
+    year: int,
+    month: int,
+    *,
+    include_pdfs: bool = True,
+    include_debug: bool = False,
+) -> dict[str, Any]:
+    ym = f"{year:04d}-{month:02d}"
+    output_root = _artifact_root() / ym
+    if not output_root.exists():
+        raise HTTPException(status_code=404, detail="Artifacts for target month were not found.")
+
+    has_artifacts = any(
+        (
+            (output_root / "reports").exists(),
+            (output_root / "amazon" / "orders.jsonl").exists(),
+            (output_root / "rakuten" / "orders.jsonl").exists(),
+            (output_root / "mfcloud" / "expenses.jsonl").exists(),
+            (output_root / "run_config.resolved.json").exists(),
+        )
+    )
+    if not has_artifacts:
+        raise HTTPException(status_code=404, detail="Artifacts for target month were not found.")
+
+    script = SKILL_ROOT / "scripts" / "archive_outputs.ps1"
+    if not script.exists():
+        raise HTTPException(status_code=500, detail=f"archive script not found: {script}")
+
+    cmd = [
+        "powershell",
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        str(script),
+        "-OutputRoot",
+        str(output_root),
+    ]
+    if include_pdfs:
+        cmd.append("-IncludePdfs")
+    if include_debug:
+        cmd.append("-IncludeDebug")
+
+    res = subprocess.run(
+        cmd,
+        cwd=str(script.parent),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if res.returncode != 0:
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                "archive_outputs.ps1 failed:\n"
+                f"cmd: {cmd}\n"
+                f"exit: {res.returncode}\n"
+                f"stdout:\n{res.stdout}\n"
+                f"stderr:\n{res.stderr}\n"
+            ),
+        )
+
+    archived_to = ""
+    for line in reversed((res.stdout or "").splitlines()):
+        text = str(line).strip()
+        if text.lower().startswith("archived to:"):
+            archived_to = text.split(":", 1)[1].strip()
+            break
+
+    if not archived_to:
+        archive_root = output_root / "archive"
+        candidates = [p for p in archive_root.glob("*") if p.is_dir()] if archive_root.exists() else []
+        if candidates:
+            candidates.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+            archived_to = str(candidates[0])
+
+    if not archived_to:
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                "archive_outputs.ps1 did not report archive destination.\n"
+                f"stdout:\n{res.stdout}\n"
+                f"stderr:\n{res.stderr}\n"
+            ),
+        )
+
+    return {
+        "status": "ok",
+        "ym": ym,
+        "archived_to": archived_to,
+        "include_pdfs": bool(include_pdfs),
+        "include_debug": bool(include_debug),
+    }
+
+
 def _tail_text(path: Path, max_bytes: int = 5000) -> str:
     if not path.exists():
         return ""
