@@ -124,8 +124,8 @@
           let toastMessage = "除外設定を保存し印刷準備が完了しました。";
           if (Number.isFinite(count)) {
             if (count > 0) {
-              toastMessage = `除外設定を保存し ${count} 件の印刷準備が完了しました。`;
-              successMessage = `除外設定を保存しました。${sourceLabel} 印刷対象 ${count} 件を準備しました。手動印刷後に「${sourceLabel}印刷完了を記録」を押してください。`;
+              toastMessage = `除外設定を保存し ${count} 件の印刷準備が完了しました（印刷は未実行）。`;
+              successMessage = `除外設定を保存しました。${sourceLabel} 印刷対象 ${count} 件を準備しました（まだ印刷は開始していません）。手動印刷後に「${sourceLabel}印刷完了を記録」を押してください。`;
             } else {
               toastMessage = "除外設定を保存しました。印刷対象は 0 件です。";
               successMessage = "除外設定を保存しました。印刷対象は 0 件です。";

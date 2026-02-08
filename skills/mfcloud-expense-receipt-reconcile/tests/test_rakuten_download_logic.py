@@ -71,7 +71,7 @@ def test_should_downgrade_books_only_for_whitelisted_non_fatal_reasons() -> None
     data = _node_json(
         """({
   books_invalid: mod.shouldDowngradeRakutenReceiptError(
-    "rakuten_receipt_invalid_page:豕ｨ譁・膚蜩√・繧ｭ繝｣繝ｳ繧ｻ繝ｫ縲∵焚驥上・螟画峩縺ｯ縺ｧ縺阪∪縺吶°",
+    "rakuten_receipt_invalid_page:books_unknown_page",
     "https://books.rakuten.co.jp/mypage/delivery/status?order_number=213310-20260125-0555903016"
   ),
   books_status: mod.shouldDowngradeRakutenReceiptError(
@@ -114,7 +114,7 @@ def test_assess_rakuten_receipt_context_rejects_books_status_page() -> None:
     data = _node_json(
         """mod.assessRakutenReceiptContext({
   url: "https://books.rakuten.co.jp/mypage/delivery/status?order_number=213310-20260125-0555903016",
-  title: "讌ｽ螟ｩ繝悶ャ繧ｯ繧ｹ: My繝壹・繧ｸ | 鬆伜庶譖ｸ",
+  title: "楽天ブックス: Myページ | 領収書",
   pageAction: "",
   messageCode: ""
 })"""
@@ -128,13 +128,13 @@ def test_assess_rakuten_receipt_context_accepts_books_receipt_input_and_print_pa
         """({
   receipt_input: mod.assessRakutenReceiptContext({
     url: "https://books.rakuten.co.jp/mypage/delivery/receiptInput?order_number=213310-20260125-0555903016&back_number=abc",
-    title: "讌ｽ螟ｩ繝悶ャ繧ｯ繧ｹ: My繝壹・繧ｸ | 鬆伜庶譖ｸ",
+    title: "楽天ブックス: Myページ | 領収書",
     pageAction: "",
     messageCode: ""
   }),
   receipt_print: mod.assessRakutenReceiptContext({
     url: "https://books.rakuten.co.jp/mypage/delivery/receiptPrint?order_number=213310-20260125-0555903016&back_number=abc",
-    title: "讌ｽ螟ｩ繝悶ャ繧ｯ繧ｹ: My繝壹・繧ｸ | 鬆伜庶譖ｸ",
+    title: "楽天ブックス: Myページ | 領収書",
     pageAction: "",
     messageCode: ""
   })
@@ -188,7 +188,7 @@ def test_assess_books_receipt_print_transition_prefers_receipt_print_url() -> No
         """mod.assessRakutenBooksReceiptPrintTransition({
   url: "https://books.rakuten.co.jp/mypage/delivery/receiptPrint?order_number=1",
   pathnameHint: "/mypage/delivery/receiptPrint",
-  title: "讌ｽ螟ｩ繝悶ャ繧ｯ繧ｹ: My繝壹・繧ｸ | 鬆伜庶譖ｸ"
+  title: "楽天ブックス: Myページ | 領収書"
 })"""
     )
     assert data["ok"] is True
@@ -200,7 +200,7 @@ def test_assess_books_receipt_print_transition_keeps_waiting_on_receipt_input() 
         """mod.assessRakutenBooksReceiptPrintTransition({
   url: "https://books.rakuten.co.jp/mypage/delivery/receiptInput?order_number=1",
   pathnameHint: "/mypage/delivery/receiptInput",
-  title: "讌ｽ螟ｩ繝悶ャ繧ｯ繧ｹ: My繝壹・繧ｸ | 鬆伜庶譖ｸ"
+  title: "楽天ブックス: Myページ | 領収書"
 })"""
     )
     assert data["ok"] is False

@@ -150,6 +150,40 @@ def test_api_confirm_print_prepare_and_complete_success_write_audit(
     assert ("print_complete", "success", "amazon") in actions
 
 
+def test_api_print_prepare_resets_printed_at_and_runs_prepare_only(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    client = _create_client(monkeypatch, tmp_path)
+    ym = "2026-01"
+    reports = _reports_dir(tmp_path, ym)
+    _write_json(reports / "preflight.json", {"status": "success", "year": 2026, "month": 1})
+    _touch(_artifact_root(tmp_path) / ym / "amazon" / "orders.jsonl")
+    _touch(reports / "print_all.ps1", "Write-Host 'print'")
+    _write_json(
+        reports / "workflow.json",
+        {"amazon": {"confirmed_at": "2026-02-08T10:00:00", "printed_at": "2026-02-08T10:10:00"}},
+    )
+
+    calls: list[list[str]] = []
+
+    def _fake_run(cmd: Any, *args: Any, **kwargs: Any) -> subprocess.CompletedProcess[str]:
+        calls.append([str(c) for c in cmd])
+        return subprocess.CompletedProcess(args=cmd, returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(api_routes.subprocess, "run", _fake_run)
+
+    res_prepare = client.post("/api/print/2026-01/amazon")
+    assert res_prepare.status_code == 200
+
+    workflow = json.loads((reports / "workflow.json").read_text(encoding="utf-8"))
+    assert (workflow.get("amazon") or {}).get("print_prepared_at")
+    assert not (workflow.get("amazon") or {}).get("printed_at")
+
+    assert len(calls) == 1
+    assert any("collect_print.py" in part for part in calls[0])
+    assert not any("print_all.ps1" in part for part in calls[0])
+
+
 def test_api_rakuten_confirm_allowed_without_amazon_print(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     client = _create_client(monkeypatch, tmp_path)
     ym = "2026-01"

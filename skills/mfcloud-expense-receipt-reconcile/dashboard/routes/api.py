@@ -198,6 +198,8 @@ def create_api_router() -> APIRouter:
             wf = core._read_workflow(reports_dir)
             section = wf.get(source) if isinstance(wf.get(source), dict) else {}
             section["print_prepared_at"] = datetime.now().isoformat(timespec="seconds")
+            # Prepare is intentionally "before print": completion must be recorded manually.
+            section.pop("printed_at", None)
             wf[source] = section
             core._write_workflow(reports_dir, wf)
             core._append_audit_event(

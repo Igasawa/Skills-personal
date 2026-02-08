@@ -285,7 +285,11 @@ def _is_rakuten_books_order(rec: dict[str, Any]) -> bool:
         return False
     detail_url = str(rec.get("detail_url") or "").lower()
     receipt_url = str(rec.get("receipt_url") or "").lower()
-    return "books.rakuten.co.jp" in detail_url or "books.rakuten.co.jp" in receipt_url
+    if "books.rakuten.co.jp" in detail_url or "books.rakuten.co.jp" in receipt_url:
+        return True
+    order_id = str(rec.get("order_id") or "").strip()
+    # Rakuten Books uses shop_id/order prefix 213310 in order_number.
+    return order_id.startswith("213310-")
 
 
 def _collect_orders(root: Path, ym: str, exclusions: set[tuple[str, str]]) -> list[dict[str, Any]]:

@@ -243,6 +243,34 @@ def test_collect_orders_uses_pdf_fallback_item_name_for_rakuten_books(
     assert orders[0]["item_name"] == "こころが軽くなる 大人のなぞり書き"
 
 
+def test_collect_orders_uses_pdf_fallback_item_name_for_books_order_id_prefix_without_books_url(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    root = tmp_path / "2026-01"
+    pdf_path = root / "rakuten" / "pdfs" / "RAK-BOOKS-NO-URL.pdf"
+    _touch_pdf(pdf_path)
+    _write_jsonl(
+        root / "rakuten" / "orders.jsonl",
+        [
+            {
+                "order_id": "213310-20260125-0555903016",
+                "order_date": "2026-01-25",
+                "status": "ok",
+                "item_name": None,
+                "pdf_path": str(pdf_path),
+                "detail_url": None,
+                "receipt_url": None,
+            }
+        ],
+    )
+
+    monkeypatch.setattr(core_orders, "_extract_item_name_from_pdf", lambda _p: "こころが軽くなる 大人のなぞり書き")
+
+    orders = _collect_orders(root, "2026-01", set())
+    assert len(orders) == 1
+    assert orders[0]["item_name"] == "こころが軽くなる 大人のなぞり書き"
+
+
 def test_collect_orders_does_not_use_pdf_fallback_for_non_books_rakuten(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
