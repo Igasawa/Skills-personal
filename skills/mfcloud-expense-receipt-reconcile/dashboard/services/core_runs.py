@@ -65,6 +65,44 @@ def _safe_int(value: Any) -> int | None:
         return None
 
 
+def _coerce_non_negative_int(value: Any, default: int = 0) -> int:
+    parsed = _safe_int(value)
+    if parsed is None:
+        return default
+    if parsed < 0:
+        return default
+    return parsed
+
+
+def _build_mf_summary(reports_dir: Path, mf_draft_payload: Any) -> dict[str, Any]:
+    missing_candidates_value: int | None = None
+    missing_payload = _read_json(reports_dir / "missing_evidence_candidates.json")
+    if isinstance(missing_payload, dict):
+        counts = missing_payload.get("counts")
+        if isinstance(counts, dict):
+            missing_candidates_value = _safe_int(counts.get("mf_missing_evidence"))
+        if missing_candidates_value is None:
+            rows = missing_payload.get("rows")
+            if isinstance(rows, list):
+                missing_candidates_value = len(rows)
+
+    draft_status = ""
+    draft_data: dict[str, Any] = {}
+    if isinstance(mf_draft_payload, dict):
+        draft_status = str(mf_draft_payload.get("status") or "").strip().lower()
+        maybe_data = mf_draft_payload.get("data")
+        if isinstance(maybe_data, dict):
+            draft_data = maybe_data
+
+    return {
+        "missing_candidates": _coerce_non_negative_int(missing_candidates_value),
+        "targets_total": _coerce_non_negative_int(draft_data.get("targets_total")),
+        "created": _coerce_non_negative_int(draft_data.get("created")),
+        "failed": _coerce_non_negative_int(draft_data.get("failed")),
+        "status": draft_status,
+    }
+
+
 def _normalize_actor(actor: Any) -> dict[str, Any]:
     if isinstance(actor, dict):
         out: dict[str, Any] = {}
@@ -162,6 +200,13 @@ def _workflow_state_for_ym(year: int, month: int) -> dict[str, Any]:
     rakuten_confirmed = bool(rakuten_section.get("confirmed_at"))
     rakuten_printed = bool(rakuten_section.get("printed_at"))
     mf_reconciled = (reports_dir / "missing_evidence_candidates.json").exists()
+    mf_draft_result_path = reports_dir / "mf_draft_create_result.json"
+    mf_draft_payload = _read_json(mf_draft_result_path)
+    mf_summary = _build_mf_summary(reports_dir, mf_draft_payload)
+    mf_drafted = bool(
+        isinstance(mf_draft_payload, dict) and str(mf_draft_payload.get("status") or "").strip().lower() in {"ok", "success"}
+    )
+    mf_step_done = bool(mf_reconciled and (mf_drafted or not mf_draft_result_path.exists()))
     amazon_done = amazon_confirmed and amazon_printed
     rakuten_done = rakuten_confirmed and rakuten_printed
     amazon_pending = amazon_downloaded and not amazon_done
@@ -171,7 +216,7 @@ def _workflow_state_for_ym(year: int, month: int) -> dict[str, Any]:
     next_step = "done"
     if not preflight_done:
         next_step = "preflight"
-    elif mf_reconciled:
+    elif mf_step_done:
         next_step = "done"
     elif amazon_pending:
         next_step = "amazon_decide_print"
@@ -202,7 +247,7 @@ def _workflow_state_for_ym(year: int, month: int) -> dict[str, Any]:
         "preflight": {"done": preflight_done},
         "amazon": {"downloaded": amazon_downloaded, "confirmed": amazon_confirmed, "printed": amazon_printed},
         "rakuten": {"downloaded": rakuten_downloaded, "confirmed": rakuten_confirmed, "printed": rakuten_printed},
-        "mf": {"reconciled": mf_reconciled},
+        "mf": {"reconciled": mf_reconciled, "drafted": mf_drafted, "step_done": mf_step_done, "summary": mf_summary},
         "next_step": next_step,
         "allowed_run_modes": allowed_run_modes,
         "running_mode": _running_mode_for_ym(year, month),
@@ -667,9 +712,25 @@ def _remove_mf_outputs(reports_dir: Path) -> list[str]:
         "missing_evidence_candidates.csv",
         "quality_gate.json",
         "monthly_thread.md",
+        "mf_draft_create_result.json",
         "print_manifest.json",
         "print_list.txt",
         "print_all.ps1",
+    ):
+        path = reports_dir / name
+        if _delete_path(path):
+            cleared.append(str(path))
+    return cleared
+
+
+def _remove_reconcile_outputs_only(reports_dir: Path) -> list[str]:
+    cleared: list[str] = []
+    for name in (
+        "missing_evidence_candidates.json",
+        "missing_evidence_candidates.csv",
+        "quality_gate.json",
+        "monthly_thread.md",
+        "mf_draft_create_result.json",
     ):
         path = reports_dir / name
         if _delete_path(path):
@@ -906,7 +967,10 @@ def _start_run(payload: dict[str, Any]) -> dict[str, Any]:
         if rakuten_orders_url:
             cmd += ["--rakuten-orders-url", rakuten_orders_url]
     elif mode == "mf_reconcile":
+        _remove_reconcile_outputs_only(_artifact_root() / f"{year:04d}-{month:02d}" / "reports")
         cmd += ["--skip-amazon", "--skip-rakuten"]
+        if bool(payload.get("mf_draft_create", True)):
+            cmd += ["--mf-draft-create"]
         output_root = _artifact_root() / f"{year:04d}-{month:02d}"
         if (output_root / "rakuten" / "orders.jsonl").exists():
             cmd += ["--enable-rakuten"]
@@ -940,6 +1004,7 @@ def _start_run(payload: dict[str, Any]) -> dict[str, Any]:
             "mode": mode,
             "auth_handoff": auth_handoff,
             "auto_receipt_name": auto_receipt_name,
+            "mf_draft_create": bool(payload.get("mf_draft_create", True)) if mode == "mf_reconcile" else False,
         },
     }
     _write_json(meta_path, meta)

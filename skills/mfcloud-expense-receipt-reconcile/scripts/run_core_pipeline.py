@@ -256,6 +256,7 @@ def execute_pipeline(
     rec_out_csv = reports_dir / "missing_evidence_candidates.csv"
     quality_gate_json = reports_dir / "quality_gate.json"
     monthly_thread_md = reports_dir / "monthly_thread.md"
+    mf_draft_result_json = reports_dir / "mf_draft_create_result.json"
     exclude_orders_json = reports_dir / "exclude_orders.json"
 
     rec_json: dict[str, Any] = {}
@@ -312,6 +313,43 @@ def execute_pipeline(
         print("[run] Reconcile done", flush=True)
     else:
         print("[run] Reconcile skipped", flush=True)
+
+    mf_draft_summary: dict[str, Any] = {}
+    if bool(getattr(args, "mf_draft_create", False)):
+        if rc.dry_run:
+            print("[run] MF draft create skipped (dry-run)", flush=True)
+            mf_draft_summary = {"status": "skipped", "reason": "dry_run", "out_json": str(mf_draft_result_json)}
+            _write_json(mf_draft_result_json, mf_draft_summary)
+        else:
+            if not rec_out_json.exists():
+                raise RuntimeError("Missing reports/missing_evidence_candidates.json. Reconcile must run before MF draft create.")
+            print("[run] MF draft create start", flush=True)
+            mf_draft_out = run_node_playwright_script(
+                script_path=SCRIPT_DIR / "mfcloud_outgo_register.mjs",
+                cwd=SCRIPT_DIR,
+                args=[
+                    "--storage-state",
+                    str(rc.mfcloud_storage_state),
+                    "--outgo-url",
+                    rc.mfcloud_expense_list_url,
+                    "--report-json",
+                    str(rec_out_json),
+                    "--out-json",
+                    str(mf_draft_result_json),
+                    "--year",
+                    str(year),
+                    "--month",
+                    str(month),
+                    "--debug-dir",
+                    str(debug_dir / "mfcloud_draft"),
+                    *(["--auth-handoff"] if rc.interactive else []),
+                    "--headed" if rc.headed else "--headless",
+                    "--slow-mo-ms",
+                    str(rc.slow_mo_ms),
+                ],
+            )
+            mf_draft_summary = (mf_draft_out.get("data") if isinstance(mf_draft_out, dict) else None) or mf_draft_out
+            print("[run] MF draft create done", flush=True)
 
     rec_report = _read_json_file(rec_out_json)
     rec_report_dict = rec_report if isinstance(rec_report, dict) else None
@@ -379,8 +417,10 @@ def execute_pipeline(
                 "missing_evidence_candidates_json": str(rec_out_json),
                 "quality_gate_json": str(quality_gate_json),
                 "monthly_thread_md": str(monthly_thread_md),
+                "mf_draft_create_result_json": str(mf_draft_result_json),
             },
             "reconcile": rec_json.get("data", rec_json),
+            "mf_draft": mf_draft_summary,
             "quality_gate": quality_gate,
         },
     }

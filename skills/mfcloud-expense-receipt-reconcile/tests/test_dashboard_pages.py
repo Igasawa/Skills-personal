@@ -93,6 +93,7 @@ def test_index_page_shows_manual_archive_button(monkeypatch: pytest.MonkeyPatch,
     assert res.status_code == 200
     assert "アーカイブ作成（成果物+PDF）" in res.text
     assert 'data-archive-action="archive_outputs"' in res.text
+    assert "data-mf-summary" in res.text
 
 
 def test_index_page_exposes_latest_run_status_hooks(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -168,3 +169,5 @@ def test_run_page_shows_manual_print_prepare_and_complete_controls(
     assert "Amazon印刷完了を記録" in res.text
     assert "楽天印刷完了を記録" in res.text
     assert "印刷は自動実行しません" in res.text
+    assert "除外PDF一覧を開く（1件ずつ印刷）" in res.text
+    assert 'id="print-next-box"' in res.text

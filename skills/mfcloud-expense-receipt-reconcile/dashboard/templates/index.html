@@ -116,7 +116,7 @@
             </div>
             <p class="muted">
               Amazonと楽天は並行で進められます（各サイト内では「取得→除外判断→印刷」の順）。<br />
-              MF抽出＋突合は、Amazonまたは楽天の除外判断＋印刷が完了した後に実行してください。
+              MF抽出＋突合＋下書き作成は、Amazonまたは楽天の除外判断＋印刷が完了した後に実行してください。
             </p>
           </form>
         </div>
@@ -198,16 +198,17 @@
           <div class="wizard-step" data-step-id="mf_reconcile">
             <div class="step-head">
               <span class="step-num">5</span>
-              <span class="step-title">MF抽出 + 突合（除外確定済みの成果物を使用）</span>
+              <span class="step-title">MF抽出 + 突合 + 下書き作成（除外確定済みの成果物を使用）</span>
               <span class="step-status" data-step-status="mf_reconcile">未実行</span>
             </div>
             <div class="step-actions">
-              <button type="button" class="primary" data-step-action="mf_reconcile">MF抽出 + 突合を実行</button>
+              <button type="button" class="primary" data-step-action="mf_reconcile">MF抽出 + 突合 + 下書き作成を実行</button>
               <button type="button" class="secondary" data-archive-action="archive_outputs">
                 アーカイブ作成（成果物+PDF）
               </button>
-              <span class="muted">Amazon/楽天の除外確定後に実行</span>
+              <span class="muted">Amazon/楽天の除外確定後に実行（編集登録→添付→OCR入力→作成）</span>
               <span class="muted">アーカイブは手動保存です（自動実行されません）。</span>
+              <span class="muted" data-mf-summary>サマリー: 未実行</span>
             </div>
           </div>
         </div>

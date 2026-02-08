@@ -82,7 +82,7 @@
     if (normalizedMode === "rakuten_download") return Boolean(data.rakuten?.downloaded);
     if (normalizedMode === "amazon_print") return Boolean(data.amazon?.confirmed && data.amazon?.printed);
     if (normalizedMode === "rakuten_print") return Boolean(data.rakuten?.confirmed && data.rakuten?.printed);
-    if (normalizedMode === "mf_reconcile") return Boolean(data.mf?.reconciled);
+    if (normalizedMode === "mf_reconcile") return Boolean(data.mf?.step_done ?? data.mf?.reconciled);
     return true;
   }
 
@@ -414,8 +414,9 @@
     if (!data.amazon?.downloaded && !data.rakuten?.downloaded) return "amazon_or_rakuten_download";
     if (!data.amazon?.downloaded) return "amazon_download";
     if (!data.rakuten?.downloaded) return "rakuten_download";
-    if (!data.mf?.reconciled && bothDownloaded && (amazonDone || rakutenDone)) return "mf_reconcile";
-    if (!data.mf?.reconciled) return "mf_reconcile";
+    const mfDone = Boolean(data.mf?.step_done ?? data.mf?.reconciled);
+    if (!mfDone && bothDownloaded && (amazonDone || rakutenDone)) return "mf_reconcile";
+    if (!mfDone) return "mf_reconcile";
     return "done";
   }
 
@@ -435,7 +436,7 @@
     if (nextStep === "amazon_decide_print") return { message: "次はAmazonの除外判断と印刷を実行してください。", href: `/runs/${ym}#exclude-section` };
     if (nextStep === "rakuten_download") return { message: "次は楽天の領収書取得を実行してください。", href: null };
     if (nextStep === "rakuten_decide_print") return { message: "次は楽天の除外判断と印刷を実行してください。", href: `/runs/${ym}#exclude-section` };
-    if (nextStep === "mf_reconcile") return { message: "次はMF抽出 + 突合を実行してください。", href: null };
+    if (nextStep === "mf_reconcile") return { message: "次はMF抽出 + 突合 + 下書き作成を実行してください。", href: null };
     if (nextStep === "done") return { message: "すべて完了しました。", href: null };
     return { message: "ステップ状態を判定できません。再読み込みしてください。", href: null };
   }
@@ -503,6 +504,46 @@
     });
   }
 
+  function toCount(value) {
+    const parsed = Number.parseInt(String(value ?? ""), 10);
+    if (!Number.isFinite(parsed) || parsed < 0) return 0;
+    return parsed;
+  }
+
+  function buildMfSummaryText(data) {
+    const runningMode = String(data?.running_mode || "");
+    if (runningMode === "mf_reconcile") {
+      return "サマリー: Step5実行中...";
+    }
+    const mf = data && typeof data === "object" ? data.mf : null;
+    const summary = mf && typeof mf === "object" ? mf.summary : null;
+    const missingCandidates = toCount(summary?.missing_candidates);
+    const targetsTotal = toCount(summary?.targets_total);
+    const created = toCount(summary?.created);
+    const failed = toCount(summary?.failed);
+    const status = String(summary?.status || "").trim().toLowerCase();
+    const hasDraftResult = targetsTotal > 0 || created > 0 || failed > 0 || Boolean(status);
+    const reconciled = Boolean(mf?.reconciled);
+
+    if (!reconciled && !hasDraftResult && missingCandidates === 0) {
+      return "サマリー: 未実行";
+    }
+    if (!hasDraftResult) {
+      return `サマリー: 未添付候補 ${missingCandidates}件 / 下書き作成は未実行`;
+    }
+    return `サマリー: 未添付候補 ${missingCandidates}件 / 下書き作成 ${created}/${targetsTotal}件（失敗 ${failed}件）`;
+  }
+
+  function renderMfSummary(data, fallbackMessage = "") {
+    const summaryEl = document.querySelector("[data-mf-summary]");
+    if (!summaryEl) return;
+    if (fallbackMessage) {
+      summaryEl.textContent = fallbackMessage;
+      return;
+    }
+    summaryEl.textContent = buildMfSummaryText(data);
+  }
+
   function setStepLinkState(link, enabled, href) {
     if (!link) return;
     if (enabled) {
@@ -544,7 +585,12 @@
       amazon_decide_print: runningMode === "amazon_print" ? "running" : amazonDone ? "done" : "pending",
       rakuten_download: rakutenRunning ? "running" : data.rakuten?.downloaded ? "done" : "pending",
       rakuten_decide_print: runningMode === "rakuten_print" ? "running" : rakutenDone ? "done" : "pending",
-      mf_reconcile: runningMode === "mf_reconcile" ? "running" : data.mf?.reconciled ? "done" : "pending",
+      mf_reconcile:
+        runningMode === "mf_reconcile"
+          ? "running"
+          : Boolean(data.mf?.step_done ?? data.mf?.reconciled)
+            ? "done"
+            : "pending",
     };
   }
 
@@ -577,6 +623,7 @@
         renderNextStep("ステップ状態の取得に失敗しました。再読み込みしてください。", null);
         document.querySelectorAll("[data-step-link]").forEach((link) => setStepLinkState(link, false, "#"));
         applyArchiveAvailability({ running_mode: "", amazon: {}, rakuten: {} });
+        renderMfSummary(null, "サマリー: 状態取得に失敗");
         if (!stepRetryTimer) {
           stepRetryTimer = setTimeout(() => {
             stepRetryTimer = null;
@@ -601,6 +648,7 @@
       applyActionAvailability(data);
       applyArchiveAvailability(data);
       applyLinkAvailability(data, ym);
+      renderMfSummary(data);
 
       const stepStates = buildStepStates(data, runningMode);
       setStepStatus("preflight", stepStates.preflight);
@@ -616,7 +664,7 @@
         amazon_decide_print: "Amazon除外・印刷",
         rakuten_download: "楽天領収書の取得",
         rakuten_decide_print: "楽天除外・印刷",
-        mf_reconcile: "MF抽出 + 突合",
+        mf_reconcile: "MF抽出 + 突合 + 下書き作成",
       };
       if (!window.__stepState) {
         window.__stepState = stepStates;
@@ -642,6 +690,7 @@
       renderNextStep("ステップ状態の取得に失敗しました。再読み込みしてください。", null);
       document.querySelectorAll("[data-step-link]").forEach((link) => setStepLinkState(link, false, "#"));
       applyArchiveAvailability({ running_mode: "", amazon: {}, rakuten: {} });
+      renderMfSummary(null, "サマリー: 状態取得に失敗");
       if (!stepRetryTimer) {
         stepRetryTimer = setTimeout(() => {
           stepRetryTimer = null;

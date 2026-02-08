@@ -27,6 +27,27 @@ MVPでの非対象:
 - Amazon/楽天以外のサービス領収書自動取得
 - MFへの最終申請ボタン押下の自動化
 
+### Phase 1.5（MVP拡張）: MF下書き作成まで自動化
+対象:
+- `https://expense.moneyforward.com/outgo_input`（連携サービスから登録）
+
+前提:
+- Step0で連携更新が完了しており、対象月の連携明細が `outgo_input` に表示されている
+
+到達目標:
+- Step5で突合候補から該当明細を特定する
+- `編集登録` から経費登録モーダルを開く
+- 候補PDFを領収書添付する
+- 添付後に `OCR入力` をオンにする
+- `作成する` で下書きを作成する（申請はしない）
+
+Phase 1.5完了条件（Done）:
+1. 突合済み明細に対して `編集登録` まで自動で遷移できる
+2. 領収書PDF添付と `OCR入力` チェックが安定して実行される
+3. `作成する` 押下で下書き作成が完了する
+4. 失敗時は対象明細を `needs_review` として残し、処理全体は継続できる
+5. すべての操作結果を `reports/audit_log.jsonl` と実行ログで追跡できる
+
 ### Phase 2: 他サービス領収書の自動取得拡張
 対象候補:
 - Aqua Voice
@@ -49,8 +70,9 @@ Phase 2完了条件（各ソース共通）:
 1. Amazonの取得漏れゼロ化と安定化
 2. 楽天の取得漏れゼロ化と安定化
 3. Amazon/楽天のMVP受け入れテスト整備
-4. Phase 2の共通アダプタ仕様策定
-5. Aqua Voice -> ChatGPT -> Claude -> Replit の順で実装
+4. Phase 1.5（MF下書き作成）の実装・受け入れテスト
+5. Phase 2の共通アダプタ仕様策定
+6. Aqua Voice -> ChatGPT -> Claude -> Replit の順で実装
 
 ## 運用上の固定ルール
 - 印刷は常に「手前まで自動」「最終実行は手動」
@@ -58,4 +80,4 @@ Phase 2完了条件（各ソース共通）:
 - 仕様変更時は本ファイルと `operation_policy.md` の両方を更新する
 
 ## 実行チェックリスト
-- Phase 1の実行確認は `references/mvp_checklist.md` を利用する
+- Phase 1 / 1.5の実行確認は `references/mvp_checklist.md` を利用する

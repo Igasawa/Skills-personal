@@ -104,6 +104,62 @@ def test_workflow_state_next_step_progression(monkeypatch: pytest.MonkeyPatch, t
     ]
 
 
+def test_workflow_state_keeps_mf_step_pending_when_draft_result_not_success(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("AX_HOME", str(tmp_path))
+    ym = "2026-01"
+    _write_json(_reports_dir(tmp_path, ym) / "preflight.json", {"status": "success", "year": 2026, "month": 1})
+    _touch(_artifact_root(tmp_path) / ym / "amazon" / "orders.jsonl")
+    _touch(_artifact_root(tmp_path) / ym / "rakuten" / "orders.jsonl")
+    _write_json(
+        _reports_dir(tmp_path, ym) / "workflow.json",
+        {
+            "amazon": {"confirmed_at": "2026-02-01T00:00:00", "printed_at": "2026-02-01T00:01:00"},
+            "rakuten": {"confirmed_at": "2026-02-01T00:02:00", "printed_at": "2026-02-01T00:03:00"},
+        },
+    )
+    _write_json(_reports_dir(tmp_path, ym) / "missing_evidence_candidates.json", {"rows": [], "counts": {}})
+    _write_json(_reports_dir(tmp_path, ym) / "mf_draft_create_result.json", {"status": "partial_success", "data": {}})
+
+    state = _workflow_state_for_ym(2026, 1)
+    assert state["mf"]["reconciled"] is True
+    assert state["mf"]["drafted"] is False
+    assert state["mf"]["step_done"] is False
+    assert state["next_step"] == "mf_reconcile"
+
+
+def test_workflow_state_includes_mf_summary_counts(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("AX_HOME", str(tmp_path))
+    ym = "2026-01"
+    _write_json(_reports_dir(tmp_path, ym) / "preflight.json", {"status": "success", "year": 2026, "month": 1})
+    _touch(_artifact_root(tmp_path) / ym / "amazon" / "orders.jsonl")
+    _touch(_artifact_root(tmp_path) / ym / "rakuten" / "orders.jsonl")
+    _write_json(
+        _reports_dir(tmp_path, ym) / "workflow.json",
+        {
+            "amazon": {"confirmed_at": "2026-02-01T00:00:00", "printed_at": "2026-02-01T00:01:00"},
+            "rakuten": {"confirmed_at": "2026-02-01T00:02:00", "printed_at": "2026-02-01T00:03:00"},
+        },
+    )
+    _write_json(
+        _reports_dir(tmp_path, ym) / "missing_evidence_candidates.json",
+        {"rows": [{"mf_expense_id": "MF-1"}], "counts": {"mf_missing_evidence": 4}},
+    )
+    _write_json(
+        _reports_dir(tmp_path, ym) / "mf_draft_create_result.json",
+        {"status": "partial_success", "data": {"targets_total": 3, "created": 2, "failed": 1}},
+    )
+
+    state = _workflow_state_for_ym(2026, 1)
+    summary = state["mf"]["summary"]
+    assert summary["missing_candidates"] == 4
+    assert summary["targets_total"] == 3
+    assert summary["created"] == 2
+    assert summary["failed"] == 1
+    assert summary["status"] == "partial_success"
+
+
 def test_assert_run_mode_allowed_rejects_skip(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setenv("AX_HOME", str(tmp_path))
     ym = "2026-01"
@@ -362,6 +418,56 @@ def test_run_worker_records_download_failure_state(monkeypatch: pytest.MonkeyPat
     assert "downloaded_at" not in rakuten
     assert "confirmed_at" not in rakuten
     assert "printed_at" not in rakuten
+
+
+def test_start_run_mf_reconcile_sets_mf_draft_create_default_true(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("AX_HOME", str(tmp_path))
+    ym = "2026-01"
+    _write_json(_reports_dir(tmp_path, ym) / "preflight.json", {"status": "success", "year": 2026, "month": 1})
+    _touch(_artifact_root(tmp_path) / ym / "amazon" / "orders.jsonl")
+    _touch(_artifact_root(tmp_path) / ym / "rakuten" / "orders.jsonl")
+    _write_json(
+        _reports_dir(tmp_path, ym) / "workflow.json",
+        {
+            "amazon": {"confirmed_at": "2026-02-01T00:00:00", "printed_at": "2026-02-01T00:01:00"},
+            "rakuten": {"confirmed_at": "2026-02-01T00:02:00", "printed_at": "2026-02-01T00:03:00"},
+        },
+    )
+
+    captured_cmd: list[str] = []
+
+    class _PopenDummy:
+        pid = 23456
+
+    def _fake_popen(cmd, *args, **kwargs):  # noqa: ANN001, ANN002
+        captured_cmd.extend([str(c) for c in cmd])
+        return _PopenDummy()
+
+    monkeypatch.setattr("dashboard.services.core_runs.subprocess.Popen", _fake_popen)
+
+    def _no_thread(*args, **kwargs):
+        class _DummyThread:
+            def start(self) -> None:
+                return None
+
+        return _DummyThread()
+
+    monkeypatch.setattr("dashboard.services.core_runs.threading.Thread", _no_thread)
+
+    result = _start_run(
+        {
+            "year": 2026,
+            "month": 1,
+            "mode": "mf_reconcile",
+            "mfcloud_url": "https://expense.example/outgo_input",
+            "auth_handoff": False,
+            "auto_receipt_name": True,
+        }
+    )
+    assert result["status"] == "running"
+    assert "--mf-draft-create" in captured_cmd
 
 
 def test_reconcile_running_jobs_infers_success_from_log_when_worker_missing(

@@ -395,6 +395,37 @@ def test_api_step_reset_download_removes_exclusion_file_when_only_target_source(
     assert not (reports_dir / "exclude_orders.json").exists()
 
 
+def test_api_steps_returns_mf_summary(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    client = _create_client(monkeypatch, tmp_path)
+    ym = "2026-01"
+    reports = _reports_dir(tmp_path, ym)
+    _write_json(reports / "preflight.json", {"status": "success", "year": 2026, "month": 1})
+    _touch(_artifact_root(tmp_path) / ym / "amazon" / "orders.jsonl")
+    _touch(_artifact_root(tmp_path) / ym / "rakuten" / "orders.jsonl")
+    _write_json(
+        reports / "workflow.json",
+        {
+            "amazon": {"confirmed_at": "2026-02-08T10:00:00", "printed_at": "2026-02-08T10:10:00"},
+            "rakuten": {"confirmed_at": "2026-02-08T10:20:00", "printed_at": "2026-02-08T10:30:00"},
+        },
+    )
+    _write_json(reports / "missing_evidence_candidates.json", {"counts": {"mf_missing_evidence": 2}, "rows": []})
+    _write_json(
+        reports / "mf_draft_create_result.json",
+        {"status": "partial_success", "data": {"targets_total": 2, "created": 1, "failed": 1}},
+    )
+
+    res = client.get("/api/steps/2026-01")
+    assert res.status_code == 200
+    body = res.json()
+    summary = body["mf"]["summary"]
+    assert summary["missing_candidates"] == 2
+    assert summary["targets_total"] == 2
+    assert summary["created"] == 1
+    assert summary["failed"] == 1
+    assert summary["status"] == "partial_success"
+
+
 def test_api_archive_success_with_include_pdfs_and_audit(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     client = _create_client(monkeypatch, tmp_path)
     ym = "2026-01"

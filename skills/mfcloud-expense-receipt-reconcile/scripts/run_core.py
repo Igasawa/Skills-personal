@@ -331,6 +331,11 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--skip-rakuten", action="store_true", help="skip Rakuten download step")
     ap.add_argument("--skip-mfcloud", action="store_true", help="skip MF Cloud extract step")
     ap.add_argument("--skip-reconcile", action="store_true", help="skip reconcile step")
+    ap.add_argument(
+        "--mf-draft-create",
+        action="store_true",
+        help="after reconcile, open MF outgo_input and create drafts by attaching matched receipt PDFs",
+    )
     ap.add_argument("--print-list", action="store_true", help="generate print list after downloads")
     ap.add_argument("--print-sources", help="comma-separated sources for print list (amazon,rakuten,mfcloud)")
     ap.add_argument("--preflight", action="store_true", help="login and refresh MF linked services before running steps")

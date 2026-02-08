@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 from pathlib import Path
+import subprocess
 from types import SimpleNamespace
 
 from scripts import run_core_pipeline
@@ -14,6 +15,7 @@ def _args() -> argparse.Namespace:
         skip_rakuten=True,
         skip_mfcloud=True,
         skip_reconcile=True,
+        mf_draft_create=False,
         print_list=False,
         print_sources="",
         skip_receipt_name=False,
@@ -83,3 +85,78 @@ def test_execute_pipeline_passes_amazon_threshold_and_history_flags(
     idx = amazon_args.index("--min-pdf-success-rate")
     assert amazon_args[idx + 1] == "0.8"
     assert "--history-only-receipt-flow" in amazon_args
+
+
+def test_execute_pipeline_runs_mf_draft_create_when_enabled(monkeypatch, tmp_path: Path) -> None:
+    captured: dict[str, list[str]] = {}
+
+    def _fake_run_node_playwright_script(*, script_path, cwd, args, env=None):  # noqa: ANN001
+        name = Path(script_path).name
+        if name == "mfcloud_extract.mjs":
+            out_jsonl = Path(args[args.index("--out-jsonl") + 1])
+            out_jsonl.parent.mkdir(parents=True, exist_ok=True)
+            out_jsonl.write_text(
+                '{"expense_id":"MF-1","use_date":"2026-01-05","amount_yen":1200,"vendor":"AQUA VOICE","memo":"AQUA VOICE","has_evidence":false}\n',
+                encoding="utf-8",
+            )
+            return {"status": "success", "data": {"extracted": 1}}
+        if name == "mfcloud_outgo_register.mjs":
+            captured["mf_draft_args"] = list(args)
+            out_json = Path(args[args.index("--out-json") + 1])
+            out_json.parent.mkdir(parents=True, exist_ok=True)
+            out_json.write_text(
+                '{"status":"success","data":{"targets_total":1,"attempted":1,"created":1,"skipped":0,"failed":0}}',
+                encoding="utf-8",
+            )
+            return {"status": "success", "data": {"targets_total": 1, "attempted": 1, "created": 1, "skipped": 0, "failed": 0}}
+        return {"status": "success", "data": {}}
+
+    def _fake_subprocess_run(cmd, *args, **kwargs):  # noqa: ANN001
+        cmd_list = [str(x) for x in cmd]
+        if any("reconcile.py" in x for x in cmd_list):
+            out_json = Path(cmd_list[cmd_list.index("--out-json") + 1])
+            out_csv = Path(cmd_list[cmd_list.index("--out-csv") + 1])
+            out_json.parent.mkdir(parents=True, exist_ok=True)
+            out_json.write_text(
+                '{"year":2026,"month":1,"counts":{"mf_missing_evidence":1},"rows":[{"mf_expense_id":"MF-1","mf_use_date":"2026-01-05","mf_amount_yen":1200,"mf_vendor":"AQUA VOICE","mf_memo":"AQUA VOICE","row_type":"candidate","rank":1,"order_id":"A-1","order_source":"amazon","order_date":"2026-01-05","total_yen":1200,"pdf_path":"C:/tmp/a.pdf","diff_days":0,"score":130}]}',
+                encoding="utf-8",
+            )
+            out_csv.write_text("mf_expense_id\nMF-1\n", encoding="utf-8")
+            return subprocess.CompletedProcess(args=cmd, returncode=0, stdout='{"status":"success","data":{"counts":{"mf_missing_evidence":1}}}', stderr="")
+        return subprocess.CompletedProcess(args=cmd, returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(run_core_pipeline, "run_node_playwright_script", _fake_run_node_playwright_script)
+    monkeypatch.setattr(run_core_pipeline, "archive_existing_pdfs", lambda *a, **k: None)
+    monkeypatch.setattr(run_core_pipeline, "build_quality_gate", lambda **k: {"status": "pass", "ready_for_submission": True})
+    monkeypatch.setattr(run_core_pipeline.subprocess, "run", _fake_subprocess_run)
+
+    args = _args()
+    args.skip_rakuten = True
+    args.skip_mfcloud = False
+    args.skip_reconcile = False
+    args.mf_draft_create = True
+
+    rc = _rc(tmp_path)
+    for state_path in (rc.amazon_storage_state, rc.mfcloud_storage_state, rc.rakuten_storage_state):
+        state_path.parent.mkdir(parents=True, exist_ok=True)
+        state_path.write_text("{}", encoding="utf-8")
+    (rc.output_root / "amazon").mkdir(parents=True, exist_ok=True)
+    (rc.output_root / "amazon" / "orders.jsonl").write_text(
+        '{"order_id":"A-1","order_date":"2026-01-05","order_total_yen":1200,"pdf_path":"C:/tmp/a.pdf"}\n',
+        encoding="utf-8",
+    )
+
+    result = run_core_pipeline.execute_pipeline(
+        args=args,
+        rc=rc,
+        year=2026,
+        month=1,
+        render_monthly_thread=lambda **kwargs: "# thread\n",
+    )
+
+    assert result["status"] == "success"
+    mf_draft_args = captured.get("mf_draft_args") or []
+    assert "--report-json" in mf_draft_args
+    assert "--out-json" in mf_draft_args
+    assert result["data"]["mf_draft"]["created"] == 1
+    assert result["data"]["reports"]["mf_draft_create_result_json"].endswith("mf_draft_create_result.json")

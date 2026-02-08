@@ -12,6 +12,10 @@
   const excludeSummaryCount = document.getElementById("exclude-summary-count");
   const statExcluded = document.getElementById("stat-excluded");
   const statIncluded = document.getElementById("stat-included");
+  const printNextBox = document.getElementById("print-next-box");
+  const printNextSummary = document.getElementById("print-next-summary");
+  const printNextOpen = document.getElementById("print-next-open");
+  const printNextCmd = document.getElementById("print-next-cmd");
   const printPreparedBySource = { amazon: false, rakuten: false };
 
   function setExcludeStatus(message, kind) {
@@ -54,6 +58,27 @@
       const prepared = source ? Boolean(printPreparedBySource[source]) : false;
       btn.disabled = isBusy || !prepared;
     });
+  }
+
+  function showPrintNextActions({ ym, source, count, printCommand, excludedPdfsUrl }) {
+    if (!printNextBox) return;
+    const sourceLabel = source === "amazon" ? "Amazon" : "楽天";
+    const normalizedCount = Number.isFinite(count) ? Math.max(0, count) : null;
+    if (printNextSummary) {
+      if (normalizedCount === null) {
+        printNextSummary.textContent = `${sourceLabel}の印刷準備が完了しました。`;
+      } else {
+        printNextSummary.textContent = `${sourceLabel}の印刷対象 ${normalizedCount} 件を準備しました（まだ印刷は開始していません）。`;
+      }
+    }
+    if (printNextOpen) {
+      const fallback = ym ? `/runs/${ym}/excluded-pdfs` : "#";
+      printNextOpen.href = excludedPdfsUrl || fallback;
+    }
+    if (printNextCmd) {
+      printNextCmd.textContent = printCommand || "";
+    }
+    printNextBox.classList.remove("hidden");
   }
 
   async function saveExclusions(ym, source) {
@@ -119,18 +144,26 @@
           printPreparedBySource[source] = true;
           updateExcludeCounters();
           const count = Number.parseInt(String(printResult?.count ?? ""), 10);
+          const normalizedCount = Number.isFinite(count) ? Math.max(0, count) : null;
           const sourceLabel = source === "amazon" ? "Amazon" : "楽天";
           let successMessage = excludeStatus?.dataset.success || "除外設定を保存しました。印刷準備が完了しました。";
           let toastMessage = "除外設定を保存し印刷準備が完了しました。";
-          if (Number.isFinite(count)) {
-            if (count > 0) {
-              toastMessage = `除外設定を保存し ${count} 件の印刷準備が完了しました（印刷は未実行）。`;
-              successMessage = `除外設定を保存しました。${sourceLabel} 印刷対象 ${count} 件を準備しました（まだ印刷は開始していません）。手動印刷後に「${sourceLabel}印刷完了を記録」を押してください。`;
+          if (normalizedCount !== null) {
+            if (normalizedCount > 0) {
+              toastMessage = `除外設定を保存し ${normalizedCount} 件の印刷準備が完了しました（印刷は未実行）。`;
+              successMessage = `除外設定を保存しました。${sourceLabel} 印刷対象 ${normalizedCount} 件を準備しました（まだ印刷は開始していません）。「除外PDF一覧」で1件ずつ印刷、または印刷コマンドを手動実行後に「${sourceLabel}印刷完了を記録」を押してください。`;
             } else {
               toastMessage = "除外設定を保存しました。印刷対象は 0 件です。";
               successMessage = "除外設定を保存しました。印刷対象は 0 件です。";
             }
           }
+          showPrintNextActions({
+            ym,
+            source,
+            count: normalizedCount,
+            printCommand: String(printResult?.print_command || ""),
+            excludedPdfsUrl: String(printResult?.excluded_pdfs_url || ""),
+          });
           setExcludeStatus(successMessage, "success");
           showToast(toastMessage, "success");
         } catch (error) {

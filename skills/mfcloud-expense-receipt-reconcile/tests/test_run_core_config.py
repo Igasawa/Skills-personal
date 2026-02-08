@@ -35,6 +35,7 @@ def _base_args(**overrides: object) -> argparse.Namespace:
         "skip_rakuten": False,
         "skip_mfcloud": False,
         "skip_reconcile": False,
+        "mf_draft_create": False,
         "print_list": False,
         "print_sources": None,
         "preflight": False,
