@@ -666,7 +666,7 @@
   function setStepStatus(id, state) {
     const el = document.querySelector(`[data-step-status="${id}"]`);
     if (!el) return;
-    el.classList.remove("done", "running");
+    el.classList.remove("done", "running", "pending");
     if (state === "done") {
       el.textContent = "Done";
       el.classList.add("done");
@@ -678,12 +678,13 @@
       return;
     }
     el.textContent = "Pending";
+    el.classList.add("pending");
   }
 
   function setTaskStatus(id, state) {
     const el = document.querySelector(`[data-task-status="${id}"]`);
     if (!el) return;
-    el.classList.remove("done", "running");
+    el.classList.remove("done", "running", "pending");
     if (state === "done") {
       el.textContent = "Done";
       el.classList.add("done");
@@ -695,6 +696,7 @@
       return;
     }
     el.textContent = "Pending";
+    el.classList.add("pending");
   }
 
   function renderNextStep(message, href) {

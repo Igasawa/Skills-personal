@@ -1,6 +1,13 @@
 (function () {
   // UI文言方針: toFriendlyMessage は利用者向けに日本語文言を返す。
   const toastEl = document.getElementById("toast");
+  const THEME_STORAGE_KEY = "dashboard-theme";
+  const THEME_LIGHT = "light";
+  const THEME_DARK = "dark";
+  const THEME_SYSTEM = "system";
+  const THEME_VALUES = new Set([THEME_LIGHT, THEME_DARK]);
+  const THEME_SELECTION_VALUES = new Set([THEME_LIGHT, THEME_DARK, THEME_SYSTEM]);
+  let currentThemeSelection = THEME_SYSTEM;
 
   function showToast(message, type = "info") {
     if (!toastEl || !message) return;
@@ -67,10 +74,122 @@
     return String(text || "").toLowerCase().replace(/\s+/g, " ").trim();
   }
 
+  function getSystemTheme() {
+    if (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches) {
+      return THEME_DARK;
+    }
+    return THEME_LIGHT;
+  }
+
+  function readStoredTheme() {
+    try {
+      const storedTheme = window.localStorage.getItem(THEME_STORAGE_KEY);
+      if (storedTheme && THEME_SELECTION_VALUES.has(storedTheme)) return storedTheme;
+    } catch {
+      // localStorage blocked: ignore and fall back to system.
+    }
+    return THEME_SYSTEM;
+  }
+
+  function storeTheme(theme) {
+    if (!THEME_SELECTION_VALUES.has(theme)) return;
+    try {
+      if (theme === THEME_SYSTEM) {
+        window.localStorage.removeItem(THEME_STORAGE_KEY);
+      } else {
+        window.localStorage.setItem(THEME_STORAGE_KEY, theme);
+      }
+    } catch {
+      // localStorage blocked: ignore.
+    }
+  }
+
+  function applyTheme(theme) {
+    currentThemeSelection = THEME_SELECTION_VALUES.has(theme) ? theme : THEME_SYSTEM;
+    const resolvedTheme = currentThemeSelection === THEME_SYSTEM ? getSystemTheme() : currentThemeSelection;
+    document.documentElement.setAttribute("data-theme", resolvedTheme);
+    document.documentElement.setAttribute("data-theme-selection", currentThemeSelection);
+    return resolvedTheme;
+  }
+
+  function updateThemeToggleState(activeThemeSelection) {
+    document.querySelectorAll(".theme-toggle-button[data-theme-option]").forEach((button) => {
+      const isActive = button.dataset.themeOption === activeThemeSelection;
+      button.classList.toggle("is-active", isActive);
+      button.setAttribute("aria-pressed", String(isActive));
+    });
+  }
+
+  function buildThemeToggle() {
+    const container = document.createElement("div");
+    container.className = "theme-toggle";
+    container.setAttribute("role", "group");
+    container.setAttribute("aria-label", "表示テーマ");
+
+    const options = [
+      { theme: THEME_LIGHT, label: "ライト" },
+      { theme: THEME_DARK, label: "ダーク" },
+      { theme: THEME_SYSTEM, label: "システム" },
+    ];
+
+    options.forEach(({ theme, label }) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "theme-toggle-button";
+      button.dataset.themeOption = theme;
+      button.textContent = label;
+      button.setAttribute("aria-pressed", "false");
+      button.addEventListener("click", () => {
+        applyTheme(theme);
+        storeTheme(theme);
+        updateThemeToggleState(currentThemeSelection);
+      });
+      container.appendChild(button);
+    });
+    return container;
+  }
+
+  function mountThemeToggle() {
+    document.querySelectorAll(".hero-meta").forEach((heroMeta) => {
+      if (heroMeta.querySelector(".theme-toggle")) return;
+      heroMeta.insertAdjacentElement("afterbegin", buildThemeToggle());
+    });
+  }
+
+  function bindSystemThemeSync() {
+    if (!window.matchMedia) return;
+    const darkQuery = window.matchMedia("(prefers-color-scheme: dark)");
+    const onChange = () => {
+      if (currentThemeSelection !== THEME_SYSTEM) return;
+      applyTheme(THEME_SYSTEM);
+      updateThemeToggleState(currentThemeSelection);
+    };
+    if (typeof darkQuery.addEventListener === "function") {
+      darkQuery.addEventListener("change", onChange);
+      return;
+    }
+    if (typeof darkQuery.addListener === "function") {
+      darkQuery.addListener(onChange);
+    }
+  }
+
+  function initThemeToggle() {
+    applyTheme(readStoredTheme());
+    mountThemeToggle();
+    updateThemeToggleState(currentThemeSelection);
+    bindSystemThemeSync();
+  }
+
+  initThemeToggle();
+
   window.DashboardCommon = {
+    applyTheme,
     bindCopyButtons,
+    initThemeToggle,
     normalizeSearchText,
     showToast,
+    storeTheme,
     toFriendlyMessage,
+    updateThemeToggleState,
   };
 })();
