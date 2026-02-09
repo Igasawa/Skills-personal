@@ -80,3 +80,18 @@ Done criteria:
 - WS1 deliverable approved.
 - WS2 report shows no unresolved high-impact visual/interaction defects.
 - Dashboard can be declared "Design Pack aligned (v1.1.0)" for the defined scope.
+
+## 7. Completion Update (2026-02-09)
+
+Status:
+- WS1: Completed
+- WS2: Completed for current implemented scope (`C-01` to `C-17`)
+
+Evidence:
+- Handoff template: `references/dashboard_handoff_template.md`
+- Checklist: `references/dashboard_screen_adoption_checklist.md`
+- Final sign-off report: `references/dashboard_screen_adoption_report_2026-02-09_v4.md`
+
+Notes:
+- Intermediate reports (`v1` to `v3`) are archived under `references/archive/`.
+- `C-18` and `C-19` remain `N/A` until chart/modal UI is implemented.

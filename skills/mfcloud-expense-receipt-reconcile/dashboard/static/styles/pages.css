@@ -7,8 +7,8 @@
 .wizard-step {
   padding: 14px;
   border-radius: 14px;
-  background: var(--bg-accent);
-  border: 1px solid #efe4d8;
+  background: rgb(var(--surface-2));
+  border: 1px solid rgb(var(--semantic-field-border-default));
 }
 
 .step-head {
@@ -21,23 +21,24 @@
 
 .step-num {
   font-weight: 700;
-  color: var(--primary);
+  color: rgb(var(--semantic-button-link-text));
 }
 
 .step-reset {
-  border: 1px solid #d2c2ad;
-  background: #fff;
-  color: var(--ink);
+  border: 1px solid rgb(var(--semantic-button-outline-border));
+  background: rgb(var(--semantic-button-outline-bg));
+  color: rgb(var(--semantic-button-outline-text));
   border-radius: 999px;
   font-size: 11px;
   line-height: 1;
   padding: 4px 10px;
   cursor: pointer;
+  transition: background var(--transition-fast), border-color var(--transition-fast), color var(--transition-fast);
 }
 
 .step-reset:hover {
-  background: #fff9f2;
-  border-color: var(--accent);
+  background: rgb(var(--semantic-button-outline-bg-hover));
+  border-color: rgb(var(--semantic-field-border-hover));
 }
 
 .step-reset:disabled {
@@ -54,18 +55,18 @@
   font-size: 12px;
   padding: 4px 10px;
   border-radius: 999px;
-  background: #ede4d6;
-  color: var(--muted);
+  background: rgb(var(--surface-2));
+  color: rgb(var(--text-secondary));
 }
 
 .step-status.done {
-  background: #e2f3ee;
-  color: #2f9e78;
+  background: rgb(var(--semantic-feedback-success-surface) / 0.2);
+  color: rgb(var(--semantic-feedback-warning-text));
 }
 
 .step-status.running {
-  background: #fff1d6;
-  color: #b06b1c;
+  background: rgb(var(--semantic-feedback-warning-surface) / 0.32);
+  color: rgb(var(--semantic-feedback-warning-text));
 }
 
 .step-actions {
@@ -92,18 +93,18 @@
   font-size: 12px;
   padding: 4px 10px;
   border-radius: 999px;
-  background: #ede4d6;
-  color: var(--muted);
+  background: rgb(var(--surface-2));
+  color: rgb(var(--text-secondary));
 }
 
 .task-status.done {
-  background: #e2f3ee;
-  color: #2f9e78;
+  background: rgb(var(--semantic-feedback-success-surface) / 0.2);
+  color: rgb(var(--semantic-feedback-warning-text));
 }
 
 .task-status.running {
-  background: #fff1d6;
-  color: #b06b1c;
+  background: rgb(var(--semantic-feedback-warning-surface) / 0.32);
+  color: rgb(var(--semantic-feedback-warning-text));
 }
 
 .task-process-row {
@@ -111,8 +112,8 @@
   gap: 10px;
   padding: 10px;
   border-radius: 12px;
-  background: #fffaf4;
-  border: 1px solid #efe4d8;
+  background: rgb(var(--surface-1));
+  border: 1px solid rgb(var(--semantic-field-border-default));
 }
 
 .task-process-label {
@@ -127,7 +128,7 @@
 
 .process-desc {
   font-size: 12px;
-  color: var(--muted);
+  color: rgb(var(--text-secondary));
 }
 
 .process-status {
@@ -156,9 +157,9 @@
   gap: 12px;
   padding: 12px 16px;
   border-radius: 12px;
-  background: #fff4e5;
-  border: 1px dashed #d8b27c;
-  color: var(--ink);
+  background: rgb(var(--semantic-feedback-warning-surface) / 0.18);
+  border: 1px dashed rgb(var(--semantic-feedback-warning-surface) / 0.54);
+  color: rgb(var(--text-default));
   font-size: 13px;
   margin-top: 12px;
   margin-bottom: 4px;
@@ -174,5 +175,6 @@
 .stat {
   padding: 12px;
   border-radius: 12px;
-  background: var(--bg-accent);
+  background: rgb(var(--surface-2));
+  border: 1px solid rgb(var(--semantic-field-border-default));
 }

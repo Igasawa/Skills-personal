@@ -2,7 +2,7 @@
   max-width: 1160px;
   margin: 0 auto;
   padding: 40px 24px 72px;
-  animation: fadeIn 0.6s ease-out;
+  animation: fadeIn var(--motion-duration-slow) var(--motion-easing-decelerate);
 }
 
 .hero {
@@ -17,7 +17,7 @@
   font-size: 14px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: var(--muted);
+  color: rgb(var(--text-secondary));
   margin: 0 0 8px;
 }
 
@@ -28,7 +28,7 @@ h1 {
 
 .subtitle {
   margin: 0;
-  color: var(--muted);
+  color: rgb(var(--text-secondary));
 }
 
 .hero-meta {
@@ -42,11 +42,19 @@ h1 {
   align-items: center;
   padding: 8px 16px;
   border-radius: 999px;
-  background: var(--card);
-  box-shadow: var(--shadow);
+  background: rgb(var(--surface-1));
+  border: 1px solid rgb(var(--semantic-field-border-default));
+  box-shadow: var(--shadow-md);
   font-size: 13px;
-  color: var(--muted);
+  color: rgb(var(--text-secondary));
   text-decoration: none;
+  transition: background var(--transition-fast), border-color var(--transition-fast), color var(--transition-fast);
+}
+
+.pill:hover {
+  background: rgb(var(--semantic-interaction-hover-overlay));
+  border-color: rgb(var(--semantic-field-border-hover));
+  color: rgb(var(--text-default));
 }
 
 .grid {
@@ -60,7 +68,8 @@ h1 {
 }
 
 .card {
-  background: var(--card);
+  background: rgb(var(--surface-1));
+  border: 1px solid rgb(var(--semantic-field-border-default));
   border-radius: 20px;
   box-shadow: var(--shadow);
   padding: 24px;
@@ -75,15 +84,22 @@ h1 {
   display: block;
   padding: 16px;
   border-radius: 16px;
-  background: var(--bg-accent);
+  background: rgb(var(--surface-2));
+  border: 1px solid rgb(var(--semantic-field-border-default));
   text-decoration: none;
-  color: var(--ink);
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  color: rgb(var(--text-default));
+  transition: transform var(--transition-fast), box-shadow var(--transition-fast), background var(--transition-fast), border-color var(--transition-fast);
 }
 
 .run-card:hover {
   transform: translateY(-4px);
-  box-shadow: var(--shadow);
+  box-shadow: var(--shadow-xl);
+  background: rgb(var(--semantic-interaction-hover-overlay));
+  border-color: rgb(var(--semantic-field-border-hover));
+}
+
+.run-card:active {
+  background: rgb(var(--semantic-interaction-active-overlay));
 }
 
 .run-title {
