@@ -35,6 +35,15 @@ def create_api_router() -> APIRouter:
             return None
         return year, month
 
+    def _open_directory(path: Path) -> subprocess.CompletedProcess[str]:
+        if sys.platform.startswith("win"):
+            cmd = ["explorer", str(path)]
+        elif sys.platform == "darwin":
+            cmd = ["open", str(path)]
+        else:
+            cmd = ["xdg-open", str(path)]
+        return subprocess.run(cmd, capture_output=True, text=True, check=False)
+
     @router.get("/api/steps/{ym}")
     def api_steps(ym: str) -> JSONResponse:
         ym = core._safe_ym(ym)
@@ -316,6 +325,311 @@ def create_api_router() -> APIRouter:
                 details={"reason": str(exc.detail), "count": print_count},
             )
             raise
+
+    @router.post("/api/print-run/{ym}")
+    def api_print_run(ym: str, request: Request) -> JSONResponse:
+        ym = core._safe_ym(ym)
+        year, month = core._split_ym(ym)
+        actor = _actor_from_request(request)
+        reports_dir = core._artifact_root() / ym / "reports"
+        print_script = reports_dir / "print_all.ps1"
+        manifest = core._read_json(reports_dir / "print_manifest.json")
+        print_count: int | None = None
+        if isinstance(manifest, dict):
+            try:
+                print_count = int(manifest.get("count"))
+            except Exception:
+                print_count = None
+        if not print_script.exists():
+            detail = "Print preparation not found. Run print preparation first."
+            core._append_audit_event(
+                year=year,
+                month=month,
+                event_type="source_action",
+                action="print_run",
+                status="rejected",
+                actor=actor,
+                details={"reason": detail},
+            )
+            raise HTTPException(status_code=404, detail=detail)
+
+        cmd = [
+            "powershell",
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            str(print_script),
+        ]
+        res = subprocess.run(cmd, capture_output=True, text=True, check=False)
+        if res.returncode != 0:
+            detail = (
+                "print_all.ps1 failed:\n"
+                f"cmd: {cmd}\n"
+                f"exit: {res.returncode}\n"
+                f"stdout:\n{res.stdout}\n"
+                f"stderr:\n{res.stderr}\n"
+            )
+            core._append_audit_event(
+                year=year,
+                month=month,
+                event_type="source_action",
+                action="print_run",
+                status="failed",
+                actor=actor,
+                details={"reason": detail, "count": print_count},
+            )
+            raise HTTPException(status_code=500, detail=detail)
+
+        core._append_audit_event(
+            year=year,
+            month=month,
+            event_type="source_action",
+            action="print_run",
+            status="success",
+            actor=actor,
+            details={"count": print_count, "print_script": str(print_script)},
+        )
+        return JSONResponse(
+            {
+                "status": "ok",
+                "count": print_count,
+                "print_script": str(print_script),
+                "stdout": str(res.stdout or "").strip(),
+            }
+        )
+
+    @router.post("/api/folders/{ym}/receipts")
+    @router.post("/api/folders/{ym}/receipt")
+    @router.post("/api/folders/{ym}/open-receipts")
+    @router.post("/api/folder/{ym}/receipts")
+    def api_open_receipts_folder(ym: str, request: Request) -> JSONResponse:
+        ym = core._safe_ym(ym)
+        year, month = core._split_ym(ym)
+        actor = _actor_from_request(request)
+        root = core._artifact_root() / ym
+        amazon_pdfs = root / "amazon" / "pdfs"
+        rakuten_pdfs = root / "rakuten" / "pdfs"
+        root.mkdir(parents=True, exist_ok=True)
+        if amazon_pdfs.exists() and rakuten_pdfs.exists():
+            target = root
+        elif amazon_pdfs.exists():
+            target = amazon_pdfs
+        elif rakuten_pdfs.exists():
+            target = rakuten_pdfs
+        else:
+            # Fallback: open the month root even if receipts are not generated yet.
+            target = root
+
+        res = _open_directory(target)
+        if res.returncode != 0:
+            detail = (
+                "Open folder failed:\n"
+                f"path: {target}\n"
+                f"exit: {res.returncode}\n"
+                f"stdout:\n{res.stdout}\n"
+                f"stderr:\n{res.stderr}\n"
+            )
+            core._append_audit_event(
+                year=year,
+                month=month,
+                event_type="source_action",
+                action="open_receipts_folder",
+                status="failed",
+                actor=actor,
+                details={"reason": detail, "path": str(target)},
+            )
+            raise HTTPException(status_code=500, detail=detail)
+
+        core._append_audit_event(
+            year=year,
+            month=month,
+            event_type="source_action",
+            action="open_receipts_folder",
+            status="success",
+            actor=actor,
+            details={"path": str(target)},
+        )
+        return JSONResponse({"status": "ok", "path": str(target)})
+
+    @router.post("/api/folders/{ym}/manual-inbox")
+    def api_open_manual_inbox(ym: str, request: Request) -> JSONResponse:
+        ym = core._safe_ym(ym)
+        year, month = core._split_ym(ym)
+        actor = _actor_from_request(request)
+        target = core._manual_inbox_dir_for_ym(year, month, create=True)
+        res = _open_directory(target)
+        if res.returncode != 0:
+            detail = (
+                "Open folder failed:\n"
+                f"path: {target}\n"
+                f"exit: {res.returncode}\n"
+                f"stdout:\n{res.stdout}\n"
+                f"stderr:\n{res.stderr}\n"
+            )
+            core._append_audit_event(
+                year=year,
+                month=month,
+                event_type="manual",
+                action="open_inbox",
+                status="failed",
+                actor=actor,
+                details={"reason": detail, "path": str(target)},
+            )
+            raise HTTPException(status_code=500, detail=detail)
+
+        core._append_audit_event(
+            year=year,
+            month=month,
+            event_type="manual",
+            action="open_inbox",
+            status="success",
+            actor=actor,
+            details={"path": str(target)},
+        )
+        return JSONResponse({"status": "ok", "ym": ym, "path": str(target)})
+
+    @router.post("/api/manual/{ym}/import")
+    def api_manual_import(ym: str, request: Request) -> JSONResponse:
+        ym = core._safe_ym(ym)
+        year, month = core._split_ym(ym)
+        actor = _actor_from_request(request)
+        running_mode = core._running_mode_for_ym(year, month)
+        if running_mode:
+            detail = "Another run is already in progress. Wait for completion before manual receipt import."
+            core._append_audit_event(
+                year=year,
+                month=month,
+                event_type="manual",
+                action="import",
+                status="rejected",
+                actor=actor,
+                details={"reason": detail, "running_mode": running_mode},
+            )
+            raise HTTPException(status_code=409, detail=detail)
+        try:
+            result = core._import_manual_receipts_for_ym(year, month)
+        except HTTPException as exc:
+            core._append_audit_event(
+                year=year,
+                month=month,
+                event_type="manual",
+                action="import",
+                status="rejected" if exc.status_code in {400, 404, 409} else "failed",
+                actor=actor,
+                details={"reason": str(exc.detail)},
+            )
+            raise
+
+        core._append_audit_event(
+            year=year,
+            month=month,
+            event_type="manual",
+            action="import",
+            status="success",
+            actor=actor,
+            details={
+                "found_pdfs": result.get("found_pdfs"),
+                "imported": result.get("imported"),
+                "skipped_duplicates": result.get("skipped_duplicates"),
+                "failed": result.get("failed"),
+                "orders_jsonl": result.get("orders_jsonl"),
+            },
+        )
+        return JSONResponse(result)
+
+    @router.post("/api/folders/{ym}/mf-bulk-inbox")
+    def api_open_mf_bulk_inbox(ym: str, request: Request) -> JSONResponse:
+        ym = core._safe_ym(ym)
+        year, month = core._split_ym(ym)
+        actor = _actor_from_request(request)
+        target = core._mf_bulk_upload_inbox_dir_for_ym(year, month, create=True)
+        res = _open_directory(target)
+        if res.returncode != 0:
+            detail = (
+                "Open folder failed:\n"
+                f"path: {target}\n"
+                f"exit: {res.returncode}\n"
+                f"stdout:\n{res.stdout}\n"
+                f"stderr:\n{res.stderr}\n"
+            )
+            core._append_audit_event(
+                year=year,
+                month=month,
+                event_type="mf_bulk_upload",
+                action="open_inbox",
+                status="failed",
+                actor=actor,
+                details={"reason": detail, "path": str(target)},
+            )
+            raise HTTPException(status_code=500, detail=detail)
+        core._append_audit_event(
+            year=year,
+            month=month,
+            event_type="mf_bulk_upload",
+            action="open_inbox",
+            status="success",
+            actor=actor,
+            details={"path": str(target)},
+        )
+        return JSONResponse({"status": "ok", "ym": ym, "path": str(target)})
+
+    @router.post("/api/mf-bulk-upload/{ym}")
+    def api_mf_bulk_upload(ym: str, request: Request) -> JSONResponse:
+        ym = core._safe_ym(ym)
+        year, month = core._split_ym(ym)
+        actor = _actor_from_request(request)
+        running_mode = core._running_mode_for_ym(year, month)
+        if running_mode:
+            detail = "Another run is already in progress. Wait for completion before MF bulk upload."
+            core._append_audit_event(
+                year=year,
+                month=month,
+                event_type="mf_bulk_upload",
+                action="run",
+                status="rejected",
+                actor=actor,
+                details={"reason": detail, "running_mode": running_mode},
+            )
+            raise HTTPException(status_code=409, detail=detail)
+
+        try:
+            result = core._run_mf_bulk_upload_for_ym(
+                year,
+                month,
+                auth_handoff=True,
+                headed=True,
+                slow_mo_ms=0,
+                transactions_url=core.DEFAULT_MFCLOUD_TRANSACTIONS_URL,
+            )
+        except HTTPException as exc:
+            core._append_audit_event(
+                year=year,
+                month=month,
+                event_type="mf_bulk_upload",
+                action="run",
+                status="rejected" if exc.status_code in {400, 404, 409} else "failed",
+                actor=actor,
+                details={"reason": str(exc.detail)},
+            )
+            raise
+
+        core._append_audit_event(
+            year=year,
+            month=month,
+            event_type="mf_bulk_upload",
+            action="run",
+            status="success",
+            actor=actor,
+            details={
+                "files_found": result.get("files_found"),
+                "submitted_count": result.get("submitted_count"),
+                "queued_count": result.get("queued_count"),
+                "read_count": result.get("read_count"),
+                "result_json": result.get("result_json"),
+            },
+        )
+        return JSONResponse(result)
 
     @router.post("/api/archive/{ym}")
     def api_archive(ym: str, request: Request) -> JSONResponse:

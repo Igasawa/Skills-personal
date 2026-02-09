@@ -5,6 +5,13 @@ from .core_artifacts import (
     _resolve_form_defaults,
     _scan_artifacts,
 )
+from .core_manual import (
+    DEFAULT_MFCLOUD_TRANSACTIONS_URL,
+    _import_manual_receipts_for_ym,
+    _mf_bulk_upload_inbox_dir_for_ym,
+    _manual_inbox_dir_for_ym,
+    _run_mf_bulk_upload_for_ym,
+)
 from .core_orders import (
     _collect_excluded_pdfs,
     _collect_orders,
@@ -51,6 +58,7 @@ __all__ = [
     "ORDER_ID_RE",
     "SAFE_NAME_RE",
     "SKILL_ROOT",
+    "DEFAULT_MFCLOUD_TRANSACTIONS_URL",
     "_archive_outputs_for_ym",
     "_append_audit_event",
     "_artifact_root",
@@ -64,7 +72,10 @@ __all__ = [
     "_compact_mf_summary",
     "_derive_order_counts_from_jsonl",
     "_get_latest_running_job",
+    "_import_manual_receipts_for_ym",
+    "_mf_bulk_upload_inbox_dir_for_ym",
     "_load_exclusions",
+    "_manual_inbox_dir_for_ym",
     "_preflight_global_path",
     "_read_json",
     "_read_jsonl",
@@ -82,6 +93,7 @@ __all__ = [
     "_scan_run_jobs",
     "_split_ym",
     "_start_run",
+    "_run_mf_bulk_upload_for_ym",
     "_tail_text",
     "_workflow_state_for_ym",
     "_write_json",

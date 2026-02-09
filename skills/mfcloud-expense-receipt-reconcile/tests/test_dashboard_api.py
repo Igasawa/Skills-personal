@@ -265,6 +265,136 @@ def test_api_print_complete_rejects_without_prepare(monkeypatch: pytest.MonkeyPa
     assert complete_entries[-1].get("source") == "amazon"
 
 
+def test_api_print_run_executes_script_and_writes_audit(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    client = _create_client(monkeypatch, tmp_path)
+    ym = "2026-01"
+    reports = _reports_dir(tmp_path, ym)
+    _touch(reports / "print_all.ps1", "Write-Host 'print'")
+    _write_json(reports / "print_manifest.json", {"count": 3})
+
+    calls: list[list[str]] = []
+
+    def _fake_run(cmd: Any, *args: Any, **kwargs: Any) -> subprocess.CompletedProcess[str]:
+        calls.append([str(c) for c in cmd])
+        return subprocess.CompletedProcess(args=cmd, returncode=0, stdout="print_summary printed=3", stderr="")
+
+    monkeypatch.setattr(api_routes.subprocess, "run", _fake_run)
+
+    res = client.post("/api/print-run/2026-01")
+    assert res.status_code == 200
+    body = res.json()
+    assert body["status"] == "ok"
+    assert body["count"] == 3
+    assert "print_summary" in str(body.get("stdout") or "")
+
+    assert calls
+    cmd = calls[0]
+    assert "-File" in cmd
+    assert any("print_all.ps1" in part for part in cmd)
+
+    entries = _read_audit_entries(tmp_path, ym)
+    run_events = [e for e in entries if e.get("event_type") == "source_action" and e.get("action") == "print_run"]
+    assert run_events
+    assert run_events[-1].get("status") == "success"
+
+
+def test_api_print_run_rejects_when_print_script_missing(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    client = _create_client(monkeypatch, tmp_path)
+    ym = "2026-01"
+
+    res = client.post("/api/print-run/2026-01")
+    assert res.status_code == 404
+    assert "Print preparation not found" in str(res.json().get("detail") or "")
+
+    entries = _read_audit_entries(tmp_path, ym)
+    run_events = [e for e in entries if e.get("event_type") == "source_action" and e.get("action") == "print_run"]
+    assert run_events
+    assert run_events[-1].get("status") == "rejected"
+
+
+def test_api_open_receipts_folder_success(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    client = _create_client(monkeypatch, tmp_path)
+    ym = "2026-01"
+    root = _artifact_root(tmp_path) / ym
+    _touch(root / "amazon" / "pdfs" / "A-1.pdf", "%PDF-1.4\n")
+    calls: list[list[str]] = []
+
+    def _fake_run(cmd: Any, *args: Any, **kwargs: Any) -> subprocess.CompletedProcess[str]:
+        calls.append([str(c) for c in cmd])
+        return subprocess.CompletedProcess(args=cmd, returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(api_routes.subprocess, "run", _fake_run)
+
+    res = client.post("/api/folders/2026-01/receipts")
+    assert res.status_code == 200
+    body = res.json()
+    assert body["status"] == "ok"
+    opened = Path(str(body["path"]))
+    assert opened.exists()
+    assert "amazon" in str(opened).lower()
+
+    assert calls
+    entries = _read_audit_entries(tmp_path, ym)
+    folder_events = [
+        e for e in entries if e.get("event_type") == "source_action" and e.get("action") == "open_receipts_folder"
+    ]
+    assert folder_events
+    assert folder_events[-1].get("status") == "success"
+
+
+def test_api_open_receipts_folder_creates_month_root_when_missing(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    client = _create_client(monkeypatch, tmp_path)
+    ym = "2026-01"
+    calls: list[list[str]] = []
+
+    def _fake_run(cmd: Any, *args: Any, **kwargs: Any) -> subprocess.CompletedProcess[str]:
+        calls.append([str(c) for c in cmd])
+        return subprocess.CompletedProcess(args=cmd, returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(api_routes.subprocess, "run", _fake_run)
+
+    res = client.post("/api/folders/2026-01/receipts")
+    assert res.status_code == 200
+    body = res.json()
+    assert body["status"] == "ok"
+    opened = Path(str(body["path"]))
+    assert opened.exists()
+    assert opened.name == ym
+    assert calls
+
+    entries = _read_audit_entries(tmp_path, ym)
+    folder_events = [
+        e for e in entries if e.get("event_type") == "source_action" and e.get("action") == "open_receipts_folder"
+    ]
+    assert folder_events
+    assert folder_events[-1].get("status") == "success"
+
+
+def test_api_open_receipts_folder_alias_route_works(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    client = _create_client(monkeypatch, tmp_path)
+    ym = "2026-01"
+    root = _artifact_root(tmp_path) / ym
+    _touch(root / "rakuten" / "pdfs" / "R-1.pdf", "%PDF-1.4\n")
+
+    def _fake_run(cmd: Any, *args: Any, **kwargs: Any) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(args=cmd, returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(api_routes.subprocess, "run", _fake_run)
+
+    res = client.post("/api/folders/2026-01/receipt")
+    assert res.status_code == 200
+    body = res.json()
+    assert body["status"] == "ok"
+    opened = Path(str(body["path"]))
+    assert opened.exists()
+
+
 def test_api_stop_run_writes_audit(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     client = _create_client(monkeypatch, tmp_path)
     run_id = "run_20260206_120000"
@@ -575,3 +705,183 @@ def test_api_archive_script_failure_returns_500(monkeypatch: pytest.MonkeyPatch,
     last = archive_events[-1]
     assert last["action"] == "manual_archive"
     assert last["status"] == "failed"
+
+
+def test_api_open_manual_inbox_creates_and_opens_folder(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    client = _create_client(monkeypatch, tmp_path)
+    ym = "2026-01"
+    calls: list[list[str]] = []
+
+    def _fake_run(cmd: Any, *args: Any, **kwargs: Any) -> subprocess.CompletedProcess[str]:
+        calls.append([str(c) for c in cmd])
+        return subprocess.CompletedProcess(args=cmd, returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(api_routes.subprocess, "run", _fake_run)
+
+    res = client.post("/api/folders/2026-01/manual-inbox")
+    assert res.status_code == 200
+    body = res.json()
+    assert body["status"] == "ok"
+    assert body["ym"] == ym
+    opened = Path(str(body["path"]))
+    assert opened.exists()
+    assert opened.name == "inbox"
+    assert opened.parent.name == "manual"
+
+    assert calls
+    entries = _read_audit_entries(tmp_path, ym)
+    manual_events = [e for e in entries if e.get("event_type") == "manual" and e.get("action") == "open_inbox"]
+    assert manual_events
+    assert manual_events[-1].get("status") == "success"
+
+
+def test_api_manual_import_returns_counts_and_writes_audit(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    client = _create_client(monkeypatch, tmp_path)
+    ym = "2026-01"
+
+    def _fake_import(year: int, month: int) -> dict[str, Any]:
+        assert (year, month) == (2026, 1)
+        return {
+            "status": "ok",
+            "ym": ym,
+            "found_pdfs": 3,
+            "imported": 2,
+            "imported_missing_amount": 1,
+            "skipped_duplicates": 1,
+            "failed": 0,
+            "orders_jsonl": "C:\\tmp\\manual\\orders.jsonl",
+        }
+
+    monkeypatch.setattr(api_routes.core, "_import_manual_receipts_for_ym", _fake_import)
+
+    res = client.post("/api/manual/2026-01/import")
+    assert res.status_code == 200
+    body = res.json()
+    assert body["status"] == "ok"
+    assert body["found_pdfs"] == 3
+    assert body["imported"] == 2
+    assert body["skipped_duplicates"] == 1
+
+    entries = _read_audit_entries(tmp_path, ym)
+    manual_events = [e for e in entries if e.get("event_type") == "manual" and e.get("action") == "import"]
+    assert manual_events
+    last = manual_events[-1]
+    assert last.get("status") == "success"
+    details = last.get("details") or {}
+    assert details.get("found_pdfs") == 3
+    assert details.get("imported") == 2
+    assert details.get("skipped_duplicates") == 1
+
+
+def test_api_manual_import_rejects_when_run_is_in_progress(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    client = _create_client(monkeypatch, tmp_path)
+    ym = "2026-01"
+    monkeypatch.setattr(api_routes.core, "_running_mode_for_ym", lambda y, m: "amazon_download")
+
+    res = client.post("/api/manual/2026-01/import")
+    assert res.status_code == 409
+    detail = str(res.json().get("detail") or "")
+    assert "Another run is already in progress" in detail
+
+    entries = _read_audit_entries(tmp_path, ym)
+    manual_events = [e for e in entries if e.get("event_type") == "manual" and e.get("action") == "import"]
+    assert manual_events
+    assert manual_events[-1].get("status") == "rejected"
+
+
+def test_api_open_mf_bulk_inbox_creates_and_opens_folder(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    client = _create_client(monkeypatch, tmp_path)
+    ym = "2026-01"
+    calls: list[list[str]] = []
+
+    def _fake_run(cmd: Any, *args: Any, **kwargs: Any) -> subprocess.CompletedProcess[str]:
+        calls.append([str(c) for c in cmd])
+        return subprocess.CompletedProcess(args=cmd, returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(api_routes.subprocess, "run", _fake_run)
+
+    res = client.post("/api/folders/2026-01/mf-bulk-inbox")
+    assert res.status_code == 200
+    body = res.json()
+    assert body["status"] == "ok"
+    assert body["ym"] == ym
+    opened = Path(str(body["path"]))
+    assert opened.exists()
+    assert opened.name == "inbox"
+    assert opened.parent.name == "mf_bulk_upload"
+
+    assert calls
+    entries = _read_audit_entries(tmp_path, ym)
+    events = [e for e in entries if e.get("event_type") == "mf_bulk_upload" and e.get("action") == "open_inbox"]
+    assert events
+    assert events[-1].get("status") == "success"
+
+
+def test_api_mf_bulk_upload_returns_summary_and_writes_audit(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    client = _create_client(monkeypatch, tmp_path)
+    ym = "2026-01"
+
+    def _fake_run(year: int, month: int, **kwargs: Any) -> dict[str, Any]:
+        assert (year, month) == (2026, 1)
+        assert kwargs["auth_handoff"] is True
+        assert kwargs["headed"] is True
+        assert kwargs["transactions_url"] == api_routes.core.DEFAULT_MFCLOUD_TRANSACTIONS_URL
+        return {
+            "status": "ok",
+            "ym": ym,
+            "files_found": 4,
+            "submitted_count": 3,
+            "queued_count": 3,
+            "read_count": 4,
+            "result_json": "C:\\tmp\\mf_bulk_upload_result.json",
+        }
+
+    monkeypatch.setattr(api_routes.core, "_run_mf_bulk_upload_for_ym", _fake_run)
+
+    res = client.post("/api/mf-bulk-upload/2026-01")
+    assert res.status_code == 200
+    body = res.json()
+    assert body["status"] == "ok"
+    assert body["files_found"] == 4
+    assert body["submitted_count"] == 3
+    assert body["queued_count"] == 3
+    assert body["read_count"] == 4
+
+    entries = _read_audit_entries(tmp_path, ym)
+    events = [e for e in entries if e.get("event_type") == "mf_bulk_upload" and e.get("action") == "run"]
+    assert events
+    last = events[-1]
+    assert last.get("status") == "success"
+    details = last.get("details") or {}
+    assert details.get("files_found") == 4
+    assert details.get("submitted_count") == 3
+    assert details.get("queued_count") == 3
+    assert details.get("read_count") == 4
+
+
+def test_api_mf_bulk_upload_rejects_when_run_is_in_progress(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    client = _create_client(monkeypatch, tmp_path)
+    ym = "2026-01"
+    monkeypatch.setattr(api_routes.core, "_running_mode_for_ym", lambda y, m: "preflight")
+
+    res = client.post("/api/mf-bulk-upload/2026-01")
+    assert res.status_code == 409
+    detail = str(res.json().get("detail") or "")
+    assert "Another run is already in progress" in detail
+
+    entries = _read_audit_entries(tmp_path, ym)
+    events = [e for e in entries if e.get("event_type") == "mf_bulk_upload" and e.get("action") == "run"]
+    assert events
+    assert events[-1].get("status") == "rejected"

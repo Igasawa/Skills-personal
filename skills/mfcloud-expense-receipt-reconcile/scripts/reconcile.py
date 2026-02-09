@@ -176,8 +176,10 @@ def reconcile(
 
     amazon_all = [o for o in orders if o.source == "amazon"]
     rakuten_all = [o for o in orders if o.source == "rakuten"]
+    manual_all = [o for o in orders if o.source == "manual"]
     amazon_in_month = [o for o in amazon_all if _in_year_month(o.order_date, year, month)]
     rakuten_in_month = [o for o in rakuten_all if _in_year_month(o.order_date, year, month)]
+    manual_in_month = [o for o in manual_all if _in_year_month(o.order_date, year, month)]
 
     needs_review_missing_use_date = 0
     needs_review_missing_amount = 0
@@ -319,6 +321,8 @@ def reconcile(
             "amazon_orders_in_month": len(amazon_in_month),
             "rakuten_orders_total": len(rakuten_all),
             "rakuten_orders_in_month": len(rakuten_in_month),
+            "manual_orders_total": len(manual_all),
+            "manual_orders_in_month": len(manual_in_month),
             "orders_total": len(orders),
             "orders_in_month": len(orders_in_month),
             "mf_expenses_total": len(mf_expenses),
@@ -367,9 +371,10 @@ def _write_csv(path: Path, rows: list[dict[str, Any]]) -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(description="Reconcile MF expenses with Amazon/Rakuten receipt PDFs")
+    ap = argparse.ArgumentParser(description="Reconcile MF expenses with Amazon/Rakuten/manual receipt PDFs")
     ap.add_argument("--amazon-orders-jsonl")
     ap.add_argument("--rakuten-orders-jsonl")
+    ap.add_argument("--manual-orders-jsonl")
     ap.add_argument("--exclude-orders-json", help="path to exclude orders json")
     ap.add_argument("--mf-expenses-jsonl", required=True)
     ap.add_argument("--out-json", required=True)
@@ -380,11 +385,14 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--max-candidates-per-mf", type=int, default=5)
     args = ap.parse_args(argv)
 
-    if not args.amazon_orders_jsonl and not args.rakuten_orders_jsonl:
-        raise ValueError("Either --amazon-orders-jsonl or --rakuten-orders-jsonl is required.")
+    if not args.amazon_orders_jsonl and not args.rakuten_orders_jsonl and not args.manual_orders_jsonl:
+        raise ValueError(
+            "At least one of --amazon-orders-jsonl, --rakuten-orders-jsonl, --manual-orders-jsonl is required."
+        )
 
     amazon_raw = _read_jsonl(Path(args.amazon_orders_jsonl), required=True, strict=True) if args.amazon_orders_jsonl else []
     rakuten_raw = _read_jsonl(Path(args.rakuten_orders_jsonl), required=True, strict=True) if args.rakuten_orders_jsonl else []
+    manual_raw = _read_jsonl(Path(args.manual_orders_jsonl), required=True, strict=True) if args.manual_orders_jsonl else []
     exclusions = _load_exclusions(args.exclude_orders_json)
     if exclusions:
         amazon_raw = [x for x in amazon_raw if not _is_excluded(x, exclusions, "amazon")]
@@ -392,6 +400,7 @@ def main(argv: list[str] | None = None) -> int:
     mf_raw = _read_jsonl(Path(args.mf_expenses_jsonl), required=True, strict=True)
     orders = [o for o in (Order.from_obj(x, default_source="amazon") for x in amazon_raw) if o]
     orders += [o for o in (Order.from_obj(x, default_source="rakuten") for x in rakuten_raw) if o]
+    orders += [o for o in (Order.from_obj(x, default_source="manual") for x in manual_raw) if o]
     orders = _dedupe_orders(orders)
     mf_expenses = [e for e in (MfExpense.from_obj(x) for x in mf_raw) if e]
 

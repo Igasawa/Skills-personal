@@ -319,6 +319,63 @@ def test_reconcile_main_accepts_rakuten_only_input(tmp_path: Path) -> None:
     assert candidate_order_ids == ["RAK-A"]
 
 
+def test_reconcile_main_accepts_manual_only_input(tmp_path: Path) -> None:
+    manual_orders_jsonl = tmp_path / "manual_orders.jsonl"
+    mf_expenses_jsonl = tmp_path / "mf_expenses.jsonl"
+    out_json = tmp_path / "out.json"
+    out_csv = tmp_path / "out.csv"
+
+    _write_jsonl(
+        manual_orders_jsonl,
+        [
+            {
+                "source": "manual",
+                "order_id": "MANUAL-001",
+                "order_date": "2026-01-15",
+                "total_yen": 2400,
+                "pdf_path": "manual/pdfs/2026-01-15_manual_2400_MANUAL-001.pdf",
+            },
+        ],
+    )
+    _write_jsonl(
+        mf_expenses_jsonl,
+        [
+            {
+                "expense_id": "MF-MANUAL",
+                "use_date": "2026-01-15",
+                "amount_yen": 2400,
+                "vendor": "MANUAL ENTRY",
+                "memo": "添付テスト",
+                "has_evidence": False,
+            }
+        ],
+    )
+
+    exit_code = reconcile_main(
+        [
+            "--manual-orders-jsonl",
+            str(manual_orders_jsonl),
+            "--mf-expenses-jsonl",
+            str(mf_expenses_jsonl),
+            "--out-json",
+            str(out_json),
+            "--out-csv",
+            str(out_csv),
+            "--year",
+            "2026",
+            "--month",
+            "1",
+        ]
+    )
+
+    assert exit_code == 0
+    data = json.loads(out_json.read_text(encoding="utf-8"))
+    assert data["counts"]["manual_orders_total"] == 1
+    assert data["counts"]["manual_orders_in_month"] == 1
+    candidate_order_ids = [row["order_id"] for row in data["rows"] if row["row_type"] == "candidate"]
+    assert candidate_order_ids == ["MANUAL-001"]
+
+
 def test_reconcile_main_requires_at_least_one_order_source(tmp_path: Path) -> None:
     mf_expenses_jsonl = tmp_path / "mf_expenses.jsonl"
     out_json = tmp_path / "out.json"
@@ -337,7 +394,10 @@ def test_reconcile_main_requires_at_least_one_order_source(tmp_path: Path) -> No
         ],
     )
 
-    with pytest.raises(ValueError, match="Either --amazon-orders-jsonl or --rakuten-orders-jsonl is required."):
+    with pytest.raises(
+        ValueError,
+        match="At least one of --amazon-orders-jsonl, --rakuten-orders-jsonl, --manual-orders-jsonl is required.",
+    ):
         reconcile_main(
             [
                 "--mf-expenses-jsonl",

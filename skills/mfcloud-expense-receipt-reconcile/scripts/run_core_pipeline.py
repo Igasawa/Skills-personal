@@ -89,6 +89,7 @@ def execute_pipeline(
     amazon_pdfs_dir = _ensure_dir(amazon_dir / "pdfs")
     rakuten_dir = _ensure_dir(output_root / "rakuten")
     rakuten_pdfs_dir = _ensure_dir(rakuten_dir / "pdfs")
+    manual_dir = _ensure_dir(output_root / "manual")
     mf_dir = _ensure_dir(output_root / "mfcloud")
     reports_dir = _ensure_dir(output_root / "reports")
     debug_dir = _ensure_dir(output_root / "debug")
@@ -97,10 +98,12 @@ def execute_pipeline(
 
     amazon_orders_jsonl = amazon_dir / "orders.jsonl"
     rakuten_orders_jsonl = rakuten_dir / "orders.jsonl"
+    manual_orders_jsonl = manual_dir / "orders.jsonl"
     mf_expenses_jsonl = mf_dir / "expenses.jsonl"
 
     amazon_summary: dict[str, Any] = {"orders_jsonl": str(amazon_orders_jsonl), "pdfs_dir": str(amazon_pdfs_dir)}
     rakuten_summary: dict[str, Any] = {"orders_jsonl": str(rakuten_orders_jsonl), "pdfs_dir": str(rakuten_pdfs_dir)}
+    manual_summary: dict[str, Any] = {"orders_jsonl": str(manual_orders_jsonl), "pdfs_dir": str(manual_dir / "pdfs")}
     mf_summary: dict[str, Any] = {"expenses_jsonl": str(mf_expenses_jsonl)}
 
     if args.preflight:
@@ -264,10 +267,11 @@ def execute_pipeline(
         print("[run] Reconcile start", flush=True)
         amazon_orders_exists = amazon_orders_jsonl.exists()
         rakuten_orders_exists = rakuten_orders_jsonl.exists()
-        if not amazon_orders_exists and not rakuten_orders_exists:
+        manual_orders_exists = manual_orders_jsonl.exists()
+        if not amazon_orders_exists and not rakuten_orders_exists and not manual_orders_exists:
             raise RuntimeError(
-                "Missing orders.jsonl for both amazon/rakuten. "
-                "Run at least one receipt download+print step before reconcile."
+                "Missing orders.jsonl for all sources (amazon/rakuten/manual). "
+                "Run at least one receipt import/download+print step before reconcile."
             )
         if not mf_expenses_jsonl.exists():
             raise RuntimeError("Missing mfcloud/expenses.jsonl. Run MF extract or provide existing data.")
@@ -294,6 +298,8 @@ def execute_pipeline(
             rec_cmd += ["--amazon-orders-jsonl", str(amazon_orders_jsonl)]
         if rakuten_orders_exists:
             rec_cmd += ["--rakuten-orders-jsonl", str(rakuten_orders_jsonl)]
+        if manual_orders_exists:
+            rec_cmd += ["--manual-orders-jsonl", str(manual_orders_jsonl)]
         if exclude_orders_json.exists():
             rec_cmd += ["--exclude-orders-json", str(exclude_orders_json)]
         rec_res = subprocess.run(rec_cmd, cwd=str(SCRIPT_DIR), capture_output=True, text=True, check=False)
@@ -364,9 +370,13 @@ def execute_pipeline(
     print(f"[run] Quality gate done status={quality_gate.get('status')}", flush=True)
 
     template_path = SCRIPT_DIR.parent / "assets" / "monthly_thread_template.md"
-    receipts_path = str(amazon_pdfs_dir)
+    receipt_paths = [str(amazon_pdfs_dir)]
     if rc.rakuten_enabled:
-        receipts_path = f"{amazon_pdfs_dir}; {rakuten_pdfs_dir}"
+        receipt_paths.append(str(rakuten_pdfs_dir))
+    manual_pdfs_dir = manual_dir / "pdfs"
+    if manual_pdfs_dir.exists():
+        receipt_paths.append(str(manual_pdfs_dir))
+    receipts_path = "; ".join(receipt_paths)
     monthly_thread = render_monthly_thread(
         template_path=template_path,
         year=year,
@@ -411,6 +421,7 @@ def execute_pipeline(
             "output_root": str(output_root),
             "amazon": amazon_summary,
             "rakuten": rakuten_summary,
+            "manual": manual_summary,
             "mfcloud": mf_summary,
             "reports": {
                 "missing_evidence_candidates_csv": str(rec_out_csv),

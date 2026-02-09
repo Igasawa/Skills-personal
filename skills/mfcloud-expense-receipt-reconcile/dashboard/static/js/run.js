@@ -12,17 +12,36 @@
   const excludeSummaryCount = document.getElementById("exclude-summary-count");
   const statExcluded = document.getElementById("stat-excluded");
   const statIncluded = document.getElementById("stat-included");
+  const runPrintScriptButton = document.getElementById("run-print-script");
+  const openReceiptsFolderButton = document.getElementById("open-receipts-folder");
+  const printScriptStatus = document.getElementById("print-script-status");
   const printNextBox = document.getElementById("print-next-box");
   const printNextSummary = document.getElementById("print-next-summary");
   const printNextOpen = document.getElementById("print-next-open");
   const printNextCmd = document.getElementById("print-next-cmd");
   const printPreparedBySource = { amazon: false, rakuten: false };
+  const receiptsFolderApiCandidates = (ym) => {
+    const encodedYm = encodeURIComponent(String(ym || "").trim());
+    return [
+      `/api/folders/${encodedYm}/receipts`,
+      `/api/folders/${encodedYm}/receipt`,
+      `/api/folders/${encodedYm}/open-receipts`,
+      `/api/folder/${encodedYm}/receipts`,
+    ];
+  };
 
   function setExcludeStatus(message, kind) {
     if (!excludeStatus) return;
     excludeStatus.textContent = message || "";
     excludeStatus.classList.remove("success", "error");
     if (kind) excludeStatus.classList.add(kind);
+  }
+
+  function setPrintScriptStatus(message, kind) {
+    if (!printScriptStatus) return;
+    printScriptStatus.textContent = message || "";
+    printScriptStatus.classList.remove("success", "error");
+    if (kind) printScriptStatus.classList.add(kind);
   }
 
   function computeExcludedFromRows() {
@@ -79,6 +98,13 @@
       printNextCmd.textContent = printCommand || "";
     }
     printNextBox.classList.remove("hidden");
+  }
+
+  function getCurrentYm() {
+    const fromSection = String(excludeSection?.dataset.ym || "").trim();
+    if (fromSection) return fromSection;
+    const match = String(window.location.pathname || "").match(/\/runs\/(\d{4}-\d{2})/);
+    return match ? String(match[1]) : "";
   }
 
   async function saveExclusions(ym, source) {
@@ -200,6 +226,71 @@
           setActionButtonsDisabled(false);
         }
       });
+    });
+  }
+
+  if (runPrintScriptButton) {
+    runPrintScriptButton.addEventListener("click", async () => {
+      const ym = getCurrentYm();
+      if (!ym) return;
+      runPrintScriptButton.disabled = true;
+      if (openReceiptsFolderButton) openReceiptsFolderButton.disabled = true;
+      setPrintScriptStatus("印刷を開始しています...", "success");
+      try {
+        const res = await fetch(`/api/print-run/${ym}`, { method: "POST" });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.detail || "印刷の開始に失敗しました。");
+        const count = Number.parseInt(String(data?.count ?? ""), 10);
+        const message = Number.isFinite(count)
+          ? `印刷を開始しました（対象 ${Math.max(0, count)} 件）。完了後に印刷完了を記録してください。`
+          : "印刷を開始しました。完了後に印刷完了を記録してください。";
+        setPrintScriptStatus(message, "success");
+        showToast(message, "success");
+      } catch (error) {
+        const message = toFriendlyMessage(error?.message) || "印刷の開始に失敗しました。";
+        setPrintScriptStatus(message, "error");
+        showToast(message, "error");
+      } finally {
+        runPrintScriptButton.disabled = false;
+        if (openReceiptsFolderButton) openReceiptsFolderButton.disabled = false;
+      }
+    });
+  }
+
+  if (openReceiptsFolderButton) {
+    openReceiptsFolderButton.addEventListener("click", async () => {
+      const ym = getCurrentYm();
+      if (!ym) return;
+      openReceiptsFolderButton.disabled = true;
+      try {
+        let data = {};
+        let lastDetail = "";
+        let opened = false;
+        for (const url of receiptsFolderApiCandidates(ym)) {
+          const res = await fetch(url, { method: "POST" });
+          const payload = await res.json().catch(() => ({}));
+          if (res.ok) {
+            data = payload;
+            opened = true;
+            break;
+          }
+          lastDetail = String(payload?.detail || "");
+          if (!(res.status === 404 && lastDetail === "Not Found")) {
+            break;
+          }
+        }
+        if (!opened) throw new Error(lastDetail || "フォルダを開けませんでした。");
+        const path = String(data?.path || "").trim();
+        const message = path ? `領収書フォルダを開きました: ${path}` : "領収書フォルダを開きました。";
+        setPrintScriptStatus(message, "success");
+        showToast(message, "success");
+      } catch (error) {
+        const message = toFriendlyMessage(error?.message) || "フォルダを開けませんでした。";
+        setPrintScriptStatus(message, "error");
+        showToast(message, "error");
+      } finally {
+        openReceiptsFolderButton.disabled = false;
+      }
     });
   }
 

@@ -93,6 +93,14 @@ def test_index_page_shows_manual_archive_button(monkeypatch: pytest.MonkeyPatch,
     assert res.status_code == 200
     assert "アーカイブ作成（成果物+PDF）" in res.text
     assert 'data-archive-action="archive_outputs"' in res.text
+    assert "手動領収書フォルダを開く" in res.text
+    assert "手動領収書を取り込む" in res.text
+    assert "MF一括アップロード用フォルダを開く" in res.text
+    assert "MF一括アップロードを実行" in res.text
+    assert 'data-manual-action="open_inbox"' in res.text
+    assert 'data-manual-action="import_receipts"' in res.text
+    assert 'data-manual-action="open_mf_bulk_inbox"' in res.text
+    assert 'data-manual-action="run_mf_bulk_upload"' in res.text
     assert "data-mf-summary" in res.text
 
 
@@ -161,11 +169,15 @@ def test_run_page_shows_manual_print_prepare_and_complete_controls(
         run_root / "amazon" / "orders.jsonl",
         [{"order_id": "AMZ-001", "order_date": "2026-01-12", "status": "ok"}],
     )
+    (run_root / "reports").mkdir(parents=True, exist_ok=True)
+    (run_root / "reports" / "print_all.ps1").write_text("Write-Host 'print'\n", encoding="utf-8")
 
     res = client.get(f"/runs/{ym}")
     assert res.status_code == 200
     assert "Amazonで保存して印刷準備" in res.text
     assert "楽天で保存して印刷準備" in res.text
+    assert "印刷を実行" in res.text
+    assert "領収書フォルダを開く" in res.text
     assert "Amazon印刷完了を記録" in res.text
     assert "楽天印刷完了を記録" in res.text
     assert "印刷は自動実行しません" in res.text

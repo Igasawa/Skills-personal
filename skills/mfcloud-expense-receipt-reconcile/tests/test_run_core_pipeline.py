@@ -160,3 +160,68 @@ def test_execute_pipeline_runs_mf_draft_create_when_enabled(monkeypatch, tmp_pat
     assert "--out-json" in mf_draft_args
     assert result["data"]["mf_draft"]["created"] == 1
     assert result["data"]["reports"]["mf_draft_create_result_json"].endswith("mf_draft_create_result.json")
+
+
+def test_execute_pipeline_reconcile_includes_manual_orders_when_available(
+    monkeypatch, tmp_path: Path
+) -> None:
+    captured: dict[str, list[str]] = {}
+
+    def _fake_run_node_playwright_script(*, script_path, cwd, args, env=None):  # noqa: ANN001
+        return {"status": "success", "data": {}}
+
+    def _fake_subprocess_run(cmd, *args, **kwargs):  # noqa: ANN001
+        cmd_list = [str(x) for x in cmd]
+        if any("reconcile.py" in x for x in cmd_list):
+            captured["reconcile_cmd"] = cmd_list
+            out_json = Path(cmd_list[cmd_list.index("--out-json") + 1])
+            out_csv = Path(cmd_list[cmd_list.index("--out-csv") + 1])
+            out_json.parent.mkdir(parents=True, exist_ok=True)
+            out_json.write_text('{"year":2026,"month":1,"counts":{"manual_orders_total":1},"rows":[]}', encoding="utf-8")
+            out_csv.write_text("mf_expense_id\n", encoding="utf-8")
+            return subprocess.CompletedProcess(
+                args=cmd,
+                returncode=0,
+                stdout='{"status":"success","data":{"counts":{"manual_orders_total":1}}}',
+                stderr="",
+            )
+        return subprocess.CompletedProcess(args=cmd, returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(run_core_pipeline, "run_node_playwright_script", _fake_run_node_playwright_script)
+    monkeypatch.setattr(run_core_pipeline, "archive_existing_pdfs", lambda *a, **k: None)
+    monkeypatch.setattr(run_core_pipeline, "build_quality_gate", lambda **k: {"status": "pass", "ready_for_submission": True})
+    monkeypatch.setattr(run_core_pipeline.subprocess, "run", _fake_subprocess_run)
+
+    args = _args()
+    args.skip_amazon = True
+    args.skip_rakuten = True
+    args.skip_mfcloud = True
+    args.skip_reconcile = False
+
+    rc = _rc(tmp_path)
+    for state_path in (rc.amazon_storage_state, rc.mfcloud_storage_state, rc.rakuten_storage_state):
+        state_path.parent.mkdir(parents=True, exist_ok=True)
+        state_path.write_text("{}", encoding="utf-8")
+
+    (rc.output_root / "manual").mkdir(parents=True, exist_ok=True)
+    (rc.output_root / "manual" / "orders.jsonl").write_text(
+        '{"source":"manual","order_id":"MANUAL-1","order_date":"2026-01-05","total_yen":1800,"pdf_path":"C:/tmp/manual.pdf"}\n',
+        encoding="utf-8",
+    )
+    (rc.output_root / "mfcloud").mkdir(parents=True, exist_ok=True)
+    (rc.output_root / "mfcloud" / "expenses.jsonl").write_text(
+        '{"expense_id":"MF-1","use_date":"2026-01-05","amount_yen":1800,"vendor":"MANUAL","memo":"","has_evidence":false}\n',
+        encoding="utf-8",
+    )
+
+    result = run_core_pipeline.execute_pipeline(
+        args=args,
+        rc=rc,
+        year=2026,
+        month=1,
+        render_monthly_thread=lambda **kwargs: "# thread\n",
+    )
+
+    assert result["status"] == "success"
+    cmd = captured.get("reconcile_cmd") or []
+    assert "--manual-orders-jsonl" in cmd

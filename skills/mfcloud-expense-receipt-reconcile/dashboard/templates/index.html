@@ -148,7 +148,13 @@
             </div>
             <div class="step-actions">
               <button type="button" class="primary" data-step-action="preflight">準備を実行</button>
+              <button type="button" class="secondary" data-manual-action="open_inbox">手動領収書フォルダを開く</button>
+              <button type="button" class="secondary" data-manual-action="import_receipts">手動領収書を取り込む</button>
+              <button type="button" class="secondary" data-manual-action="open_mf_bulk_inbox">MF一括アップロード用フォルダを開く</button>
+              <button type="button" class="secondary" data-manual-action="run_mf_bulk_upload">MF一括アップロードを実行</button>
               <span class="muted">各サイトのログインとMF連携の再取得をまとめて実行します。</span>
+              <span class="muted">手動取り込み: manual/inbox のPDFを解析し、ファイル名を自動補正して突合対象へ追加します。</span>
+              <span class="muted">MF一括アップロード: mf_bulk_upload/inbox の領収書をOCR入力でMFへ送信します。</span>
             </div>
           </div>
           <div class="wizard-step" data-step-id="amazon_download">

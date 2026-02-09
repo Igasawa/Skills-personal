@@ -89,16 +89,19 @@
             </div>
             {% endif %}
           </div>
-          {% if print_script %}
           <div class="print-box">
-            <div class="label">印刷コマンド</div>
+            <div class="label">印刷実行</div>
             <div class="print-actions">
-              <div class="print-cmd" id="print-cmd">{{ print_command }}</div>
-              <button type="button" class="copy-button" data-copy-target="print-cmd">コピー</button>
+              <button type="button" class="primary" id="run-print-script" {% if not print_script %}disabled{% endif %}>印刷を実行</button>
+              <button type="button" class="secondary" id="open-receipts-folder">領収書フォルダを開く</button>
             </div>
-            <div class="muted">このコマンドは、直近で「保存して印刷準備」を実行した対象を一括印刷します（自動実行はされません）。</div>
+            {% if print_script %}
+            <div class="muted">「保存して印刷準備」で作成した対象を一括で印刷します（自動実行はされません）。</div>
+            {% else %}
+            <div class="muted">先に「保存して印刷準備」を実行すると、印刷ボタンが有効になります。</div>
+            {% endif %}
+            <span id="print-script-status" class="status-note"></span>
           </div>
-          {% endif %}
           {% else %}
           <p class="muted">成果物がまだありません。</p>
           {% endif %}

@@ -54,6 +54,9 @@
     if (text.includes("Failed to install Node dependencies")) {
       return "Node依存のセットアップに失敗しました。ネットワーク接続と npm の設定を確認してください。";
     }
+    if (text === "Not Found") {
+      return "APIエンドポイントが見つかりません。ダッシュボードを再起動して再試行してください。";
+    }
     return text || "実行に失敗しました。ログを確認してください。";
   }
 

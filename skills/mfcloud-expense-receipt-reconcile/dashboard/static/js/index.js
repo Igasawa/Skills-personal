@@ -314,6 +314,175 @@
     }
   }
 
+  async function openManualInbox(buttonEl) {
+    const ym = getYmFromForm();
+    if (!ym) {
+      showToast("年月が未設定です。", "error");
+      return;
+    }
+
+    if (buttonEl) {
+      buttonEl.disabled = true;
+      buttonEl.dataset.busy = "1";
+    }
+    clearError();
+    try {
+      const res = await fetch(`/api/folders/${ym}/manual-inbox`, { method: "POST" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const message = toFriendlyMessage(data.detail || "手動領収書フォルダを開けませんでした。");
+        showError(message);
+        showToast(message, "error");
+        return;
+      }
+      const openedPath = String(data.path || "").trim();
+      const message = openedPath ? `手動領収書フォルダを開きました: ${openedPath}` : "手動領収書フォルダを開きました。";
+      showToast(message, "success");
+    } catch {
+      const message = "手動領収書フォルダを開けませんでした。";
+      showError(message);
+      showToast(message, "error");
+    } finally {
+      if (buttonEl) delete buttonEl.dataset.busy;
+      refreshSteps({ force: true });
+    }
+  }
+
+  async function importManualReceipts(buttonEl) {
+    const ym = getYmFromForm();
+    if (!ym) {
+      showToast("年月が未設定です。", "error");
+      return;
+    }
+
+    if (buttonEl) {
+      buttonEl.disabled = true;
+      buttonEl.dataset.busy = "1";
+    }
+    clearError();
+    showToast("手動領収書の取り込みを開始します...", "success");
+    try {
+      const res = await fetch(`/api/manual/${ym}/import`, { method: "POST" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const message = toFriendlyMessage(data.detail || "手動領収書の取り込みに失敗しました。");
+        showError(message);
+        showToast(message, "error");
+        return;
+      }
+      const found = Number.parseInt(String(data.found_pdfs ?? 0), 10) || 0;
+      const imported = Number.parseInt(String(data.imported ?? 0), 10) || 0;
+      const skipped = Number.parseInt(String(data.skipped_duplicates ?? 0), 10) || 0;
+      const failed = Number.parseInt(String(data.failed ?? 0), 10) || 0;
+      const message = `手動領収書取り込み: 発見 ${found}件 / 取込 ${imported}件 / 重複 ${skipped}件 / 失敗 ${failed}件`;
+      showToast(message, failed > 0 ? "error" : "success");
+      if (failed > 0) {
+        showError(message);
+      }
+    } catch {
+      const message = "手動領収書の取り込みに失敗しました。";
+      showError(message);
+      showToast(message, "error");
+    } finally {
+      if (buttonEl) delete buttonEl.dataset.busy;
+      refreshSteps({ force: true });
+    }
+  }
+
+  async function openMfBulkInbox(buttonEl) {
+    const ym = getYmFromForm();
+    if (!ym) {
+      showToast("年月が未設定です。", "error");
+      return;
+    }
+
+    if (buttonEl) {
+      buttonEl.disabled = true;
+      buttonEl.dataset.busy = "1";
+    }
+    clearError();
+    try {
+      const res = await fetch(`/api/folders/${ym}/mf-bulk-inbox`, { method: "POST" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const message = toFriendlyMessage(data.detail || "MF一括アップロード用フォルダを開けませんでした。");
+        showError(message);
+        showToast(message, "error");
+        return;
+      }
+      const openedPath = String(data.path || "").trim();
+      const message = openedPath
+        ? `MF一括アップロード用フォルダを開きました: ${openedPath}`
+        : "MF一括アップロード用フォルダを開きました。";
+      showToast(message, "success");
+    } catch {
+      const message = "MF一括アップロード用フォルダを開けませんでした。";
+      showError(message);
+      showToast(message, "error");
+    } finally {
+      if (buttonEl) delete buttonEl.dataset.busy;
+      refreshSteps({ force: true });
+    }
+  }
+
+  async function runMfBulkUpload(buttonEl) {
+    const ym = getYmFromForm();
+    if (!ym) {
+      showToast("年月が未設定です。", "error");
+      return;
+    }
+
+    if (buttonEl) {
+      buttonEl.disabled = true;
+      buttonEl.dataset.busy = "1";
+    }
+    clearError();
+    showToast("MF一括アップロードを開始します...", "success");
+    try {
+      const res = await fetch(`/api/mf-bulk-upload/${ym}`, { method: "POST" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const message = toFriendlyMessage(data.detail || "MF一括アップロードに失敗しました。");
+        showError(message);
+        showToast(message, "error");
+        return;
+      }
+      const found = Number.parseInt(String(data.files_found ?? 0), 10) || 0;
+      const submitted = Number.parseInt(String(data.submitted_count ?? 0), 10) || 0;
+      const queued = Number.parseInt(String(data.queued_count ?? 0), 10) || 0;
+      const readCount = Number.parseInt(String(data.read_count ?? 0), 10) || 0;
+      const archivedDir = String(data.archived_dir || "").trim();
+      const details = archivedDir ? ` / 保管: ${archivedDir}` : "";
+      const message = `MF一括アップロード: 発見 ${found}件 / 読取 ${readCount}件 / キュー ${queued}件 / 送信 ${submitted}件${details}`;
+      showToast(message, "success");
+    } catch {
+      const message = "MF一括アップロードに失敗しました。";
+      showError(message);
+      showToast(message, "error");
+    } finally {
+      if (buttonEl) delete buttonEl.dataset.busy;
+      refreshSteps({ force: true });
+    }
+  }
+
+  function runManualAction(action, buttonEl) {
+    if (action === "open_inbox") {
+      openManualInbox(buttonEl);
+      return;
+    }
+    if (action === "import_receipts") {
+      importManualReceipts(buttonEl);
+      return;
+    }
+    if (action === "open_mf_bulk_inbox") {
+      openMfBulkInbox(buttonEl);
+      return;
+    }
+    if (action === "run_mf_bulk_upload") {
+      runMfBulkUpload(buttonEl);
+    }
+  }
+
   async function resetStep(stepId, buttonEl) {
     const ym = getYmFromForm();
     if (!ym) {
@@ -504,6 +673,29 @@
     });
   }
 
+  function applyManualAvailability(data) {
+    const runningMode = String(data.running_mode || "");
+    const preflightDone = Boolean(data.preflight?.done);
+    document.querySelectorAll("[data-manual-action]").forEach((button) => {
+      if (button.dataset.busy === "1") {
+        button.disabled = true;
+        return;
+      }
+      const blockedByRunning = Boolean(runningMode);
+      const action = String(button.dataset.manualAction || "");
+      const needsPreflight = action === "run_mf_bulk_upload";
+      const blockedByPreflight = needsPreflight && !preflightDone;
+      button.disabled = blockedByRunning || blockedByPreflight;
+      if (blockedByRunning) {
+        button.title = "他のステップ実行中は開始できません。";
+      } else if (blockedByPreflight) {
+        button.title = "先に準備（Step0）を実行してください。";
+      } else {
+        button.title = "";
+      }
+    });
+  }
+
   function toCount(value) {
     const parsed = Number.parseInt(String(value ?? ""), 10);
     if (!Number.isFinite(parsed) || parsed < 0) return 0;
@@ -623,6 +815,7 @@
         renderNextStep("ステップ状態の取得に失敗しました。再読み込みしてください。", null);
         document.querySelectorAll("[data-step-link]").forEach((link) => setStepLinkState(link, false, "#"));
         applyArchiveAvailability({ running_mode: "", amazon: {}, rakuten: {} });
+        applyManualAvailability({ running_mode: "" });
         renderMfSummary(null, "サマリー: 状態取得に失敗");
         if (!stepRetryTimer) {
           stepRetryTimer = setTimeout(() => {
@@ -647,6 +840,7 @@
 
       applyActionAvailability(data);
       applyArchiveAvailability(data);
+      applyManualAvailability(data);
       applyLinkAvailability(data, ym);
       renderMfSummary(data);
 
@@ -690,6 +884,7 @@
       renderNextStep("ステップ状態の取得に失敗しました。再読み込みしてください。", null);
       document.querySelectorAll("[data-step-link]").forEach((link) => setStepLinkState(link, false, "#"));
       applyArchiveAvailability({ running_mode: "", amazon: {}, rakuten: {} });
+      applyManualAvailability({ running_mode: "" });
       renderMfSummary(null, "サマリー: 状態取得に失敗");
       if (!stepRetryTimer) {
         stepRetryTimer = setTimeout(() => {
@@ -724,6 +919,13 @@
         if (button.dataset.archiveAction === "archive_outputs") {
           archiveOutputs(button);
         }
+      });
+    });
+
+    document.querySelectorAll("[data-manual-action]").forEach((button) => {
+      button.addEventListener("click", (event) => {
+        event.preventDefault();
+        runManualAction(String(button.dataset.manualAction || ""), button);
       });
     });
 
