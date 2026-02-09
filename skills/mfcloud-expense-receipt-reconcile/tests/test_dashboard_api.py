@@ -1249,6 +1249,67 @@ def test_api_provider_import_returns_counts_and_writes_audit(
     assert details.get("imported") == 4
 
 
+def test_api_provider_print_run_merges_pdf_and_opens_manual_print(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    client = _create_client(monkeypatch, tmp_path)
+    ym = "2026-01"
+    pdf_a = _artifact_root(tmp_path) / ym / "manual" / "pdfs" / "provider-a.pdf"
+    pdf_b = _artifact_root(tmp_path) / ym / "manual" / "pdfs" / "provider-b.pdf"
+    _touch_pdf(pdf_a)
+    _touch_pdf(pdf_b)
+
+    calls: list[list[str]] = []
+
+    def _fake_run(cmd: Any, *args: Any, **kwargs: Any) -> subprocess.CompletedProcess[str]:
+        calls.append([str(c) for c in cmd])
+        return subprocess.CompletedProcess(args=cmd, returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(api_routes.subprocess, "run", _fake_run)
+
+    res = client.post("/api/providers/2026-01/print-run")
+    assert res.status_code == 200
+    body = res.json()
+    assert body["status"] == "ok"
+    assert body["ym"] == ym
+    assert body["print_mode"] == "manual_open"
+    assert body["count"] == 2
+    merged_pdf = Path(str(body["merged_pdf_path"]))
+    assert merged_pdf.exists()
+    assert merged_pdf.name == "print_merged_provider.pdf"
+
+    assert calls
+    assert any("print_merged_provider.pdf" in part for part in calls[0])
+
+    entries = _read_audit_entries(tmp_path, ym)
+    events = [e for e in entries if e.get("event_type") == "provider_ingest" and e.get("action") == "print_run"]
+    assert events
+    last = events[-1]
+    assert last.get("status") == "success"
+    details = last.get("details") or {}
+    assert details.get("mode") == "manual_open"
+    assert details.get("count") == 2
+    assert str(details.get("merged_pdf_path") or "").endswith("print_merged_provider.pdf")
+
+
+def test_api_provider_print_run_rejects_when_no_pdf_exists(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    client = _create_client(monkeypatch, tmp_path)
+    ym = "2026-01"
+
+    res = client.post("/api/providers/2026-01/print-run")
+    assert res.status_code == 409
+    detail = str(res.json().get("detail") or "")
+    assert "No provider PDF files were found" in detail
+
+    entries = _read_audit_entries(tmp_path, ym)
+    events = [e for e in entries if e.get("event_type") == "provider_ingest" and e.get("action") == "print_run"]
+    assert events
+    last = events[-1]
+    assert last.get("status") == "rejected"
+
+
 def test_api_provider_download_rejected_as_manual_only(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

@@ -668,6 +668,41 @@
     }
   }
 
+  async function printProviderReceipts(buttonEl) {
+    const ym = getYmFromForm();
+    if (!ym) {
+      showToast("年月を入力してください。", "error");
+      return;
+    }
+
+    if (buttonEl) {
+      buttonEl.disabled = true;
+      buttonEl.dataset.busy = "1";
+    }
+    clearError();
+    showToast("共通フォルダ取込済みのPDFを結合しています...", "success");
+    try {
+      const res = await fetch(`/api/providers/${ym}/print-run`, { method: "POST" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const message = toFriendlyMessage(data.detail || "共通フォルダ一括印刷の開始に失敗しました。");
+        showError(message);
+        showToast(message, "error");
+        return;
+      }
+      const count = Number.parseInt(String(data.count ?? 0), 10) || 0;
+      const message = `共通フォルダ取込分の結合PDFを開きました（対象 ${Math.max(0, count)} 件）。`;
+      showToast(message, "success");
+    } catch {
+      const message = "共通フォルダ一括印刷の開始に失敗しました。";
+      showError(message);
+      showToast(message, "error");
+    } finally {
+      if (buttonEl) delete buttonEl.dataset.busy;
+      refreshSteps({ force: true });
+    }
+  }
+
   function runProviderAction(action, provider, buttonEl) {
     if (action === "open_shared_inbox") {
       openManualInbox(buttonEl);
@@ -679,6 +714,10 @@
     }
     if (action === "import_provider_receipts") {
       importProviderReceipts(buttonEl);
+      return;
+    }
+    if (action === "print_provider_receipts") {
+      printProviderReceipts(buttonEl);
       return;
     }
   }

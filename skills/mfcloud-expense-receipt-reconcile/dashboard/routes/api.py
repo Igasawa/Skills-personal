@@ -876,6 +876,114 @@ def create_api_router() -> APIRouter:
         )
         return JSONResponse(result)
 
+    @router.post("/api/providers/{ym}/print-run")
+    def api_provider_print_run(ym: str, request: Request) -> JSONResponse:
+        ym = core._safe_ym(ym)
+        year, month = core._split_ym(ym)
+        actor = _actor_from_request(request)
+        output_root = core._artifact_root() / ym
+        reports_dir = output_root / "reports"
+        reports_dir.mkdir(parents=True, exist_ok=True)
+        provider_pdfs_dir = output_root / "manual" / "pdfs"
+        pdf_paths = sorted(path for path in provider_pdfs_dir.rglob("*.pdf") if path.is_file()) if provider_pdfs_dir.exists() else []
+        merged_pdf_path = reports_dir / "print_merged_provider.pdf"
+
+        if not pdf_paths:
+            detail = f"No provider PDF files were found under: {provider_pdfs_dir}"
+            core._append_audit_event(
+                year=year,
+                month=month,
+                event_type="provider_ingest",
+                action="print_run",
+                status="rejected",
+                actor=actor,
+                details={"reason": detail, "provider_pdfs_dir": str(provider_pdfs_dir)},
+            )
+            raise HTTPException(status_code=409, detail=detail)
+
+        try:
+            merged_count, merged_pages = _merge_pdfs(pdf_paths, merged_pdf_path)
+        except HTTPException as exc:
+            core._append_audit_event(
+                year=year,
+                month=month,
+                event_type="provider_ingest",
+                action="print_run",
+                status="failed",
+                actor=actor,
+                details={
+                    "reason": str(exc.detail),
+                    "provider_pdfs_dir": str(provider_pdfs_dir),
+                    "merged_pdf_path": str(merged_pdf_path),
+                },
+            )
+            raise
+        except Exception as exc:
+            detail = f"Merged PDF generation failed: {exc}"
+            core._append_audit_event(
+                year=year,
+                month=month,
+                event_type="provider_ingest",
+                action="print_run",
+                status="failed",
+                actor=actor,
+                details={
+                    "reason": detail,
+                    "provider_pdfs_dir": str(provider_pdfs_dir),
+                    "merged_pdf_path": str(merged_pdf_path),
+                },
+            )
+            raise HTTPException(status_code=500, detail=detail) from exc
+
+        open_result = _open_file(merged_pdf_path)
+        if open_result.returncode != 0:
+            detail = (
+                "Open merged PDF failed:\n"
+                f"path: {merged_pdf_path}\n"
+                f"exit: {open_result.returncode}\n"
+                f"stdout:\n{open_result.stdout}\n"
+                f"stderr:\n{open_result.stderr}\n"
+            )
+            core._append_audit_event(
+                year=year,
+                month=month,
+                event_type="provider_ingest",
+                action="print_run",
+                status="failed",
+                actor=actor,
+                details={
+                    "reason": detail,
+                    "provider_pdfs_dir": str(provider_pdfs_dir),
+                    "merged_pdf_path": str(merged_pdf_path),
+                },
+            )
+            raise HTTPException(status_code=500, detail=detail)
+
+        core._append_audit_event(
+            year=year,
+            month=month,
+            event_type="provider_ingest",
+            action="print_run",
+            status="success",
+            actor=actor,
+            details={
+                "mode": "manual_open",
+                "count": merged_count,
+                "merged_pages": merged_pages,
+                "provider_pdfs_dir": str(provider_pdfs_dir),
+                "merged_pdf_path": str(merged_pdf_path),
+            },
+        )
+        return JSONResponse(
+            {
+                "status": "ok",
+                "ym": ym,
+                "print_mode": "manual_open",
+                "count": merged_count,
+                "merged_pdf_path": str(merged_pdf_path),
+            }
+        )
+
     @router.post("/api/providers/{ym}/download")
     def api_provider_download(ym: str, request: Request) -> JSONResponse:
         ym = core._safe_ym(ym)
