@@ -13,6 +13,7 @@ node_modules/
 playwright-report/
 test-results/
 *.trace.zip
+.playwright-cli/
 
 # Outputs / artifacts
 output/
