@@ -237,18 +237,13 @@ def test_run_page_shows_manual_print_prepare_and_complete_controls(
 
     res = client.get(f"/runs/{ym}")
     assert res.status_code == 200
-    assert "Amazon一括印刷（結合PDFを開く）" in res.text
-    assert "楽天一括印刷（結合PDFを開く）" in res.text
-    assert "領収書フォルダを開く" in res.text
     assert f"/runs/{ym}/archived-receipts" in res.text
-    assert "Amazonで保存して印刷準備" in res.text
-    assert "楽天で保存して印刷準備" in res.text
-    assert "Amazon印刷完了を記録" in res.text
-    assert "楽天印刷完了を記録" in res.text
+    assert 'class="primary exclude-save"' in res.text
+    assert 'class="secondary print-complete"' in res.text
     assert 'id="print-next-box"' in res.text
     assert f'id="open-receipts-folder" data-ym="{ym}"' in res.text
-    assert 'id="run-print-script-amazon"' in res.text
-    assert 'id="run-print-script-rakuten"' in res.text
+    assert res.text.count('data-print-ready="1"') == 2
+    assert 'class="primary run-print-script"' not in res.text
     assert 'id="run-print-script" data-ym' not in res.text
 
 

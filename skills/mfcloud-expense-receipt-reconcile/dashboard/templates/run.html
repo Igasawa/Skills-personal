@@ -12,7 +12,7 @@
         <div>
           <p class="eyebrow">経費精算ダッシュボード</p>
           <h1>{{ ym }}</h1>
-          <p class="subtitle">成果物の確認と除外・印刷の確定を行います。</p>
+          <p class="subtitle">成果物の確認と除外・印刷（完了記録まで）の確定を行います。</p>
         </div>
         <div class="hero-meta">
           <a class="pill" href="/">ダッシュボードへ戻る</a>
@@ -94,37 +94,10 @@
             {% endif %}
           </div>
           <div class="print-box">
-            <div class="label">印刷実行</div>
-            <div class="print-actions">
-              <button
-                type="button"
-                class="primary run-print-script"
-                id="run-print-script-amazon"
-                data-ym="{{ ym }}"
-                data-print-source="amazon"
-                {% if not amazon_bulk_print_ready %}disabled{% endif %}
-              >
-                Amazon一括印刷（結合PDFを開く）
-              </button>
-              <button
-                type="button"
-                class="primary run-print-script"
-                id="run-print-script-rakuten"
-                data-ym="{{ ym }}"
-                data-print-source="rakuten"
-                {% if not rakuten_bulk_print_ready %}disabled{% endif %}
-              >
-                楽天一括印刷（結合PDFを開く）
-              </button>
-              <button type="button" class="secondary" id="open-receipts-folder" data-ym="{{ ym }}">領収書フォルダを開く</button>
-            </div>
-            {% if print_script %}
-            <div class="muted">「印刷を実行」は印刷対象PDFをまとめて開く操作です（自動プリントアウトは行いません）。</div>
-            {% else %}
-            <div class="muted">先に「保存して印刷準備」を実行すると、印刷ボタンが有効になります。</div>
-            {% endif %}
+            <div class="label">印刷について</div>
+            <div class="muted">印刷の実行は「除外設定」カード内のボタンに統合しました。</div>
+            <div class="muted">除外を変更した場合は、再度「保存して印刷対象を更新」を実行してください。</div>
             <div class="muted">モノクロ印刷はプリンタ側の既定設定に従います（印刷ダイアログで最終確認してください）。</div>
-            <span id="print-script-status" class="status-note"></span>
           </div>
           {% else %}
           <p class="muted">成果物がまだありません。</p>
@@ -133,7 +106,7 @@
       </section>
 
       <section class="card" id="exclude-section" data-ym="{{ ym }}">
-        <h2>除外設定（保存後に印刷準備）</h2>
+        <h2>除外設定・印刷（完了記録まで）</h2>
         <p class="muted">
           MFに入力しない／印刷しないものだけにチェックを付けて保存してください。保存後、自動で印刷リストを作成します（印刷は自動実行しません）。
           <br />印刷コマンドまたは印刷用PowerShellを手動実行し、印刷が完了したら「印刷完了を記録」を押してください。
@@ -141,8 +114,22 @@
           <br />MFとの突合はこの画面では行いません（ダッシュボードのステップ5で実行します）。
         </p>
         <div class="form-row">
-          <button type="button" class="primary exclude-save" data-source="amazon">Amazonで保存して印刷準備</button>
-          <button type="button" class="primary exclude-save" data-source="rakuten">楽天で保存して印刷準備</button>
+          <button
+            type="button"
+            class="primary exclude-save"
+            data-source="amazon"
+            data-print-ready="{{ 1 if amazon_bulk_print_ready else 0 }}"
+          >
+            Amazonで保存して印刷対象を更新
+          </button>
+          <button
+            type="button"
+            class="primary exclude-save"
+            data-source="rakuten"
+            data-print-ready="{{ 1 if rakuten_bulk_print_ready else 0 }}"
+          >
+            楽天で保存して印刷対象を更新
+          </button>
           <button
             type="button"
             class="secondary print-complete"
@@ -160,19 +147,21 @@
             楽天印刷完了を記録
           </button>
           <a class="secondary" href="/runs/{{ ym }}/excluded-pdfs">除外PDF一覧</a>
+          <button type="button" class="secondary" id="open-receipts-folder" data-ym="{{ ym }}">領収書フォルダを開く</button>
           <span
             id="exclude-status"
             class="status-note"
-            data-success="除外設定を保存しました。印刷準備が完了しました。"
-            data-error="保存または印刷準備に失敗しました。ログを確認してください。"
+            data-success="除外設定を保存しました。印刷対象の更新が完了しました。"
+            data-error="保存または印刷対象の更新に失敗しました。ログを確認してください。"
           ></span>
+          <span id="print-script-status" class="status-note"></span>
           <span id="exclude-summary" class="muted" data-orders-total="{{ orders_total }}">
             注文 {{ orders_total }} 件 / 除外 <span id="exclude-summary-count">{{ excluded_count }}</span> 件
           </span>
         </div>
         <div id="print-next-box" class="print-box hidden" aria-live="polite">
           <div class="label">次の操作（手動印刷）</div>
-          <div id="print-next-summary" class="muted">印刷準備後に、ここに次の手順を表示します。</div>
+          <div id="print-next-summary" class="muted">印刷対象の更新後に、ここに次の手順を表示します。</div>
           <div class="print-actions">
             <a id="print-next-open" class="secondary" href="#" target="_blank" rel="noopener">除外PDF一覧を開く（1件ずつ印刷）</a>
             <div class="print-cmd" id="print-next-cmd"></div>

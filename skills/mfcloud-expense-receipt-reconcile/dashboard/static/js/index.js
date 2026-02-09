@@ -691,9 +691,9 @@
     }
     const labelByStep = {
       amazon_download: "Amazonカード / 取得",
-      amazon_decide_print: "Amazonカード / 除外判断・印刷準備",
+      amazon_decide_print: "Amazonカード / 除外判断・印刷（完了記録まで）",
       rakuten_download: "楽天カード / 取得",
-      rakuten_decide_print: "楽天カード / 除外判断・印刷準備",
+      rakuten_decide_print: "楽天カード / 除外判断・印刷（完了記録まで）",
     };
     const label = labelByStep[String(stepId || "")] || String(stepId || "");
     const confirmed = window.confirm(`「${label}」をリセットします。必要なら実行中ジョブを停止します。続行しますか？`);
@@ -870,9 +870,9 @@
       return { message: "次の手順: 手順1または手順2で「取得」を実行してください。", href: null };
     }
     if (nextStep === "amazon_download") return { message: "次の手順: 手順1 Amazonで「取得」を実行してください。", href: null };
-    if (nextStep === "amazon_decide_print") return { message: "次の手順: 手順1 Amazonで「除外・印刷」を実行してください。", href: `/runs/${ym}#exclude-section` };
+    if (nextStep === "amazon_decide_print") return { message: "次の手順: 手順1 Amazonで「除外・印刷（完了記録まで）」を実行してください。", href: `/runs/${ym}#exclude-section` };
     if (nextStep === "rakuten_download") return { message: "次の手順: 手順2 楽天で「取得」を実行してください。", href: null };
-    if (nextStep === "rakuten_decide_print") return { message: "次の手順: 手順2 楽天で「除外・印刷」を実行してください。", href: `/runs/${ym}#exclude-section` };
+    if (nextStep === "rakuten_decide_print") return { message: "次の手順: 手順2 楽天で「除外・印刷（完了記録まで）」を実行してください。", href: `/runs/${ym}#exclude-section` };
     if (nextStep === "provider_ingest") return { message: "次の手順: 手順3 共通フォルダ取り込みを実行してください。", href: null };
     if (nextStep === "mf_reconcile") return { message: "次の手順: 手順5 MF突合・下書き作成を実行してください。", href: null };
     if (nextStep === "done") {
@@ -937,7 +937,7 @@
       if (blockedByRunning) {
         button.title = "他の手順を実行中のためアーカイブできません。";
       } else if (!allowed) {
-        button.title = "Amazonまたは楽天で「除外・印刷」完了後に実行できます。";
+        button.title = "Amazonまたは楽天で「除外・印刷（完了記録まで）」完了後に実行できます。";
       } else {
         button.title = "";
       }
@@ -1172,9 +1172,9 @@
       const labels = {
         preflight: "手順0 準備",
         amazon_download: "手順1 Amazon 取得",
-        amazon_decide_print: "手順1 Amazon 除外・印刷",
+        amazon_decide_print: "手順1 Amazon 除外・印刷（完了記録まで）",
         rakuten_download: "手順2 楽天 取得",
-        rakuten_decide_print: "手順2 楽天 除外・印刷",
+        rakuten_decide_print: "手順2 楽天 除外・印刷（完了記録まで）",
         provider_ingest: "手順3 共通フォルダ取り込み",
         mf_bulk_upload_task: "手順4 MF一括アップロード",
         mf_reconcile: "手順5 MF突合・下書き作成",
