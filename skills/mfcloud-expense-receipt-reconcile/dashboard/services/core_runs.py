@@ -225,7 +225,8 @@ def _latest_archive_state_for_ym(year: int, month: int) -> dict[str, Any]:
                 continue
             if str(payload.get("event_type") or "").strip() != "archive":
                 continue
-            if str(payload.get("action") or "").strip() != "manual_archive":
+            action = str(payload.get("action") or "").strip()
+            if action not in {"manual_archive", "month_close"}:
                 continue
             if str(payload.get("status") or "").strip() != "success":
                 continue
@@ -236,6 +237,7 @@ def _latest_archive_state_for_ym(year: int, month: int) -> dict[str, Any]:
                 "archived_to": str(details.get("archived_to") or "").strip() or None,
                 "include_pdfs": bool(details.get("include_pdfs")),
                 "include_debug": bool(details.get("include_debug")),
+                "cleanup": bool(details.get("cleanup")),
             }
     if latest_success:
         return latest_success
@@ -250,6 +252,7 @@ def _latest_archive_state_for_ym(year: int, month: int) -> dict[str, Any]:
             "archived_to": None,
             "include_pdfs": False,
             "include_debug": False,
+            "cleanup": False,
         }
     candidates.sort(key=lambda p: p.stat().st_mtime, reverse=True)
     return {
@@ -258,6 +261,7 @@ def _latest_archive_state_for_ym(year: int, month: int) -> dict[str, Any]:
         "archived_to": str(candidates[0]),
         "include_pdfs": True,
         "include_debug": False,
+        "cleanup": False,
     }
 
 
@@ -442,6 +446,7 @@ def _archive_outputs_for_ym(
     *,
     include_pdfs: bool = True,
     include_debug: bool = False,
+    cleanup: bool = True,
 ) -> dict[str, Any]:
     ym = f"{year:04d}-{month:02d}"
     output_root = _artifact_root() / ym
@@ -492,6 +497,10 @@ def _archive_outputs_for_ym(
         cmd.append("-IncludePdfs")
     if include_debug:
         cmd.append("-IncludeDebug")
+    if cleanup:
+        cmd.append("-Cleanup")
+    else:
+        cmd.append("-NoCleanup")
 
     res = subprocess.run(
         cmd,
@@ -513,11 +522,31 @@ def _archive_outputs_for_ym(
         )
 
     archived_to = ""
+    cleanup_report = ""
+    cleanup_removed = 0
+    archive_zip = ""
+    archive_manifest = ""
+    archive_checksums = ""
     for line in reversed((res.stdout or "").splitlines()):
         text = str(line).strip()
         if text.lower().startswith("archived to:"):
             archived_to = text.split(":", 1)[1].strip()
-            break
+            continue
+        if text.lower().startswith("cleanup report:"):
+            cleanup_report = text.split(":", 1)[1].strip()
+            continue
+        if text.lower().startswith("cleanup removed:"):
+            cleanup_removed = _coerce_non_negative_int(text.split(":", 1)[1].strip(), default=0)
+            continue
+        if text.lower().startswith("archive zip:"):
+            archive_zip = text.split(":", 1)[1].strip()
+            continue
+        if text.lower().startswith("archive manifest:"):
+            archive_manifest = text.split(":", 1)[1].strip()
+            continue
+        if text.lower().startswith("archive checksums:"):
+            archive_checksums = text.split(":", 1)[1].strip()
+            continue
 
     if not archived_to:
         archive_root = output_root / "archive"
@@ -536,12 +565,36 @@ def _archive_outputs_for_ym(
             ),
         )
 
+    if cleanup and not cleanup_report:
+        fallback_cleanup = output_root / "reports" / "archive_cleanup_report.json"
+        if fallback_cleanup.exists():
+            cleanup_report = str(fallback_cleanup)
+
+    if not archive_manifest:
+        fallback_manifest = Path(archived_to) / "manifest.json"
+        if fallback_manifest.exists():
+            archive_manifest = str(fallback_manifest)
+    if not archive_zip:
+        fallback_zip = Path(archived_to) / "full_snapshot.zip"
+        if fallback_zip.exists():
+            archive_zip = str(fallback_zip)
+    if not archive_checksums:
+        fallback_checksums = Path(archived_to) / "checksums.sha256"
+        if fallback_checksums.exists():
+            archive_checksums = str(fallback_checksums)
+
     return {
         "status": "ok",
         "ym": ym,
         "archived_to": archived_to,
         "include_pdfs": bool(include_pdfs),
         "include_debug": bool(include_debug),
+        "cleanup": bool(cleanup),
+        "cleanup_report": cleanup_report,
+        "cleanup_removed": int(cleanup_removed),
+        "archive_manifest": archive_manifest,
+        "archive_zip": archive_zip,
+        "archive_checksums": archive_checksums,
         "excluded_pdfs_manifest": str(excluded_manifest_path),
         "excluded_pdfs_count": len(excluded_rows),
     }

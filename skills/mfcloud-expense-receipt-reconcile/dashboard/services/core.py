@@ -3,6 +3,7 @@ from __future__ import annotations
 from .core_artifacts import (
     _derive_order_counts_from_jsonl,
     _resolve_form_defaults,
+    _scan_archive_history,
     _scan_archived_receipts,
     _scan_artifacts,
 )
@@ -94,6 +95,7 @@ __all__ = [
     "_read_workflow",
     "_reconcile_running_jobs",
     "_resolve_form_defaults",
+    "_scan_archive_history",
     "_scan_archived_receipts",
     "_resolve_pdf_path",
     "_reset_step_state",

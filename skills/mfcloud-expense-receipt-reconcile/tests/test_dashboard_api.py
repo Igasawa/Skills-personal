@@ -743,7 +743,12 @@ def test_api_steps_returns_archive_state(monkeypatch: pytest.MonkeyPatch, tmp_pa
                 "event_type": "archive",
                 "action": "manual_archive",
                 "status": "success",
-                "details": {"archived_to": "C:\\archive\\20260209_110342", "include_pdfs": True, "include_debug": False},
+                "details": {
+                    "archived_to": "C:\\archive\\20260209_110342",
+                    "include_pdfs": True,
+                    "include_debug": False,
+                    "cleanup": False,
+                },
             },
             ensure_ascii=False,
         )
@@ -776,7 +781,14 @@ def test_api_archive_success_with_include_pdfs_and_audit(monkeypatch: pytest.Mon
         return subprocess.CompletedProcess(
             args=cmd,
             returncode=0,
-            stdout="Archived to: C:\\archive\\20260208_101530\n",
+            stdout=(
+                "Archived to: C:\\archive\\20260208_101530\n"
+                "Archive zip: C:\\archive\\20260208_101530\\full_snapshot.zip\n"
+                "Archive manifest: C:\\archive\\20260208_101530\\manifest.json\n"
+                "Archive checksums: C:\\archive\\20260208_101530\\checksums.sha256\n"
+                "Cleanup report: \n"
+                "Cleanup removed: 0\n"
+            ),
             stderr="",
         )
 
@@ -790,12 +802,22 @@ def test_api_archive_success_with_include_pdfs_and_audit(monkeypatch: pytest.Mon
     assert body["archived_to"] == "C:\\archive\\20260208_101530"
     assert body["include_pdfs"] is True
     assert body["include_debug"] is False
+    assert body["cleanup"] is False
+    assert body["cleanup_report"] == ""
+    assert body["cleanup_removed"] == 0
+    assert body["archive_manifest"].endswith("manifest.json")
+    assert body["archive_zip"].endswith("full_snapshot.zip")
+    assert body["archive_checksums"].endswith("checksums.sha256")
+    assert body["history_entry"]["action"] == "manual_archive"
+    assert body["history_entry"]["archive_url"] == "/runs/2026-01/archived-receipts"
 
     assert calls
     cmd = calls[0]
     assert any("archive_outputs.ps1" in part for part in cmd)
     assert "-IncludePdfs" in cmd
     assert "-IncludeDebug" not in cmd
+    assert "-NoCleanup" in cmd
+    assert "-Cleanup" not in cmd
 
     entries = _read_audit_entries(tmp_path, ym)
     archive_events = [e for e in entries if e.get("event_type") == "archive"]
@@ -807,6 +829,9 @@ def test_api_archive_success_with_include_pdfs_and_audit(monkeypatch: pytest.Mon
     assert details.get("archived_to") == "C:\\archive\\20260208_101530"
     assert details.get("include_pdfs") is True
     assert details.get("include_debug") is False
+    assert details.get("cleanup") is False
+    assert details.get("cleanup_removed") == 0
+    assert str(details.get("cleanup_report") or "") == ""
 
 
 def test_api_archive_writes_excluded_pdfs_manifest(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -839,7 +864,11 @@ def test_api_archive_writes_excluded_pdfs_manifest(monkeypatch: pytest.MonkeyPat
         return subprocess.CompletedProcess(
             args=cmd,
             returncode=0,
-            stdout="Archived to: C:\\archive\\20260208_101530\n",
+            stdout=(
+                "Archived to: C:\\archive\\20260208_101530\n"
+                "Cleanup report: \n"
+                "Cleanup removed: 0\n"
+            ),
             stderr="",
         )
 
@@ -857,6 +886,61 @@ def test_api_archive_writes_excluded_pdfs_manifest(monkeypatch: pytest.MonkeyPat
     assert payload["count"] == 1
     assert payload["rows"][0]["order_id"] == "AMZ-EX-1"
     assert payload["rows"][0]["pdf_name"] == "AMZ-EXCLUDED.pdf"
+
+
+def test_api_month_close_runs_archive_with_cleanup_and_writes_audit(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    client = _create_client(monkeypatch, tmp_path)
+    ym = "2026-01"
+    reports = _reports_dir(tmp_path, ym)
+    _write_json(
+        reports / "workflow.json",
+        {"rakuten": {"confirmed_at": "2026-02-08T10:00:00", "printed_at": "2026-02-08T10:10:00"}},
+    )
+    _touch(reports / "quality_gate.json", "{}")
+
+    calls: list[list[str]] = []
+
+    def _fake_run(cmd: Any, *args: Any, **kwargs: Any) -> subprocess.CompletedProcess[str]:
+        calls.append([str(c) for c in cmd])
+        return subprocess.CompletedProcess(
+            args=cmd,
+            returncode=0,
+            stdout=(
+                "Archived to: C:\\archive\\20260208_101530\n"
+                "Cleanup report: C:\\work\\2026-01\\reports\\archive_cleanup_report.json\n"
+                "Cleanup removed: 3\n"
+            ),
+            stderr="",
+        )
+
+    monkeypatch.setattr(core_runs.subprocess, "run", _fake_run)
+
+    res = client.post("/api/month-close/2026-01")
+    assert res.status_code == 200
+    body = res.json()
+    assert body["status"] == "ok"
+    assert body["cleanup"] is True
+    assert body["cleanup_removed"] == 3
+    assert body["history_entry"]["action"] == "month_close"
+    assert body["history_entry"]["action_label"] == "月次クローズ"
+    assert body["history_entry"]["archive_url"] == "/runs/2026-01/archived-receipts"
+
+    assert calls
+    cmd = calls[0]
+    assert "-Cleanup" in cmd
+    assert "-NoCleanup" not in cmd
+
+    entries = _read_audit_entries(tmp_path, ym)
+    archive_events = [e for e in entries if e.get("event_type") == "archive"]
+    assert archive_events
+    last = archive_events[-1]
+    assert last["action"] == "month_close"
+    assert last["status"] == "success"
+    details = last.get("details") or {}
+    assert details.get("cleanup") is True
+    assert details.get("cleanup_removed") == 3
 
 
 def test_api_archive_rejects_when_confirm_print_not_completed(

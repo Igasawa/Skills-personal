@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+import json
 from pathlib import Path
 from typing import Any
 
@@ -125,6 +126,53 @@ def _scan_artifacts() -> list[dict[str, Any]]:
 
     items.sort(key=lambda x: x["ym"], reverse=True)
     return items
+
+
+def _scan_archive_history(*, limit: int = 30) -> list[dict[str, Any]]:
+    root = _artifact_root()
+    if not root.exists():
+        return []
+    rows: list[dict[str, Any]] = []
+    for p in root.iterdir():
+        if not p.is_dir() or p.name == "_runs" or not YM_RE.match(p.name):
+            continue
+        audit_path = p / "reports" / "audit_log.jsonl"
+        if not audit_path.exists():
+            continue
+        for line in audit_path.read_text(encoding="utf-8", errors="replace").splitlines():
+            text = str(line or "").strip()
+            if not text.startswith("{") or not text.endswith("}"):
+                continue
+            try:
+                obj = json.loads(text)
+            except Exception:
+                continue
+            if not isinstance(obj, dict):
+                continue
+            if str(obj.get("event_type") or "").strip() != "archive":
+                continue
+            if str(obj.get("status") or "").strip() != "success":
+                continue
+            action = str(obj.get("action") or "").strip()
+            if action not in {"manual_archive", "month_close"}:
+                continue
+            details = obj.get("details") if isinstance(obj.get("details"), dict) else {}
+            ts = str(obj.get("ts") or "").strip()
+            action_label = "月次クローズ" if action == "month_close" else "アーカイブ"
+            rows.append(
+                {
+                    "ym": p.name,
+                    "ts": ts,
+                    "action": action,
+                    "action_label": action_label,
+                    "archived_to": str(details.get("archived_to") or "").strip(),
+                    "archive_url": f"/runs/{p.name}/archived-receipts",
+                }
+            )
+    rows.sort(key=lambda r: str(r.get("ts") or ""), reverse=True)
+    if limit > 0:
+        return rows[:limit]
+    return rows
 
 
 def _scan_archived_receipts(root: Any) -> dict[str, Any]:

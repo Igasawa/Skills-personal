@@ -151,7 +151,7 @@ python -m pytest -q
 
 ## 成果物整理（任意）
 
-同月の成果物を時刻付きでアーカイブしたい場合は次を使う。
+同月の成果物を時刻付きでアーカイブする場合は次を使う（既定で入力フォルダをクリーンアップする）。
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File "scripts\\archive_outputs.ps1" -Year 2026 -Month 1
@@ -161,6 +161,12 @@ PDFやデバッグ情報も残す場合:
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File "scripts\\archive_outputs.ps1" -Year 2026 -Month 1 -IncludePdfs -IncludeDebug
+```
+
+クリーンアップを無効化する場合:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File "scripts\\archive_outputs.ps1" -Year 2026 -Month 1 -NoCleanup
 ```
 
 ## ダッシュボード（ローカル）
@@ -193,6 +199,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "scripts\start_dashboard.ps1
 ## 運用ルール（参照）
 
 - 恒久ルール：`references/operation_policy.md`
+- 月次アーカイブ基本設定：`references/archive_baseline_policy.md`
 - フェーズ計画：`references/roadmap.md`
 - 自動登録OK例外一覧：`references/auto_register_exceptions.yaml`
 - 月次スレッドテンプレ：`assets/monthly_thread_template.md`
@@ -202,5 +209,6 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "scripts\start_dashboard.ps1
 ## UI言語方針
 
 - ダッシュボードのエンドユーザー向けUI文言（見出し、ボタン、説明、トースト、エラー表示）は、原則として日本語に統一する。
+- ダッシュボードの文言は、機能に合う内容を短く平易に書き、できるだけわかりやすくシンプルにする。
 - 英語を許容するのは、コード識別子・APIキー・ログ解析用の固定判定文字列など、機械処理上必要な箇所のみ。
 - UI文言を追加・変更する際は、日本語表示になっていることを確認してから反映する。

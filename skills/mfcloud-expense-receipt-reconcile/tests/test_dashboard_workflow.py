@@ -201,6 +201,34 @@ def test_assert_run_mode_allowed_accepts_amazon_redownload_after_done(
     _assert_run_mode_allowed(2026, 1, "amazon_download")
 
 
+def test_assert_run_mode_allowed_accepts_mf_reconcile_rerun_after_done(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("AX_HOME", str(tmp_path))
+    ym = "2026-01"
+    _write_json(_reports_dir(tmp_path, ym) / "preflight.json", {"status": "success", "year": 2026, "month": 1})
+    _touch(_artifact_root(tmp_path) / ym / "amazon" / "orders.jsonl")
+    _touch(_artifact_root(tmp_path) / ym / "rakuten" / "orders.jsonl")
+    _write_json(
+        _reports_dir(tmp_path, ym) / "workflow.json",
+        {
+            "amazon": {"confirmed_at": "2026-02-01T00:00:00", "printed_at": "2026-02-01T00:01:00"},
+            "rakuten": {"confirmed_at": "2026-02-01T00:02:00", "printed_at": "2026-02-01T00:03:00"},
+        },
+    )
+    _write_json(_reports_dir(tmp_path, ym) / "missing_evidence_candidates.json", {"rows": [], "counts": {}})
+    _write_json(
+        _reports_dir(tmp_path, ym) / "mf_draft_create_result.json",
+        {"status": "success", "data": {"targets_total": 1, "created": 1, "failed": 0}},
+    )
+
+    # Step5 completed (next_step=done) after first run, but rerun must remain allowed.
+    state = _workflow_state_for_ym(2026, 1)
+    assert state["next_step"] == "done"
+    assert "mf_reconcile" in state["allowed_run_modes"]
+    _assert_run_mode_allowed(2026, 1, "mf_reconcile")
+
+
 def test_assert_run_mode_allowed_rejects_mf_reconcile_until_both_sources_downloaded(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -424,6 +452,7 @@ def test_workflow_state_archive_state_defaults_to_not_created(
     assert state["archive"]["created"] is False
     assert state["archive"]["created_at"] is None
     assert state["archive"]["archived_to"] is None
+    assert state["archive"]["cleanup"] is False
 
 
 def test_workflow_state_archive_state_reads_latest_manual_archive_success(
@@ -452,12 +481,13 @@ def test_workflow_state_archive_state_reads_latest_manual_archive_success(
                         "ts": "2026-02-09T11:03:42",
                         "ym": ym,
                         "event_type": "archive",
-                        "action": "manual_archive",
+                        "action": "month_close",
                         "status": "success",
                         "details": {
                             "archived_to": "C:\\archive\\20260209_110342",
                             "include_pdfs": True,
                             "include_debug": False,
+                            "cleanup": True,
                         },
                     },
                     ensure_ascii=False,
@@ -474,6 +504,7 @@ def test_workflow_state_archive_state_reads_latest_manual_archive_success(
     assert state["archive"]["archived_to"] == "C:\\archive\\20260209_110342"
     assert state["archive"]["include_pdfs"] is True
     assert state["archive"]["include_debug"] is False
+    assert state["archive"]["cleanup"] is True
 
 
 def test_assert_source_action_allowed_enforces_order(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

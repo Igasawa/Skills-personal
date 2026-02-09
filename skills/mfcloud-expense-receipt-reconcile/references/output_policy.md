@@ -22,18 +22,24 @@
 - `rakuten/pdfs/`（楽天領収書PDF）
 - `debug/`（スクリーンショット・HTML）
 
-## 4. アーカイブ運用
+## 4. アーカイブ運用（定例）
 
-月次処理の結果を保全したい場合、`scripts/archive_outputs.ps1` を使って
-時刻付きのフォルダにコピーする。
+月次処理の結果は毎月必ずアーカイブし、次回作業前に入力フォルダをクリーン化する。
+標準手順は `references/archive_baseline_policy.md` を正本として扱う。
+
+現行運用の実行コマンド（手動実行時）:
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File "scripts\\archive_outputs.ps1" -Year 2026 -Month 1
 ```
 
 PDFやデバッグ情報も保存する場合は `-IncludePdfs` / `-IncludeDebug` を付ける。
+クリーンアップを無効化する場合のみ `-NoCleanup` を付ける。
 
-## 5. 破棄ポリシー（推奨）
+## 5. クリーンアップポリシー（必須）
 
-- PDFとdebugは容量が大きいため、月次確認が終わったら削除して良い
-- CSV/JSON/markdownは 12 か月分を目安に保持する
+- 次回開始前に `manual/inbox/` と `mf_bulk_upload/inbox/` は空にする
+- `debug/` は原則クリーンアップ対象（障害調査時のみ一時保持）
+- 保管期間の目安は次の通り
+- PDFとdebug: 容量を見て必要期間のみ
+- CSV/JSON/markdown: 12か月を目安

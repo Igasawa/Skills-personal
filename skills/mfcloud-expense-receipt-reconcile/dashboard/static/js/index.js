@@ -195,9 +195,9 @@
     const previousStatus = runStatusById[runId];
     if (status && previousStatus && previousStatus !== status) {
       if (status === "failed") {
-        showToast("Run failed. Please check logs.", "error");
+        showToast("実行に失敗しました。ログを確認してください。", "error");
       } else if (status === "success") {
-        showToast("Run completed.", "success");
+        showToast("実行が完了しました。", "success");
       }
     }
     if (status) {
@@ -205,7 +205,7 @@
     }
 
     if (status === "failed") {
-      showError("Run failed. Please check logs.");
+      showError("実行に失敗しました。ログを確認してください。");
     }
 
     if (status && status !== "running") {
@@ -281,38 +281,89 @@
         params: { year: payload.year, month: payload.month },
       });
       runStatusById[data.run_id] = "running";
-      showToast("Run started.", "success");
+      showToast("実行を開始しました。", "success");
 
       startLogPolling(data.run_id);
       refreshLog(data.run_id);
       scheduleStepSync();
     } catch {
       awaitingRunFinalization = false;
-      const message = "Failed to start run. Please retry.";
+      const message = "実行開始に失敗しました。再試行してください。";
       showError(message);
       showToast(message, "error");
     }
   }
 
-  async function archiveOutputs(buttonEl) {
+  function nextYm(ym) {
+    const text = String(ym || "").trim();
+    const match = text.match(/^(\d{4})-(\d{2})$/);
+    if (!match) return "";
+    const year = Number.parseInt(match[1], 10);
+    const month = Number.parseInt(match[2], 10);
+    if (!Number.isInteger(year) || !Number.isInteger(month)) return "";
+    if (month >= 12) return `${year + 1}-01`;
+    return `${year}-${String(month + 1).padStart(2, "0")}`;
+  }
+
+  function setYmToForm(ym) {
+    const text = String(ym || "").trim();
+    const match = text.match(/^(\d{4})-(\d{2})$/);
+    if (!match || !form) return;
+    const yearEl = form.querySelector("[name=year]");
+    const monthEl = form.querySelector("[name=month]");
+    if (yearEl) yearEl.value = String(Number.parseInt(match[1], 10));
+    if (monthEl) monthEl.value = String(Number.parseInt(match[2], 10));
+  }
+
+  function prependArchiveHistoryRow(entry) {
+    if (!entry || typeof entry !== "object") return;
+    const list = document.querySelector("[data-archive-history-list]");
+    if (!(list instanceof HTMLElement)) return;
+    const empty = list.querySelector("[data-archive-history-empty]");
+    if (empty) empty.remove();
+
+    const ym = String(entry.ym || "").trim();
+    const ts = String(entry.ts || "").trim();
+    const actionLabel = String(entry.action_label || "").trim() || "アーカイブ";
+    const href = String(entry.archive_url || "").trim() || (ym ? `/runs/${ym}/archived-receipts` : "#");
+
+    const item = document.createElement("li");
+    item.className = "archive-history-item";
+    const text = document.createElement("span");
+    text.className = "muted";
+    text.textContent = `${ts || "-"} / ${ym || "-"} / ${actionLabel}`;
+    const link = document.createElement("a");
+    link.className = "secondary";
+    link.href = href;
+    link.textContent = "アーカイブを開く";
+    item.appendChild(text);
+    item.appendChild(link);
+    list.prepend(item);
+  }
+
+  async function runArchiveAction(action, buttonEl) {
     const ym = getYmFromForm();
     if (!ym) {
-      showToast("Year/month is not set.", "error");
+      showToast("年月を入力してください。", "error");
       return;
     }
+    const normalizedAction = String(action || "").trim();
+    if (!normalizedAction) return;
 
     clearError();
     if (buttonEl) {
       buttonEl.disabled = true;
       buttonEl.dataset.busy = "1";
     }
-    showToast("アーカイブを作成しています...", "success");
+    const isMonthClose = normalizedAction === "month_close";
+    showToast(isMonthClose ? "月次クローズを実行しています..." : "アーカイブを作成しています...", "success");
 
     try {
-      const res = await fetch(`/api/archive/${ym}`, { method: "POST" });
+      const endpoint = isMonthClose ? `/api/month-close/${ym}` : `/api/archive/${ym}`;
+      const res = await fetch(endpoint, { method: "POST" });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        const message = toFriendlyMessage(data.detail || "Archive creation failed.");
+        const message = toFriendlyMessage(data.detail || (isMonthClose ? "月次クローズに失敗しました。" : "アーカイブ作成に失敗しました。"));
         showError(message);
         showToast(message, "error");
         return;
@@ -324,11 +375,24 @@
         archived_to: archivedTo || null,
         include_pdfs: Boolean(data.include_pdfs),
         include_debug: Boolean(data.include_debug),
+        cleanup: Boolean(data.cleanup),
       };
-      const message = archivedTo ? `Archive created: ${archivedTo}` : "Archive created.";
+      const cleanupRemoved = Number(data.cleanup_removed || 0);
+      const cleanupSuffix = Number.isFinite(cleanupRemoved) ? ` / クリーンアップ ${cleanupRemoved}件` : "";
+      const baseMessage = isMonthClose ? "月次クローズが完了しました" : "アーカイブを作成しました";
+      let message = archivedTo ? `${baseMessage}: ${archivedTo}${cleanupSuffix}` : `${baseMessage}。${cleanupSuffix}`;
+      if (isMonthClose) {
+        const next = nextYm(ym);
+        if (next) {
+          setYmToForm(next);
+          if (window.__stepState) window.__stepState = null;
+          message += ` / ウィザードを ${next} に切り替えました。`;
+        }
+      }
+      prependArchiveHistoryRow(data.history_entry || null);
       showToast(message, "success");
     } catch {
-      const message = "Archive creation failed.";
+      const message = normalizedAction === "month_close" ? "月次クローズに失敗しました。" : "アーカイブ作成に失敗しました。";
       showError(message);
       showToast(message, "error");
     } finally {
@@ -339,10 +403,18 @@
     }
   }
 
+  async function archiveOutputs(buttonEl) {
+    return runArchiveAction("archive_outputs", buttonEl);
+  }
+
+  async function monthClose(buttonEl) {
+    return runArchiveAction("month_close", buttonEl);
+  }
+
   async function openManualInbox(buttonEl) {
     const ym = getYmFromForm();
     if (!ym) {
-      showToast("Year/month is not set.", "error");
+      showToast("年月を入力してください。", "error");
       return;
     }
 
@@ -355,16 +427,16 @@
       const res = await fetch(`/api/folders/${ym}/manual-inbox`, { method: "POST" });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        const message = toFriendlyMessage(data.detail || "Failed to open manual receipt folder.");
+        const message = toFriendlyMessage(data.detail || "共通フォルダを開けませんでした。");
         showError(message);
         showToast(message, "error");
         return;
       }
       const openedPath = String(data.path || "").trim();
-      const message = openedPath ? `Opened manual receipt folder: ${openedPath}` : "Opened manual receipt folder.";
+      const message = openedPath ? `共通フォルダを開きました: ${openedPath}` : "共通フォルダを開きました。";
       showToast(message, "success");
     } catch {
-      const message = "Failed to open manual receipt folder.";
+      const message = "共通フォルダを開けませんでした。";
       showError(message);
       showToast(message, "error");
     } finally {
@@ -376,7 +448,7 @@
   async function importManualReceipts(buttonEl) {
     const ym = getYmFromForm();
     if (!ym) {
-      showToast("Year/month is not set.", "error");
+      showToast("年月を入力してください。", "error");
       return;
     }
 
@@ -390,7 +462,7 @@
       const res = await fetch(`/api/manual/${ym}/import`, { method: "POST" });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        const message = toFriendlyMessage(data.detail || "Manual receipt import failed.");
+        const message = toFriendlyMessage(data.detail || "領収書取り込みに失敗しました。");
         showError(message);
         showToast(message, "error");
         return;
@@ -405,7 +477,7 @@
         showError(message);
       }
     } catch {
-      const message = "Manual receipt import failed.";
+      const message = "領収書取り込みに失敗しました。";
       showError(message);
       showToast(message, "error");
     } finally {
@@ -417,7 +489,7 @@
   async function openMfBulkInbox(buttonEl) {
     const ym = getYmFromForm();
     if (!ym) {
-      showToast("Year/month is not set.", "error");
+      showToast("年月を入力してください。", "error");
       return;
     }
 
@@ -430,7 +502,7 @@
       const res = await fetch(`/api/folders/${ym}/mf-bulk-inbox`, { method: "POST" });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        const message = toFriendlyMessage(data.detail || "Failed to open MF bulk upload folder.");
+        const message = toFriendlyMessage(data.detail || "MF一括アップロード用フォルダを開けませんでした。");
         showError(message);
         showToast(message, "error");
         return;
@@ -438,10 +510,10 @@
       const openedPath = String(data.path || "").trim();
       const message = openedPath
         ? `MF一括アップロード用フォルダを開きました: ${openedPath}`
-        : "Opened MF bulk upload folder.";
+        : "MF一括アップロード用フォルダを開きました。";
       showToast(message, "success");
     } catch {
-      const message = "Failed to open MF bulk upload folder.";
+      const message = "MF一括アップロード用フォルダを開けませんでした。";
       showError(message);
       showToast(message, "error");
     } finally {
@@ -453,7 +525,7 @@
   async function runMfBulkUpload(buttonEl) {
     const ym = getYmFromForm();
     if (!ym) {
-      showToast("Year/month is not set.", "error");
+      showToast("年月を入力してください。", "error");
       return;
     }
 
@@ -467,7 +539,7 @@
       const res = await fetch(`/api/mf-bulk-upload/${ym}`, { method: "POST" });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        const message = toFriendlyMessage(data.detail || "MF bulk upload failed.");
+        const message = toFriendlyMessage(data.detail || "MF一括アップロードに失敗しました。");
         showError(message);
         showToast(message, "error");
         return;
@@ -481,7 +553,7 @@
       const message = `MF一括アップロード: 発見 ${found}件 / 読込 ${readCount}件 / キュー ${queued}件 / 送信 ${submitted}件${details}`;
       showToast(message, "success");
     } catch {
-      const message = "MF bulk upload failed.";
+      const message = "MF一括アップロードに失敗しました。";
       showError(message);
       showToast(message, "error");
     } finally {
@@ -521,11 +593,11 @@
     const ym = getYmFromForm();
     const normalizedProvider = String(provider || "").trim().toLowerCase();
     if (!ym) {
-      showToast("Year/month is not set.", "error");
+      showToast("年月を入力してください。", "error");
       return;
     }
     if (!normalizedProvider) {
-      showToast("Provider is not specified.", "error");
+      showToast("対象サービスが指定されていません。", "error");
       return;
     }
 
@@ -538,7 +610,7 @@
       const res = await fetch(`/api/folders/${ym}/provider-inbox/${encodeURIComponent(normalizedProvider)}`, { method: "POST" });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        const message = toFriendlyMessage(data.detail || "Failed to open provider folder.");
+        const message = toFriendlyMessage(data.detail || "サービス別フォルダを開けませんでした。");
         showError(message);
         showToast(message, "error");
         return;
@@ -548,7 +620,7 @@
       const message = openedPath ? `${label}フォルダを開きました: ${openedPath}` : `${label}フォルダを開きました。`;
       showToast(message, "success");
     } catch {
-      const message = "Failed to open provider folder.";
+      const message = "サービス別フォルダを開けませんでした。";
       showError(message);
       showToast(message, "error");
     } finally {
@@ -560,7 +632,7 @@
   async function importProviderReceipts(buttonEl) {
     const ym = getYmFromForm();
     if (!ym) {
-      showToast("Year/month is not set.", "error");
+      showToast("年月を入力してください。", "error");
       return;
     }
 
@@ -569,12 +641,12 @@
       buttonEl.dataset.busy = "1";
     }
     clearError();
-    showToast("共通フォルダ内のSaaS領収書を取り込み中...", "success");
+      showToast("共通フォルダの領収書を取り込み中...", "success");
     try {
       const res = await fetch(`/api/providers/${ym}/import`, { method: "POST" });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        const message = toFriendlyMessage(data.detail || "Provider receipt import failed.");
+        const message = toFriendlyMessage(data.detail || "共通フォルダ取り込みに失敗しました。");
         showError(message);
         showToast(message, "error");
         return;
@@ -583,11 +655,11 @@
       const imported = Number.parseInt(String(data.imported ?? 0), 10) || 0;
       const skipped = Number.parseInt(String(data.skipped_duplicates ?? 0), 10) || 0;
       const failed = Number.parseInt(String(data.failed ?? 0), 10) || 0;
-      const message = `SaaS取り込み: 検出 ${found}件 / 取込 ${imported}件 / 重複 ${skipped}件 / 失敗 ${failed}件`;
+      const message = `共通フォルダ取り込み: 検出 ${found}件 / 取込 ${imported}件 / 重複 ${skipped}件 / 失敗 ${failed}件`;
       showToast(message, failed > 0 ? "error" : "success");
       if (failed > 0) showError(message);
     } catch {
-      const message = "Provider receipt import failed.";
+      const message = "共通フォルダ取り込みに失敗しました。";
       showError(message);
       showToast(message, "error");
     } finally {
@@ -614,7 +686,7 @@
   async function resetStep(stepId, buttonEl) {
     const ym = getYmFromForm();
     if (!ym) {
-      showToast("Year/month is not set.", "error");
+      showToast("年月を入力してください。", "error");
       return;
     }
     const labelByStep = {
@@ -639,13 +711,13 @@
         return;
       }
       const cancelledCount = Array.isArray(data.cancelled_runs) ? data.cancelled_runs.length : 0;
-      showToast(cancelledCount > 0 ? `Step reset completed; cancelled ${cancelledCount} running job(s).` : "Step reset completed.", "success");
+      showToast(cancelledCount > 0 ? `リセット完了: 実行中ジョブ ${cancelledCount} 件を停止しました。` : "リセットが完了しました。", "success");
       scheduleStepSync();
       if (activeLogRunId) {
         refreshLog(activeLogRunId);
       }
     } catch {
-      const message = "Step reset failed.";
+      const message = "リセットに失敗しました。";
       showError(message);
       showToast(message, "error");
     } finally {
@@ -667,8 +739,13 @@
     const el = document.querySelector(`[data-step-status="${id}"]`);
     if (!el) return;
     el.classList.remove("done", "running", "pending");
+    if (id === "mf_reconcile" && state !== "running") {
+      el.textContent = "実行可";
+      el.classList.add("pending");
+      return;
+    }
     if (state === "done") {
-      el.textContent = "Done";
+      el.textContent = "完了";
       el.classList.add("done");
       return;
     }
@@ -677,7 +754,7 @@
       el.classList.add("running");
       return;
     }
-    el.textContent = "Pending";
+    el.textContent = "未実行";
     el.classList.add("pending");
   }
 
@@ -686,7 +763,7 @@
     if (!el) return;
     el.classList.remove("done", "running", "pending");
     if (state === "done") {
-      el.textContent = "Done";
+      el.textContent = "完了";
       el.classList.add("done");
       return;
     }
@@ -695,7 +772,7 @@
       el.classList.add("running");
       return;
     }
-    el.textContent = "Pending";
+    el.textContent = "未実行";
     el.classList.add("pending");
   }
 
@@ -788,26 +865,20 @@
 
   function computeNextStep(data, ym) {
     const nextStep = resolveNextStep(data);
-    if (nextStep === "preflight") return { message: "Next: run Step 0 準備 (login + MF relink).", href: null };
+    if (nextStep === "preflight") return { message: "次の手順: 手順0「準備」を実行してください。", href: null };
     if (nextStep === "amazon_or_rakuten_download") {
-      return { message: "Next: in Amazon or 楽天 card, run the 取得 process.", href: null };
+      return { message: "次の手順: 手順1または手順2で「取得」を実行してください。", href: null };
     }
-    if (nextStep === "amazon_download") return { message: "Next: in Amazon card, run the 取得 process.", href: null };
-    if (nextStep === "amazon_decide_print") return { message: "Next: in Amazon card, run 除外判断・印刷準備.", href: `/runs/${ym}#exclude-section` };
-    if (nextStep === "rakuten_download") return { message: "Next: in 楽天 card, run the 取得 process.", href: null };
-    if (nextStep === "rakuten_decide_print") return { message: "Next: in 楽天 card, run 除外判断・印刷準備.", href: `/runs/${ym}#exclude-section` };
-    if (nextStep === "provider_ingest") return { message: "Next: run SaaS provider receipt ingest (Step 3).", href: null };
-    if (nextStep === "mf_reconcile") return { message: "Next: run MF reconcile + draft creation.", href: null };
+    if (nextStep === "amazon_download") return { message: "次の手順: 手順1 Amazonで「取得」を実行してください。", href: null };
+    if (nextStep === "amazon_decide_print") return { message: "次の手順: 手順1 Amazonで「除外・印刷」を実行してください。", href: `/runs/${ym}#exclude-section` };
+    if (nextStep === "rakuten_download") return { message: "次の手順: 手順2 楽天で「取得」を実行してください。", href: null };
+    if (nextStep === "rakuten_decide_print") return { message: "次の手順: 手順2 楽天で「除外・印刷」を実行してください。", href: `/runs/${ym}#exclude-section` };
+    if (nextStep === "provider_ingest") return { message: "次の手順: 手順3 共通フォルダ取り込みを実行してください。", href: null };
+    if (nextStep === "mf_reconcile") return { message: "次の手順: 手順5 MF突合・下書き作成を実行してください。", href: null };
     if (nextStep === "done") {
-      const archive = data.archive && typeof data.archive === "object" ? data.archive : {};
-      if (archive.created) {
-        const stamp = formatArchiveTimeForDisplay(archive.created_at);
-        const suffix = stamp ? `（${stamp}）` : "";
-        return { message: `すべて完了しました。${ym} のアーカイブ作成完了${suffix}`, href: archivePageHref(ym) };
-      }
-      return { message: `すべて完了しました。${ym} のアーカイブは未作成です。必要なら「アーカイブ作成」を実行してください。`, href: archivePageHref(ym) };
+      return { message: "必要に応じて手順5を再実行してください。月次完了時は「月次クローズ」を実行します。", href: null };
     }
-    return { message: "Unable to determine step state. Please reload.", href: null };
+    return { message: "ステップ状態を判定できませんでした。再読み込みしてください。", href: null };
   }
 
   function inferAllowedModes(data) {
@@ -842,9 +913,9 @@
       const blockedByOrder = !allowed;
       button.disabled = blockedByRunning || blockedByOrder;
       if (blockedByRunning) {
-        button.title = "Cannot start while another step is running.";
+        button.title = "他の手順を実行中のため開始できません。";
       } else if (blockedByOrder) {
-        button.title = "Current workflow order does not allow this action yet.";
+        button.title = "まだこの手順は実行できません。";
       } else {
         button.title = "";
       }
@@ -864,9 +935,9 @@
       const blockedByRunning = Boolean(runningMode);
       button.disabled = blockedByRunning || !allowed;
       if (blockedByRunning) {
-        button.title = "Cannot archive while another step is running.";
+        button.title = "他の手順を実行中のためアーカイブできません。";
       } else if (!allowed) {
-        button.title = "Archive is available after Amazon or Rakuten confirm+print is complete.";
+        button.title = "Amazonまたは楽天で「除外・印刷」完了後に実行できます。";
       } else {
         button.title = "";
       }
@@ -887,9 +958,9 @@
       const blockedByPreflight = needsPreflight && !preflightDone;
       button.disabled = blockedByRunning || blockedByPreflight;
       if (blockedByRunning) {
-        button.title = "Cannot start while another step is running.";
+        button.title = "他の手順を実行中のため開始できません。";
       } else if (blockedByPreflight) {
-        button.title = "Run Preflight (Step 0) first.";
+        button.title = "先に手順0「準備」を実行してください。";
       } else {
         button.title = "";
       }
@@ -906,7 +977,7 @@
       const blockedByRunning = Boolean(runningMode);
       button.disabled = blockedByRunning;
       if (blockedByRunning) {
-        button.title = "Cannot start while another step is running.";
+        button.title = "他の手順を実行中のため開始できません。";
       } else {
         button.title = "";
       }
@@ -922,7 +993,7 @@
   function buildMfSummaryText(data) {
     const runningMode = String(data?.running_mode || "");
     if (runningMode === "mf_reconcile") {
-      return "サマリー: Step5実行中...";
+      return "サマリー: 手順5を実行中...";
     }
     const mf = data && typeof data === "object" ? data.mf : null;
     const summary = mf && typeof mf === "object" ? mf.summary : null;
@@ -935,7 +1006,7 @@
     const reconciled = Boolean(mf?.reconciled);
 
     if (!reconciled && !hasDraftResult && missingCandidates === 0) {
-      return "Summary: not started";
+      return "サマリー: 未実行";
     }
     if (!hasDraftResult) {
       return `サマリー: 未添付候補 ${missingCandidates}件 / 下書き作成は未実行`;
@@ -1045,11 +1116,11 @@
     try {
       const raw = await apiGetJson(`/api/steps/${ym}`);
       if (!raw) {
-        renderNextStep("Failed to fetch step state. Please reload.", null);
+        renderNextStep("ステップ状態の取得に失敗しました。再読み込みしてください。", null);
         document.querySelectorAll("[data-step-link]").forEach((link) => setStepLinkState(link, false, "#"));
         applyArchiveAvailability({ running_mode: "", amazon: {}, rakuten: {} });
         applyManualAvailability({ running_mode: "" });
-        renderMfSummary(null, "Summary: failed to fetch step state.");
+        renderMfSummary(null, "サマリー: ステップ状態の取得に失敗しました。");
         if (!stepRetryTimer) {
           stepRetryTimer = setTimeout(() => {
             stepRetryTimer = null;
@@ -1099,19 +1170,20 @@
       setTaskStatus("rakuten", taskStates.rakuten);
 
       const labels = {
-        preflight: "Step 0 準備",
-        amazon_download: "Amazon receipt download",
-        amazon_decide_print: "Amazon除外・印刷",
-        rakuten_download: "Rakuten receipt download",
-        rakuten_decide_print: "楽天除外・印刷",
-        provider_ingest: "SaaS領収書取り込み",
-        mf_bulk_upload_task: "MF一括アップロード",
-        mf_reconcile: "MF抽出 + 突合 + 下書き作成",
+        preflight: "手順0 準備",
+        amazon_download: "手順1 Amazon 取得",
+        amazon_decide_print: "手順1 Amazon 除外・印刷",
+        rakuten_download: "手順2 楽天 取得",
+        rakuten_decide_print: "手順2 楽天 除外・印刷",
+        provider_ingest: "手順3 共通フォルダ取り込み",
+        mf_bulk_upload_task: "手順4 MF一括アップロード",
+        mf_reconcile: "手順5 MF突合・下書き作成",
       };
       if (!window.__stepState) {
         window.__stepState = stepStates;
       } else {
         Object.keys(stepStates).forEach((key) => {
+          if (key === "mf_reconcile") return;
           if (window.__stepState[key] && window.__stepState[key] !== "done" && stepStates[key] === "done") {
             showToast(`${labels[key]}が完了しました。`, "success");
           }
@@ -1129,12 +1201,12 @@
 
 
     } catch {
-      renderNextStep("Failed to fetch step state. Please reload.", null);
+      renderNextStep("ステップ状態の取得に失敗しました。再読み込みしてください。", null);
       document.querySelectorAll("[data-step-link]").forEach((link) => setStepLinkState(link, false, "#"));
       applyArchiveAvailability({ running_mode: "", amazon: {}, rakuten: {} });
       applyManualAvailability({ running_mode: "" });
       applyProviderAvailability({ running_mode: "", preflight: {} });
-      renderMfSummary(null, "Summary: failed to fetch step state.");
+      renderMfSummary(null, "サマリー: ステップ状態の取得に失敗しました。");
       if (!stepRetryTimer) {
         stepRetryTimer = setTimeout(() => {
           stepRetryTimer = null;
@@ -1167,6 +1239,10 @@
         event.preventDefault();
         if (button.dataset.archiveAction === "archive_outputs") {
           archiveOutputs(button);
+          return;
+        }
+        if (button.dataset.archiveAction === "month_close") {
+          monthClose(button);
         }
       });
     });
@@ -1189,7 +1265,7 @@
       link.addEventListener("click", (event) => {
         if (link.getAttribute("aria-disabled") === "true") {
           event.preventDefault();
-          showToast("This step is not available yet. Follow the next-step guidance.", "error");
+          showToast("この手順はまだ実行できません。次の手順案内を確認してください。", "error");
         }
       });
     });
@@ -1220,12 +1296,12 @@
       if (!runId) return;
       const res = await fetch(`/api/runs/${runId}/stop`, { method: "POST" });
       if (!res.ok) {
-        const message = "Could not stop the run.";
+        const message = "実行の停止に失敗しました。";
         showError(message);
         showToast(message, "error");
         return;
       }
-      const message = "Stop request sent. Please wait for log updates.";
+      const message = "停止リクエストを送信しました。ログ更新をお待ちください。";
       showError(message);
       showToast(message, "success");
     });

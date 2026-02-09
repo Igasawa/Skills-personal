@@ -992,8 +992,13 @@ def create_api_router() -> APIRouter:
         )
         return JSONResponse(result)
 
-    @router.post("/api/archive/{ym}")
-    def api_archive(ym: str, request: Request) -> JSONResponse:
+    def _run_archive_action(
+        *,
+        ym: str,
+        request: Request,
+        action: str,
+        cleanup: bool,
+    ) -> JSONResponse:
         ym = core._safe_ym(ym)
         year, month = core._split_ym(ym)
         actor = _actor_from_request(request)
@@ -1006,19 +1011,21 @@ def create_api_router() -> APIRouter:
                 month,
                 include_pdfs=include_pdfs,
                 include_debug=include_debug,
+                cleanup=cleanup,
             )
         except HTTPException as exc:
             core._append_audit_event(
                 year=year,
                 month=month,
                 event_type="archive",
-                action="manual_archive",
+                action=action,
                 status="rejected" if exc.status_code in {400, 404, 409} else "failed",
                 actor=actor,
                 details={
                     "reason": str(exc.detail),
                     "include_pdfs": include_pdfs,
                     "include_debug": include_debug,
+                    "cleanup": cleanup,
                 },
             )
             raise
@@ -1026,16 +1033,46 @@ def create_api_router() -> APIRouter:
             year=year,
             month=month,
             event_type="archive",
-            action="manual_archive",
+            action=action,
             status="success",
             actor=actor,
             details={
                 "archived_to": result.get("archived_to"),
                 "include_pdfs": include_pdfs,
                 "include_debug": include_debug,
+                "cleanup": cleanup,
+                "cleanup_report": result.get("cleanup_report"),
+                "cleanup_removed": result.get("cleanup_removed"),
             },
         )
-        return JSONResponse(result)
+        response = dict(result)
+        response["history_entry"] = {
+            "ts": datetime.now().isoformat(timespec="seconds"),
+            "ym": ym,
+            "action": action,
+            "action_label": "月次クローズ" if action == "month_close" else "アーカイブ",
+            "archived_to": result.get("archived_to"),
+            "archive_url": f"/runs/{ym}/archived-receipts",
+        }
+        return JSONResponse(response)
+
+    @router.post("/api/archive/{ym}")
+    def api_archive(ym: str, request: Request) -> JSONResponse:
+        return _run_archive_action(
+            ym=ym,
+            request=request,
+            action="manual_archive",
+            cleanup=False,
+        )
+
+    @router.post("/api/month-close/{ym}")
+    def api_month_close(ym: str, request: Request) -> JSONResponse:
+        return _run_archive_action(
+            ym=ym,
+            request=request,
+            action="month_close",
+            cleanup=True,
+        )
 
     @router.post("/api/print-pdf/{ym}/{source}/{filename}")
     def api_print_pdf(ym: str, source: str, filename: str, request: Request) -> JSONResponse:

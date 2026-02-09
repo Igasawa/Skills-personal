@@ -111,9 +111,10 @@ def test_index_page_shows_manual_archive_button(monkeypatch: pytest.MonkeyPatch,
     assert 'data-step-id="provider_ingest"' in res.text
     assert 'data-step-id="mf_reconcile"' in res.text
     assert 'data-archive-action="archive_outputs"' in res.text
-    assert "data-archive-page-link" in res.text
+    assert 'data-archive-action="month_close"' in res.text
+    assert "data-archive-page-link" not in res.text
     assert "data-archive-href-template=" in res.text
-    assert "data-fallback-href=" in res.text
+    assert "data-fallback-href=" not in res.text
     assert 'data-manual-action="open_inbox"' not in res.text
     assert 'data-manual-action="import_receipts"' not in res.text
     assert 'data-step-id="mf_bulk_upload_task"' in res.text
@@ -123,8 +124,36 @@ def test_index_page_shows_manual_archive_button(monkeypatch: pytest.MonkeyPatch,
     assert 'data-provider-action="open_shared_inbox"' in res.text
     assert 'data-provider-action="import_provider_receipts"' in res.text
     assert 'data-provider-action="download_provider_receipts"' not in res.text
-    assert "手動/SaaS領収書取り込み（共通フォルダ）" in res.text
+    assert "手順3 共通フォルダ取り込み（手動取得分）" in res.text
     assert "data-mf-summary" in res.text
+
+
+def test_index_page_shows_archive_history_links(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    client = _create_client(monkeypatch, tmp_path)
+    ym = "2026-01"
+    audit_log = _artifact_root(tmp_path) / ym / "reports" / "audit_log.jsonl"
+    audit_log.parent.mkdir(parents=True, exist_ok=True)
+    audit_log.write_text(
+        json.dumps(
+            {
+                "ts": "2026-02-10T09:10:11",
+                "ym": ym,
+                "event_type": "archive",
+                "action": "month_close",
+                "status": "success",
+                "details": {"archived_to": "C:\\archive\\20260210_091011"},
+            },
+            ensure_ascii=False,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    res = client.get("/")
+    assert res.status_code == 200
+    assert "アーカイブ履歴" in res.text
+    assert "月次クローズ" in res.text
+    assert f"/runs/{ym}/archived-receipts" in res.text
 
 
 def test_index_page_exposes_latest_run_status_hooks(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

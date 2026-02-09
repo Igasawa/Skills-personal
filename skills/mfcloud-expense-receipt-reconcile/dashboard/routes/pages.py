@@ -18,6 +18,7 @@ def create_pages_router(templates: Jinja2Templates) -> APIRouter:
     @router.get("/", response_class=HTMLResponse)
     def index(request: Request) -> HTMLResponse:
         artifacts = core._scan_artifacts()
+        archive_history = core._scan_archive_history(limit=20)
         jobs = core._scan_run_jobs()
         running_job = core._get_latest_running_job()
         defaults = core._resolve_form_defaults()
@@ -50,6 +51,7 @@ def create_pages_router(templates: Jinja2Templates) -> APIRouter:
                 "running_job": running_job,
                 "defaults": defaults,
                 "default_ym": default_ym,
+                "archive_history": archive_history,
                 "ax_home": str(core._ax_home()),
             },
         )

@@ -58,6 +58,19 @@
           {% else %}
           <p class="muted">まだ実行履歴がありません。</p>
           {% endif %}
+          <h3>アーカイブ履歴</h3>
+          <ul class="archive-history" data-archive-history-list>
+            {% if archive_history %}
+            {% for item in archive_history %}
+            <li class="archive-history-item">
+              <span class="muted">{{ item.ts }} / {{ item.ym }} / {{ item.action_label }}</span>
+              <a class="secondary" href="{{ item.archive_url }}">アーカイブを開く</a>
+            </li>
+            {% endfor %}
+            {% else %}
+            <li class="archive-history-item muted" data-archive-history-empty>アーカイブ履歴はありません。</li>
+            {% endif %}
+          </ul>
         </div>
 
         <div class="card">
@@ -116,7 +129,7 @@
             </div>
             <p class="muted">
               Amazonと楽天は並行で進められます（各サイト内では「取得→除外判断→印刷」の順）。<br />
-              MF抽出＋突合＋下書き作成は、Amazonまたは楽天の除外判断＋印刷が完了した後に実行してください。
+              MF抽出＋突合＋下書き作成は、Amazon/楽天の両方で「取得→除外判断→印刷」が完了してから実行してください。
             </p>
           </form>
         </div>
@@ -142,13 +155,13 @@
         data-archive-href-template="/runs/__YM__/archived-receipts"
       >
         <h2>経費精算ステップウィザード</h2>
-        <p class="muted">基本は上から順で、Amazon/楽天の枝は並行実行できます。</p>
+        <p class="muted">上から順に進めてください。Amazonと楽天は並行で進められます。</p>
         <div id="wizard-next" class="next-step hidden" aria-live="polite"></div>
         <div class="wizard-steps">
           <div class="wizard-step" data-step-id="preflight">
             <div class="step-head">
               <span class="step-num">0</span>
-              <span class="step-title">Step 0 準備：ログイン一括 + MF連携再取得</span>
+              <span class="step-title">手順0 準備（ログイン確認・MF連携更新）</span>
               <span class="step-status" data-step-status="preflight">未実行</span>
             </div>
             <div class="step-actions">
@@ -159,7 +172,7 @@
           <div class="wizard-step wizard-task" data-task-id="amazon">
             <div class="task-head">
               <span class="step-num">1</span>
-              <span class="step-title">Amazonタスク（取得 → 除外判断・印刷準備）</span>
+              <span class="step-title">手順1 Amazon（取得→除外判断・印刷）</span>
               <span class="task-status" data-task-status="amazon">未実行</span>
             </div>
             <div class="task-process-row" data-process-id="amazon_download">
@@ -176,10 +189,10 @@
             <div class="task-process-row" data-process-id="amazon_decide_print">
               <div class="task-process-label">
                 <span class="process-title">除外判断・印刷準備</span>
-                <span class="process-desc">除外設定と印刷準備へ進む</span>
+                <span class="process-desc">除外対象を決めて印刷を実行</span>
               </div>
               <div class="step-actions">
-                <a class="secondary" data-step-link="amazon_exclude" href="#">除外・印刷へ</a>
+                <a class="secondary" data-step-link="amazon_exclude" href="#">除外・印刷を開く</a>
                 <button type="button" class="step-reset" data-step-reset="amazon_decide_print">リセット</button>
               </div>
               <span class="step-status process-status" data-step-status="amazon_decide_print">未実行</span>
@@ -188,7 +201,7 @@
           <div class="wizard-step wizard-task" data-task-id="rakuten">
             <div class="task-head">
               <span class="step-num">2</span>
-              <span class="step-title">楽天タスク（取得 → 除外判断・印刷準備）</span>
+              <span class="step-title">手順2 楽天（取得→除外判断・印刷）</span>
               <span class="task-status" data-task-status="rakuten">未実行</span>
             </div>
             <div class="task-process-row" data-process-id="rakuten_download">
@@ -205,10 +218,10 @@
             <div class="task-process-row" data-process-id="rakuten_decide_print">
               <div class="task-process-label">
                 <span class="process-title">除外判断・印刷準備</span>
-                <span class="process-desc">除外設定と印刷準備へ進む</span>
+                <span class="process-desc">除外対象を決めて印刷を実行</span>
               </div>
               <div class="step-actions">
-                <a class="secondary" data-step-link="rakuten_exclude" href="#">除外・印刷へ</a>
+                <a class="secondary" data-step-link="rakuten_exclude" href="#">除外・印刷を開く</a>
                 <button type="button" class="step-reset" data-step-reset="rakuten_decide_print">リセット</button>
               </div>
               <span class="step-status process-status" data-step-status="rakuten_decide_print">未実行</span>
@@ -217,7 +230,7 @@
           <div class="wizard-step" data-step-id="provider_ingest">
             <div class="step-head">
               <span class="step-num">3</span>
-              <span class="step-title">手動/SaaS領収書取り込み（共通フォルダ）</span>
+              <span class="step-title">手順3 共通フォルダ取り込み（手動取得分）</span>
               <span class="step-status" data-step-status="provider_ingest">未実行</span>
             </div>
             <div class="step-actions">
@@ -227,44 +240,37 @@
               <button type="button" class="primary" data-provider-action="import_provider_receipts">
                 共通フォルダから取り込み
               </button>
-              <span class="muted">Step0にあった手動領収書取り込みはこのStepへ統合しました。</span>
-              <span class="muted">除外は行いません。取り込んだ証憑はすべてMF突合候補に含めます。</span>
-              <span class="muted">自動取得は無効です。Aqua Voice / Claude / ChatGPT / Gamma の領収書を共通フォルダへ格納してください。</span>
-              <span class="muted">未取り込みファイルがある場合、このStepが次アクションとして表示されます。</span>
+              <span class="muted">自動取得されない領収書（Aqua Voice / Claude / ChatGPT / Gamma など）を共通フォルダに入れて取り込みます。</span>
             </div>
           </div>
           <div class="wizard-step" data-step-id="mf_bulk_upload_task">
             <div class="step-head">
               <span class="step-num">4</span>
-              <span class="step-title">MF一括アップロード（カード連携なし新規作成）</span>
+              <span class="step-title">手順4 MF一括アップロード（必要な場合のみ）</span>
               <span class="step-status" data-step-status="mf_bulk_upload_task">未実行</span>
             </div>
             <div class="step-actions">
               <button type="button" class="secondary" data-manual-action="open_mf_bulk_inbox">MF一括アップロード用フォルダを開く</button>
               <button type="button" class="primary" data-manual-action="run_mf_bulk_upload">MF一括アップロードを実行</button>
-              <span class="muted">mf_bulk_upload/inbox の領収書をOCR入力でMFへ送信します。</span>
+              <span class="muted">mf_bulk_upload/inbox の領収書をMFへ送信します。送信済みファイルは _uploaded に移動します。</span>
             </div>
           </div>
           <div class="wizard-step" data-step-id="mf_reconcile">
             <div class="step-head">
               <span class="step-num">5</span>
-              <span class="step-title">MF抽出 + 突合 + 下書き作成（除外確定済みの成果物を使用）</span>
+              <span class="step-title">手順5 MF突合・下書き作成</span>
               <span class="step-status" data-step-status="mf_reconcile">未実行</span>
             </div>
             <div class="step-actions">
               <button type="button" class="primary" data-step-action="mf_reconcile">MF抽出 + 突合 + 下書き作成を実行</button>
               <button type="button" class="secondary" data-archive-action="archive_outputs">
-                アーカイブ作成（成果物+PDF）
+                アーカイブ作成（保存のみ）
               </button>
-              {% set archive_page_href = '/runs/' ~ default_ym ~ '/archived-receipts' if default_ym else '#' %}
-              <a
-                class="secondary"
-                data-archive-page-link
-                data-fallback-href="{{ archive_page_href }}"
-                href="{{ archive_page_href }}"
-              >アーカイブ済み領収書一覧を開く</a>
-              <span class="muted">Amazon/楽天の除外確定後に実行（編集登録→添付→OCR入力→作成）</span>
-              <span class="muted">アーカイブは手動保存です（自動実行されません）。</span>
+              <button type="button" class="secondary" data-archive-action="month_close">
+                月次クローズ（アーカイブ+クリーンアップ）
+              </button>
+              <span class="muted">手順1〜4の結果を反映して、突合と下書き作成を実行します。</span>
+              <span class="muted">手順3/4を更新した後は、手順5を再実行してください（何回でも実行できます）。</span>
               <span class="muted" data-mf-summary>サマリー: 未実行</span>
             </div>
           </div>
