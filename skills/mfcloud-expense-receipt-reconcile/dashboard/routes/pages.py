@@ -4,7 +4,7 @@ from pathlib import Path
 import re
 
 from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from services import core
@@ -200,6 +200,11 @@ def create_pages_router(templates: Jinja2Templates) -> APIRouter:
                 "available_months": available_months,
             },
         )
+
+    @router.get("/runs/{ym}/archive-receipts", include_in_schema=False)
+    def run_archived_receipts_legacy(request: Request, ym: str) -> RedirectResponse:
+        ym = core._safe_ym(ym)
+        return RedirectResponse(url=str(request.url_for("run_archived_receipts", ym=ym)))
 
     @router.get("/files/{ym}/{kind}")
     def download_file(ym: str, kind: str) -> FileResponse:

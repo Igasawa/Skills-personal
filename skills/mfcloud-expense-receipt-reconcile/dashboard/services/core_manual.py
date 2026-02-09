@@ -82,7 +82,6 @@ def _iter_receipt_files(root_dir: Path) -> list[Path]:
 def _provider_step_attempted_for_ym(year: int, month: int) -> bool:
     month_root = _manual_month_root_for_ym(year, month)
     provider_import_report = month_root / "manual" / "reports" / "provider_import_last.json"
-    provider_download_report = month_root / "reports" / "provider_download_result.json"
 
     import_payload = _read_json(provider_import_report)
     if isinstance(import_payload, dict):
@@ -94,26 +93,30 @@ def _provider_step_attempted_for_ym(year: int, month: int) -> bool:
             normalized_filter = {str(value or "").strip().lower() for value in provider_filter}
             if any(provider in normalized_filter for provider in PROVIDER_KEYS):
                 return True
-
-    download_payload = _read_json(provider_download_report)
-    if isinstance(download_payload, dict):
-        return True
     return False
 
 
 def _provider_inbox_status_for_ym(year: int, month: int) -> dict[str, Any]:
     statuses: dict[str, dict[str, Any]] = {}
-    pending_total = 0
     attempted = _provider_step_attempted_for_ym(year, month)
+    shared_inbox_dir = _manual_inbox_dir_for_ym(year, month, create=True)
+    pending_total = len(_iter_receipt_files(shared_inbox_dir))
+    provider_pending_total = 0
     for provider in PROVIDER_KEYS:
         provider_dir = _provider_inbox_dir_for_ym(year, month, provider, create=True)
         pending_files = len(_iter_receipt_files(provider_dir))
-        pending_total += pending_files
+        provider_pending_total += pending_files
         statuses[provider] = {
             "label": PROVIDER_LABELS.get(provider, provider),
             "path": str(provider_dir),
             "pending_files": pending_files,
         }
+    shared_pending_files = max(0, pending_total - provider_pending_total)
+    statuses["shared"] = {
+        "label": "共通フォルダ",
+        "path": str(shared_inbox_dir),
+        "pending_files": shared_pending_files,
+    }
     return {
         "step_done": attempted and pending_total == 0,
         "attempted": attempted,
@@ -206,7 +209,6 @@ def _import_provider_receipts_for_ym(year: int, month: int) -> dict[str, Any]:
     output_root.mkdir(parents=True, exist_ok=True)
 
     try:
-        from scripts.manual_receipt_import import PROVIDER_KEYS as IMPORT_PROVIDER_KEYS
         from scripts.manual_receipt_import import import_manual_receipts_for_month
     except Exception as exc:  # pragma: no cover - import failure should be rare
         raise HTTPException(status_code=500, detail=f"provider import module load failed: {exc}") from exc
@@ -216,7 +218,6 @@ def _import_provider_receipts_for_ym(year: int, month: int) -> dict[str, Any]:
             output_root,
             year,
             month,
-            provider_filter=set(IMPORT_PROVIDER_KEYS),
             ingestion_channel="provider_inbox",
         )
     except HTTPException:
@@ -235,6 +236,14 @@ def _import_provider_receipts_for_ym(year: int, month: int) -> dict[str, Any]:
             "skipped_duplicates": int(stats.get("skipped_duplicates") or 0),
             "failed": int(stats.get("failed") or 0),
         }
+    shared_stats = provider_counts.get("manual") if isinstance(provider_counts.get("manual"), dict) else {}
+    providers_result["shared"] = {
+        "found": int(shared_stats.get("found") or 0),
+        "imported": int(shared_stats.get("imported") or 0),
+        "imported_missing_amount": int(shared_stats.get("imported_missing_amount") or 0),
+        "skipped_duplicates": int(shared_stats.get("skipped_duplicates") or 0),
+        "failed": int(shared_stats.get("failed") or 0),
+    }
 
     return {
         "status": "ok",

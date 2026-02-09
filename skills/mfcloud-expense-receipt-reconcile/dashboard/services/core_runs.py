@@ -104,6 +104,47 @@ def _build_mf_summary(reports_dir: Path, mf_draft_payload: Any) -> dict[str, Any
     }
 
 
+def _mf_bulk_upload_state_for_ym(reports_dir: Path) -> dict[str, Any]:
+    result_path = reports_dir / "mf_bulk_upload_result.json"
+    payload = _read_json(result_path)
+    if not isinstance(payload, dict):
+        return {
+            "attempted": False,
+            "done": False,
+            "status": "",
+            "files_found": 0,
+            "read_count": 0,
+            "queued_count": 0,
+            "submitted_count": 0,
+            "updated_at": None,
+        }
+
+    status = str(payload.get("status") or "").strip().lower()
+    data = payload.get("data") if isinstance(payload.get("data"), dict) else payload
+    files_found = _coerce_non_negative_int(data.get("files_found"))
+    read_count = _coerce_non_negative_int(data.get("read_count"))
+    queued_count = _coerce_non_negative_int(data.get("queued_count"))
+    submitted_count = _coerce_non_negative_int(data.get("submitted_count"))
+    done = status in {"ok", "success"}
+    updated_at = str(payload.get("updated_at") or "").strip() or None
+    if not updated_at and result_path.exists():
+        try:
+            updated_at = datetime.fromtimestamp(result_path.stat().st_mtime).isoformat(timespec="seconds")
+        except Exception:
+            updated_at = None
+
+    return {
+        "attempted": True,
+        "done": done,
+        "status": status,
+        "files_found": files_found,
+        "read_count": read_count,
+        "queued_count": queued_count,
+        "submitted_count": submitted_count,
+        "updated_at": updated_at,
+    }
+
+
 def _normalize_actor(actor: Any) -> dict[str, Any]:
     if isinstance(actor, dict):
         out: dict[str, Any] = {}
@@ -259,6 +300,7 @@ def _workflow_state_for_ym(year: int, month: int) -> dict[str, Any]:
     mf_draft_result_path = reports_dir / "mf_draft_create_result.json"
     mf_draft_payload = _read_json(mf_draft_result_path)
     mf_summary = _build_mf_summary(reports_dir, mf_draft_payload)
+    mf_bulk_upload_state = _mf_bulk_upload_state_for_ym(reports_dir)
     mf_drafted = bool(
         isinstance(mf_draft_payload, dict) and str(mf_draft_payload.get("status") or "").strip().lower() in {"ok", "success"}
     )
@@ -306,6 +348,7 @@ def _workflow_state_for_ym(year: int, month: int) -> dict[str, Any]:
         "amazon": {"downloaded": amazon_downloaded, "confirmed": amazon_confirmed, "printed": amazon_printed},
         "rakuten": {"downloaded": rakuten_downloaded, "confirmed": rakuten_confirmed, "printed": rakuten_printed},
         "providers": providers_state,
+        "mf_bulk_upload": mf_bulk_upload_state,
         "archive": archive_state,
         "mf": {"reconciled": mf_reconciled, "drafted": mf_drafted, "step_done": mf_step_done, "summary": mf_summary},
         "next_step": next_step,

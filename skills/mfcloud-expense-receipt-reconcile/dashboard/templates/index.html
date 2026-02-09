@@ -135,7 +135,12 @@
         </div>
       </section>
 
-      <section class="card" id="wizard" data-ym="">
+      <section
+        class="card"
+        id="wizard"
+        data-ym=""
+        data-archive-href-template="/runs/__YM__/archived-receipts"
+      >
         <h2>経費精算ステップウィザード</h2>
         <p class="muted">基本は上から順で、Amazon/楽天の枝は並行実行できます。</p>
         <div id="wizard-next" class="next-step hidden" aria-live="polite"></div>
@@ -143,92 +148,101 @@
           <div class="wizard-step" data-step-id="preflight">
             <div class="step-head">
               <span class="step-num">0</span>
-              <span class="step-title">準備：ログイン一括 + MF連携再取得</span>
+              <span class="step-title">Step 0 準備：ログイン一括 + MF連携再取得</span>
               <span class="step-status" data-step-status="preflight">未実行</span>
             </div>
             <div class="step-actions">
               <button type="button" class="primary" data-step-action="preflight">準備を実行</button>
-              <button type="button" class="secondary" data-manual-action="open_inbox">手動領収書フォルダを開く</button>
-              <button type="button" class="secondary" data-manual-action="import_receipts">手動領収書を取り込む</button>
-              <button type="button" class="secondary" data-manual-action="open_mf_bulk_inbox">MF一括アップロード用フォルダを開く</button>
-              <button type="button" class="secondary" data-manual-action="run_mf_bulk_upload">MF一括アップロードを実行</button>
               <span class="muted">各サイトのログインとMF連携の再取得をまとめて実行します。</span>
-              <span class="muted">手動取り込み: manual/inbox のPDFを解析し、ファイル名を自動補正して突合対象へ追加します。</span>
-              <span class="muted">MF一括アップロード: mf_bulk_upload/inbox の領収書をOCR入力でMFへ送信します。</span>
             </div>
           </div>
-          <div class="wizard-step" data-step-id="amazon_download">
-            <div class="step-head">
+          <div class="wizard-step wizard-task" data-task-id="amazon">
+            <div class="task-head">
               <span class="step-num">1</span>
-              <button type="button" class="step-reset" data-step-reset="amazon_download">リセット</button>
-              <span class="step-title">Amazonの領収書を取得</span>
-              <span class="step-status" data-step-status="amazon_download">未実行</span>
+              <span class="step-title">Amazonタスク（取得 → 除外判断・印刷準備）</span>
+              <span class="task-status" data-task-status="amazon">未実行</span>
             </div>
-            <div class="step-actions">
-              <button type="button" class="primary" data-step-action="amazon_download">Amazon領収書を取得</button>
+            <div class="task-process-row" data-process-id="amazon_download">
+              <div class="task-process-label">
+                <span class="process-title">取得</span>
+                <span class="process-desc">Amazon領収書を取得</span>
+              </div>
+              <div class="step-actions">
+                <button type="button" class="primary" data-step-action="amazon_download">Amazon領収書を取得</button>
+                <button type="button" class="step-reset" data-step-reset="amazon_download">リセット</button>
+              </div>
+              <span class="step-status process-status" data-step-status="amazon_download">未実行</span>
+            </div>
+            <div class="task-process-row" data-process-id="amazon_decide_print">
+              <div class="task-process-label">
+                <span class="process-title">除外判断・印刷準備</span>
+                <span class="process-desc">除外設定と印刷準備へ進む</span>
+              </div>
+              <div class="step-actions">
+                <a class="secondary" data-step-link="amazon_exclude" href="#">除外・印刷へ</a>
+                <button type="button" class="step-reset" data-step-reset="amazon_decide_print">リセット</button>
+              </div>
+              <span class="step-status process-status" data-step-status="amazon_decide_print">未実行</span>
             </div>
           </div>
-          <div class="wizard-step" data-step-id="amazon_decide_print">
-            <div class="step-head">
+          <div class="wizard-step wizard-task" data-task-id="rakuten">
+            <div class="task-head">
               <span class="step-num">2</span>
-              <button type="button" class="step-reset" data-step-reset="amazon_decide_print">リセット</button>
-              <span class="step-title">Amazonの除外判断 → 印刷</span>
-              <span class="step-status" data-step-status="amazon_decide_print">未実行</span>
+              <span class="step-title">楽天タスク（取得 → 除外判断・印刷準備）</span>
+              <span class="task-status" data-task-status="rakuten">未実行</span>
             </div>
-            <div class="step-actions">
-              <a class="secondary" data-step-link="amazon_exclude" href="#">除外・印刷へ</a>
+            <div class="task-process-row" data-process-id="rakuten_download">
+              <div class="task-process-label">
+                <span class="process-title">取得</span>
+                <span class="process-desc">楽天領収書を取得</span>
+              </div>
+              <div class="step-actions">
+                <button type="button" class="primary" data-step-action="rakuten_download">楽天領収書を取得</button>
+                <button type="button" class="step-reset" data-step-reset="rakuten_download">リセット</button>
+              </div>
+              <span class="step-status process-status" data-step-status="rakuten_download">未実行</span>
             </div>
-          </div>
-          <div class="wizard-step" data-step-id="rakuten_download">
-            <div class="step-head">
-              <span class="step-num">3</span>
-              <button type="button" class="step-reset" data-step-reset="rakuten_download">リセット</button>
-              <span class="step-title">楽天の領収書を取得</span>
-              <span class="step-status" data-step-status="rakuten_download">未実行</span>
-            </div>
-            <div class="step-actions">
-              <button type="button" class="primary" data-step-action="rakuten_download">楽天領収書を取得</button>
-            </div>
-          </div>
-          <div class="wizard-step" data-step-id="rakuten_decide_print">
-            <div class="step-head">
-              <span class="step-num">4</span>
-              <button type="button" class="step-reset" data-step-reset="rakuten_decide_print">リセット</button>
-              <span class="step-title">楽天の除外判断 → 印刷</span>
-              <span class="step-status" data-step-status="rakuten_decide_print">未実行</span>
-            </div>
-            <div class="step-actions">
-              <a class="secondary" data-step-link="rakuten_exclude" href="#">除外・印刷へ</a>
+            <div class="task-process-row" data-process-id="rakuten_decide_print">
+              <div class="task-process-label">
+                <span class="process-title">除外判断・印刷準備</span>
+                <span class="process-desc">除外設定と印刷準備へ進む</span>
+              </div>
+              <div class="step-actions">
+                <a class="secondary" data-step-link="rakuten_exclude" href="#">除外・印刷へ</a>
+                <button type="button" class="step-reset" data-step-reset="rakuten_decide_print">リセット</button>
+              </div>
+              <span class="step-status process-status" data-step-status="rakuten_decide_print">未実行</span>
             </div>
           </div>
           <div class="wizard-step" data-step-id="provider_ingest">
             <div class="step-head">
-              <span class="step-num">4.5</span>
-              <span class="step-title">SaaS領収書取り込み（Aqua Voice / Claude / ChatGPT / Gamma）</span>
+              <span class="step-num">3</span>
+              <span class="step-title">手動/SaaS領収書取り込み（共通フォルダ）</span>
               <span class="step-status" data-step-status="provider_ingest">未実行</span>
             </div>
             <div class="step-actions">
-              <button type="button" class="secondary" data-provider-action="open_provider_inbox" data-provider="chatgpt">
-                ChatGPTフォルダを開く
-              </button>
-              <button type="button" class="secondary" data-provider-action="open_provider_inbox" data-provider="claude">
-                Claudeフォルダを開く
-              </button>
-              <button type="button" class="secondary" data-provider-action="open_provider_inbox" data-provider="gamma">
-                Gammaフォルダを開く
-              </button>
-              <button type="button" class="secondary" data-provider-action="open_provider_inbox" data-provider="aquavoice">
-                Aqua Voiceフォルダを開く
+              <button type="button" class="secondary" data-provider-action="open_shared_inbox">
+                共通フォルダを開く
               </button>
               <button type="button" class="primary" data-provider-action="import_provider_receipts">
-                4サービス一括取り込み
+                共通フォルダから取り込み
               </button>
-              <button type="button" class="secondary" data-provider-action="download_provider_receipts">
-                4サービス自動取得+取り込み
-              </button>
+              <span class="muted">Step0にあった手動領収書取り込みはこのStepへ統合しました。</span>
               <span class="muted">除外は行いません。取り込んだ証憑はすべてMF突合候補に含めます。</span>
-              <span class="muted">初回は各サービスのログインが必要です（ログイン状態は次回以降再利用されます）。</span>
+              <span class="muted">自動取得は無効です。Aqua Voice / Claude / ChatGPT / Gamma の領収書を共通フォルダへ格納してください。</span>
               <span class="muted">未取り込みファイルがある場合、このStepが次アクションとして表示されます。</span>
+            </div>
+          </div>
+          <div class="wizard-step" data-step-id="mf_bulk_upload_task">
+            <div class="step-head">
+              <span class="step-num">4</span>
+              <span class="step-title">MF一括アップロード（カード連携なし新規作成）</span>
+              <span class="step-status" data-step-status="mf_bulk_upload_task">未実行</span>
+            </div>
+            <div class="step-actions">
+              <button type="button" class="secondary" data-manual-action="open_mf_bulk_inbox">MF一括アップロード用フォルダを開く</button>
+              <button type="button" class="primary" data-manual-action="run_mf_bulk_upload">MF一括アップロードを実行</button>
+              <span class="muted">mf_bulk_upload/inbox の領収書をOCR入力でMFへ送信します。</span>
             </div>
           </div>
           <div class="wizard-step" data-step-id="mf_reconcile">

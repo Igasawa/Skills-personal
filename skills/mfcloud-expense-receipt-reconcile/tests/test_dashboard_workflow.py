@@ -292,6 +292,30 @@ def test_workflow_state_prioritizes_provider_ingest_when_provider_inbox_has_pend
     assert "mf_reconcile" in state["allowed_run_modes"]
 
 
+def test_workflow_state_prioritizes_provider_ingest_when_shared_inbox_has_pending_files(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("AX_HOME", str(tmp_path))
+    ym = "2026-01"
+    _write_json(_reports_dir(tmp_path, ym) / "preflight.json", {"status": "success", "year": 2026, "month": 1})
+    _touch(_artifact_root(tmp_path) / ym / "amazon" / "orders.jsonl")
+    _touch(_artifact_root(tmp_path) / ym / "rakuten" / "orders.jsonl")
+    _write_json(
+        _reports_dir(tmp_path, ym) / "workflow.json",
+        {
+            "amazon": {"confirmed_at": "2026-02-08T10:00:00", "printed_at": "2026-02-08T10:10:00"},
+            "rakuten": {"confirmed_at": "2026-02-08T10:20:00", "printed_at": "2026-02-08T10:30:00"},
+        },
+    )
+    _touch(_artifact_root(tmp_path) / ym / "manual" / "inbox" / "invoice_shared.pdf")
+
+    state = _workflow_state_for_ym(2026, 1)
+    assert state["next_step"] == "provider_ingest"
+    assert state["providers"]["pending_total"] == 1
+    assert state["providers"]["providers"]["shared"]["pending_files"] == 1
+    assert "mf_reconcile" in state["allowed_run_modes"]
+
+
 def test_workflow_state_provider_step_is_not_done_before_any_provider_ingest(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -345,7 +369,7 @@ def test_workflow_state_provider_step_ignores_manual_import_report(
     assert state["providers"]["step_done"] is False
 
 
-def test_workflow_state_provider_step_done_after_provider_download_attempt(
+def test_workflow_state_provider_step_not_done_by_provider_download_report_only(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     monkeypatch.setenv("AX_HOME", str(tmp_path))
@@ -354,8 +378,42 @@ def test_workflow_state_provider_step_done_after_provider_download_attempt(
 
     state = _workflow_state_for_ym(2026, 1)
     assert state["providers"]["pending_total"] == 0
-    assert state["providers"]["attempted"] is True
-    assert state["providers"]["step_done"] is True
+
+
+def test_workflow_state_tracks_mf_bulk_upload_step_state(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("AX_HOME", str(tmp_path))
+    ym = "2026-01"
+
+    state = _workflow_state_for_ym(2026, 1)
+    assert state["mf_bulk_upload"]["attempted"] is False
+    assert state["mf_bulk_upload"]["done"] is False
+    assert state["mf_bulk_upload"]["submitted_count"] == 0
+
+    _write_json(
+        _reports_dir(tmp_path, ym) / "mf_bulk_upload_result.json",
+        {
+            "status": "ok",
+            "data": {
+                "files_found": 3,
+                "read_count": 3,
+                "queued_count": 2,
+                "submitted_count": 2,
+            },
+        },
+    )
+
+    state = _workflow_state_for_ym(2026, 1)
+    assert state["mf_bulk_upload"]["attempted"] is True
+    assert state["mf_bulk_upload"]["done"] is True
+    assert state["mf_bulk_upload"]["status"] == "ok"
+    assert state["mf_bulk_upload"]["files_found"] == 3
+    assert state["mf_bulk_upload"]["read_count"] == 3
+    assert state["mf_bulk_upload"]["queued_count"] == 2
+    assert state["mf_bulk_upload"]["submitted_count"] == 2
+    assert state["providers"]["attempted"] is False
+    assert state["providers"]["step_done"] is False
 
 
 def test_workflow_state_archive_state_defaults_to_not_created(

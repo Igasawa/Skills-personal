@@ -54,6 +54,9 @@
     if (text.includes("Failed to install Node dependencies")) {
       return "Node依存のセットアップに失敗しました。ネットワーク接続と npm の設定を確認してください。";
     }
+    if (text.includes("Provider auto-download is disabled")) {
+      return "Step3の自動取得は無効です。各サービスで手動取得した領収書を共通フォルダに置いてから「共通フォルダから取り込み」を実行してください。";
+    }
     if (text === "Not Found") {
       return "APIエンドポイントが見つかりません。ダッシュボードを再起動して再試行してください。";
     }

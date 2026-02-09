@@ -1165,40 +1165,21 @@ def test_api_provider_import_returns_counts_and_writes_audit(
     assert details.get("imported") == 4
 
 
-def test_api_provider_download_partial_success_writes_audit(
+def test_api_provider_download_rejected_as_manual_only(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     client = _create_client(monkeypatch, tmp_path)
     ym = "2026-01"
 
-    def _fake_download(year: int, month: int, **kwargs: Any) -> dict[str, Any]:
-        assert (year, month) == (2026, 1)
-        assert kwargs["auth_handoff"] is True
-        assert kwargs["headed"] is True
-        return {
-            "status": "partial_success",
-            "ym": ym,
-            "downloaded_total": 3,
-            "imported": 2,
-            "failed_providers": ["aquavoice"],
-            "providers": {"aquavoice": {"status": "failed"}, "chatgpt": {"status": "success"}},
-            "result_json": "C:\\tmp\\provider_download_result.json",
-        }
-
-    monkeypatch.setattr(api_routes.core, "_run_provider_download_for_ym", _fake_download)
-
     res = client.post("/api/providers/2026-01/download")
-    assert res.status_code == 200
-    body = res.json()
-    assert body["status"] == "partial_success"
-    assert body["downloaded_total"] == 3
-    assert body["imported"] == 2
-    assert body["failed_providers"] == ["aquavoice"]
+    assert res.status_code == 409
+    detail = str(res.json().get("detail") or "")
+    assert "Provider auto-download is disabled" in detail
 
     entries = _read_audit_entries(tmp_path, ym)
     events = [e for e in entries if e.get("event_type") == "provider_ingest" and e.get("action") == "download"]
     assert events
     last = events[-1]
-    assert last.get("status") == "partial_success"
+    assert last.get("status") == "rejected"
     details = last.get("details") or {}
-    assert details.get("downloaded_total") == 3
+    assert details.get("mode") == "manual_only"

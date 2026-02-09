@@ -881,61 +881,23 @@ def create_api_router() -> APIRouter:
         ym = core._safe_ym(ym)
         year, month = core._split_ym(ym)
         actor = _actor_from_request(request)
-        running_mode = core._running_mode_for_ym(year, month)
-        if running_mode:
-            detail = "Another run is already in progress. Wait for completion before provider receipt download."
-            core._append_audit_event(
-                year=year,
-                month=month,
-                event_type="provider_ingest",
-                action="download",
-                status="rejected",
-                actor=actor,
-                details={"reason": detail, "running_mode": running_mode},
-            )
-            raise HTTPException(status_code=409, detail=detail)
-
-        try:
-            result = core._run_provider_download_for_ym(
-                year,
-                month,
-                auth_handoff=True,
-                headed=True,
-                slow_mo_ms=0,
-            )
-        except HTTPException as exc:
-            core._append_audit_event(
-                year=year,
-                month=month,
-                event_type="provider_ingest",
-                action="download",
-                status="rejected" if exc.status_code in {400, 404, 409} else "failed",
-                actor=actor,
-                details={"reason": str(exc.detail)},
-            )
-            raise
-
-        status = str(result.get("status") or "ok").strip().lower()
-        audit_status = "success"
-        if status not in {"ok", "success"}:
-            audit_status = status
+        detail = (
+            "Provider auto-download is disabled. "
+            "Step 4.5 is manual-only: place receipts in manual/inbox and run import."
+        )
         core._append_audit_event(
             year=year,
             month=month,
             event_type="provider_ingest",
             action="download",
-            status=audit_status,
+            status="rejected",
             actor=actor,
             details={
-                "status": status,
-                "downloaded_total": result.get("downloaded_total"),
-                "imported": result.get("imported"),
-                "failed_providers": result.get("failed_providers"),
-                "providers": result.get("providers"),
-                "result_json": result.get("result_json"),
+                "reason": detail,
+                "mode": "manual_only",
             },
         )
-        return JSONResponse(result)
+        raise HTTPException(status_code=409, detail=detail)
 
     @router.post("/api/folders/{ym}/mf-bulk-inbox")
     def api_open_mf_bulk_inbox(ym: str, request: Request) -> JSONResponse:

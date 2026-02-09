@@ -91,16 +91,39 @@ def test_index_page_shows_manual_archive_button(monkeypatch: pytest.MonkeyPatch,
     client = _create_client(monkeypatch, tmp_path)
     res = client.get("/")
     assert res.status_code == 200
+    assert 'data-task-id="amazon"' in res.text
+    assert 'data-task-status="amazon"' in res.text
+    assert 'data-step-action="amazon_download"' in res.text
+    assert 'data-step-link="amazon_exclude"' in res.text
+    assert 'data-step-reset="amazon_download"' in res.text
+    assert 'data-step-reset="amazon_decide_print"' in res.text
+    assert 'data-step-status="amazon_download"' in res.text
+    assert 'data-step-status="amazon_decide_print"' in res.text
+    assert 'data-task-id="rakuten"' in res.text
+    assert 'data-task-status="rakuten"' in res.text
+    assert 'data-step-action="rakuten_download"' in res.text
+    assert 'data-step-link="rakuten_exclude"' in res.text
+    assert 'data-step-reset="rakuten_download"' in res.text
+    assert 'data-step-reset="rakuten_decide_print"' in res.text
+    assert 'data-step-status="rakuten_download"' in res.text
+    assert 'data-step-status="rakuten_decide_print"' in res.text
+    assert 'data-step-id="preflight"' in res.text
+    assert 'data-step-id="provider_ingest"' in res.text
+    assert 'data-step-id="mf_reconcile"' in res.text
     assert 'data-archive-action="archive_outputs"' in res.text
     assert "data-archive-page-link" in res.text
+    assert "data-archive-href-template=" in res.text
     assert "data-fallback-href=" in res.text
-    assert 'data-manual-action="open_inbox"' in res.text
-    assert 'data-manual-action="import_receipts"' in res.text
+    assert 'data-manual-action="open_inbox"' not in res.text
+    assert 'data-manual-action="import_receipts"' not in res.text
+    assert 'data-step-id="mf_bulk_upload_task"' in res.text
+    assert 'data-step-status="mf_bulk_upload_task"' in res.text
     assert 'data-manual-action="open_mf_bulk_inbox"' in res.text
     assert 'data-manual-action="run_mf_bulk_upload"' in res.text
-    assert 'data-provider-action="open_provider_inbox"' in res.text
+    assert 'data-provider-action="open_shared_inbox"' in res.text
     assert 'data-provider-action="import_provider_receipts"' in res.text
-    assert 'data-provider-action="download_provider_receipts"' in res.text
+    assert 'data-provider-action="download_provider_receipts"' not in res.text
+    assert "手動/SaaS領収書取り込み（共通フォルダ）" in res.text
     assert "data-mf-summary" in res.text
 
 
@@ -188,7 +211,7 @@ def test_run_page_shows_manual_print_prepare_and_complete_controls(
     assert "Amazon一括印刷（結合PDFを開く）" in res.text
     assert "楽天一括印刷（結合PDFを開く）" in res.text
     assert "領収書フォルダを開く" in res.text
-    assert f'href="/runs/{ym}/archived-receipts"' in res.text
+    assert f"/runs/{ym}/archived-receipts" in res.text
     assert "Amazonで保存して印刷準備" in res.text
     assert "楽天で保存して印刷準備" in res.text
     assert "Amazon印刷完了を記録" in res.text
@@ -219,6 +242,16 @@ def test_archive_receipts_page_lists_archived_pdfs_with_month_switch(
     assert 'id="filter-month"' in res.text
     assert '<option value="2026-01" selected' in res.text
     assert '<option value="2026-02"' in res.text
+
+
+def test_archive_receipts_legacy_route_redirects(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    client = _create_client(monkeypatch, tmp_path)
+    ym = "2026-01"
+    (_artifact_root(tmp_path) / ym / "reports").mkdir(parents=True, exist_ok=True)
+
+    res = client.get(f"/runs/{ym}/archive-receipts", follow_redirects=False)
+    assert res.status_code in {307, 308}
+    assert res.headers.get("location", "").endswith(f"/runs/{ym}/archived-receipts")
 
 
 def test_download_archived_pdf_route_returns_pdf(

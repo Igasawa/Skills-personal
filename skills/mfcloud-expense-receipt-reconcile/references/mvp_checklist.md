@@ -53,6 +53,11 @@
 - [ ] Amazon/楽天の月次処理を同じ手順で再現できる
 - [ ] MF提出用の証憑・候補資料と下書き作成を毎月安定して揃えられる
 
+## 9. SaaS領収書（Step 4.5）運用方針
+- [x] Step4.5は手動取得前提（自動取得は使わない）
+- [ ] ChatGPT / Claude / Gamma / Aqua Voice の手動取得ファイルを `manual/inbox/`（共通フォルダ）に配置できる
+- [ ] 「4サービス一括取り込み」で `manual/orders.jsonl` に反映され、Step5で突合対象になる
+
 
 ## Update: Bulk Print UX (Source Split)
 - [x] Amazon/Rakuten bulk print buttons are separated on the run page.
