@@ -268,6 +268,156 @@ def test_workflow_state_treats_failed_download_as_not_completed(
     assert "rakuten_print" not in state["allowed_run_modes"]
 
 
+def test_workflow_state_prioritizes_provider_ingest_when_provider_inbox_has_pending_files(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("AX_HOME", str(tmp_path))
+    ym = "2026-01"
+    _write_json(_reports_dir(tmp_path, ym) / "preflight.json", {"status": "success", "year": 2026, "month": 1})
+    _touch(_artifact_root(tmp_path) / ym / "amazon" / "orders.jsonl")
+    _touch(_artifact_root(tmp_path) / ym / "rakuten" / "orders.jsonl")
+    _write_json(
+        _reports_dir(tmp_path, ym) / "workflow.json",
+        {
+            "amazon": {"confirmed_at": "2026-02-08T10:00:00", "printed_at": "2026-02-08T10:10:00"},
+            "rakuten": {"confirmed_at": "2026-02-08T10:20:00", "printed_at": "2026-02-08T10:30:00"},
+        },
+    )
+    _touch(_artifact_root(tmp_path) / ym / "manual" / "inbox" / "chatgpt" / "invoice.pdf")
+
+    state = _workflow_state_for_ym(2026, 1)
+    assert state["next_step"] == "provider_ingest"
+    assert state["providers"]["pending_total"] == 1
+    assert state["providers"]["providers"]["chatgpt"]["pending_files"] == 1
+    assert "mf_reconcile" in state["allowed_run_modes"]
+
+
+def test_workflow_state_provider_step_is_not_done_before_any_provider_ingest(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("AX_HOME", str(tmp_path))
+
+    state = _workflow_state_for_ym(2026, 1)
+    assert state["providers"]["pending_total"] == 0
+    assert state["providers"]["attempted"] is False
+    assert state["providers"]["step_done"] is False
+
+
+def test_workflow_state_provider_step_done_after_provider_import_attempt(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("AX_HOME", str(tmp_path))
+    provider_report = _artifact_root(tmp_path) / "2026-01" / "manual" / "reports" / "provider_import_last.json"
+    _write_json(
+        provider_report,
+        {
+            "status": "ok",
+            "ym": "2026-01",
+            "ingestion_channel": "provider_inbox",
+            "provider_filter": ["aquavoice", "claude", "chatgpt", "gamma"],
+        },
+    )
+
+    state = _workflow_state_for_ym(2026, 1)
+    assert state["providers"]["pending_total"] == 0
+    assert state["providers"]["attempted"] is True
+    assert state["providers"]["step_done"] is True
+
+
+def test_workflow_state_provider_step_ignores_manual_import_report(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("AX_HOME", str(tmp_path))
+    provider_report = _artifact_root(tmp_path) / "2026-01" / "manual" / "reports" / "provider_import_last.json"
+    _write_json(
+        provider_report,
+        {
+            "status": "ok",
+            "ym": "2026-01",
+            "ingestion_channel": "manual_inbox",
+            "provider_filter": [],
+        },
+    )
+
+    state = _workflow_state_for_ym(2026, 1)
+    assert state["providers"]["pending_total"] == 0
+    assert state["providers"]["attempted"] is False
+    assert state["providers"]["step_done"] is False
+
+
+def test_workflow_state_provider_step_done_after_provider_download_attempt(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("AX_HOME", str(tmp_path))
+    provider_download_result = _reports_dir(tmp_path, "2026-01") / "provider_download_result.json"
+    _write_json(provider_download_result, {"status": "ok", "ym": "2026-01"})
+
+    state = _workflow_state_for_ym(2026, 1)
+    assert state["providers"]["pending_total"] == 0
+    assert state["providers"]["attempted"] is True
+    assert state["providers"]["step_done"] is True
+
+
+def test_workflow_state_archive_state_defaults_to_not_created(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("AX_HOME", str(tmp_path))
+    state = _workflow_state_for_ym(2026, 1)
+    assert state["archive"]["created"] is False
+    assert state["archive"]["created_at"] is None
+    assert state["archive"]["archived_to"] is None
+
+
+def test_workflow_state_archive_state_reads_latest_manual_archive_success(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("AX_HOME", str(tmp_path))
+    ym = "2026-01"
+    audit_log = _reports_dir(tmp_path, ym) / "audit_log.jsonl"
+    audit_log.parent.mkdir(parents=True, exist_ok=True)
+    audit_log.write_text(
+        "\n".join(
+            [
+                json.dumps(
+                    {
+                        "ts": "2026-02-09T11:00:00",
+                        "ym": ym,
+                        "event_type": "archive",
+                        "action": "manual_archive",
+                        "status": "failed",
+                        "details": {"reason": "test"},
+                    },
+                    ensure_ascii=False,
+                ),
+                json.dumps(
+                    {
+                        "ts": "2026-02-09T11:03:42",
+                        "ym": ym,
+                        "event_type": "archive",
+                        "action": "manual_archive",
+                        "status": "success",
+                        "details": {
+                            "archived_to": "C:\\archive\\20260209_110342",
+                            "include_pdfs": True,
+                            "include_debug": False,
+                        },
+                    },
+                    ensure_ascii=False,
+                ),
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    state = _workflow_state_for_ym(2026, 1)
+    assert state["archive"]["created"] is True
+    assert state["archive"]["created_at"] == "2026-02-09T11:03:42"
+    assert state["archive"]["archived_to"] == "C:\\archive\\20260209_110342"
+    assert state["archive"]["include_pdfs"] is True
+    assert state["archive"]["include_debug"] is False
+
+
 def test_assert_source_action_allowed_enforces_order(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setenv("AX_HOME", str(tmp_path))
     ym = "2026-01"

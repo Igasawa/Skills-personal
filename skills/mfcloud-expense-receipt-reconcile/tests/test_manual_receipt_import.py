@@ -103,3 +103,39 @@ def test_import_manual_receipts_skips_duplicate_doc_hash(
 
     rows = [json.loads(line) for line in orders_path.read_text(encoding="utf-8").splitlines() if line.strip()]
     assert len(rows) == 1
+
+
+def test_import_manual_receipts_provider_folder_adds_provider_metadata(tmp_path: Path) -> None:
+    output_root = tmp_path / "out"
+    inbox_file = output_root / "manual" / "inbox" / "chatgpt" / "2026-01-28_invoice.png"
+    _write_pdf(inbox_file, b"PNG")
+
+    result = manual_import.import_manual_receipts_for_month(
+        output_root,
+        2026,
+        1,
+        provider_filter={"chatgpt"},
+        ingestion_channel="provider_inbox",
+    )
+
+    assert result["status"] == "ok"
+    assert result["found_files"] == 1
+    assert result["imported"] == 1
+    provider_counts = result.get("provider_counts") or {}
+    chatgpt = provider_counts.get("chatgpt") or {}
+    assert chatgpt.get("found") == 1
+    assert chatgpt.get("imported") == 1
+
+    orders_path = Path(str(result["orders_jsonl"]))
+    rows = [json.loads(line) for line in orders_path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    assert len(rows) == 1
+    row = rows[0]
+    assert row["source"] == "manual"
+    assert row["provider"] == "chatgpt"
+    assert row["doc_type"] == "provider_upload"
+    assert row["ingestion_channel"] == "provider_inbox"
+    assert row["source_hint"] == "manual"
+    assert row["pdf_path"].endswith(".png")
+
+    provider_report = Path(str(result.get("provider_report_json") or ""))
+    assert provider_report.exists()

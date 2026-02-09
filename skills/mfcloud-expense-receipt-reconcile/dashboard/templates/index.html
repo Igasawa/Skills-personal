@@ -201,6 +201,36 @@
               <a class="secondary" data-step-link="rakuten_exclude" href="#">除外・印刷へ</a>
             </div>
           </div>
+          <div class="wizard-step" data-step-id="provider_ingest">
+            <div class="step-head">
+              <span class="step-num">4.5</span>
+              <span class="step-title">SaaS領収書取り込み（Aqua Voice / Claude / ChatGPT / Gamma）</span>
+              <span class="step-status" data-step-status="provider_ingest">未実行</span>
+            </div>
+            <div class="step-actions">
+              <button type="button" class="secondary" data-provider-action="open_provider_inbox" data-provider="chatgpt">
+                ChatGPTフォルダを開く
+              </button>
+              <button type="button" class="secondary" data-provider-action="open_provider_inbox" data-provider="claude">
+                Claudeフォルダを開く
+              </button>
+              <button type="button" class="secondary" data-provider-action="open_provider_inbox" data-provider="gamma">
+                Gammaフォルダを開く
+              </button>
+              <button type="button" class="secondary" data-provider-action="open_provider_inbox" data-provider="aquavoice">
+                Aqua Voiceフォルダを開く
+              </button>
+              <button type="button" class="primary" data-provider-action="import_provider_receipts">
+                4サービス一括取り込み
+              </button>
+              <button type="button" class="secondary" data-provider-action="download_provider_receipts">
+                4サービス自動取得+取り込み
+              </button>
+              <span class="muted">除外は行いません。取り込んだ証憑はすべてMF突合候補に含めます。</span>
+              <span class="muted">初回は各サービスのログインが必要です（ログイン状態は次回以降再利用されます）。</span>
+              <span class="muted">未取り込みファイルがある場合、このStepが次アクションとして表示されます。</span>
+            </div>
+          </div>
           <div class="wizard-step" data-step-id="mf_reconcile">
             <div class="step-head">
               <span class="step-num">5</span>
@@ -212,6 +242,13 @@
               <button type="button" class="secondary" data-archive-action="archive_outputs">
                 アーカイブ作成（成果物+PDF）
               </button>
+              {% set archive_page_href = '/runs/' ~ default_ym ~ '/archived-receipts' if default_ym else '#' %}
+              <a
+                class="secondary"
+                data-archive-page-link
+                data-fallback-href="{{ archive_page_href }}"
+                href="{{ archive_page_href }}"
+              >アーカイブ済み領収書一覧を開く</a>
               <span class="muted">Amazon/楽天の除外確定後に実行（編集登録→添付→OCR入力→作成）</span>
               <span class="muted">アーカイブは手動保存です（自動実行されません）。</span>
               <span class="muted" data-mf-summary>サマリー: 未実行</span>

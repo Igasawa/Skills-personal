@@ -33,6 +33,19 @@ TEXT_EXTENSIONS = {
     ".cmd",
 }
 TEXT_FILENAMES = {".editorconfig", ".gitattributes", ".gitignore", "README.md"}
+KNOWN_MOJIBAKE_MARKERS = {
+    "�",
+    "ぁE",
+    "�E",
+    "、E{",
+    "候裁E",
+    "作�E",
+    "完亁E",
+    "取征E",
+    "重褁E",
+    "失敁E",
+    "アチE",
+}
 
 
 def _iter_text_files(root: Path):
@@ -64,3 +77,21 @@ def test_repository_text_files_are_utf8_without_bom() -> None:
 
     assert not invalid_utf8, f"non-utf8 files found: {invalid_utf8}"
     assert not utf8_bom, f"utf8 bom files found: {utf8_bom}"
+
+
+def test_repository_text_files_have_no_known_mojibake_markers() -> None:
+    findings: list[str] = []
+    self_path = Path(__file__).resolve()
+
+    for path in _iter_text_files(REPO_ROOT):
+        if path.resolve() == self_path:
+            continue
+        relative = path.relative_to(REPO_ROOT).as_posix()
+        text = path.read_text(encoding="utf-8")
+        for lineno, line in enumerate(text.splitlines(), start=1):
+            for marker in KNOWN_MOJIBAKE_MARKERS:
+                if marker in line:
+                    findings.append(f"{relative}:{lineno}: contains marker {marker!r}")
+                    break
+
+    assert not findings, f"mojibake markers found: {findings}"

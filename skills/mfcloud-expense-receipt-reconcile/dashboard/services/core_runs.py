@@ -24,6 +24,7 @@ from .core_shared import (
     _runs_root,
     _write_json,
 )
+from .core_manual import _provider_inbox_status_for_ym
 from .core_orders import _collect_excluded_pdfs, _load_exclusions, _read_workflow
 
 STEP_RESET_SPECS: dict[str, dict[str, Any]] = {
@@ -167,6 +168,58 @@ def _is_preflight_success(payload: Any, *, year: int, month: int) -> bool:
         return False
 
 
+def _latest_archive_state_for_ym(year: int, month: int) -> dict[str, Any]:
+    latest_success: dict[str, Any] | None = None
+    audit_path = _audit_log_path(year, month)
+    if audit_path.exists():
+        for line in audit_path.read_text(encoding="utf-8", errors="replace").splitlines():
+            text = str(line or "").strip()
+            if not text.startswith("{") or not text.endswith("}"):
+                continue
+            try:
+                payload = json.loads(text)
+            except Exception:
+                continue
+            if not isinstance(payload, dict):
+                continue
+            if str(payload.get("event_type") or "").strip() != "archive":
+                continue
+            if str(payload.get("action") or "").strip() != "manual_archive":
+                continue
+            if str(payload.get("status") or "").strip() != "success":
+                continue
+            details = payload.get("details") if isinstance(payload.get("details"), dict) else {}
+            latest_success = {
+                "created": True,
+                "created_at": str(payload.get("ts") or "").strip() or None,
+                "archived_to": str(details.get("archived_to") or "").strip() or None,
+                "include_pdfs": bool(details.get("include_pdfs")),
+                "include_debug": bool(details.get("include_debug")),
+            }
+    if latest_success:
+        return latest_success
+
+    ym = f"{year:04d}-{month:02d}"
+    root = _artifact_root() / ym / "archive"
+    candidates = [p for p in root.glob("*") if p.is_dir()] if root.exists() else []
+    if not candidates:
+        return {
+            "created": False,
+            "created_at": None,
+            "archived_to": None,
+            "include_pdfs": False,
+            "include_debug": False,
+        }
+    candidates.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+    return {
+        "created": True,
+        "created_at": None,
+        "archived_to": str(candidates[0]),
+        "include_pdfs": True,
+        "include_debug": False,
+    }
+
+
 def _workflow_state_for_ym(year: int, month: int) -> dict[str, Any]:
     ym = f"{year:04d}-{month:02d}"
     root = _artifact_root() / ym
@@ -199,6 +252,9 @@ def _workflow_state_for_ym(year: int, month: int) -> dict[str, Any]:
     amazon_printed = bool(amazon_section.get("printed_at"))
     rakuten_confirmed = bool(rakuten_section.get("confirmed_at"))
     rakuten_printed = bool(rakuten_section.get("printed_at"))
+    providers_state = _provider_inbox_status_for_ym(year, month)
+    providers_pending = int(providers_state.get("pending_total") or 0)
+    archive_state = _latest_archive_state_for_ym(year, month)
     mf_reconciled = (reports_dir / "missing_evidence_candidates.json").exists()
     mf_draft_result_path = reports_dir / "mf_draft_create_result.json"
     mf_draft_payload = _read_json(mf_draft_result_path)
@@ -228,6 +284,8 @@ def _workflow_state_for_ym(year: int, month: int) -> dict[str, Any]:
         next_step = "amazon_download"
     elif not rakuten_downloaded:
         next_step = "rakuten_download"
+    elif providers_pending > 0:
+        next_step = "provider_ingest"
     elif both_downloaded and (amazon_done or rakuten_done):
         next_step = "mf_reconcile"
 
@@ -247,6 +305,8 @@ def _workflow_state_for_ym(year: int, month: int) -> dict[str, Any]:
         "preflight": {"done": preflight_done},
         "amazon": {"downloaded": amazon_downloaded, "confirmed": amazon_confirmed, "printed": amazon_printed},
         "rakuten": {"downloaded": rakuten_downloaded, "confirmed": rakuten_confirmed, "printed": rakuten_printed},
+        "providers": providers_state,
+        "archive": archive_state,
         "mf": {"reconciled": mf_reconciled, "drafted": mf_drafted, "step_done": mf_step_done, "summary": mf_summary},
         "next_step": next_step,
         "allowed_run_modes": allowed_run_modes,
@@ -714,8 +774,14 @@ def _remove_mf_outputs(reports_dir: Path) -> list[str]:
         "monthly_thread.md",
         "mf_draft_create_result.json",
         "print_manifest.json",
+        "print_manifest.amazon.json",
+        "print_manifest.rakuten.json",
         "print_list.txt",
+        "print_list.amazon.txt",
+        "print_list.rakuten.txt",
         "print_all.ps1",
+        "print_merged_amazon.pdf",
+        "print_merged_rakuten.pdf",
     ):
         path = reports_dir / name
         if _delete_path(path):

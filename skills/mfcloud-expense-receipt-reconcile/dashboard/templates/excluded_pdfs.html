@@ -12,7 +12,7 @@
         <div>
           <p class="eyebrow">経費精算ダッシュボード</p>
           <h1>{{ ym }} 除外PDF一覧</h1>
-          <p class="subtitle">除外対象として保存されたPDFを一覧表示し、個別印刷できます。</p>
+          <p class="subtitle">除外対象として保存されたPDFを一覧表示し、個別に開いて印刷できます。</p>
         </div>
         <div class="hero-meta">
           <a class="pill" href="/runs/{{ ym }}">実行詳細へ戻る</a>
@@ -120,7 +120,7 @@
                     data-source="{{ row.source }}"
                     data-filename="{{ row.pdf_name }}"
                   >
-                    このPDFを印刷
+                    このPDFを開く（印刷）
                   </button>
                 </td>
               </tr>

@@ -11,10 +11,31 @@ from fastapi import HTTPException
 from .core_shared import SKILL_ROOT, _artifact_root, _ax_home, _read_json
 
 DEFAULT_MFCLOUD_TRANSACTIONS_URL = "https://expense.moneyforward.com/transactions"
+PROVIDER_KEYS: tuple[str, ...] = ("aquavoice", "claude", "chatgpt", "gamma")
+PROVIDER_LABELS: dict[str, str] = {
+    "aquavoice": "Aqua Voice",
+    "claude": "Claude",
+    "chatgpt": "ChatGPT",
+    "gamma": "Gamma",
+}
+PROVIDER_STORAGE_STATE_NAMES: dict[str, str] = {
+    "aquavoice": "aquavoice",
+    "claude": "claude",
+    "chatgpt": "chatgpt",
+    "gamma": "gamma",
+}
+ALLOWED_RECEIPT_SUFFIXES = {".pdf", ".jpg", ".jpeg", ".png"}
 
 
 def _manual_month_root_for_ym(year: int, month: int) -> Path:
     return _artifact_root() / f"{year:04d}-{month:02d}"
+
+
+def _normalize_provider(provider: str) -> str:
+    name = str(provider or "").strip().lower()
+    if name not in PROVIDER_KEYS:
+        raise HTTPException(status_code=400, detail="Invalid provider.")
+    return name
 
 
 def _manual_inbox_dir_for_ym(year: int, month: int, *, create: bool = True) -> Path:
@@ -22,6 +43,83 @@ def _manual_inbox_dir_for_ym(year: int, month: int, *, create: bool = True) -> P
     if create:
         path.mkdir(parents=True, exist_ok=True)
     return path
+
+
+def _provider_inbox_dir_for_ym(year: int, month: int, provider: str, *, create: bool = True) -> Path:
+    name = _normalize_provider(provider)
+    path = _manual_inbox_dir_for_ym(year, month, create=create) / name
+    if create:
+        path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def _provider_inbox_dirs_for_ym(year: int, month: int, *, create: bool = True) -> dict[str, Path]:
+    return {
+        provider: _provider_inbox_dir_for_ym(year, month, provider, create=create)
+        for provider in PROVIDER_KEYS
+    }
+
+
+def _iter_receipt_files(root_dir: Path) -> list[Path]:
+    if not root_dir.exists():
+        return []
+    out: list[Path] = []
+    for path in sorted(root_dir.rglob("*")):
+        if not path.is_file():
+            continue
+        if path.suffix.lower() not in ALLOWED_RECEIPT_SUFFIXES:
+            continue
+        try:
+            rel = path.relative_to(root_dir)
+        except Exception:
+            rel = path
+        if any(str(part).startswith("_") for part in rel.parts):
+            continue
+        out.append(path)
+    return out
+
+
+def _provider_step_attempted_for_ym(year: int, month: int) -> bool:
+    month_root = _manual_month_root_for_ym(year, month)
+    provider_import_report = month_root / "manual" / "reports" / "provider_import_last.json"
+    provider_download_report = month_root / "reports" / "provider_download_result.json"
+
+    import_payload = _read_json(provider_import_report)
+    if isinstance(import_payload, dict):
+        ingestion_channel = str(import_payload.get("ingestion_channel") or "").strip().lower()
+        if ingestion_channel == "provider_inbox":
+            return True
+        provider_filter = import_payload.get("provider_filter")
+        if isinstance(provider_filter, list):
+            normalized_filter = {str(value or "").strip().lower() for value in provider_filter}
+            if any(provider in normalized_filter for provider in PROVIDER_KEYS):
+                return True
+
+    download_payload = _read_json(provider_download_report)
+    if isinstance(download_payload, dict):
+        return True
+    return False
+
+
+def _provider_inbox_status_for_ym(year: int, month: int) -> dict[str, Any]:
+    statuses: dict[str, dict[str, Any]] = {}
+    pending_total = 0
+    attempted = _provider_step_attempted_for_ym(year, month)
+    for provider in PROVIDER_KEYS:
+        provider_dir = _provider_inbox_dir_for_ym(year, month, provider, create=True)
+        pending_files = len(_iter_receipt_files(provider_dir))
+        pending_total += pending_files
+        statuses[provider] = {
+            "label": PROVIDER_LABELS.get(provider, provider),
+            "path": str(provider_dir),
+            "pending_files": pending_files,
+        }
+    return {
+        "step_done": attempted and pending_total == 0,
+        "attempted": attempted,
+        "pending_total": pending_total,
+        "providers": statuses,
+    }
 
 
 def _mf_bulk_upload_inbox_dir_for_ym(year: int, month: int, *, create: bool = True) -> Path:
@@ -45,6 +143,23 @@ def _resolve_mfcloud_storage_state_for_ym(year: int, month: int) -> Path:
     return _ax_home() / "sessions" / "mfcloud-expense.storage.json"
 
 
+def _resolve_provider_storage_state_for_ym(year: int, month: int, provider: str) -> Path:
+    name = _normalize_provider(provider)
+    output_root = _manual_month_root_for_ym(year, month)
+    run_config_path = output_root / "run_config.resolved.json"
+    run_config = _read_json(run_config_path)
+    session_key = f"{name}_storage_state"
+    if isinstance(run_config, dict):
+        sessions = run_config.get("sessions")
+        if isinstance(sessions, dict):
+            raw = str(sessions.get(session_key) or "").strip()
+            if raw:
+                return Path(raw).expanduser()
+
+    session_name = PROVIDER_STORAGE_STATE_NAMES.get(name, name)
+    return _ax_home() / "sessions" / f"{session_name}.storage.json"
+
+
 def _import_manual_receipts_for_ym(year: int, month: int) -> dict[str, Any]:
     if month < 1 or month > 12:
         raise HTTPException(status_code=400, detail="Month must be between 1 and 12.")
@@ -58,7 +173,7 @@ def _import_manual_receipts_for_ym(year: int, month: int) -> dict[str, Any]:
         raise HTTPException(status_code=500, detail=f"manual import module load failed: {exc}") from exc
 
     try:
-        result = import_manual_receipts_for_month(output_root, year, month)
+        result = import_manual_receipts_for_month(output_root, year, month, ingestion_channel="manual_inbox")
     except HTTPException:
         raise
     except Exception as exc:
@@ -68,15 +183,174 @@ def _import_manual_receipts_for_ym(year: int, month: int) -> dict[str, Any]:
         "status": "ok",
         "ym": result.get("ym"),
         "found_pdfs": int(result.get("found_pdfs") or 0),
+        "found_files": int(result.get("found_files") or result.get("found_pdfs") or 0),
         "imported": int(result.get("imported") or 0),
         "imported_missing_amount": int(result.get("imported_missing_amount") or 0),
         "skipped_duplicates": int(result.get("skipped_duplicates") or 0),
         "failed": int(result.get("failed") or 0),
+        "provider_counts": result.get("provider_counts") if isinstance(result.get("provider_counts"), dict) else {},
         "inbox_dir": str(result.get("inbox_dir") or ""),
         "pdfs_dir": str(result.get("pdfs_dir") or ""),
         "orders_jsonl": str(result.get("orders_jsonl") or ""),
         "errors_jsonl": str(result.get("errors_jsonl") or ""),
         "report_json": str(result.get("report_json") or ""),
+        "provider_report_json": str(result.get("provider_report_json") or ""),
+    }
+
+
+def _import_provider_receipts_for_ym(year: int, month: int) -> dict[str, Any]:
+    if month < 1 or month > 12:
+        raise HTTPException(status_code=400, detail="Month must be between 1 and 12.")
+
+    output_root = _manual_month_root_for_ym(year, month)
+    output_root.mkdir(parents=True, exist_ok=True)
+
+    try:
+        from scripts.manual_receipt_import import PROVIDER_KEYS as IMPORT_PROVIDER_KEYS
+        from scripts.manual_receipt_import import import_manual_receipts_for_month
+    except Exception as exc:  # pragma: no cover - import failure should be rare
+        raise HTTPException(status_code=500, detail=f"provider import module load failed: {exc}") from exc
+
+    try:
+        result = import_manual_receipts_for_month(
+            output_root,
+            year,
+            month,
+            provider_filter=set(IMPORT_PROVIDER_KEYS),
+            ingestion_channel="provider_inbox",
+        )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"provider receipt import failed: {exc}") from exc
+
+    provider_counts = result.get("provider_counts") if isinstance(result.get("provider_counts"), dict) else {}
+    providers_result: dict[str, dict[str, int]] = {}
+    for provider in PROVIDER_KEYS:
+        stats = provider_counts.get(provider) if isinstance(provider_counts.get(provider), dict) else {}
+        providers_result[provider] = {
+            "found": int(stats.get("found") or 0),
+            "imported": int(stats.get("imported") or 0),
+            "imported_missing_amount": int(stats.get("imported_missing_amount") or 0),
+            "skipped_duplicates": int(stats.get("skipped_duplicates") or 0),
+            "failed": int(stats.get("failed") or 0),
+        }
+
+    return {
+        "status": "ok",
+        "ym": result.get("ym"),
+        "found_files": int(result.get("found_files") or result.get("found_pdfs") or 0),
+        "imported": int(result.get("imported") or 0),
+        "imported_missing_amount": int(result.get("imported_missing_amount") or 0),
+        "skipped_duplicates": int(result.get("skipped_duplicates") or 0),
+        "failed": int(result.get("failed") or 0),
+        "providers": providers_result,
+        "inbox_dir": str(result.get("inbox_dir") or ""),
+        "pdfs_dir": str(result.get("pdfs_dir") or ""),
+        "orders_jsonl": str(result.get("orders_jsonl") or ""),
+        "errors_jsonl": str(result.get("errors_jsonl") or ""),
+        "report_json": str(result.get("report_json") or ""),
+        "provider_report_json": str(result.get("provider_report_json") or ""),
+    }
+
+
+def _run_provider_download_for_ym(
+    year: int,
+    month: int,
+    *,
+    auth_handoff: bool = True,
+    headed: bool = True,
+    slow_mo_ms: int = 0,
+) -> dict[str, Any]:
+    if month < 1 or month > 12:
+        raise HTTPException(status_code=400, detail="Month must be between 1 and 12.")
+
+    output_root = _manual_month_root_for_ym(year, month)
+    output_root.mkdir(parents=True, exist_ok=True)
+    reports_dir = output_root / "reports"
+    reports_dir.mkdir(parents=True, exist_ok=True)
+
+    script = SKILL_ROOT / "scripts" / "provider_download_orchestrator.py"
+    if not script.exists():
+        raise HTTPException(status_code=500, detail=f"provider download orchestrator not found: {script}")
+
+    out_json = reports_dir / "provider_download_result.json"
+    cmd = [
+        sys.executable,
+        str(script),
+        "--year",
+        str(year),
+        "--month",
+        str(month),
+        "--output-root",
+        str(output_root),
+        "--out-json",
+        str(out_json),
+        "--slow-mo-ms",
+        str(max(0, int(slow_mo_ms))),
+    ]
+
+    for provider in PROVIDER_KEYS:
+        storage_state = _resolve_provider_storage_state_for_ym(year, month, provider)
+        cmd += [f"--{provider}-storage-state", str(storage_state)]
+
+    if auth_handoff:
+        cmd.append("--auth-handoff")
+    if headed:
+        cmd.append("--headed")
+    else:
+        cmd.append("--headless")
+
+    res = subprocess.run(cmd, cwd=str(SKILL_ROOT), capture_output=True, text=True, check=False)
+    if res.returncode != 0:
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                "provider_download_orchestrator.py failed:\n"
+                f"cmd: {cmd}\n"
+                f"exit: {res.returncode}\n"
+                f"stdout:\n{res.stdout}\n"
+                f"stderr:\n{res.stderr}\n"
+            ),
+        )
+
+    payload: dict[str, Any] | None = None
+    for line in reversed((res.stdout or "").splitlines()):
+        text = str(line).strip()
+        if not text.startswith("{") or not text.endswith("}"):
+            continue
+        try:
+            maybe = json.loads(text)
+        except Exception:
+            continue
+        if isinstance(maybe, dict):
+            payload = maybe
+            break
+
+    if not payload:
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                "provider_download_orchestrator.py returned no JSON payload.\n"
+                f"stdout:\n{res.stdout}\n"
+                f"stderr:\n{res.stderr}\n"
+            ),
+        )
+
+    status = str(payload.get("status") or "ok").strip() or "ok"
+    data = payload.get("data") if isinstance(payload.get("data"), dict) else payload
+    providers = data.get("providers") if isinstance(data.get("providers"), dict) else {}
+
+    return {
+        "status": status,
+        "ym": f"{year:04d}-{month:02d}",
+        "output_root": str(output_root),
+        "result_json": str(data.get("result_json") or out_json),
+        "downloaded_total": int(data.get("downloaded_total") or 0) if isinstance(data, dict) else 0,
+        "imported": int(data.get("imported") or 0) if isinstance(data, dict) else 0,
+        "failed_providers": data.get("failed_providers") if isinstance(data.get("failed_providers"), list) else [],
+        "providers": providers,
+        "import_result": data.get("import_result") if isinstance(data.get("import_result"), dict) else {},
     }
 
 

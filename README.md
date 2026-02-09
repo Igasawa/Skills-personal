@@ -15,6 +15,17 @@
 - エディタ設定は `/.editorconfig`、Git属性は `/.gitattributes` を正とする。
 - UTF-8/BOM違反はテストで検知し、修正後にマージする。
 
+## マージ防止ガード（replacement character 混入対策）
+
+- ローカル: Git hook で文字コード/文字化けテストを必須化する。
+- CI: GitHub Actions `Encoding Guard` で同じテストをPR時に実行する。
+- ブランチ保護で `Encoding Guard / utf8-and-mojibake-check` を Required に設定すると、失敗時はマージ不可にできる。
+
+```powershell
+Set-Location c:\Users\TatsuoIgasawa\.vscode\Skillpersonal
+powershell -ExecutionPolicy Bypass -File .\scripts\install_git_hooks.ps1
+```
+
 ## 収録スキル
 
 - `skills/mfcloud-expense-receipt-reconcile/`  

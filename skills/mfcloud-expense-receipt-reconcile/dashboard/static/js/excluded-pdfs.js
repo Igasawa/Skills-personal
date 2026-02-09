@@ -93,16 +93,41 @@
         const source = button.dataset.source;
         const filename = button.dataset.filename;
         if (!ym || !source || !filename) return;
+        const previewWindow = window.open("about:blank", "_blank");
+        if (!previewWindow) {
+          setPrintStatus("ポップアップがブロックされました。許可して再実行してください。", "error");
+          showToast("ポップアップがブロックされました。", "error");
+          return;
+        }
         printButtons.forEach((btn) => (btn.disabled = true));
-        setPrintStatus("印刷を開始しています...", "success");
+        setPrintStatus("PDFを開いています...", "success");
         try {
           const res = await fetch(`/api/print-pdf/${ym}/${source}/${filename}`, { method: "POST" });
-          if (!res.ok) throw new Error("print failed");
-          setPrintStatus("印刷を開始しました。", "success");
-          showToast("印刷を開始しました。", "success");
-        } catch {
-          setPrintStatus("印刷に失敗しました。", "error");
-          showToast("印刷に失敗しました。", "error");
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error(String(data?.detail || "print failed"));
+          const pdfUrl = String(data?.pdf_url || "");
+          if (!pdfUrl) throw new Error("print target missing");
+          previewWindow.location.replace(pdfUrl);
+          try {
+            previewWindow.focus();
+          } catch {
+            // no-op
+          }
+          setPrintStatus("PDFを開きました。印刷はブラウザ側で実行してください（Ctrl+P、モノクロ設定を確認）。", "success");
+          showToast("PDFを開きました。Ctrl+Pでモノクロ設定を確認して印刷してください。", "success");
+        } catch (error) {
+          try {
+            previewWindow.close();
+          } catch {
+            // no-op
+          }
+          const message = String(error?.message || "");
+          const blocked = message.toLowerCase().includes("popup");
+          const label = blocked
+            ? "ポップアップがブロックされました。"
+            : "PDFの表示に失敗しました。";
+          setPrintStatus(label, "error");
+          showToast(label, "error");
         } finally {
           printButtons.forEach((btn) => (btn.disabled = false));
         }

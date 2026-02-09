@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+python -m pytest -q skills/mfcloud-expense-receipt-reconcile/tests/test_text_encoding_policy.py

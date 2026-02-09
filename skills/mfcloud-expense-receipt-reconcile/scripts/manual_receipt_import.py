@@ -25,6 +25,9 @@ DATE_RE = re.compile(r"(20\d{2})\D{0,3}(\d{1,2})\D{0,3}(\d{1,2})")
 AMAZON_ORDER_ID_RE = re.compile(r"\b\d{3}-\d{7}-\d{7}\b")
 RAKUTEN_ORDER_ID_RE = re.compile(r"\b\d{6}-\d{8}-\d{10}\b")
 
+PROVIDER_KEYS: tuple[str, ...] = ("aquavoice", "claude", "chatgpt", "gamma")
+ALLOWED_RECEIPT_SUFFIXES = {".pdf", ".jpg", ".jpeg", ".png"}
+
 AMOUNT_LABELS: list[str] = [
     "ご請求額",
     "請求額",
@@ -237,9 +240,16 @@ def _unique_path(path: Path) -> Path:
         i += 1
 
 
-def _move_to_bucket(src: Path, bucket_dir: Path) -> Path:
-    bucket_dir.mkdir(parents=True, exist_ok=True)
-    dest = _unique_path(bucket_dir / src.name)
+def _move_to_bucket(src: Path, bucket_root: Path, *, rel_to: Path | None = None) -> Path:
+    rel_parent = Path(".")
+    if rel_to is not None:
+        try:
+            rel_parent = src.resolve().relative_to(rel_to.resolve()).parent
+        except Exception:
+            rel_parent = Path(".")
+    dest_dir = bucket_root / rel_parent
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    dest = _unique_path(dest_dir / src.name)
     shutil.move(str(src), str(dest))
     return dest
 
@@ -289,7 +299,79 @@ def _parse_receipt(path: Path) -> ParsedReceipt:
     )
 
 
-def import_manual_receipts_for_month(output_root: Path, year: int, month: int) -> dict[str, Any]:
+def _parse_receipt_file(path: Path) -> ParsedReceipt:
+    if path.suffix.lower() == ".pdf":
+        return _parse_receipt(path)
+    order_id = _extract_order_id(path.stem)
+    source = _detect_source("", order_id, path.name)
+    return ParsedReceipt(
+        source=source,
+        order_id=order_id,
+        order_date=None,
+        total_yen=None,
+        item_name=None,
+    )
+
+
+def _provider_from_relative_path(rel_path: Path) -> str:
+    if not rel_path.parts:
+        return "manual"
+    first = str(rel_path.parts[0] or "").strip().lower()
+    if first in PROVIDER_KEYS:
+        return first
+    return "manual"
+
+
+def _normalize_provider_filter(provider_filter: set[str] | list[str] | tuple[str, ...] | None) -> set[str] | None:
+    if provider_filter is None:
+        return None
+    normalized: set[str] = set()
+    for provider in provider_filter:
+        name = str(provider or "").strip().lower()
+        if not name:
+            continue
+        if name in PROVIDER_KEYS or name == "manual":
+            normalized.add(name)
+    return normalized or set()
+
+
+def _iter_receipt_files(inbox_dir: Path, provider_filter: set[str] | None = None) -> list[Path]:
+    if not inbox_dir.exists():
+        return []
+    out: list[Path] = []
+    for path in sorted(inbox_dir.rglob("*")):
+        if not path.is_file():
+            continue
+        if path.suffix.lower() not in ALLOWED_RECEIPT_SUFFIXES:
+            continue
+        rel = path.relative_to(inbox_dir)
+        if any(part.startswith("_") for part in rel.parts):
+            continue
+        provider = _provider_from_relative_path(rel)
+        if provider_filter is not None and provider not in provider_filter:
+            continue
+        out.append(path)
+    return out
+
+
+def _new_provider_stat() -> dict[str, int]:
+    return {
+        "found": 0,
+        "imported": 0,
+        "imported_missing_amount": 0,
+        "skipped_duplicates": 0,
+        "failed": 0,
+    }
+
+
+def import_manual_receipts_for_month(
+    output_root: Path,
+    year: int,
+    month: int,
+    *,
+    provider_filter: set[str] | list[str] | tuple[str, ...] | None = None,
+    ingestion_channel: str = "manual_inbox",
+) -> dict[str, Any]:
     ym = f"{year:04d}-{month:02d}"
     output_root = output_root.resolve()
     manual_root = output_root / "manual"
@@ -299,6 +381,7 @@ def import_manual_receipts_for_month(output_root: Path, year: int, month: int) -
     reports_dir = manual_root / "reports"
     errors_jsonl = reports_dir / "manual_import_errors.jsonl"
     report_json = reports_dir / "manual_import_last.json"
+    provider_report_json = reports_dir / "provider_import_last.json"
 
     inbox_dir.mkdir(parents=True, exist_ok=True)
     pdfs_dir.mkdir(parents=True, exist_ok=True)
@@ -309,7 +392,8 @@ def import_manual_receipts_for_month(output_root: Path, year: int, month: int) -
     skipped_dir = inbox_dir / "_skipped" / run_stamp
     failed_dir = inbox_dir / "_failed" / run_stamp
 
-    pdf_files = sorted(p for p in inbox_dir.iterdir() if p.is_file() and p.suffix.lower() == ".pdf")
+    normalized_provider_filter = _normalize_provider_filter(provider_filter)
+    receipt_files = _iter_receipt_files(inbox_dir, provider_filter=normalized_provider_filter)
     existing_hashes = _load_existing_hashes(orders_jsonl)
     now_iso = datetime.now().isoformat(timespec="seconds")
 
@@ -322,15 +406,26 @@ def import_manual_receipts_for_month(output_root: Path, year: int, month: int) -
     failed = 0
     missing_amount = 0
 
-    for src in pdf_files:
+    provider_counts: dict[str, dict[str, int]] = {provider: _new_provider_stat() for provider in PROVIDER_KEYS}
+    provider_counts["manual"] = _new_provider_stat()
+
+    for src in receipt_files:
+        rel = src.relative_to(inbox_dir)
+        provider = _provider_from_relative_path(rel)
+        provider_stat = provider_counts.setdefault(provider, _new_provider_stat())
+        provider_stat["found"] += 1
+
         try:
             digest = _file_sha1(src)
         except Exception as exc:
             failed += 1
-            moved = _move_to_bucket(src, failed_dir)
+            provider_stat["failed"] += 1
+            moved = _move_to_bucket(src, failed_dir, rel_to=inbox_dir)
             failed_rows.append(
                 {
                     "file": src.name,
+                    "relative_path": str(rel).replace("\\", "/"),
+                    "provider": provider,
                     "moved_to": str(moved),
                     "reason": f"hash_error: {exc}",
                 }
@@ -339,10 +434,13 @@ def import_manual_receipts_for_month(output_root: Path, year: int, month: int) -
 
         if digest in existing_hashes:
             skipped_duplicates += 1
-            moved = _move_to_bucket(src, skipped_dir)
+            provider_stat["skipped_duplicates"] += 1
+            moved = _move_to_bucket(src, skipped_dir, rel_to=inbox_dir)
             skipped_rows.append(
                 {
                     "file": src.name,
+                    "relative_path": str(rel).replace("\\", "/"),
+                    "provider": provider,
                     "moved_to": str(moved),
                     "reason": "duplicate_doc_hash",
                     "doc_hash": digest,
@@ -351,7 +449,7 @@ def import_manual_receipts_for_month(output_root: Path, year: int, month: int) -
             continue
 
         try:
-            parsed = _parse_receipt(src)
+            parsed = _parse_receipt_file(src)
             fallback_date = _fallback_date_from_name(src.name)
             mtime_date = date.fromtimestamp(src.stat().st_mtime)
             order_date = parsed.order_date or fallback_date or mtime_date
@@ -359,40 +457,56 @@ def import_manual_receipts_for_month(output_root: Path, year: int, month: int) -
             total_yen = parsed.total_yen
             if total_yen is None:
                 missing_amount += 1
+                provider_stat["imported_missing_amount"] += 1
 
             order_id = parsed.order_id or f"MANUAL-{digest[:12].upper()}"
             amount_token = str(total_yen) if total_yen is not None else "unknown"
             order_token = _safe_token(order_id, fallback=digest[:8], max_len=32)
-            file_name = f"{order_date.isoformat()}_{source}_{amount_token}_{order_token}.pdf"
-            dest_pdf = _unique_path(pdfs_dir / file_name)
-            shutil.copy2(src, dest_pdf)
-            moved = _move_to_bucket(src, processed_dir)
+            suffix = src.suffix.lower() if src.suffix else ".pdf"
+            if provider == "manual":
+                file_name = f"{order_date.isoformat()}_{source}_{amount_token}_{order_token}{suffix}"
+            else:
+                file_name = f"{order_date.isoformat()}_{provider}_{source}_{amount_token}_{order_token}{suffix}"
+            dest_file = _unique_path(pdfs_dir / file_name)
+            shutil.copy2(src, dest_file)
+            moved = _move_to_bucket(src, processed_dir, rel_to=inbox_dir)
 
+            provider_doc_id = parsed.order_id if provider in PROVIDER_KEYS and parsed.order_id else None
+            provider_value: str | None = provider if provider in PROVIDER_KEYS else None
             order_obj: dict[str, Any] = {
                 "source": "manual",
+                "provider": provider_value,
+                "source_hint": source,
+                "ingestion_channel": str(ingestion_channel or "manual_inbox"),
+                "provider_doc_id": provider_doc_id,
+                "provider_invoice_url": None,
                 "order_id": order_id,
                 "order_date": order_date.isoformat(),
                 "total_yen": total_yen,
                 "order_total_yen": total_yen,
                 "item_name": parsed.item_name,
                 "status": "ok",
-                "doc_type": "manual_upload",
-                "pdf_path": str(dest_pdf),
+                "doc_type": "provider_upload" if provider_value else "manual_upload",
+                "pdf_path": str(dest_file),
                 "detail_url": None,
                 "receipt_url": None,
                 "include": True,
                 "imported_at": now_iso,
                 "import_source_name": src.name,
+                "import_source_relpath": str(rel).replace("\\", "/"),
                 "doc_hash": digest,
             }
             new_orders.append(order_obj)
             existing_hashes.add(digest)
             imported += 1
+            provider_stat["imported"] += 1
             imported_rows.append(
                 {
                     "file": src.name,
+                    "relative_path": str(rel).replace("\\", "/"),
+                    "provider": provider,
                     "moved_to": str(moved),
-                    "pdf_path": str(dest_pdf),
+                    "pdf_path": str(dest_file),
                     "source": source,
                     "order_id": order_id,
                     "order_date": order_date.isoformat(),
@@ -402,10 +516,13 @@ def import_manual_receipts_for_month(output_root: Path, year: int, month: int) -
             )
         except Exception as exc:
             failed += 1
-            moved = _move_to_bucket(src, failed_dir)
+            provider_stat["failed"] += 1
+            moved = _move_to_bucket(src, failed_dir, rel_to=inbox_dir)
             failed_rows.append(
                 {
                     "file": src.name,
+                    "relative_path": str(rel).replace("\\", "/"),
+                    "provider": provider,
                     "moved_to": str(moved),
                     "reason": str(exc),
                     "doc_hash": digest,
@@ -418,23 +535,29 @@ def import_manual_receipts_for_month(output_root: Path, year: int, month: int) -
     payload = {
         "status": "ok",
         "ym": ym,
-        "found_pdfs": len(pdf_files),
+        "ingestion_channel": str(ingestion_channel or "manual_inbox"),
+        "provider_filter": sorted(normalized_provider_filter) if normalized_provider_filter is not None else [],
+        "found_files": len(receipt_files),
+        "found_pdfs": len(receipt_files),
         "imported": imported,
         "imported_missing_amount": missing_amount,
         "skipped_duplicates": skipped_duplicates,
         "failed": failed,
+        "provider_counts": provider_counts,
         "output_root": str(output_root),
         "inbox_dir": str(inbox_dir),
         "pdfs_dir": str(pdfs_dir),
         "orders_jsonl": str(orders_jsonl),
         "errors_jsonl": str(errors_jsonl),
         "report_json": str(report_json),
+        "provider_report_json": str(provider_report_json),
         "imported_rows": imported_rows,
         "skipped_rows": skipped_rows,
         "failed_rows": failed_rows,
         "processed_dir": str(processed_dir) if imported_rows else "",
     }
     report_json.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    provider_report_json.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
     return payload
 
 
@@ -443,7 +566,7 @@ def _default_output_root(year: int, month: int) -> Path:
 
 
 def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(description="Import manually uploaded receipt PDFs into manual/orders.jsonl")
+    ap = argparse.ArgumentParser(description="Import manually uploaded receipt files into manual/orders.jsonl")
     ap.add_argument("--year", type=int, required=True)
     ap.add_argument("--month", type=int, required=True)
     ap.add_argument("--output-root", help="Path to artifacts root for target month")

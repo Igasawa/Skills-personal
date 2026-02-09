@@ -83,3 +83,12 @@
 - `作成する` は下書き作成として扱い、申請ボタン押下は行わない
 - 金額不一致、添付失敗、作成失敗は `needs_review` として記録し、対象明細のみスキップして全体処理は継続する
 - 各明細の実行結果（成功/失敗/スキップ理由）は `reports/audit_log.jsonl` に残す
+
+
+## Addendum: Bulk Print Default
+- Bulk print is source-specific: Amazon and Rakuten are executed separately.
+- The system merges target PDFs into one file per source and opens it.
+- Auto printout is disabled by default; user prints manually from the opened PDF dialog (Ctrl+P).
+- Monochrome is controlled by printer/driver defaults; the dashboard does not force printer color mode.
+- API: POST /api/print-run/{ym}/{source} (source=amazon|rakuten).
+

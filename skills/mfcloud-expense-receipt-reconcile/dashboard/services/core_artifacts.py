@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -20,6 +21,15 @@ from .core_orders import (
 
 DEFAULT_MFCLOUD_EXPENSE_LIST_URL = "https://expense.moneyforward.com/outgo_input"
 LEGACY_MFCLOUD_EXPENSE_LIST_URL = "https://expense.moneyforward.com/transactions"
+
+
+def _format_archive_snapshot_label(name: str) -> str:
+    text = str(name or "").strip()
+    try:
+        dt = datetime.strptime(text, "%Y%m%d_%H%M%S")
+    except Exception:
+        return text
+    return dt.strftime("%Y-%m-%d %H:%M:%S")
 
 
 def _derive_order_counts_from_jsonl(root: Any, ym: str) -> dict[str, int]:
@@ -115,6 +125,70 @@ def _scan_artifacts() -> list[dict[str, Any]]:
 
     items.sort(key=lambda x: x["ym"], reverse=True)
     return items
+
+
+def _scan_archived_receipts(root: Any) -> dict[str, Any]:
+    base = Path(root)
+    archive_root = base / "archive"
+    snapshots: list[dict[str, Any]] = []
+    rows: list[dict[str, Any]] = []
+    if not archive_root.exists():
+        return {
+            "archive_root": str(archive_root),
+            "snapshot_count": 0,
+            "receipt_count": 0,
+            "amazon_count": 0,
+            "rakuten_count": 0,
+            "snapshots": snapshots,
+            "rows": rows,
+        }
+
+    for snap_dir in sorted((p for p in archive_root.iterdir() if p.is_dir()), key=lambda p: p.name, reverse=True):
+        snapshot_name = snap_dir.name
+        snapshot_label = _format_archive_snapshot_label(snapshot_name)
+        source_counts = {"amazon": 0, "rakuten": 0}
+
+        for source in ("amazon", "rakuten"):
+            pdf_dir = snap_dir / source / "pdfs"
+            if not pdf_dir.exists():
+                continue
+            for pdf_path in sorted(pdf_dir.glob("*.pdf")):
+                try:
+                    size_kb = max(1, int(pdf_path.stat().st_size / 1024))
+                except Exception:
+                    size_kb = 0
+                source_counts[source] += 1
+                rows.append(
+                    {
+                        "snapshot": snapshot_name,
+                        "snapshot_label": snapshot_label,
+                        "source": source,
+                        "source_label": "Amazon" if source == "amazon" else "楽天",
+                        "pdf_name": pdf_path.name,
+                        "pdf_size_kb": size_kb,
+                    }
+                )
+
+        snapshots.append(
+            {
+                "snapshot": snapshot_name,
+                "snapshot_label": snapshot_label,
+                "path": str(snap_dir),
+                "amazon_count": source_counts["amazon"],
+                "rakuten_count": source_counts["rakuten"],
+                "receipt_count": source_counts["amazon"] + source_counts["rakuten"],
+            }
+        )
+
+    return {
+        "archive_root": str(archive_root),
+        "snapshot_count": len(snapshots),
+        "receipt_count": len(rows),
+        "amazon_count": sum(int(item.get("amazon_count") or 0) for item in snapshots),
+        "rakuten_count": sum(int(item.get("rakuten_count") or 0) for item in snapshots),
+        "snapshots": snapshots,
+        "rows": rows,
+    }
 
 
 def _latest_run_config() -> dict[str, Any]:

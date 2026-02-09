@@ -376,6 +376,65 @@ def test_reconcile_main_accepts_manual_only_input(tmp_path: Path) -> None:
     assert candidate_order_ids == ["MANUAL-001"]
 
 
+def test_reconcile_main_accepts_manual_provider_metadata_rows(tmp_path: Path) -> None:
+    manual_orders_jsonl = tmp_path / "manual_orders.jsonl"
+    mf_expenses_jsonl = tmp_path / "mf_expenses.jsonl"
+    out_json = tmp_path / "out.json"
+    out_csv = tmp_path / "out.csv"
+
+    _write_jsonl(
+        manual_orders_jsonl,
+        [
+            {
+                "source": "manual",
+                "provider": "chatgpt",
+                "ingestion_channel": "provider_inbox",
+                "order_id": "MANUAL-PROVIDER-001",
+                "order_date": "2026-01-29",
+                "total_yen": 2990,
+                "pdf_path": "manual/pdfs/2026-01-29_chatgpt_manual_2990_MANUAL-PROVIDER-001.pdf",
+            },
+        ],
+    )
+    _write_jsonl(
+        mf_expenses_jsonl,
+        [
+            {
+                "expense_id": "MF-PROVIDER",
+                "use_date": "2026-01-29",
+                "amount_yen": 2990,
+                "vendor": "OPENAI",
+                "memo": "ChatGPT Team",
+                "has_evidence": False,
+            }
+        ],
+    )
+
+    exit_code = reconcile_main(
+        [
+            "--manual-orders-jsonl",
+            str(manual_orders_jsonl),
+            "--mf-expenses-jsonl",
+            str(mf_expenses_jsonl),
+            "--out-json",
+            str(out_json),
+            "--out-csv",
+            str(out_csv),
+            "--year",
+            "2026",
+            "--month",
+            "1",
+        ]
+    )
+
+    assert exit_code == 0
+    data = json.loads(out_json.read_text(encoding="utf-8"))
+    candidate_rows = [row for row in data["rows"] if row["row_type"] == "candidate"]
+    assert len(candidate_rows) == 1
+    assert candidate_rows[0]["order_source"] == "manual"
+    assert candidate_rows[0]["order_id"] == "MANUAL-PROVIDER-001"
+
+
 def test_reconcile_main_requires_at_least_one_order_source(tmp_path: Path) -> None:
     mf_expenses_jsonl = tmp_path / "mf_expenses.jsonl"
     out_json = tmp_path / "out.json"

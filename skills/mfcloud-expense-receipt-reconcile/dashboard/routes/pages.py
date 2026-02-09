@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 from pathlib import Path
+import re
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.templating import Jinja2Templates
 
 from services import core
+
+ARCHIVE_SNAPSHOT_RE = re.compile(r"^\d{8}_\d{6}$")
 
 
 def create_pages_router(templates: Jinja2Templates) -> APIRouter:
@@ -18,6 +21,14 @@ def create_pages_router(templates: Jinja2Templates) -> APIRouter:
         jobs = core._scan_run_jobs()
         running_job = core._get_latest_running_job()
         defaults = core._resolve_form_defaults()
+        default_ym = None
+        try:
+            default_year = int(defaults.get("year"))
+            default_month = int(defaults.get("month"))
+            if 1 <= default_month <= 12:
+                default_ym = f"{default_year:04d}-{default_month:02d}"
+        except Exception:
+            default_ym = None
         latest_job = jobs[0] if jobs else None
         latest_job_ym = None
         if isinstance(latest_job, dict):
@@ -38,6 +49,7 @@ def create_pages_router(templates: Jinja2Templates) -> APIRouter:
                 "latest_job_ym": latest_job_ym,
                 "running_job": running_job,
                 "defaults": defaults,
+                "default_ym": default_ym,
                 "ax_home": str(core._ax_home()),
             },
         )
@@ -89,9 +101,10 @@ def create_pages_router(templates: Jinja2Templates) -> APIRouter:
         rakuten_pdfs = list((root / "rakuten" / "pdfs").glob("*.pdf")) if (root / "rakuten" / "pdfs").exists() else []
 
         print_script = reports_dir / "print_all.ps1"
-        print_command = ""
-        if print_script.exists():
-            print_command = f'powershell -NoProfile -ExecutionPolicy Bypass -File "{print_script}"'
+        amazon_print_manifest = reports_dir / "print_manifest.amazon.json"
+        rakuten_print_manifest = reports_dir / "print_manifest.rakuten.json"
+        amazon_bulk_print_ready = bool(amazon_workflow.get("print_prepared_at")) and amazon_print_manifest.exists()
+        rakuten_bulk_print_ready = bool(rakuten_workflow.get("print_prepared_at")) and rakuten_print_manifest.exists()
 
         return templates.TemplateResponse(
             "run.html",
@@ -109,9 +122,10 @@ def create_pages_router(templates: Jinja2Templates) -> APIRouter:
                 "rakuten_pdf_count": len(rakuten_pdfs),
                 "has_reports": reports_dir.exists(),
                 "print_script": str(print_script) if print_script.exists() else None,
-                "print_command": print_command,
                 "amazon_print_prepared": bool(amazon_workflow.get("print_prepared_at")),
                 "rakuten_print_prepared": bool(rakuten_workflow.get("print_prepared_at")),
+                "amazon_bulk_print_ready": amazon_bulk_print_ready,
+                "rakuten_bulk_print_ready": rakuten_bulk_print_ready,
                 "file_labels": {
                     "missing_csv": "未添付候補CSV",
                     "missing_json": "未添付候補JSON",
@@ -155,6 +169,38 @@ def create_pages_router(templates: Jinja2Templates) -> APIRouter:
             },
         )
 
+    @router.get("/runs/{ym}/archived-receipts", response_class=HTMLResponse)
+    def run_archived_receipts(request: Request, ym: str) -> HTMLResponse:
+        ym = core._safe_ym(ym)
+        root = core._artifact_root() / ym
+        if not root.exists():
+            raise HTTPException(status_code=404, detail="Run not found.")
+
+        archive_data = core._scan_archived_receipts(root)
+        available_months = [
+            str(item.get("ym"))
+            for item in core._scan_artifacts()
+            if isinstance(item, dict) and isinstance(item.get("ym"), str)
+        ]
+        if ym not in available_months:
+            available_months.insert(0, ym)
+        available_months = list(dict.fromkeys(available_months))
+        return templates.TemplateResponse(
+            "archive_receipts.html",
+            {
+                "request": request,
+                "ym": ym,
+                "rows": archive_data.get("rows") if isinstance(archive_data.get("rows"), list) else [],
+                "snapshots": archive_data.get("snapshots") if isinstance(archive_data.get("snapshots"), list) else [],
+                "total": int(archive_data.get("receipt_count") or 0),
+                "snapshot_count": int(archive_data.get("snapshot_count") or 0),
+                "amazon_count": int(archive_data.get("amazon_count") or 0),
+                "rakuten_count": int(archive_data.get("rakuten_count") or 0),
+                "archive_root": str(archive_data.get("archive_root") or ""),
+                "available_months": available_months,
+            },
+        )
+
     @router.get("/files/{ym}/{kind}")
     def download_file(ym: str, kind: str) -> FileResponse:
         ym = core._safe_ym(ym)
@@ -187,6 +233,27 @@ def create_pages_router(templates: Jinja2Templates) -> APIRouter:
         root = core._artifact_root() / ym
         path = core._resolve_pdf_path(root, source, filename)
         if not path:
+            raise HTTPException(status_code=404, detail="File not found.")
+        return FileResponse(path, media_type="application/pdf", filename=Path(path).name)
+
+    @router.get("/files/{ym}/archive/{snapshot}/{source}/{filename}")
+    def download_archived_pdf(ym: str, snapshot: str, source: str, filename: str) -> FileResponse:
+        ym = core._safe_ym(ym)
+        if source not in {"amazon", "rakuten"}:
+            raise HTTPException(status_code=404, detail="File not found.")
+        if not ARCHIVE_SNAPSHOT_RE.match(str(snapshot or "")):
+            raise HTTPException(status_code=404, detail="File not found.")
+        if not filename or not core.SAFE_NAME_RE.match(filename) or not filename.lower().endswith(".pdf"):
+            raise HTTPException(status_code=404, detail="File not found.")
+
+        root = core._artifact_root() / ym
+        base_dir = (root / "archive" / snapshot / source / "pdfs").resolve()
+        path = (base_dir / filename).resolve()
+        try:
+            path.relative_to(base_dir)
+        except Exception:
+            raise HTTPException(status_code=404, detail="File not found.")
+        if not path.exists() or not path.is_file():
             raise HTTPException(status_code=404, detail="File not found.")
         return FileResponse(path, media_type="application/pdf", filename=Path(path).name)
 

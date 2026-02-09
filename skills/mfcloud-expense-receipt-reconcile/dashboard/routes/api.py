@@ -8,6 +8,7 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse
+from pypdf import PdfReader, PdfWriter
 
 from services import core
 
@@ -42,7 +43,164 @@ def create_api_router() -> APIRouter:
             cmd = ["open", str(path)]
         else:
             cmd = ["xdg-open", str(path)]
+        result = subprocess.run(cmd, capture_output=True, text=True, check=False)
+        # Windows explorer occasionally returns non-zero even when the folder
+        # actually opened (no stdout/stderr, existing target).
+        if (
+            sys.platform.startswith("win")
+            and result.returncode != 0
+            and path.exists()
+            and not str(result.stdout or "").strip()
+            and not str(result.stderr or "").strip()
+        ):
+            return subprocess.CompletedProcess(
+                args=result.args,
+                returncode=0,
+                stdout=result.stdout,
+                stderr=result.stderr,
+            )
+        return result
+
+    def _extract_print_file_paths(manifest: dict[str, Any] | None) -> list[str]:
+        if not isinstance(manifest, dict):
+            return []
+        rows = manifest.get("files")
+        if not isinstance(rows, list):
+            return []
+        out: list[str] = []
+        seen: set[str] = set()
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            path = str(row.get("path") or "").strip()
+            if not path or path in seen:
+                continue
+            seen.add(path)
+            out.append(path)
+        return out
+
+    def _write_manual_open_print_script(path: Path, files: list[str]) -> None:
+        lines = [
+            "$ErrorActionPreference = 'Continue'",
+            "$files = @(",
+        ]
+        lines += [f'  "{p}"' for p in files]
+        lines += [
+            ")",
+            "$opened = 0",
+            "$failed = 0",
+            "$missing = 0",
+            "foreach ($f in $files) {",
+            "  if (-not (Test-Path $f)) {",
+            "    Write-Warning (\"missing: \" + $f)",
+            "    $missing += 1",
+            "    continue",
+            "  }",
+            "  try {",
+            "    Start-Process -FilePath $f -ErrorAction Stop",
+            "    $opened += 1",
+            "  } catch {",
+            "    Write-Warning (\"open_failed: \" + $f + \" :: \" + $_.Exception.Message)",
+            "    $failed += 1",
+            "  }",
+            "  Start-Sleep -Milliseconds 300",
+            "}",
+            "Write-Output (\"print_summary opened=\" + $opened + \" failed=\" + $failed + \" missing=\" + $missing + \" total=\" + $files.Count)",
+            "if ($failed -gt 0) {",
+            "  exit 1",
+            "}",
+            "exit 0",
+        ]
+        path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+    def _safe_print_source(source: str) -> str:
+        normalized = str(source or "").strip().lower()
+        if normalized not in {"amazon", "rakuten"}:
+            raise HTTPException(status_code=400, detail="source must be amazon or rakuten.")
+        return normalized
+
+    def _source_manifest_path(reports_dir: Path, source: str) -> Path:
+        return reports_dir / f"print_manifest.{source}.json"
+
+    def _source_list_path(reports_dir: Path, source: str) -> Path:
+        return reports_dir / f"print_list.{source}.txt"
+
+    def _open_file(path: Path) -> subprocess.CompletedProcess[str]:
+        if sys.platform.startswith("win"):
+            cmd = ["explorer", str(path)]
+        elif sys.platform == "darwin":
+            cmd = ["open", str(path)]
+        else:
+            cmd = ["xdg-open", str(path)]
         return subprocess.run(cmd, capture_output=True, text=True, check=False)
+
+    def _merge_pdfs(input_paths: list[Path], merged_path: Path) -> tuple[int, int]:
+        writer = PdfWriter()
+        merged_file_count = 0
+        merged_page_count = 0
+        for pdf_path in input_paths:
+            reader = PdfReader(str(pdf_path))
+            pages = list(reader.pages)
+            if not pages:
+                continue
+            for page in pages:
+                writer.add_page(page)
+            merged_file_count += 1
+            merged_page_count += len(pages)
+        if merged_page_count <= 0:
+            raise HTTPException(status_code=500, detail="No valid PDF pages were found for merge.")
+        merged_path.parent.mkdir(parents=True, exist_ok=True)
+        with merged_path.open("wb") as handle:
+            writer.write(handle)
+        return merged_file_count, merged_page_count
+
+    def _open_receipts_folder_for_ym(ym: str, actor: dict[str, str]) -> JSONResponse:
+        ym = core._safe_ym(ym)
+        year, month = core._split_ym(ym)
+        root = core._artifact_root() / ym
+        amazon_pdfs = root / "amazon" / "pdfs"
+        rakuten_pdfs = root / "rakuten" / "pdfs"
+        root.mkdir(parents=True, exist_ok=True)
+        if amazon_pdfs.exists() and rakuten_pdfs.exists():
+            target = root
+        elif amazon_pdfs.exists():
+            target = amazon_pdfs
+        elif rakuten_pdfs.exists():
+            target = rakuten_pdfs
+        else:
+            # Fallback: open the month root even if receipts are not generated yet.
+            target = root
+
+        res = _open_directory(target)
+        if res.returncode != 0:
+            detail = (
+                "Open folder failed:\n"
+                f"path: {target}\n"
+                f"exit: {res.returncode}\n"
+                f"stdout:\n{res.stdout}\n"
+                f"stderr:\n{res.stderr}\n"
+            )
+            core._append_audit_event(
+                year=year,
+                month=month,
+                event_type="source_action",
+                action="open_receipts_folder",
+                status="failed",
+                actor=actor,
+                details={"reason": detail, "path": str(target)},
+            )
+            raise HTTPException(status_code=500, detail=detail)
+
+        core._append_audit_event(
+            year=year,
+            month=month,
+            event_type="source_action",
+            action="open_receipts_folder",
+            status="success",
+            actor=actor,
+            details={"path": str(target)},
+        )
+        return JSONResponse({"status": "ok", "path": str(target)})
 
     @router.get("/api/steps/{ym}")
     def api_steps(ym: str) -> JSONResponse:
@@ -162,6 +320,8 @@ def create_api_router() -> APIRouter:
         reports_dir = output_root / "reports"
         exclude_orders_json = output_root / "reports" / "exclude_orders.json"
         print_script = reports_dir / "print_all.ps1"
+        source_manifest_path = _source_manifest_path(reports_dir, source)
+        source_list_path = _source_list_path(reports_dir, source)
         print_count: int | None = None
 
         cmd = [
@@ -194,16 +354,16 @@ def create_api_router() -> APIRouter:
                     ),
                 )
 
-            manifest = core._read_json(reports_dir / "print_manifest.json")
+            manifest = core._read_json(source_manifest_path)
             if isinstance(manifest, dict):
                 try:
                     print_count = int(manifest.get("count"))
                 except Exception:
                     print_count = None
 
-            if not print_script.exists():
-                raise HTTPException(status_code=404, detail="print_all.ps1 not found.")
-            print_command = f'powershell -NoProfile -ExecutionPolicy Bypass -File "{print_script}"'
+            if not source_manifest_path.exists():
+                raise HTTPException(status_code=404, detail=f"{source_manifest_path.name} not found.")
+            print_command = f"POST /api/print-run/{ym}/{source}"
             wf = core._read_workflow(reports_dir)
             section = wf.get(source) if isinstance(wf.get(source), dict) else {}
             section["print_prepared_at"] = datetime.now().isoformat(timespec="seconds")
@@ -219,7 +379,12 @@ def create_api_router() -> APIRouter:
                 status="success",
                 actor=actor,
                 source=source,
-                details={"print_script": str(print_script), "count": print_count},
+                details={
+                    "print_script": str(print_script),
+                    "print_manifest": str(source_manifest_path),
+                    "print_list": str(source_list_path),
+                    "count": print_count,
+                },
             )
 
             return JSONResponse(
@@ -228,6 +393,8 @@ def create_api_router() -> APIRouter:
                     "source": source,
                     "count": print_count,
                     "print_script": str(print_script),
+                    "print_manifest": str(source_manifest_path),
+                    "print_list": str(source_list_path),
                     "print_command": print_command,
                     "excluded_pdfs_url": f"/runs/{ym}/excluded-pdfs",
                 }
@@ -244,6 +411,8 @@ def create_api_router() -> APIRouter:
                 details={
                     "reason": str(exc.detail),
                     "print_script": str(print_script),
+                    "print_manifest": str(source_manifest_path),
+                    "print_list": str(source_list_path),
                     "count": print_count,
                 },
             )
@@ -259,7 +428,7 @@ def create_api_router() -> APIRouter:
         actor = _actor_from_request(request)
         output_root = core._artifact_root() / ym
         reports_dir = output_root / "reports"
-        print_script = reports_dir / "print_all.ps1"
+        source_manifest_path = _source_manifest_path(reports_dir, source)
         print_count: int | None = None
 
         try:
@@ -285,13 +454,13 @@ def create_api_router() -> APIRouter:
                     status_code=409,
                     detail=f"Print preparation is required before marking {source} print completion.",
                 )
-            if not print_script.exists():
+            if not source_manifest_path.exists():
                 raise HTTPException(
                     status_code=404,
                     detail="Print preparation not found. Run print preparation first.",
                 )
 
-            manifest = core._read_json(reports_dir / "print_manifest.json")
+            manifest = core._read_json(source_manifest_path)
             if isinstance(manifest, dict):
                 try:
                     print_count = int(manifest.get("count"))
@@ -326,22 +495,15 @@ def create_api_router() -> APIRouter:
             )
             raise
 
-    @router.post("/api/print-run/{ym}")
-    def api_print_run(ym: str, request: Request) -> JSONResponse:
+    def _execute_source_print_run(ym: str, source: str, actor: dict[str, str]) -> JSONResponse:
         ym = core._safe_ym(ym)
+        source = _safe_print_source(source)
         year, month = core._split_ym(ym)
-        actor = _actor_from_request(request)
         reports_dir = core._artifact_root() / ym / "reports"
-        print_script = reports_dir / "print_all.ps1"
-        manifest = core._read_json(reports_dir / "print_manifest.json")
-        print_count: int | None = None
-        if isinstance(manifest, dict):
-            try:
-                print_count = int(manifest.get("count"))
-            except Exception:
-                print_count = None
-        if not print_script.exists():
-            detail = "Print preparation not found. Run print preparation first."
+        workflow = core._read_workflow(reports_dir)
+        section = workflow.get(source) if isinstance(workflow.get(source), dict) else {}
+        if not section.get("print_prepared_at"):
+            detail = f"Print preparation is required before {source} bulk print run."
             core._append_audit_event(
                 year=year,
                 month=month,
@@ -349,26 +511,54 @@ def create_api_router() -> APIRouter:
                 action="print_run",
                 status="rejected",
                 actor=actor,
+                source=source,
+                details={"reason": detail},
+            )
+            raise HTTPException(status_code=409, detail=detail)
+
+        manifest_path = _source_manifest_path(reports_dir, source)
+        manifest = core._read_json(manifest_path)
+        if not manifest_path.exists() or not isinstance(manifest, dict):
+            detail = f"{manifest_path.name} not found. Run print preparation first."
+            core._append_audit_event(
+                year=year,
+                month=month,
+                event_type="source_action",
+                action="print_run",
+                status="rejected",
+                actor=actor,
+                source=source,
                 details={"reason": detail},
             )
             raise HTTPException(status_code=404, detail=detail)
 
-        cmd = [
-            "powershell",
-            "-NoProfile",
-            "-ExecutionPolicy",
-            "Bypass",
-            "-File",
-            str(print_script),
-        ]
-        res = subprocess.run(cmd, capture_output=True, text=True, check=False)
-        if res.returncode != 0:
+        raw_paths = _extract_print_file_paths(manifest)
+        if not raw_paths:
+            detail = f"No print targets were found in {manifest_path.name}."
+            core._append_audit_event(
+                year=year,
+                month=month,
+                event_type="source_action",
+                action="print_run",
+                status="rejected",
+                actor=actor,
+                source=source,
+                details={"reason": detail},
+            )
+            raise HTTPException(status_code=409, detail=detail)
+
+        existing_paths: list[Path] = []
+        missing_files: list[str] = []
+        for raw_path in raw_paths:
+            candidate = Path(raw_path)
+            if candidate.exists() and candidate.is_file():
+                existing_paths.append(candidate)
+            else:
+                missing_files.append(str(candidate))
+        if not existing_paths:
             detail = (
-                "print_all.ps1 failed:\n"
-                f"cmd: {cmd}\n"
-                f"exit: {res.returncode}\n"
-                f"stdout:\n{res.stdout}\n"
-                f"stderr:\n{res.stderr}\n"
+                f"All target PDFs are missing for {source}. "
+                f"manifest={manifest_path.name} missing_count={len(missing_files)}"
             )
             core._append_audit_event(
                 year=year,
@@ -377,7 +567,58 @@ def create_api_router() -> APIRouter:
                 action="print_run",
                 status="failed",
                 actor=actor,
-                details={"reason": detail, "count": print_count},
+                source=source,
+                details={"reason": detail, "missing_count": len(missing_files)},
+            )
+            raise HTTPException(status_code=500, detail=detail)
+
+        merged_pdf_path = reports_dir / f"print_merged_{source}.pdf"
+        try:
+            merged_count, merged_pages = _merge_pdfs(existing_paths, merged_pdf_path)
+        except HTTPException as exc:
+            core._append_audit_event(
+                year=year,
+                month=month,
+                event_type="source_action",
+                action="print_run",
+                status="failed",
+                actor=actor,
+                source=source,
+                details={"reason": str(exc.detail), "missing_count": len(missing_files)},
+            )
+            raise
+        except Exception as exc:
+            detail = f"Merged PDF generation failed: {exc}"
+            core._append_audit_event(
+                year=year,
+                month=month,
+                event_type="source_action",
+                action="print_run",
+                status="failed",
+                actor=actor,
+                source=source,
+                details={"reason": detail, "missing_count": len(missing_files)},
+            )
+            raise HTTPException(status_code=500, detail=detail) from exc
+
+        open_result = _open_file(merged_pdf_path)
+        if open_result.returncode != 0:
+            detail = (
+                "Open merged PDF failed:\n"
+                f"path: {merged_pdf_path}\n"
+                f"exit: {open_result.returncode}\n"
+                f"stdout:\n{open_result.stdout}\n"
+                f"stderr:\n{open_result.stderr}\n"
+            )
+            core._append_audit_event(
+                year=year,
+                month=month,
+                event_type="source_action",
+                action="print_run",
+                status="failed",
+                actor=actor,
+                source=source,
+                details={"reason": detail, "missing_count": len(missing_files)},
             )
             raise HTTPException(status_code=500, detail=detail)
 
@@ -388,69 +629,64 @@ def create_api_router() -> APIRouter:
             action="print_run",
             status="success",
             actor=actor,
-            details={"count": print_count, "print_script": str(print_script)},
+            source=source,
+            details={
+                "mode": "manual_open",
+                "count": merged_count,
+                "merged_pages": merged_pages,
+                "missing_count": len(missing_files),
+                "missing_files": missing_files,
+                "merged_pdf_path": str(merged_pdf_path),
+            },
         )
         return JSONResponse(
             {
                 "status": "ok",
-                "count": print_count,
-                "print_script": str(print_script),
-                "stdout": str(res.stdout or "").strip(),
+                "ym": ym,
+                "source": source,
+                "print_mode": "manual_open",
+                "count": merged_count,
+                "missing_count": len(missing_files),
+                "merged_pdf_path": str(merged_pdf_path),
             }
         )
+
+    @router.post("/api/print-run/{ym}/{source}")
+    def api_print_run_by_source(ym: str, source: str, request: Request) -> JSONResponse:
+        actor = _actor_from_request(request)
+        return _execute_source_print_run(ym, source, actor)
+
+    @router.post("/api/print-run/{ym}")
+    def api_print_run_legacy(ym: str, request: Request, source: str | None = None) -> JSONResponse:
+        actor = _actor_from_request(request)
+        if source:
+            return _execute_source_print_run(ym, source, actor)
+        ym = core._safe_ym(ym)
+        year, month = core._split_ym(ym)
+        detail = "Deprecated endpoint. Use /api/print-run/{ym}/{source}."
+        core._append_audit_event(
+            year=year,
+            month=month,
+            event_type="source_action",
+            action="print_run",
+            status="rejected",
+            actor=actor,
+            details={"reason": detail},
+        )
+        raise HTTPException(status_code=400, detail=detail)
 
     @router.post("/api/folders/{ym}/receipts")
     @router.post("/api/folders/{ym}/receipt")
     @router.post("/api/folders/{ym}/open-receipts")
     @router.post("/api/folder/{ym}/receipts")
     def api_open_receipts_folder(ym: str, request: Request) -> JSONResponse:
-        ym = core._safe_ym(ym)
-        year, month = core._split_ym(ym)
-        actor = _actor_from_request(request)
-        root = core._artifact_root() / ym
-        amazon_pdfs = root / "amazon" / "pdfs"
-        rakuten_pdfs = root / "rakuten" / "pdfs"
-        root.mkdir(parents=True, exist_ok=True)
-        if amazon_pdfs.exists() and rakuten_pdfs.exists():
-            target = root
-        elif amazon_pdfs.exists():
-            target = amazon_pdfs
-        elif rakuten_pdfs.exists():
-            target = rakuten_pdfs
-        else:
-            # Fallback: open the month root even if receipts are not generated yet.
-            target = root
+        return _open_receipts_folder_for_ym(ym, _actor_from_request(request))
 
-        res = _open_directory(target)
-        if res.returncode != 0:
-            detail = (
-                "Open folder failed:\n"
-                f"path: {target}\n"
-                f"exit: {res.returncode}\n"
-                f"stdout:\n{res.stdout}\n"
-                f"stderr:\n{res.stderr}\n"
-            )
-            core._append_audit_event(
-                year=year,
-                month=month,
-                event_type="source_action",
-                action="open_receipts_folder",
-                status="failed",
-                actor=actor,
-                details={"reason": detail, "path": str(target)},
-            )
-            raise HTTPException(status_code=500, detail=detail)
-
-        core._append_audit_event(
-            year=year,
-            month=month,
-            event_type="source_action",
-            action="open_receipts_folder",
-            status="success",
-            actor=actor,
-            details={"path": str(target)},
-        )
-        return JSONResponse({"status": "ok", "path": str(target)})
+    @router.post("/api/folders/receipts")
+    @router.post("/api/folders/receipt")
+    @router.post("/api/folders/open-receipts")
+    def api_open_receipts_folder_query(ym: str, request: Request) -> JSONResponse:
+        return _open_receipts_folder_for_ym(ym, _actor_from_request(request))
 
     @router.post("/api/folders/{ym}/manual-inbox")
     def api_open_manual_inbox(ym: str, request: Request) -> JSONResponse:
@@ -488,6 +724,57 @@ def create_api_router() -> APIRouter:
             details={"path": str(target)},
         )
         return JSONResponse({"status": "ok", "ym": ym, "path": str(target)})
+
+    @router.post("/api/folders/{ym}/provider-inbox/{provider}")
+    def api_open_provider_inbox(ym: str, provider: str, request: Request) -> JSONResponse:
+        ym = core._safe_ym(ym)
+        year, month = core._split_ym(ym)
+        actor = _actor_from_request(request)
+        try:
+            target = core._provider_inbox_dir_for_ym(year, month, provider, create=True)
+        except HTTPException as exc:
+            core._append_audit_event(
+                year=year,
+                month=month,
+                event_type="provider_ingest",
+                action="open_inbox",
+                status="rejected",
+                actor=actor,
+                details={"reason": str(exc.detail), "provider": str(provider or "").strip().lower()},
+            )
+            raise
+
+        normalized_provider = str(provider or "").strip().lower()
+        res = _open_directory(target)
+        if res.returncode != 0:
+            detail = (
+                "Open folder failed:\n"
+                f"path: {target}\n"
+                f"exit: {res.returncode}\n"
+                f"stdout:\n{res.stdout}\n"
+                f"stderr:\n{res.stderr}\n"
+            )
+            core._append_audit_event(
+                year=year,
+                month=month,
+                event_type="provider_ingest",
+                action="open_inbox",
+                status="failed",
+                actor=actor,
+                details={"reason": detail, "provider": normalized_provider, "path": str(target)},
+            )
+            raise HTTPException(status_code=500, detail=detail)
+
+        core._append_audit_event(
+            year=year,
+            month=month,
+            event_type="provider_ingest",
+            action="open_inbox",
+            status="success",
+            actor=actor,
+            details={"provider": normalized_provider, "path": str(target)},
+        )
+        return JSONResponse({"status": "ok", "ym": ym, "provider": normalized_provider, "path": str(target)})
 
     @router.post("/api/manual/{ym}/import")
     def api_manual_import(ym: str, request: Request) -> JSONResponse:
@@ -534,6 +821,118 @@ def create_api_router() -> APIRouter:
                 "skipped_duplicates": result.get("skipped_duplicates"),
                 "failed": result.get("failed"),
                 "orders_jsonl": result.get("orders_jsonl"),
+            },
+        )
+        return JSONResponse(result)
+
+    @router.post("/api/providers/{ym}/import")
+    def api_provider_import(ym: str, request: Request) -> JSONResponse:
+        ym = core._safe_ym(ym)
+        year, month = core._split_ym(ym)
+        actor = _actor_from_request(request)
+        running_mode = core._running_mode_for_ym(year, month)
+        if running_mode:
+            detail = "Another run is already in progress. Wait for completion before provider receipt import."
+            core._append_audit_event(
+                year=year,
+                month=month,
+                event_type="provider_ingest",
+                action="import",
+                status="rejected",
+                actor=actor,
+                details={"reason": detail, "running_mode": running_mode},
+            )
+            raise HTTPException(status_code=409, detail=detail)
+        try:
+            result = core._import_provider_receipts_for_ym(year, month)
+        except HTTPException as exc:
+            core._append_audit_event(
+                year=year,
+                month=month,
+                event_type="provider_ingest",
+                action="import",
+                status="rejected" if exc.status_code in {400, 404, 409} else "failed",
+                actor=actor,
+                details={"reason": str(exc.detail)},
+            )
+            raise
+
+        core._append_audit_event(
+            year=year,
+            month=month,
+            event_type="provider_ingest",
+            action="import",
+            status="success",
+            actor=actor,
+            details={
+                "found_files": result.get("found_files"),
+                "imported": result.get("imported"),
+                "skipped_duplicates": result.get("skipped_duplicates"),
+                "failed": result.get("failed"),
+                "providers": result.get("providers"),
+                "orders_jsonl": result.get("orders_jsonl"),
+                "provider_report_json": result.get("provider_report_json"),
+            },
+        )
+        return JSONResponse(result)
+
+    @router.post("/api/providers/{ym}/download")
+    def api_provider_download(ym: str, request: Request) -> JSONResponse:
+        ym = core._safe_ym(ym)
+        year, month = core._split_ym(ym)
+        actor = _actor_from_request(request)
+        running_mode = core._running_mode_for_ym(year, month)
+        if running_mode:
+            detail = "Another run is already in progress. Wait for completion before provider receipt download."
+            core._append_audit_event(
+                year=year,
+                month=month,
+                event_type="provider_ingest",
+                action="download",
+                status="rejected",
+                actor=actor,
+                details={"reason": detail, "running_mode": running_mode},
+            )
+            raise HTTPException(status_code=409, detail=detail)
+
+        try:
+            result = core._run_provider_download_for_ym(
+                year,
+                month,
+                auth_handoff=True,
+                headed=True,
+                slow_mo_ms=0,
+            )
+        except HTTPException as exc:
+            core._append_audit_event(
+                year=year,
+                month=month,
+                event_type="provider_ingest",
+                action="download",
+                status="rejected" if exc.status_code in {400, 404, 409} else "failed",
+                actor=actor,
+                details={"reason": str(exc.detail)},
+            )
+            raise
+
+        status = str(result.get("status") or "ok").strip().lower()
+        audit_status = "success"
+        if status not in {"ok", "success"}:
+            audit_status = status
+        core._append_audit_event(
+            year=year,
+            month=month,
+            event_type="provider_ingest",
+            action="download",
+            status=audit_status,
+            actor=actor,
+            details={
+                "status": status,
+                "downloaded_total": result.get("downloaded_total"),
+                "imported": result.get("imported"),
+                "failed_providers": result.get("failed_providers"),
+                "providers": result.get("providers"),
+                "result_json": result.get("result_json"),
             },
         )
         return JSONResponse(result)
@@ -687,17 +1086,7 @@ def create_api_router() -> APIRouter:
         path = core._resolve_pdf_path(root, source, filename)
         if not path:
             raise HTTPException(status_code=404, detail="PDF not found.")
-        cmd = [
-            "powershell",
-            "-NoProfile",
-            "-ExecutionPolicy",
-            "Bypass",
-            "-Command",
-            f"Start-Process -FilePath '{path}' -Verb Print",
-        ]
-        res = subprocess.run(cmd, capture_output=True, text=True, check=False)
-        if res.returncode != 0:
-            raise HTTPException(status_code=500, detail="Print failed.")
+        pdf_url = f"/files/{ym}/pdf/{source}/{path.name}"
         year, month = core._split_ym(ym)
         core._append_audit_event(
             year=year,
@@ -707,9 +1096,16 @@ def create_api_router() -> APIRouter:
             status="success",
             actor=_actor_from_request(request),
             source=source,
-            details={"file": str(path.name)},
+            details={"file": str(path.name), "mode": "manual_open"},
         )
-        return JSONResponse({"status": "ok", "file": str(path.name)})
+        return JSONResponse(
+            {
+                "status": "ok",
+                "file": str(path.name),
+                "pdf_url": pdf_url,
+                "print_mode": "manual_open",
+            }
+        )
 
     @router.post("/api/runs")
     def api_run(payload: dict[str, Any], request: Request) -> JSONResponse:

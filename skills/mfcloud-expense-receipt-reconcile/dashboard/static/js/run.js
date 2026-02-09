@@ -5,21 +5,31 @@
   const bindCopyButtons = Common.bindCopyButtons || (() => {});
 
   const excludeSection = document.getElementById("exclude-section");
-  const excludeButtons = document.querySelectorAll(".exclude-save");
-  const printCompleteButtons = document.querySelectorAll(".print-complete");
+  const excludeButtons = Array.from(document.querySelectorAll(".exclude-save"));
+  const printCompleteButtons = Array.from(document.querySelectorAll(".print-complete"));
   const excludeStatus = document.getElementById("exclude-status");
   const excludeSummary = document.getElementById("exclude-summary");
   const excludeSummaryCount = document.getElementById("exclude-summary-count");
   const statExcluded = document.getElementById("stat-excluded");
   const statIncluded = document.getElementById("stat-included");
-  const runPrintScriptButton = document.getElementById("run-print-script");
+  const runPrintScriptButtons = Array.from(document.querySelectorAll(".run-print-script"));
   const openReceiptsFolderButton = document.getElementById("open-receipts-folder");
   const printScriptStatus = document.getElementById("print-script-status");
   const printNextBox = document.getElementById("print-next-box");
   const printNextSummary = document.getElementById("print-next-summary");
   const printNextOpen = document.getElementById("print-next-open");
   const printNextCmd = document.getElementById("print-next-cmd");
+
   const printPreparedBySource = { amazon: false, rakuten: false };
+  const bulkPrintReadyBySource = { amazon: false, rakuten: false };
+
+  runPrintScriptButtons.forEach((button) => {
+    const source = String(button.dataset.printSource || "").trim();
+    if (source) {
+      bulkPrintReadyBySource[source] = !button.disabled;
+    }
+  });
+
   const receiptsFolderApiCandidates = (ym) => {
     const encodedYm = encodeURIComponent(String(ym || "").trim());
     return [
@@ -27,6 +37,9 @@
       `/api/folders/${encodedYm}/receipt`,
       `/api/folders/${encodedYm}/open-receipts`,
       `/api/folder/${encodedYm}/receipts`,
+      `/api/folders/receipts?ym=${encodedYm}`,
+      `/api/folders/receipt?ym=${encodedYm}`,
+      `/api/folders/open-receipts?ym=${encodedYm}`,
     ];
   };
 
@@ -79,15 +92,23 @@
     });
   }
 
+  function setBulkPrintButtonsDisabled(isBusy) {
+    runPrintScriptButtons.forEach((button) => {
+      const source = String(button.dataset.printSource || "").trim();
+      const ready = source ? Boolean(bulkPrintReadyBySource[source]) : false;
+      button.disabled = isBusy || !ready;
+    });
+  }
+
   function showPrintNextActions({ ym, source, count, printCommand, excludedPdfsUrl }) {
     if (!printNextBox) return;
-    const sourceLabel = source === "amazon" ? "Amazon" : "楽天";
+    const sourceLabel = source === "amazon" ? "Amazon" : source === "rakuten" ? "楽天" : source;
     const normalizedCount = Number.isFinite(count) ? Math.max(0, count) : null;
     if (printNextSummary) {
       if (normalizedCount === null) {
-        printNextSummary.textContent = `${sourceLabel}の印刷準備が完了しました。`;
+        printNextSummary.textContent = `${sourceLabel} の印刷準備が完了しました。`;
       } else {
-        printNextSummary.textContent = `${sourceLabel}の印刷対象 ${normalizedCount} 件を準備しました（まだ印刷は開始していません）。`;
+        printNextSummary.textContent = `${sourceLabel} の印刷対象 ${normalizedCount} 件を準備しました。`;
       }
     }
     if (printNextOpen) {
@@ -101,6 +122,10 @@
   }
 
   function getCurrentYm() {
+    const fromOpenButton = String(openReceiptsFolderButton?.dataset.ym || "").trim();
+    if (fromOpenButton) return fromOpenButton;
+    const fromRunPrintButton = String(runPrintScriptButtons[0]?.dataset?.ym || "").trim();
+    if (fromRunPrintButton) return fromRunPrintButton;
     const fromSection = String(excludeSection?.dataset.ym || "").trim();
     if (fromSection) return fromSection;
     const match = String(window.location.pathname || "").match(/\/runs\/(\d{4}-\d{2})/);
@@ -154,6 +179,7 @@
     });
     updateExcludeCounters();
     setActionButtonsDisabled(false);
+    setBulkPrintButtonsDisabled(false);
 
     excludeButtons.forEach((button) => {
       button.addEventListener("click", async () => {
@@ -161,43 +187,40 @@
         const source = button.dataset.source;
         if (!ym || !source) return;
         printPreparedBySource[source] = false;
+        bulkPrintReadyBySource[source] = false;
         setActionButtonsDisabled(true);
-        setExcludeStatus("印刷準備を作成中です。完了までお待ちください。", "success");
-        showToast("印刷準備を作成中です...", "success");
+        setBulkPrintButtonsDisabled(true);
+        setExcludeStatus("除外設定を保存中です。完了までお待ちください。", "success");
+        showToast("除外設定を保存中です...", "success");
         try {
           await saveExclusions(ym, source);
           const printResult = await preparePrint(ym, source);
           printPreparedBySource[source] = true;
+          bulkPrintReadyBySource[source] = true;
           updateExcludeCounters();
           const count = Number.parseInt(String(printResult?.count ?? ""), 10);
           const normalizedCount = Number.isFinite(count) ? Math.max(0, count) : null;
           const sourceLabel = source === "amazon" ? "Amazon" : "楽天";
-          let successMessage = excludeStatus?.dataset.success || "除外設定を保存しました。印刷準備が完了しました。";
-          let toastMessage = "除外設定を保存し印刷準備が完了しました。";
-          if (normalizedCount !== null) {
-            if (normalizedCount > 0) {
-              toastMessage = `除外設定を保存し ${normalizedCount} 件の印刷準備が完了しました（印刷は未実行）。`;
-              successMessage = `除外設定を保存しました。${sourceLabel} 印刷対象 ${normalizedCount} 件を準備しました（まだ印刷は開始していません）。「除外PDF一覧」で1件ずつ印刷、または印刷コマンドを手動実行後に「${sourceLabel}印刷完了を記録」を押してください。`;
-            } else {
-              toastMessage = "除外設定を保存しました。印刷対象は 0 件です。";
-              successMessage = "除外設定を保存しました。印刷対象は 0 件です。";
-            }
-          }
+          const successMessage =
+            normalizedCount !== null
+              ? `${sourceLabel} の印刷準備が完了しました（対象 ${normalizedCount} 件）。`
+              : `${sourceLabel} の印刷準備が完了しました。`;
           showPrintNextActions({
             ym,
             source,
             count: normalizedCount,
-            printCommand: String(printResult?.print_command || ""),
+            printCommand: String(printResult?.print_command || "POST /api/print-run/{ym}/{source}"),
             excludedPdfsUrl: String(printResult?.excluded_pdfs_url || ""),
           });
           setExcludeStatus(successMessage, "success");
-          showToast(toastMessage, "success");
+          showToast(successMessage, "success");
         } catch (error) {
           const message = toFriendlyMessage(error?.message);
-          setExcludeStatus(message || excludeStatus?.dataset.error || "保存または印刷準備に失敗しました。", "error");
-          showToast(message || "保存または印刷準備に失敗しました。", "error");
+          setExcludeStatus(message || "印刷準備に失敗しました。", "error");
+          showToast(message || "印刷準備に失敗しました。", "error");
         } finally {
           setActionButtonsDisabled(false);
+          setBulkPrintButtonsDisabled(false);
         }
       });
     });
@@ -227,40 +250,63 @@
         }
       });
     });
+  } else {
+    setBulkPrintButtonsDisabled(false);
   }
 
-  if (runPrintScriptButton) {
-    runPrintScriptButton.addEventListener("click", async () => {
-      const ym = getCurrentYm();
-      if (!ym) return;
-      runPrintScriptButton.disabled = true;
-      if (openReceiptsFolderButton) openReceiptsFolderButton.disabled = true;
-      setPrintScriptStatus("印刷を開始しています...", "success");
-      try {
-        const res = await fetch(`/api/print-run/${ym}`, { method: "POST" });
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(data.detail || "印刷の開始に失敗しました。");
-        const count = Number.parseInt(String(data?.count ?? ""), 10);
-        const message = Number.isFinite(count)
-          ? `印刷を開始しました（対象 ${Math.max(0, count)} 件）。完了後に印刷完了を記録してください。`
-          : "印刷を開始しました。完了後に印刷完了を記録してください。";
-        setPrintScriptStatus(message, "success");
-        showToast(message, "success");
-      } catch (error) {
-        const message = toFriendlyMessage(error?.message) || "印刷の開始に失敗しました。";
-        setPrintScriptStatus(message, "error");
-        showToast(message, "error");
-      } finally {
-        runPrintScriptButton.disabled = false;
-        if (openReceiptsFolderButton) openReceiptsFolderButton.disabled = false;
-      }
+  if (runPrintScriptButtons.length) {
+    runPrintScriptButtons.forEach((button) => {
+      button.addEventListener("click", async () => {
+        const ym = getCurrentYm();
+        const source = String(button.dataset.printSource || "").trim();
+        if (!ym) {
+          const message = "対象年月を取得できませんでした。ページを再読み込みしてください。";
+          setPrintScriptStatus(message, "error");
+          showToast(message, "error");
+          return;
+        }
+        if (!source) {
+          const message = "印刷ソースが不正です。";
+          setPrintScriptStatus(message, "error");
+          showToast(message, "error");
+          return;
+        }
+
+        setBulkPrintButtonsDisabled(true);
+        if (openReceiptsFolderButton) openReceiptsFolderButton.disabled = true;
+        setPrintScriptStatus(`${source} 一括印刷用の結合PDFを生成しています...`, "success");
+        try {
+          const res = await fetch(`/api/print-run/${ym}/${encodeURIComponent(source)}`, { method: "POST" });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error(data.detail || "一括印刷の開始に失敗しました。");
+
+          const count = Number.parseInt(String(data?.count ?? "0"), 10);
+          const missingCount = Number.parseInt(String(data?.missing_count ?? "0"), 10);
+          const sourceLabel = source === "amazon" ? "Amazon" : source === "rakuten" ? "楽天" : source;
+          const message = `${sourceLabel} の結合PDFを開きました。手動で印刷してください（モノクロ設定 / 対象 ${Math.max(0, count)} 件 / 欠損 ${Math.max(0, missingCount)} 件）。`;
+          setPrintScriptStatus(message, "success");
+          showToast(message, "success");
+        } catch (error) {
+          const message = toFriendlyMessage(error?.message) || "一括印刷の開始に失敗しました。";
+          setPrintScriptStatus(message, "error");
+          showToast(message, "error");
+        } finally {
+          setBulkPrintButtonsDisabled(false);
+          if (openReceiptsFolderButton) openReceiptsFolderButton.disabled = false;
+        }
+      });
     });
   }
 
   if (openReceiptsFolderButton) {
     openReceiptsFolderButton.addEventListener("click", async () => {
       const ym = getCurrentYm();
-      if (!ym) return;
+      if (!ym) {
+        const message = "対象年月を取得できませんでした。ページを再読み込みしてください。";
+        setPrintScriptStatus(message, "error");
+        showToast(message, "error");
+        return;
+      }
       openReceiptsFolderButton.disabled = true;
       try {
         let data = {};

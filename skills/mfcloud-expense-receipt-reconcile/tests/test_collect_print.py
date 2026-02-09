@@ -8,6 +8,7 @@ from collect_print import (
     _collect_missing_shortcut_orders,
     _resolve_orders_url,
     _resolve_receipt_env,
+    main as collect_print_main,
 )
 
 
@@ -133,3 +134,52 @@ def test_resolve_receipt_env_uses_tenant_receipt_values() -> None:
     )
     assert env["RECEIPT_NAME"] == "Tenant Name"
     assert env["RECEIPT_NAME_FALLBACK"] == "Tenant Fallback"
+
+
+def test_collect_print_writes_source_specific_manifest_for_selected_source(tmp_path: Path) -> None:
+    output_root = tmp_path / "artifacts" / "mfcloud-expense-receipt-reconcile" / "2026-01"
+    orders_jsonl = output_root / "amazon" / "orders.jsonl"
+    pdf_path = output_root / "amazon" / "pdfs" / "2026-01-03_amazon_A-100.pdf"
+    pdf_path.parent.mkdir(parents=True, exist_ok=True)
+    pdf_path.write_bytes(b"%PDF-1.4\n")
+    _write_jsonl(
+        orders_jsonl,
+        [
+            {
+                "order_id": "A-100",
+                "order_date": "2026-01-03",
+                "status": "ok",
+                "pdf_path": str(pdf_path),
+            }
+        ],
+    )
+
+    rc = collect_print_main(
+        [
+            "--year",
+            "2026",
+            "--month",
+            "1",
+            "--output-dir",
+            str(output_root),
+            "--sources",
+            "amazon",
+            "--skip-shortcut-download",
+        ]
+    )
+    assert rc == 0
+
+    reports_dir = output_root / "reports"
+    source_manifest_path = reports_dir / "print_manifest.amazon.json"
+    source_list_path = reports_dir / "print_list.amazon.txt"
+    assert source_manifest_path.exists()
+    assert source_list_path.exists()
+
+    source_manifest = json.loads(source_manifest_path.read_text(encoding="utf-8"))
+    assert source_manifest["source"] == "amazon"
+    assert source_manifest["count"] == 1
+    assert source_manifest["files"][0]["path"] == str(pdf_path)
+
+    listed = source_list_path.read_text(encoding="utf-8")
+    assert str(pdf_path) in listed
+    assert not (reports_dir / "print_manifest.rakuten.json").exists()

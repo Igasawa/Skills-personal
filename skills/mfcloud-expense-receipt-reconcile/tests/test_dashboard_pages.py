@@ -48,7 +48,7 @@ def test_run_page_shows_pdf_preview_link_in_exclusion_table(
 
     res = client.get(f"/runs/{ym}")
     assert res.status_code == 200
-    assert f'/files/{ym}/pdf/amazon/AMZ-001.pdf' in res.text
+    assert f"/files/{ym}/pdf/amazon/AMZ-001.pdf" in res.text
     assert 'target="_blank"' in res.text
 
 
@@ -91,16 +91,16 @@ def test_index_page_shows_manual_archive_button(monkeypatch: pytest.MonkeyPatch,
     client = _create_client(monkeypatch, tmp_path)
     res = client.get("/")
     assert res.status_code == 200
-    assert "アーカイブ作成（成果物+PDF）" in res.text
     assert 'data-archive-action="archive_outputs"' in res.text
-    assert "手動領収書フォルダを開く" in res.text
-    assert "手動領収書を取り込む" in res.text
-    assert "MF一括アップロード用フォルダを開く" in res.text
-    assert "MF一括アップロードを実行" in res.text
+    assert "data-archive-page-link" in res.text
+    assert "data-fallback-href=" in res.text
     assert 'data-manual-action="open_inbox"' in res.text
     assert 'data-manual-action="import_receipts"' in res.text
     assert 'data-manual-action="open_mf_bulk_inbox"' in res.text
     assert 'data-manual-action="run_mf_bulk_upload"' in res.text
+    assert 'data-provider-action="open_provider_inbox"' in res.text
+    assert 'data-provider-action="import_provider_receipts"' in res.text
+    assert 'data-provider-action="download_provider_receipts"' in res.text
     assert "data-mf-summary" in res.text
 
 
@@ -154,8 +154,6 @@ def test_run_page_shows_detail_shortcut_when_pdf_missing(
 
     res = client.get(f"/runs/{ym}")
     assert res.status_code == 200
-    assert "注文詳細" in res.text
-    assert "未保存（Webあり）" in res.text
     assert "https://order.my.rakuten.co.jp/purchase-history/?order_number=RAK-001" in res.text
 
 
@@ -169,17 +167,70 @@ def test_run_page_shows_manual_print_prepare_and_complete_controls(
         run_root / "amazon" / "orders.jsonl",
         [{"order_id": "AMZ-001", "order_date": "2026-01-12", "status": "ok"}],
     )
-    (run_root / "reports").mkdir(parents=True, exist_ok=True)
-    (run_root / "reports" / "print_all.ps1").write_text("Write-Host 'print'\n", encoding="utf-8")
+    reports_dir = run_root / "reports"
+    reports_dir.mkdir(parents=True, exist_ok=True)
+    (reports_dir / "print_all.ps1").write_text("Write-Host 'print'\n", encoding="utf-8")
+    (reports_dir / "print_manifest.amazon.json").write_text('{"count":1}', encoding="utf-8")
+    (reports_dir / "print_manifest.rakuten.json").write_text('{"count":1}', encoding="utf-8")
+    (reports_dir / "workflow.json").write_text(
+        json.dumps(
+            {
+                "amazon": {"print_prepared_at": "2026-02-09T10:00:00"},
+                "rakuten": {"print_prepared_at": "2026-02-09T10:01:00"},
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
 
     res = client.get(f"/runs/{ym}")
     assert res.status_code == 200
+    assert "Amazon一括印刷（結合PDFを開く）" in res.text
+    assert "楽天一括印刷（結合PDFを開く）" in res.text
+    assert "領収書フォルダを開く" in res.text
+    assert f'href="/runs/{ym}/archived-receipts"' in res.text
     assert "Amazonで保存して印刷準備" in res.text
     assert "楽天で保存して印刷準備" in res.text
-    assert "印刷を実行" in res.text
-    assert "領収書フォルダを開く" in res.text
     assert "Amazon印刷完了を記録" in res.text
     assert "楽天印刷完了を記録" in res.text
-    assert "印刷は自動実行しません" in res.text
-    assert "除外PDF一覧を開く（1件ずつ印刷）" in res.text
     assert 'id="print-next-box"' in res.text
+    assert f'id="open-receipts-folder" data-ym="{ym}"' in res.text
+    assert 'id="run-print-script-amazon"' in res.text
+    assert 'id="run-print-script-rakuten"' in res.text
+    assert 'id="run-print-script" data-ym' not in res.text
+
+
+def test_archive_receipts_page_lists_archived_pdfs_with_month_switch(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    client = _create_client(monkeypatch, tmp_path)
+    ym = "2026-01"
+    run_root = _artifact_root(tmp_path) / ym
+    archived_pdf = run_root / "archive" / "20260209_101530" / "amazon" / "pdfs" / "AMZ-ARC-001.pdf"
+    archived_pdf.parent.mkdir(parents=True, exist_ok=True)
+    archived_pdf.write_bytes(b"%PDF-1.4\n")
+    (_artifact_root(tmp_path) / "2026-02" / "reports").mkdir(parents=True, exist_ok=True)
+
+    res = client.get(f"/runs/{ym}/archived-receipts")
+    assert res.status_code == 200
+    assert "アーカイブ済み領収書一覧" in res.text
+    assert "AMZ-ARC-001.pdf" in res.text
+    assert f"/files/{ym}/archive/20260209_101530/amazon/AMZ-ARC-001.pdf" in res.text
+    assert 'id="filter-month"' in res.text
+    assert '<option value="2026-01" selected' in res.text
+    assert '<option value="2026-02"' in res.text
+
+
+def test_download_archived_pdf_route_returns_pdf(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    client = _create_client(monkeypatch, tmp_path)
+    ym = "2026-01"
+    run_root = _artifact_root(tmp_path) / ym
+    archived_pdf = run_root / "archive" / "20260209_101530" / "rakuten" / "pdfs" / "RAK-ARC-001.pdf"
+    archived_pdf.parent.mkdir(parents=True, exist_ok=True)
+    archived_pdf.write_bytes(b"%PDF-1.4\n")
+
+    res = client.get(f"/files/{ym}/archive/20260209_101530/rakuten/RAK-ARC-001.pdf")
+    assert res.status_code == 200
+    assert res.headers.get("content-type", "").startswith("application/pdf")

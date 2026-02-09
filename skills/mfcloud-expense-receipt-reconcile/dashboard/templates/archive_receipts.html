@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>アーカイブ済み領収書一覧 {{ ym }}</title>
+    <link rel="stylesheet" href="/static/styles.css" />
+  </head>
+  <body>
+    <div class="page">
+      <header class="hero">
+        <div>
+          <p class="eyebrow">経費精算ダッシュボード</p>
+          <h1>{{ ym }} アーカイブ済み領収書一覧</h1>
+          <p class="subtitle">Step5で作成したアーカイブ内のPDFを世代ごとに確認できます。</p>
+        </div>
+        <div class="hero-meta">
+          <a class="pill" href="/runs/{{ ym }}">実行詳細へ戻る</a>
+          <a class="pill" href="/">ダッシュボードへ戻る</a>
+        </div>
+      </header>
+
+      <section class="card">
+        <h2>概要</h2>
+        <div class="form-row">
+          <span class="muted">アーカイブ世代 {{ snapshot_count }} 件</span>
+          <span class="muted">PDF合計 {{ total }} 件</span>
+          <span class="muted">Amazon {{ amazon_count }} 件</span>
+          <span class="muted">楽天 {{ rakuten_count }} 件</span>
+        </div>
+        <div class="form-row">
+          <label>
+            月
+            <select id="filter-month" data-current-ym="{{ ym }}">
+              {% for month_ym in available_months %}
+              <option value="{{ month_ym }}" {% if month_ym == ym %}selected{% endif %}>{{ month_ym }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <label>
+            検索
+            <input type="text" id="archive-search" placeholder="世代 / 種別 / PDF名 で検索" />
+          </label>
+          <span class="muted">アーカイブ保存先: {{ archive_root or "-" }}</span>
+          <span class="muted">表示中 <span id="archive-count">{{ total }}</span> 件</span>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>世代一覧</h2>
+        {% if snapshots %}
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>アーカイブ世代</th>
+                <th>Amazon</th>
+                <th>楽天</th>
+                <th>合計</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for snap in snapshots %}
+              <tr>
+                <td>{{ snap.snapshot_label }}</td>
+                <td>{{ snap.amazon_count }}</td>
+                <td>{{ snap.rakuten_count }}</td>
+                <td>{{ snap.receipt_count }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% else %}
+        <p class="muted">アーカイブがまだありません。</p>
+        {% endif %}
+      </section>
+
+      <section class="card">
+        <h2>領収書PDF一覧</h2>
+        {% if rows %}
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>アーカイブ世代</th>
+                <th>種別</th>
+                <th>PDF</th>
+                <th>サイズ</th>
+                <th>プレビュー</th>
+              </tr>
+            </thead>
+            <tbody id="archive-table-body">
+              {% for row in rows %}
+              <tr
+                class="archive-row"
+                data-search="{{ row.snapshot_label }} {{ row.source_label }} {{ row.pdf_name }}"
+              >
+                <td>{{ row.snapshot_label }}</td>
+                <td>{{ row.source_label }}</td>
+                <td>{{ row.pdf_name }}</td>
+                <td>{{ row.pdf_size_kb }} KB</td>
+                <td>
+                  <a
+                    href="/files/{{ ym }}/archive/{{ row.snapshot }}/{{ row.source }}/{{ row.pdf_name }}"
+                    target="_blank"
+                    rel="noopener"
+                  >
+                    開く
+                  </a>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% else %}
+        <p class="muted">アーカイブ済みPDFはありません。</p>
+        {% endif %}
+      </section>
+    </div>
+
+    <script src="/static/js/common.js"></script>
+    <script src="/static/js/archive-receipts.js"></script>
+  </body>
+</html>

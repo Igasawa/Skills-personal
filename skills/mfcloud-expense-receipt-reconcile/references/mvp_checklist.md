@@ -52,3 +52,10 @@
 - [ ] 1〜7がすべて満たされる
 - [ ] Amazon/楽天の月次処理を同じ手順で再現できる
 - [ ] MF提出用の証憑・候補資料と下書き作成を毎月安定して揃えられる
+
+
+## Update: Bulk Print UX (Source Split)
+- [x] Amazon/Rakuten bulk print buttons are separated on the run page.
+- [x] Bulk print opens merged PDF only (manual print policy).
+- [x] No automatic printer output is triggered by bulk print.
+

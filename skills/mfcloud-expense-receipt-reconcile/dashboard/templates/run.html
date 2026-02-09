@@ -82,6 +82,10 @@
               <a href="/files/{{ ym }}/audit_log" class="download">{{ file_labels.audit_log }}</a>
               <div class="muted">実行・確認・印刷の操作履歴</div>
             </div>
+            <div class="download-card">
+              <a href="/runs/{{ ym }}/archived-receipts" class="download">アーカイブ済み領収書一覧</a>
+              <div class="muted">Step5で保存したアーカイブ内PDFの確認</div>
+            </div>
             {% if print_script %}
             <div class="download-card">
               <a href="/files/{{ ym }}/print_script" class="download">{{ file_labels.print_script }}</a>
@@ -92,14 +96,34 @@
           <div class="print-box">
             <div class="label">印刷実行</div>
             <div class="print-actions">
-              <button type="button" class="primary" id="run-print-script" {% if not print_script %}disabled{% endif %}>印刷を実行</button>
-              <button type="button" class="secondary" id="open-receipts-folder">領収書フォルダを開く</button>
+              <button
+                type="button"
+                class="primary run-print-script"
+                id="run-print-script-amazon"
+                data-ym="{{ ym }}"
+                data-print-source="amazon"
+                {% if not amazon_bulk_print_ready %}disabled{% endif %}
+              >
+                Amazon一括印刷（結合PDFを開く）
+              </button>
+              <button
+                type="button"
+                class="primary run-print-script"
+                id="run-print-script-rakuten"
+                data-ym="{{ ym }}"
+                data-print-source="rakuten"
+                {% if not rakuten_bulk_print_ready %}disabled{% endif %}
+              >
+                楽天一括印刷（結合PDFを開く）
+              </button>
+              <button type="button" class="secondary" id="open-receipts-folder" data-ym="{{ ym }}">領収書フォルダを開く</button>
             </div>
             {% if print_script %}
-            <div class="muted">「保存して印刷準備」で作成した対象を一括で印刷します（自動実行はされません）。</div>
+            <div class="muted">「印刷を実行」は印刷対象PDFをまとめて開く操作です（自動プリントアウトは行いません）。</div>
             {% else %}
             <div class="muted">先に「保存して印刷準備」を実行すると、印刷ボタンが有効になります。</div>
             {% endif %}
+            <div class="muted">モノクロ印刷はプリンタ側の既定設定に従います（印刷ダイアログで最終確認してください）。</div>
             <span id="print-script-status" class="status-note"></span>
           </div>
           {% else %}
@@ -155,6 +179,7 @@
             <button type="button" class="copy-button" data-copy-target="print-next-cmd">コマンドをコピー</button>
           </div>
           <div class="muted">印刷ダイアログは自動では開きません。迷う場合は「除外PDF一覧」で1件ずつ印刷してください。</div>
+          <div class="muted">モノクロ出力にする場合は印刷ダイアログで「白黒/グレースケール」を選択してください。</div>
         </div>
         {% if orders %}
         <div class="table-wrap">
@@ -269,3 +294,6 @@
     <script src="/static/js/run.js"></script>
   </body>
 </html>
+
+
+

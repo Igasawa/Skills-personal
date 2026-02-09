@@ -146,7 +146,7 @@ def _write_print_script(path: Path, files: list[str]) -> None:
     lines += [f'  "{p}"' for p in files]
     lines += [
         ")",
-        "$printed = 0",
+        "$opened = 0",
         "$failed = 0",
         "$missing = 0",
         "foreach ($f in $files) {",
@@ -156,15 +156,15 @@ def _write_print_script(path: Path, files: list[str]) -> None:
         "    continue",
         "  }",
         "  try {",
-        "    Start-Process -FilePath $f -Verb Print -ErrorAction Stop",
-        "    $printed += 1",
+        "    Start-Process -FilePath $f -ErrorAction Stop",
+        "    $opened += 1",
         "  } catch {",
-        "    Write-Warning (\"print_failed: \" + $f + \" :: \" + $_.Exception.Message)",
+        "    Write-Warning (\"open_failed: \" + $f + \" :: \" + $_.Exception.Message)",
         "    $failed += 1",
         "  }",
         "  Start-Sleep -Milliseconds 300",
         "}",
-        "Write-Output (\"print_summary printed=\" + $printed + \" failed=\" + $failed + \" missing=\" + $missing + \" total=\" + $files.Count)",
+        "Write-Output (\"print_summary opened=\" + $opened + \" failed=\" + $failed + \" missing=\" + $missing + \" total=\" + $files.Count)",
         "if ($failed -gt 0) {",
         "  exit 1",
         "}",
@@ -511,8 +511,31 @@ def main(argv: list[str] | None = None) -> int:
     list_path = reports_dir / "print_list.txt"
     list_path.write_text("\n".join(file_paths) + ("\n" if file_paths else ""), encoding="utf-8")
 
+    # Keep the legacy script for backward compatibility, but source-specific
+    # manifests/lists are the primary input for bulk print execution.
     ps1_path = reports_dir / "print_all.ps1"
     _write_print_script(ps1_path, file_paths)
+
+    for source_name, include_flag in (("amazon", include_amazon), ("rakuten", include_rakuten)):
+        if not include_flag:
+            continue
+        source_files = [f for f in files if str(f.get("source") or "").strip() == source_name]
+        source_file_paths = [f["path"] for f in source_files]
+        source_manifest = {
+            "year": year,
+            "month": month,
+            "source": source_name,
+            "count": len(source_files),
+            "files": source_files,
+            "shortcut_download": hydrate_result.get(source_name),
+        }
+        source_manifest_path = reports_dir / f"print_manifest.{source_name}.json"
+        source_manifest_path.write_text(json.dumps(source_manifest, ensure_ascii=False, indent=2), encoding="utf-8")
+        source_list_path = reports_dir / f"print_list.{source_name}.txt"
+        source_list_path.write_text(
+            "\n".join(source_file_paths) + ("\n" if source_file_paths else ""),
+            encoding="utf-8",
+        )
 
     print(
         json.dumps(
