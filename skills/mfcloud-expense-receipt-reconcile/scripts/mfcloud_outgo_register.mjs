@@ -302,28 +302,82 @@ async function firstVisible(locator, maxCount = 12) {
   return null;
 }
 
+async function waitForReceiptAttachUiReady(page, editorRoot, timeoutMs = 15000) {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    // The receipt uploader exists even if the input itself is visually hidden.
+    const input = editorRoot.locator("#ex_transaction_mf_file_content, input[type='file']").first();
+    const inputReady = (await input.count()) > 0;
+
+    // Some pages keep a loading backdrop inside the editor.
+    const loading = editorRoot.locator("#js-ex-loading-for-modal").first();
+    const loadingVisible = (await loading.count()) > 0 && (await loading.isVisible().catch(() => false));
+
+    if (inputReady && !loadingVisible) return;
+    await page.waitForTimeout(200);
+  }
+}
+
 async function waitForReceiptAttached(page, editorRoot, expectedFileName, timeoutMs = 15000) {
   const fileNamePattern = new RegExp(escapeRegExp(expectedFileName), "i");
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
     const fileNameVisible = await page.getByText(fileNamePattern).first().isVisible().catch(() => false);
-    const unselectedVisible = await editorRoot.locator("text=選択されていません").first().isVisible().catch(() => false);
-    const fileInEditorInput = await editorRoot
+
+    const filenameLabel = editorRoot.locator(".js-receipt-preview__filename, .receipt-preview__filename").first();
+    const labelText = await filenameLabel.textContent().catch(() => "");
+    const normalizedLabelText = String(labelText || "").trim();
+    const labelUpdated =
+      Boolean(normalizedLabelText) && !normalizedLabelText.includes("選択されていません") && !normalizedLabelText.includes("未選択");
+
+    // When MF shows an inline filename error, fail fast.
+    const filenameError = await editorRoot
+      .locator(".js-filename-error-container:not(.hidden), .js-filename-error-container.error:not(.hidden)")
+      .first()
+      .textContent()
+      .catch(() => "");
+    if (String(filenameError || "").trim()) return { ok: false, method: "filename_error" };
+
+    const fileInfo = await editorRoot
       .evaluate((root, expectedLower) => {
         const norm = (value) => String(value || "").toLowerCase();
-        const inputs = Array.from(root.querySelectorAll("input[type='file']")).filter(
-          (input) => input && input.files && input.files.length > 0
-        );
-        return inputs.some((input) =>
-          Array.from(input.files || []).some((file) => norm(file?.name).includes(expectedLower))
-        );
+        const inputs = Array.from(root.querySelectorAll("input[type='file']")).filter((input) => input && input.files);
+        const files = inputs.flatMap((input) => Array.from(input.files || []));
+        const any = files.length > 0;
+        const expected = files.some((file) => norm(file?.name).includes(expectedLower));
+        return { any, expected };
       }, String(expectedFileName || "").toLowerCase())
-      .catch(() => false);
+      .catch(() => ({ any: false, expected: false }));
+
     if (fileNameVisible) return { ok: true, method: "filename_visible" };
-    if (fileInEditorInput && !unselectedVisible) return { ok: true, method: "editor_input_and_panel" };
+    if (labelUpdated) return { ok: true, method: "filename_label" };
+    if (fileInfo.expected) return { ok: true, method: "editor_input_expected" };
+    if (fileInfo.any) return { ok: true, method: "editor_input_any" };
     await page.waitForTimeout(250);
   }
   return { ok: false, method: "timeout" };
+}
+
+async function attachReceiptViaDropdown(page, editorRoot, resolved) {
+  const menuButton = await firstVisible(
+    editorRoot.locator("#file-upload-menu, button, a", { hasText: /領収書を添付/ })
+  );
+  if (menuButton) {
+    await menuButton.click({ timeout: 8000, force: true }).catch(() => {});
+    await page.waitForTimeout(150);
+  }
+
+  const label = await firstVisible(
+    editorRoot.locator("label[for='ex_transaction_mf_file_content'], button, a, li, div, span", { hasText: /ファイルから選択/ })
+  );
+  if (!label) return false;
+
+  const chooserPromise = page.waitForEvent("filechooser", { timeout: 5000 }).catch(() => null);
+  await label.click({ timeout: 8000, force: true }).catch(() => {});
+  const chooser = await chooserPromise;
+  if (!chooser) return false;
+  await chooser.setFiles(resolved);
+  return true;
 }
 
 async function attachReceiptFile(page, pdfPath) {
@@ -332,46 +386,51 @@ async function attachReceiptFile(page, pdfPath) {
   const expectedFileName = path.basename(resolved);
   const editorRoot = await resolveEditorRoot(page);
 
-  let attachMethod = "";
-  const directInput = editorRoot.locator("input[type='file']:not([disabled])").first();
-  if ((await directInput.count()) > 0) {
+  // The bootstrap modal is sometimes considered "open" before the receipt uploader is ready.
+  await waitForReceiptAttachUiReady(page, editorRoot, 20000).catch(() => {});
+
+  const attempts = [];
+  attempts.push(async () => {
+    const receiptInput = editorRoot
+      .locator("#ex_transaction_mf_file_content:not([disabled]), input[name='ex_transaction[mf_file][content]']:not([disabled])")
+      .first();
+    const directInput =
+      (await receiptInput.count()) > 0 ? receiptInput : editorRoot.locator("input[type='file']:not([disabled])").first();
+    if ((await directInput.count()) === 0) throw new Error("file_input_not_found");
     await directInput.setInputFiles(resolved);
-    attachMethod = "editor_direct_input";
-  } else {
-    const attachBtn = await firstVisible(
-      editorRoot.locator("button, a, label, div, span", { hasText: /領収書を添付/ })
-    );
-    if (!attachBtn) throw new Error("attach_button_not_found");
-    const chooserPromise = page.waitForEvent("filechooser", { timeout: 3500 }).catch(() => null);
-    await attachBtn.click({ timeout: 8000, force: true });
-    const chooser = await chooserPromise;
-    if (chooser) {
-      await chooser.setFiles(resolved);
-      attachMethod = "attach_button_filechooser";
-    } else {
-      const fromFile = await firstVisible(page.locator("button, a, li, div, span", { hasText: /ファイルから選択/ }));
-      if (fromFile) {
-        const chooserFromFilePromise = page.waitForEvent("filechooser", { timeout: 3500 }).catch(() => null);
-        await fromFile.click({ timeout: 8000, force: true });
-        const chooserFromFile = await chooserFromFilePromise;
-        if (chooserFromFile) {
-          await chooserFromFile.setFiles(resolved);
-          attachMethod = "from_file_filechooser";
-        }
+    // Some tenant UIs appear to rely on a bubbling event.
+    await editorRoot
+      .evaluate((root) => {
+        const input = root.querySelector("#ex_transaction_mf_file_content");
+        if (!input) return false;
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+        input.dispatchEvent(new Event("change", { bubbles: true }));
+        return true;
+      })
+      .catch(() => {});
+    return "editor_direct_input";
+  });
+
+  attempts.push(async () => {
+    const ok = await attachReceiptViaDropdown(page, editorRoot, resolved);
+    if (!ok) throw new Error("filechooser_not_opened");
+    return "dropdown_filechooser";
+  });
+
+  let lastErr = null;
+  for (const attempt of attempts) {
+    try {
+      const attachMethod = await attempt();
+      const attached = await waitForReceiptAttached(page, editorRoot, expectedFileName, 30000);
+      if (!attached.ok) {
+        throw new Error(`receipt_file_attach_not_confirmed:${attachMethod || "unknown"}:${attached.method}`);
       }
-      if (!attachMethod) {
-        const lateInput = editorRoot.locator("input[type='file']:not([disabled])").first();
-        if ((await lateInput.count()) === 0) throw new Error("file_input_not_found_after_attach_click");
-        await lateInput.setInputFiles(resolved);
-        attachMethod = "editor_input_after_attach_click";
-      }
+      return { attachMethod: attachMethod || "unknown", verifyMethod: attached.method };
+    } catch (err) {
+      lastErr = err;
     }
   }
-  const attached = await waitForReceiptAttached(page, editorRoot, expectedFileName, 15000);
-  if (!attached.ok) {
-    throw new Error(`receipt_file_attach_not_confirmed:${attachMethod || "unknown"}:${attached.method}`);
-  }
-  return { attachMethod: attachMethod || "unknown", verifyMethod: attached.method };
+  throw lastErr || new Error("receipt_file_attach_failed");
 }
 
 async function ensureOcrChecked(page) {
