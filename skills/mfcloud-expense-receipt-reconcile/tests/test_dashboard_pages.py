@@ -196,11 +196,14 @@ def test_workspace_page_shows_core_link_and_prompt_tools(
     assert res.status_code == 200
     assert "エージェント作業スペース" in res.text
     assert "https://expense.moneyforward.com/expense_reports" in res.text
+    assert 'data-prompt-key="mf_expense_reports"' in res.text
+    assert "workspace-edit-prompt" in res.text
     assert 'id="workspace-link-form"' in res.text
     assert 'id="workspace-custom-links"' in res.text
     assert 'id="workspace-prompt-editor"' in res.text
     assert 'id="workspace-copy-prompt"' in res.text
     assert 'id="workspace-reset-prompt"' in res.text
+    assert 'id="workspace-prompt-active-label"' in res.text
     assert "/static/js/workspace.js" in res.text
 
 
