@@ -69,6 +69,11 @@ function editorSubmitLocator(scope) {
 }
 
 async function isExpenseEditorOpen(page) {
+  // Bootstrap modal (expense report edit page) uses a different structure than outgo_input.
+  const bootstrapModal = page.locator("#modal-transaction-edit, .js-ex-transaction-edit-modal").first();
+  const bootstrapVisible = await bootstrapModal.isVisible().catch(() => false);
+  if (bootstrapVisible) return true;
+
   const titleVisible = await page.locator("text=経費登録").first().isVisible().catch(() => false);
   if (titleVisible) return true;
 
@@ -272,6 +277,9 @@ async function clickEditRegister(row) {
 
 async function resolveEditorRoot(page) {
   const createButton = page.locator(EDITOR_SUBMIT_SELECTOR);
+  const bootstrapModal = page.locator("#modal-transaction-edit, .js-ex-transaction-edit-modal").first();
+  if (await bootstrapModal.isVisible().catch(() => false)) return bootstrapModal;
+
   const candidates = [
     page.locator("div[role='dialog']").filter({ has: createButton }).first(),
     page.locator(".ReactModal__Content").filter({ has: createButton }).first(),
@@ -407,6 +415,28 @@ async function clickCreate(page) {
 }
 
 async function closeEditorBestEffort(page) {
+  // Bootstrap modal close (expense report edit page)
+  const bootstrapModal = page.locator("#modal-transaction-edit, .js-ex-transaction-edit-modal").first();
+  if (await bootstrapModal.isVisible().catch(() => false)) {
+    const closeCandidates = [
+      "[data-dismiss='modal']",
+      "#modal-close-btn",
+      ".js-modal-close-button",
+      "button:has-text('閉じる')",
+      "button:has-text('キャンセル')",
+    ];
+    for (const sel of closeCandidates) {
+      const el = bootstrapModal.locator(sel).first();
+      if ((await el.count()) === 0) continue;
+      await el.click({ timeout: 2000 }).catch(() => {});
+      await page.waitForTimeout(150);
+      if (!(await bootstrapModal.isVisible().catch(() => false))) return;
+    }
+    await page.keyboard.press("Escape").catch(() => {});
+    await page.waitForTimeout(150);
+    if (!(await bootstrapModal.isVisible().catch(() => false))) return;
+  }
+
   const closeCandidates = [
     "button[aria-label='閉じる']",
     "button:has-text('閉じる')",
@@ -420,6 +450,10 @@ async function closeEditorBestEffort(page) {
     await el.click({ timeout: 2000 }).catch(() => {});
     await page.waitForTimeout(200);
   }
+
+  // Always try Esc as last resort.
+  await page.keyboard.press("Escape").catch(() => {});
+  await waitForEditorClose(page, 3000).catch(() => {});
 }
 
 async function main() {
