@@ -135,23 +135,44 @@ async function locateServiceContainer(page) {
 }
 
 async function findMenuButtons(container) {
+  // NOTE: MF Cloud's "kebab" menu trigger differs by tenant/version.
+  // Prefer selectors that cover button/a/role=button without relying on visible text.
   const selectors = [
-    "button[aria-label*='メニュー']",
-    "button[aria-label*='その他']",
-    "button[aria-label*='More']",
-    "button[aria-label*='オプション']",
+    // Accessible labels (icon-only triggers are often labeled this way).
+    ":is(button, a, [role='button'])[aria-label*='メニュー']",
+    ":is(button, a, [role='button'])[aria-label*='その他']",
+    ":is(button, a, [role='button'])[aria-label*='More']",
+    ":is(button, a, [role='button'])[aria-label*='オプション']",
+
+    // Common menu trigger semantics.
+    ":is(button, a, [role='button'])[aria-haspopup='menu']",
+    ":is(button, a, [role='button'])[aria-haspopup='true']",
+    ":is(button, a, [role='button'])[data-toggle='dropdown']",
+    ":is(button, a, [role='button'])[data-bs-toggle='dropdown']",
+    ":is(button, a, [role='button'])[data-toggle*='dropdown']",
+    ":is(button, a, [role='button'])[data-bs-toggle*='dropdown']",
+
+    // Testing hooks / implementation details (best-effort).
+    ":is(button, a, [role='button'])[data-testid*='menu']",
+    ":is(button, a, [role='button'])[data-testid*='more']",
+    ":is(button, a, [role='button'])[data-testid*='dots']",
     "[data-testid*='menu']",
     "[data-testid*='more']",
     "[data-testid*='dots']",
-    // Generic fallback: many UI libs expose menu buttons via aria-haspopup.
-    "button[aria-haspopup='menu']",
-    "button[aria-haspopup='true']",
+
+    // Class-hinted fallbacks (avoid relying solely on aria-label/text).
+    ":is(button, a, [role='button'])[class*='ellipsis' i]",
+    ":is(button, a, [role='button'])[class*='kebab' i]",
+    ":is(button, a, [role='button'])[class*='dots' i]",
+    ":is(button, a, [role='button'])[class*='menu' i]",
+    ":is(button, a, [role='button'])[class*='more' i]",
+    ":is(button, a, [role='button'])[class*='dropdown' i]",
   ];
   for (const sel of selectors) {
     const loc = container.locator(sel);
     if ((await loc.count()) > 0) return loc;
   }
-  const dotted = container.locator("button").filter({ hasText: /…|⋯|・・・|\.{3}/ });
+  const dotted = container.locator("button, a, [role='button']").filter({ hasText: /…|⋯|・・・|\.{3}/ });
   if ((await dotted.count()) > 0) return dotted;
   return container.locator("[data-preflight-menu='none']");
 }
