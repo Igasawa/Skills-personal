@@ -2,7 +2,7 @@
 import path from "node:path";
 import process from "node:process";
 import { chromium } from "playwright";
-import { ensureDir, fileExists, locatorVisible, parseArgs } from "./mjs_common.mjs";
+import { ensureDir, fileExists, locatorVisible, parseArgs, writeDebug } from "./mjs_common.mjs";
 
 function isAmazonLoginUrl(url) {
   return /\/ap\/signin|signin|login/i.test(url || "");
@@ -138,14 +138,11 @@ async function findMenuButtons(container) {
   // NOTE: MF Cloud's "kebab" menu trigger differs by tenant/version.
   // Prefer selectors that cover button/a/role=button without relying on visible text.
   const selectors = [
-    // MUI icon buttons (common in MF Cloud). Horizontal three-dots is typical.
-    "button:has([data-testid='MoreHorizIcon'])",
-    "button:has([data-testid='MoreVertIcon'])",
-    "button:has([data-testid*='MoreHoriz' i])",
-    "button:has([data-testid*='MoreVert' i])",
-    "button:has(svg[data-testid*='More' i])",
-    ".MuiCardHeader-action button.MuiIconButton-root",
-    "button.MuiIconButton-root:has(svg)",
+    // Common MUI patterns (MF Cloud often uses IconButton for the card menu).
+    ".MuiCardHeader-action button",
+    ".MuiCardHeader-action [role='button']",
+    "button.MuiIconButton-root",
+    "[role='button'].MuiIconButton-root",
 
     // Accessible labels (icon-only triggers are often labeled this way).
     ":is(button, a, [role='button'])[aria-label*='メニュー']",
@@ -181,6 +178,13 @@ async function findMenuButtons(container) {
     const loc = container.locator(sel);
     if ((await loc.count()) > 0) return loc;
   }
+
+  // Try to detect MUI "more" icons via SVG testids without relying on CSS :has().
+  const byMoreIcon = container
+    .locator("button, a, [role='button']")
+    .filter({ has: container.locator("svg[data-testid='MoreHorizIcon'], svg[data-testid='MoreVertIcon'], svg[data-testid*='More' i]") });
+  if ((await byMoreIcon.count()) > 0) return byMoreIcon;
+
   // Last resort: some tenants use an unlabeled icon button with visible dots/ellipsis.
   // Include vertical ellipsis variants as well.
   const dotted = container.locator("button, a, [role='button']").filter({ hasText: /…|⋯|⋮|︙|・・・|\.{3}/ });
@@ -241,13 +245,18 @@ async function ensureLinkedServiceListTab(page) {
   return true;
 }
 
-async function refreshLinkedServices(page) {
+async function refreshLinkedServices(page, debugDir) {
   await ensureLinkedServiceListTab(page).catch(() => {});
+  // Cards are rendered asynchronously; avoid false "0 cards" due to early probing.
+  await page.locator("text=今月の明細").first().waitFor({ state: "visible", timeout: 15000 }).catch(() => {});
+  await page.locator("text=更新日").first().waitFor({ state: "visible", timeout: 15000 }).catch(() => {});
+
   const container = await locateServiceContainer(page);
   const menuButtons = await findMenuButtons(container);
   const count = await menuButtons.count();
   if (count === 0) {
     console.log("[mfcloud] menu buttons not found; skip refresh");
+    if (debugDir) await writeDebug(page, debugDir, "mfcloud_accounts_no_menu_buttons");
     return { total: 0, attempted: 0, refreshed: 0 };
   }
   let refreshed = 0;
@@ -272,6 +281,8 @@ async function refreshLinkedServices(page) {
         refreshed += 1;
         await page.waitForTimeout(400);
         await confirmReacquireIfNeeded(page);
+        // When the click took effect, MF often shows "取得中" on the card.
+        await page.locator("text=取得中").first().waitFor({ state: "visible", timeout: 2500 }).catch(() => {});
         console.log(`[mfcloud] reacquire clicked (${refreshed}/${attempted})`);
       } else {
         await page.keyboard.press("Escape").catch(() => {});
@@ -288,9 +299,14 @@ async function refreshLinkedServices(page) {
 
 async function main() {
   const args = parseArgs(process.argv);
-  const amazonOrdersUrl = args["amazon-orders-url"] || "https://www.amazon.co.jp/gp/your-account/order-history";
-  const rakutenOrdersUrl = args["rakuten-orders-url"] || "https://order.my.rakuten.co.jp/?l-id=top_normal_mymenu_order";
-  const mfAccountsUrl = args["mfcloud-accounts-url"] || "https://expense.moneyforward.com/accounts";
+  const debugDir = args["debug-dir"] ? path.resolve(String(args["debug-dir"])) : null;
+  const skipAmazon = Boolean(args["skip-amazon"]);
+  const skipRakuten = Boolean(args["skip-rakuten"]);
+  const skipMfcloud = Boolean(args["skip-mfcloud"]);
+
+  const amazonOrdersUrl = skipAmazon ? null : args["amazon-orders-url"] || "https://www.amazon.co.jp/gp/your-account/order-history";
+  const rakutenOrdersUrl = skipRakuten ? null : args["rakuten-orders-url"] || "https://order.my.rakuten.co.jp/?l-id=top_normal_mymenu_order";
+  const mfAccountsUrl = skipMfcloud ? null : args["mfcloud-accounts-url"] || "https://expense.moneyforward.com/accounts";
   const amazonStorage = args["amazon-storage-state"];
   const rakutenStorage = args["rakuten-storage-state"];
   const mfStorage = args["mfcloud-storage-state"];
@@ -340,7 +356,9 @@ async function main() {
       await page.goto(mfAccountsUrl, { waitUntil: "domcontentloaded", timeout: 30000 });
       await ensureAuthenticated(page, authHandoff, "MF Cloud accounts page", isMfLoginPage);
       await page.waitForLoadState("networkidle").catch(() => {});
-      const refreshed = await refreshLinkedServices(page);
+      if (debugDir) await writeDebug(page, debugDir, "mfcloud_accounts_before_refresh");
+      const refreshed = await refreshLinkedServices(page, debugDir);
+      if (debugDir) await writeDebug(page, debugDir, "mfcloud_accounts_after_refresh");
       results.mfcloud.ok = true;
       results.mfcloud.refreshed = refreshed.refreshed;
       results.mfcloud.total_cards = refreshed.total;

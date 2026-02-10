@@ -124,6 +124,8 @@ def execute_pipeline(
                 str(rc.rakuten_storage_state),
                 "--mfcloud-storage-state",
                 str(rc.mfcloud_storage_state),
+                "--debug-dir",
+                str(debug_dir / "preflight"),
                 *(["--auth-handoff"] if rc.interactive else []),
                 "--headed" if rc.headed else "--headless",
                 "--slow-mo-ms",
