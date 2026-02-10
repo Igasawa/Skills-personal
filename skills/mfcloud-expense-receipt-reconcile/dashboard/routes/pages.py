@@ -17,19 +17,23 @@ def create_pages_router(templates: Jinja2Templates) -> APIRouter:
 
     @router.get("/", response_class=HTMLResponse)
     def index(request: Request) -> HTMLResponse:
+        defaults = core._resolve_form_defaults()
+        return templates.TemplateResponse(
+            "index.html",
+            {
+                "request": request,
+                "defaults": defaults,
+                "ax_home": str(core._ax_home()),
+                "active_tab": "wizard",
+            },
+        )
+
+    @router.get("/status", response_class=HTMLResponse)
+    def status(request: Request) -> HTMLResponse:
         artifacts = core._scan_artifacts()
         archive_history = core._scan_archive_history(limit=20)
         jobs = core._scan_run_jobs()
         running_job = core._get_latest_running_job()
-        defaults = core._resolve_form_defaults()
-        default_ym = None
-        try:
-            default_year = int(defaults.get("year"))
-            default_month = int(defaults.get("month"))
-            if 1 <= default_month <= 12:
-                default_ym = f"{default_year:04d}-{default_month:02d}"
-        except Exception:
-            default_ym = None
         latest_job = jobs[0] if jobs else None
         latest_job_ym = None
         if isinstance(latest_job, dict):
@@ -41,18 +45,18 @@ def create_pages_router(templates: Jinja2Templates) -> APIRouter:
                     latest_job_ym = f"{y:04d}-{m:02d}"
             except Exception:
                 latest_job_ym = None
+
         return templates.TemplateResponse(
-            "index.html",
+            "status.html",
             {
                 "request": request,
                 "artifacts": artifacts,
+                "archive_history": archive_history,
                 "latest_job": latest_job,
                 "latest_job_ym": latest_job_ym,
                 "running_job": running_job,
-                "defaults": defaults,
-                "default_ym": default_ym,
-                "archive_history": archive_history,
                 "ax_home": str(core._ax_home()),
+                "active_tab": "status",
             },
         )
 
@@ -63,6 +67,7 @@ def create_pages_router(templates: Jinja2Templates) -> APIRouter:
             {
                 "request": request,
                 "ax_home": str(core._ax_home()),
+                "active_tab": "workspace",
             },
         )
 

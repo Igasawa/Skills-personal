@@ -17,116 +17,15 @@
           </p>
         </div>
         <div class="hero-meta">
-          <a class="pill" href="/workspace" data-workspace-link>Workspace</a>
+          <div class="hero-tabs">
+            <a class="pill is-active" href="/">ウィザード</a>
+            <a class="pill" href="/status">実行状況</a>
+            <a class="pill" href="/workspace" data-workspace-link>Workspace</a>
+          </div>
           <div class="pill">AX_HOME: {{ ax_home }}</div>
           <div class="pill">Local: 127.0.0.1</div>
         </div>
       </header>
-
-      <section class="grid two">
-        <div class="card">
-          <h2>実行状況</h2>
-
-          <!-- 直近の実行セクション -->
-          {% if latest_job %}
-          <div class="latest-run-section {{ latest_job.status }}" data-latest-run-section>
-            <div class="stack">
-              <div class="status-row">
-                <span class="status-dot {{ latest_job.status }}" data-latest-run-dot></span>
-                <span class="status-label" data-latest-run-status>{{ latest_job.status }}</span>
-                <span class="status-time" data-latest-run-time>{{ latest_job.started_at }}</span>
-              </div>
-              <div class="detail">
-                <div>Run ID: <span data-latest-run-id>{{ latest_job.run_id }}</span></div>
-                <div>対象: <span data-latest-run-ym>{{ latest_job.params.year }}-{{ "%02d"|format(latest_job.params.month) }}</span></div>
-              </div>
-              {% if latest_job_ym %}
-              <a class="secondary" data-latest-run-link href="/runs/{{ latest_job_ym }}">成果物を見る</a>
-              {% endif %}
-              {% if running_job %}
-              <button type="button" id="stop-run" class="danger" data-run-id="{{ running_job.run_id }}">停止する</button>
-              {% endif %}
-            </div>
-          </div>
-          {% else %}
-          <div class="latest-run-section" data-latest-run-section>
-            <p class="muted">直近の実行はありません。</p>
-          </div>
-          {% endif %}
-
-          <!-- セクション区切り -->
-          <div class="section-divider">
-            <h3>実行履歴</h3>
-          </div>
-
-          <!-- 実行履歴リスト -->
-          {% if artifacts %}
-          <div class="cards">
-            {% for item in artifacts %}
-            <a class="run-card" href="/runs/{{ item.ym }}">
-              <div class="run-title">{{ item.ym }}</div>
-              <div class="run-stats">
-                <div>
-                  <span class="label">未添付候補</span>
-                  <span class="value">{{ item.counts.get("mf_missing_evidence", 0) }}</span>
-                </div>
-                <div>
-                  <span class="label">注文数 A/R</span>
-                  <span class="value">{{ item.counts.get("orders_in_month", 0) }}</span>
-                  <span class="subvalue">A {{ item.counts.get("amazon_orders_in_month", 0) }} / R {{ item.counts.get("rakuten_orders_in_month", 0) }}</span>
-                </div>
-                <div>
-                  <span class="label">PDF数 A/R</span>
-                  <span class="value">{{ item.amazon_pdf_count + item.rakuten_pdf_count }}</span>
-                  <span class="subvalue">A {{ item.amazon_pdf_count }} / R {{ item.rakuten_pdf_count }}</span>
-                </div>
-                <div>
-                  <span class="label">除外/対象</span>
-                  <span class="value">{{ item.counts.get("included_orders", 0) }}</span>
-                  <span class="subvalue">除外 {{ item.counts.get("excluded_orders", 0) }} / 対象 {{ item.counts.get("included_orders", 0) }}</span>
-                </div>
-              </div>
-              <div class="muted">成果物を見る</div>
-            </a>
-            {% endfor %}
-          </div>
-          {% else %}
-          <p class="muted">まだ実行履歴がありません。</p>
-          {% endif %}
-
-          <!-- アーカイブ履歴 -->
-          <div class="section-divider">
-            <h3>アーカイブ履歴</h3>
-          </div>
-          <ul class="archive-history" data-archive-history-list>
-            {% if archive_history %}
-            {% for item in archive_history %}
-            <li class="archive-history-item">
-              <span class="muted">{{ item.ts }} / {{ item.ym }} / {{ item.action_label }}</span>
-              <a class="secondary" href="{{ item.archive_url }}">アーカイブを開く</a>
-            </li>
-            {% endfor %}
-            {% else %}
-            <li class="archive-history-item muted" data-archive-history-empty>アーカイブ履歴はありません。</li>
-            {% endif %}
-          </ul>
-        </div>
-      </section>
-
-      <section class="grid two">
-        <div class="card">
-          <h2>実行ログ</h2>
-          {% if latest_job %}
-          <div class="log-meta">
-            <span data-log-run-id>Run: {{ latest_job.run_id }}</span>
-            <span class="status-label" data-log-run-status>{{ latest_job.status }}</span>
-          </div>
-          <pre id="run-log" class="log" data-run-id="{{ latest_job.run_id }}"></pre>
-          {% else %}
-          <p class="muted">実行ログはここに表示されます。</p>
-          {% endif %}
-        </div>
-      </section>
 
       <section
         class="card"
@@ -260,7 +159,7 @@
               <button type="button" class="secondary" data-provider-action="print_provider_receipts">
                 一括印刷（結合PDFを開く）
               </button>
-              <span class="muted">自動取得されない領収書（Aqua Voice / Claude / ChatGPT / Gamma など）を共通フォルダの直下に入れて取り込みます。<a href="http://127.0.0.1:8765/workspace" target="_blank" rel="noopener noreferrer">ワークスペースを開く</a></span>
+              <span class="muted">自動取得されない領収書（Aqua Voice / Claude / ChatGPT / Gamma など）を共通フォルダの直下に入れて取り込みます。<a href="/workspace" target="_blank" rel="noopener noreferrer">ワークスペースを開く</a></span>
             </div>
           </div>
           <div class="wizard-step" data-step-id="mf_bulk_upload_task">

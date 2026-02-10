@@ -37,6 +37,13 @@ h1 {
   gap: 12px;
 }
 
+.hero-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+
 .theme-toggle {
   display: inline-flex;
   align-items: center;
@@ -93,6 +100,18 @@ h1 {
   background: rgb(var(--semantic-interaction-hover-overlay));
   border-color: rgb(var(--semantic-field-border-hover));
   color: rgb(var(--text-default));
+}
+
+.pill.is-active {
+  background: rgb(var(--semantic-button-primary-bg));
+  border-color: rgb(var(--semantic-button-primary-bg));
+  color: rgb(var(--semantic-button-primary-text));
+}
+
+.pill.is-active:hover {
+  background: rgb(var(--semantic-button-primary-bg-hover));
+  border-color: rgb(var(--semantic-button-primary-bg-hover));
+  color: rgb(var(--semantic-button-primary-text));
 }
 
 .grid {

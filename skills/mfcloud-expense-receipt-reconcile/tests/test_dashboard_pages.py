@@ -152,7 +152,7 @@ def test_index_page_shows_archive_history_links(monkeypatch: pytest.MonkeyPatch,
         encoding="utf-8",
     )
 
-    res = client.get("/")
+    res = client.get("/status")
     assert res.status_code == 200
     assert "アーカイブ履歴" in res.text
     assert "月次クローズ" in res.text
@@ -177,7 +177,7 @@ def test_index_page_exposes_latest_run_status_hooks(monkeypatch: pytest.MonkeyPa
         encoding="utf-8",
     )
 
-    res = client.get("/")
+    res = client.get("/status")
     assert res.status_code == 200
     assert "data-latest-run-dot" in res.text
     assert "data-latest-run-status" in res.text
