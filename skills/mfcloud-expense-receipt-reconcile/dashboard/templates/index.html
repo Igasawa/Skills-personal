@@ -102,7 +102,34 @@
 
       <section class="grid two">
         <div class="card">
-          <h2>実行依頼</h2>
+          <h2>実行ログ</h2>
+          {% if latest_job %}
+          <div class="log-meta">
+            <span data-log-run-id>Run: {{ latest_job.run_id }}</span>
+            <span class="status-label" data-log-run-status>{{ latest_job.status }}</span>
+          </div>
+          <pre id="run-log" class="log" data-run-id="{{ latest_job.run_id }}"></pre>
+          {% else %}
+          <p class="muted">実行ログはここに表示されます。</p>
+          {% endif %}
+        </div>
+      </section>
+
+      <section
+        class="card"
+        id="wizard"
+        data-ym=""
+        data-archive-href-template="/runs/__YM__/archived-receipts"
+      >
+        <h2>経費精算ステップウィザード</h2>
+        <p class="muted">上から順に進めてください。Amazonと楽天は並行で進められます。</p>
+        <div id="wizard-next" class="next-step hidden" aria-live="polite"></div>
+        <div class="wizard-step">
+          <div class="step-head">
+            <span class="step-num">-</span>
+            <span class="step-title">対象設定（実行依頼）</span>
+            <span class="step-status pending">入力</span>
+          </div>
           <div id="error-box" class="error-box hidden"></div>
           <form id="run-form" class="form">
             <div class="form-row">
@@ -134,30 +161,6 @@
             </p>
           </form>
         </div>
-
-        <div class="card">
-          <h2>実行ログ</h2>
-          {% if latest_job %}
-          <div class="log-meta">
-            <span data-log-run-id>Run: {{ latest_job.run_id }}</span>
-            <span class="status-label" data-log-run-status>{{ latest_job.status }}</span>
-          </div>
-          <pre id="run-log" class="log" data-run-id="{{ latest_job.run_id }}"></pre>
-          {% else %}
-          <p class="muted">実行ログはここに表示されます。</p>
-          {% endif %}
-        </div>
-      </section>
-
-      <section
-        class="card"
-        id="wizard"
-        data-ym=""
-        data-archive-href-template="/runs/__YM__/archived-receipts"
-      >
-        <h2>経費精算ステップウィザード</h2>
-        <p class="muted">上から順に進めてください。Amazonと楽天は並行で進められます。</p>
-        <div id="wizard-next" class="next-step hidden" aria-live="polite"></div>
         <div class="wizard-steps">
           <div class="wizard-step" data-step-id="preflight">
             <div class="step-head">
