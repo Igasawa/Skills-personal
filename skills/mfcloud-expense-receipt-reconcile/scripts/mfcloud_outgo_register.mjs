@@ -49,6 +49,38 @@ function escapeRegExp(value) {
   return String(value || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+const EDITOR_SUBMIT_SELECTOR = [
+  "button:has-text('作成する')",
+  "button:has-text('更新する')",
+  "button:has-text('作成')",
+  "button:has-text('更新')",
+  "input[type='submit'][value='作成する']",
+  "input[type='submit'][value='更新する']",
+  "input[type='submit'][value='作成']",
+  "input[type='submit'][value='更新']",
+  "input[type='button'][value='作成する']",
+  "input[type='button'][value='更新する']",
+  "input[type='button'][value='作成']",
+  "input[type='button'][value='更新']",
+].join(", ");
+
+function editorSubmitLocator(scope) {
+  return scope.locator(EDITOR_SUBMIT_SELECTOR).first();
+}
+
+async function isExpenseEditorOpen(page) {
+  const titleVisible = await page.locator("text=経費登録").first().isVisible().catch(() => false);
+  if (titleVisible) return true;
+
+  // Some tenants/pages label the action buttons differently (e.g. 作成/更新).
+  const submitVisible = await editorSubmitLocator(page).isVisible().catch(() => false);
+  if (!submitVisible) return false;
+
+  // Reduce false positives by requiring an editor-specific element as well.
+  const attachVisible = await page.locator("text=領収書を添付").first().isVisible().catch(() => false);
+  return attachVisible;
+}
+
 function keywordsForVendor(vendor, memo) {
   const source = [vendor || "", memo || ""].join(" ").replace(/[^\p{L}\p{N}\s&+._-]/gu, " ");
   const parts = source.split(/\s+/).map((x) => x.trim()).filter(Boolean);
@@ -202,9 +234,7 @@ async function findBestTargetRow(page, target) {
 async function waitForEditorOpen(page, timeoutMs = 15000) {
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
-    const titleVisible = await page.locator("text=経費登録").first().isVisible().catch(() => false);
-    const createVisible = await page.locator("button:has-text('作成する'), input[type='submit'][value='作成する']").first().isVisible().catch(() => false);
-    if (titleVisible || createVisible) return;
+    if (await isExpenseEditorOpen(page)) return;
     await page.waitForTimeout(200);
   }
   throw new Error("expense_editor_not_opened");
@@ -213,9 +243,8 @@ async function waitForEditorOpen(page, timeoutMs = 15000) {
 async function waitForEditorClose(page, timeoutMs = 20000) {
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
-    const createVisible = await page.locator("button:has-text('作成する'), input[type='submit'][value='作成する']").first().isVisible().catch(() => false);
-    const titleVisible = await page.locator("text=経費登録").first().isVisible().catch(() => false);
-    if (!createVisible && !titleVisible) return true;
+    const open = await isExpenseEditorOpen(page);
+    if (!open) return true;
     await page.waitForTimeout(300);
   }
   return false;
@@ -226,6 +255,9 @@ async function clickEditRegister(row) {
     "button:has-text('編集登録')",
     "a:has-text('編集登録')",
     "input[type='button'][value='編集登録']",
+    "button:has-text('詳細')",
+    "a:has-text('詳細')",
+    "input[type='button'][value='詳細']",
     "button:has-text('編集')",
     "a:has-text('編集')",
   ];
@@ -239,9 +271,7 @@ async function clickEditRegister(row) {
 }
 
 async function resolveEditorRoot(page) {
-  const createButton = page.locator(
-    "button:has-text('作成する'), input[type='submit'][value='作成する'], input[type='button'][value='作成する']"
-  );
+  const createButton = page.locator(EDITOR_SUBMIT_SELECTOR);
   const candidates = [
     page.locator("div[role='dialog']").filter({ has: createButton }).first(),
     page.locator(".ReactModal__Content").filter({ has: createButton }).first(),
@@ -368,11 +398,8 @@ async function ensureOcrChecked(page) {
 }
 
 async function clickCreate(page) {
-  const createButton = page
-    .locator(
-      "button:has-text('作成する'), input[type='submit'][value='作成する'], input[type='button'][value='作成する']"
-    )
-    .first();
+  const editorRoot = await resolveEditorRoot(page);
+  const createButton = editorSubmitLocator(editorRoot);
   if ((await createButton.count()) === 0) throw new Error("create_button_not_found");
   await createButton.click({ timeout: 10000 });
   const closed = await waitForEditorClose(page, 20000);
