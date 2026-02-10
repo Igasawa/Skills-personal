@@ -56,19 +56,48 @@ function Find-PythonRuntime {
   }
 }
 
-function Test-UvicornAvailable {
+function Get-DashboardImportNames {
+  $requirementsPath = Join-Path $root "dashboard\requirements.txt"
+  if (-not (Test-Path $requirementsPath)) {
+    return @("fastapi", "uvicorn", "jinja2", "pypdf")
+  }
+
+  $imports = @()
+  foreach ($line in Get-Content -Path $requirementsPath) {
+    $trimmed = $line.Trim()
+    if (-not $trimmed -or $trimmed.StartsWith("#")) {
+      continue
+    }
+
+    $name = $trimmed -replace "\[.*\]", ""
+    $name = $name -replace "[<>=!~].*$", ""
+    $name = ($name -replace "-", "_").Trim()
+    if ($name) {
+      $imports += $name
+    }
+  }
+
+  if (-not $imports) {
+    return @("fastapi", "uvicorn", "jinja2", "pypdf")
+  }
+  return @($imports | Sort-Object -Unique)
+}
+
+function Test-PythonImportsAvailable {
   param(
     [string]$Python,
-    [string[]]$Prefix = @()
+    [string[]]$Prefix = @(),
+    [string[]]$Modules = @()
   )
-  if (-not $Python) {
+  if (-not $Python -or -not $Modules -or $Modules.Count -eq 0) {
     return $false
   }
+  $importScript = ($Modules | ForEach-Object { "import $_" }) -join "; "
   $probeArgs = @()
   if ($Prefix) {
     $probeArgs += $Prefix
   }
-  $probeArgs += @("-c", "import uvicorn")
+  $probeArgs += @("-c", $importScript)
   $prev = $ErrorActionPreference
   $ErrorActionPreference = "Continue"
   try {
@@ -125,11 +154,12 @@ try {
 $pythonInfo = Find-PythonRuntime
 $python = $pythonInfo.Python
 $pythonPrefix = @($pythonInfo.Prefix)
-$pythonHasUvicorn = Test-UvicornAvailable -Python $python -Prefix $pythonPrefix
+$requiredImports = Get-DashboardImportNames
+$pythonHasDashboardDeps = Test-PythonImportsAvailable -Python $python -Prefix $pythonPrefix -Modules $requiredImports
 
 $launcher = $null
 $args = @()
-if ($python -and $pythonHasUvicorn) {
+if ($python -and $pythonHasDashboardDeps) {
   $launcher = $python
   $args = @(
     $pythonPrefix + @(
