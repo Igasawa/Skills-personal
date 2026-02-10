@@ -68,6 +68,20 @@ function editorSubmitLocator(scope) {
   return scope.locator(EDITOR_SUBMIT_SELECTOR).first();
 }
 
+async function hasAnyReceiptAlreadyAttached(editorRoot) {
+  // Prefer a conservative signal to avoid false positives.
+  // Many MF tenants show a filename label that stays as "未選択/選択されていません" when no receipt is attached.
+  const filenameLabel = editorRoot.locator(".js-receipt-preview__filename, .receipt-preview__filename").first();
+  const labelText = await filenameLabel.textContent().catch(() => "");
+  const normalized = String(labelText || "").trim();
+  if (!normalized) return { ok: false, method: "no_label_text" };
+  const placeholders = ["選択されていません", "未選択", "選択してください"];
+  for (const token of placeholders) {
+    if (normalized.includes(token)) return { ok: false, method: "placeholder_label" };
+  }
+  return { ok: true, method: "filename_label", filename: normalized };
+}
+
 async function isExpenseEditorOpen(page) {
   // Bootstrap modal (expense report edit page) uses a different structure than outgo_input.
   const bootstrapModal = page.locator("#modal-transaction-edit, .js-ex-transaction-edit-modal").first();
@@ -565,6 +579,7 @@ async function main() {
   let created = 0;
   let failed = 0;
   let attempted = 0;
+  let skippedAlreadyAttached = 0;
   try {
     await page.goto(outgoUrl, { waitUntil: "domcontentloaded" });
     await page.waitForLoadState("networkidle").catch(() => {});
@@ -588,6 +603,31 @@ async function main() {
         }
         const clickSel = await clickEditRegister(best.row);
         await waitForEditorOpen(page, 15000);
+
+        // If a receipt is already attached on MF, do not re-attach.
+        // This prevents duplicate attachments when the extraction/reconcile input is stale or MF UI detection is imperfect.
+        const editorRoot = await resolveEditorRoot(page);
+        const alreadyAttached = await hasAnyReceiptAlreadyAttached(editorRoot);
+        if (alreadyAttached.ok) {
+          skippedAlreadyAttached += 1;
+          results.push({
+            mf_expense_id: target.mf_expense_id,
+            status: "skipped",
+            reason: "already_has_receipt",
+            row_score: best.score,
+            row_date: best.date || null,
+            row_amount_yen: best.amount ?? null,
+            pdf_path: target.pdf_path,
+            click_selector: clickSel,
+            detected: { method: alreadyAttached.method, filename: alreadyAttached.filename || null },
+            order_id: target.order_id || null,
+          });
+          console.error(`[mf_draft] skipped ${target.mf_expense_id} reason=already_has_receipt`);
+          await closeEditorBestEffort(page);
+          await page.waitForTimeout(300);
+          continue;
+        }
+
         const attachResult = await attachReceiptFile(page, target.pdf_path);
         const ocrMethod = await ensureOcrChecked(page);
         await clickCreate(page);
@@ -633,10 +673,12 @@ async function main() {
     status: failed > 0 ? "partial_success" : "success",
     data: {
       out_json: outJson,
-      targets_total: targets.length,
+      // Treat "already has receipt" as out-of-scope for creation (user confirmed no mis-attachments by others).
+      targets_total: Math.max(0, targets.length - skippedAlreadyAttached),
       attempted,
       created,
-      skipped: preSkipped.length,
+      skipped: preSkipped.length + skippedAlreadyAttached,
+      skipped_already_has_receipt: skippedAlreadyAttached,
       failed,
       results,
     },

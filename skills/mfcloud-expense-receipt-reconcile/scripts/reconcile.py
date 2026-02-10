@@ -125,10 +125,17 @@ class MfExpense:
             return None
         vendor = str(obj.get("vendor") or obj.get("payee") or "").strip()
         memo = str(obj.get("memo") or obj.get("summary") or obj.get("description") or "").strip()
+        use_date = _to_date(obj.get("use_date") or obj.get("date"))
+        amount_yen = _to_int_yen(obj.get("amount_yen") or obj.get("amount"))
+
+        # MF抽出時に混ざる「明細ではない行」（申請者/タイトル/合計など）は日付も金額も取れないことが多い。
+        # これらは突合の入力として意味がないため、取り込まない（候補にも needs_review にも出さない）。
+        if use_date is None and amount_yen is None:
+            return None
         return MfExpense(
             expense_id=expense_id,
-            use_date=_to_date(obj.get("use_date") or obj.get("date")),
-            amount_yen=_to_int_yen(obj.get("amount_yen") or obj.get("amount")),
+            use_date=use_date,
+            amount_yen=amount_yen,
             vendor=vendor,
             memo=memo,
             has_evidence=bool(obj.get("has_evidence", False)),

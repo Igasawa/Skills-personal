@@ -213,6 +213,63 @@ def test_reconcile_main_applies_order_exclusions(tmp_path: Path) -> None:
     assert candidate_order_ids == ["AMZ-B"]
 
 
+def test_reconcile_main_skips_rows_missing_both_date_and_amount(tmp_path: Path) -> None:
+    amazon_orders_jsonl = tmp_path / "amazon_orders.jsonl"
+    mf_expenses_jsonl = tmp_path / "mf_expenses.jsonl"
+    out_json = tmp_path / "out.json"
+    out_csv = tmp_path / "out.csv"
+
+    _write_jsonl(
+        amazon_orders_jsonl,
+        [{"order_id": "AMZ-1", "order_date": "2026-01-15", "total_yen": 1200, "pdf_path": "amazon/pdfs/AMZ-1.pdf"}],
+    )
+    _write_jsonl(
+        mf_expenses_jsonl,
+        [
+            # 明細ではない行（例: 申請者/タイトル/合計など）を想定
+            {
+                "expense_id": "MF-NOT-AN-EXPENSE",
+                "use_date": None,
+                "amount_yen": None,
+                "vendor": "",
+                "memo": "申請者 〜",
+                "has_evidence": False,
+            },
+            # 正常な未添付明細
+            {
+                "expense_id": "MF-OK",
+                "use_date": "2026-01-15",
+                "amount_yen": 1200,
+                "vendor": "Amazon",
+                "memo": "消耗品",
+                "has_evidence": False,
+            },
+        ],
+    )
+
+    exit_code = reconcile_main(
+        [
+            "--amazon-orders-jsonl",
+            str(amazon_orders_jsonl),
+            "--mf-expenses-jsonl",
+            str(mf_expenses_jsonl),
+            "--out-json",
+            str(out_json),
+            "--out-csv",
+            str(out_csv),
+            "--year",
+            "2026",
+            "--month",
+            "1",
+        ]
+    )
+
+    assert exit_code == 0
+    data = json.loads(out_json.read_text(encoding="utf-8"))
+    assert data["counts"]["mf_expenses_total"] == 1
+    assert {row["mf_expense_id"] for row in data["rows"]} == {"MF-OK"}
+
+
 def test_reconcile_main_prefers_order_total_yen_when_present(tmp_path: Path) -> None:
     amazon_orders_jsonl = tmp_path / "amazon_orders.jsonl"
     mf_expenses_jsonl = tmp_path / "mf_expenses.jsonl"

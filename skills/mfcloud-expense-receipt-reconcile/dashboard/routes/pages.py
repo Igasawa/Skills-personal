@@ -82,6 +82,8 @@ def create_pages_router(templates: Jinja2Templates) -> APIRouter:
         merged_counts.update(core._derive_order_counts_from_jsonl(root, ym))
         rows = rows if isinstance(rows, list) else []
         for row in rows:
+            mf_use_date = str(row.get("mf_use_date") or "").strip() or None
+            row["mf_use_date"] = mf_use_date or "-"
             vendor = str(row.get("mf_vendor") or "")
             memo = str(row.get("mf_memo") or "")
             summary = core._compact_mf_summary(vendor, memo)

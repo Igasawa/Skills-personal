@@ -180,12 +180,21 @@ async function main() {
     const n = await rowsLoc.count();
     const lines = [];
     let extracted = 0;
+    let skippedMissingDateAndAmount = 0;
 
     const ymPrefix = `${year}-${String(month).padStart(2, "0")}-`;
     for (let i = 0; i < n; i++) {
       const row = rowsLoc.nth(i);
       const obj = await bestEffortRowData(row, page.url());
       if (obj.use_date && !obj.use_date.startsWith(ymPrefix)) continue;
+
+      // MFの一覧には、申請者/タイトル/合計などの「明細ではない行」が混ざることがある。
+      // 日付と金額が両方取れない行は突合の入力として意味がないため、取り込まない。
+      if (!obj.use_date && obj.amount_yen == null) {
+        skippedMissingDateAndAmount += 1;
+        continue;
+      }
+
       lines.push(JSON.stringify(obj));
       extracted += 1;
     }
@@ -194,7 +203,12 @@ async function main() {
     console.log(
       JSON.stringify({
         status: "success",
-        data: { extracted, out_jsonl: outJsonl, note: "MF Cloud UI differs by tenant; if extraction is wrong, adjust selectors/heuristics." },
+        data: {
+          extracted,
+          skipped_missing_date_and_amount: skippedMissingDateAndAmount,
+          out_jsonl: outJsonl,
+          note: "MF Cloud UI differs by tenant; if extraction is wrong, adjust selectors/heuristics.",
+        },
       })
     );
   } catch (e) {
