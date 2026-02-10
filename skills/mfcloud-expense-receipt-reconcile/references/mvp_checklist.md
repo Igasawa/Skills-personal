@@ -55,7 +55,7 @@
 
 ## 9. SaaS領収書（Step 4.5）運用方針
 - [x] Step4.5は手動取得前提（自動取得は使わない）
-- [ ] ChatGPT / Claude / Gamma / Aqua Voice の手動取得ファイルを `manual/inbox/`（共通フォルダ）に配置できる
+- [ ] ChatGPT / Claude / Gamma / Aqua Voice の手動取得ファイルを `manual/inbox/`（共通フォルダ）の**直下**に配置する（サブフォルダは使用しない）
 - [ ] 「4サービス一括取り込み」で `manual/orders.jsonl` に反映され、Step5で突合対象になる
 
 

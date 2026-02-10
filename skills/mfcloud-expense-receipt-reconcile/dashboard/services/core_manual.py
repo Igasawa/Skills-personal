@@ -103,7 +103,7 @@ def _provider_inbox_status_for_ym(year: int, month: int) -> dict[str, Any]:
     pending_total = len(_iter_receipt_files(shared_inbox_dir))
     provider_pending_total = 0
     for provider in PROVIDER_KEYS:
-        provider_dir = _provider_inbox_dir_for_ym(year, month, provider, create=True)
+        provider_dir = _provider_inbox_dir_for_ym(year, month, provider, create=False)
         pending_files = len(_iter_receipt_files(provider_dir))
         provider_pending_total += pending_files
         statuses[provider] = {

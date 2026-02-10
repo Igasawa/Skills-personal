@@ -72,7 +72,8 @@
 - 現在の最優先は Phase 1.5（Amazon/楽天MVP + MF下書き作成）とする
 - Phase 2（Aqua Voice / ChatGPT / Claude / Replit など）は、Phase 1.5の完了条件を満たした後に着手する
 - Step4.5（Aqua Voice / ChatGPT / Claude / Gamma）は当面「手動取得のみ」とする
-  - 各サービス側でPDF/画像を手動取得し、`manual/inbox/`（共通フォルダ）へ格納する
+  - 各サービス側でPDF/画像を手動取得し、`manual/inbox/`（共通フォルダ）の**直下**へ格納する
+  - サブフォルダは使用せず、すべてのファイルを `manual/inbox/` 直下に配置する
   - ダッシュボードでは「4サービス一括取り込み」のみを実行する
   - 自動取得（bot check回避を含む）はMVP範囲外として別フェーズで再検討する
 
