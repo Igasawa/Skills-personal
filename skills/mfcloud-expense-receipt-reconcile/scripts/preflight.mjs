@@ -111,10 +111,26 @@ async function saveStorageState(context, storagePath) {
 }
 
 async function locateServiceContainer(page) {
-  const heading = page.locator("text=連携サービス").first();
+  // Prefer the main content region to avoid picking up the sidebar "連携サービス"
+  // entry, which caused refresh to be skipped even though cards were present.
+  const main = page.locator("main, [role='main']").first();
+  if ((await main.count()) > 0) return main;
+
+  // The MF Cloud accounts page typically has tabs; this text is unlikely to appear in the sidebar.
+  const tab = page.locator("text=連携サービス一覧").first();
+  if ((await tab.count()) > 0) {
+    return tab.locator("xpath=ancestor::*[self::section or self::div][1]");
+  }
+
+  // Fallback to a real heading element (sidebar entries are usually links/spans, not h1/h2).
+  const heading = page
+    .locator("h1, h2, [role='heading']")
+    .filter({ hasText: "連携サービス" })
+    .first();
   if ((await heading.count()) > 0) {
     return heading.locator("xpath=ancestor::*[self::section or self::div][1]");
   }
+
   return page.locator("body");
 }
 
@@ -127,12 +143,15 @@ async function findMenuButtons(container) {
     "[data-testid*='menu']",
     "[data-testid*='more']",
     "[data-testid*='dots']",
+    // Generic fallback: many UI libs expose menu buttons via aria-haspopup.
+    "button[aria-haspopup='menu']",
+    "button[aria-haspopup='true']",
   ];
   for (const sel of selectors) {
     const loc = container.locator(sel);
     if ((await loc.count()) > 0) return loc;
   }
-  const dotted = container.locator("button").filter({ hasText: /…|⋯|・・・/ });
+  const dotted = container.locator("button").filter({ hasText: /…|⋯|・・・|\.{3}/ });
   if ((await dotted.count()) > 0) return dotted;
   return container.locator("[data-preflight-menu='none']");
 }
