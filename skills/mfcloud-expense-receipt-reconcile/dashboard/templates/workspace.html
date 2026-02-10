@@ -3,33 +3,33 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Agent Workspace</title>
+    <title>エージェント作業スペース</title>
     <link rel="stylesheet" href="/static/styles.css" />
   </head>
   <body>
     <div class="page workspace-page">
       <header class="hero">
         <div>
-          <p class="eyebrow">Workspace</p>
-          <h1>Agent Workspace</h1>
+          <p class="eyebrow">作業スペース</p>
+          <h1>エージェント作業スペース</h1>
           <p class="subtitle">
-            Keep URLs and agent prompts in one place. This page is local-only and saves custom settings in your browser.
+            必要なURLとエージェント向けプロンプトを1か所で管理します。設定内容はこのブラウザに保存されます。
           </p>
         </div>
         <div class="hero-meta">
-          <a class="pill" href="/">Dashboard Home</a>
+          <a class="pill" href="/">ダッシュボードへ戻る</a>
           <div class="pill">AX_HOME: {{ ax_home }}</div>
         </div>
       </header>
 
       <section class="grid two">
         <div class="card">
-          <h2>Core links</h2>
-          <p class="muted">Fixed link for the monthly expense flow.</p>
+          <h2>固定リンク</h2>
+          <p class="muted">月次経費処理で必須のリンクです。</p>
           <ul class="workspace-link-list workspace-link-list-static">
             <li class="workspace-link-item">
               <div class="workspace-link-main">
-                <span class="workspace-link-label">MF Expense Reports</span>
+                <span class="workspace-link-label">MF経費精算ページ</span>
                 <a
                   class="workspace-link-url"
                   href="https://expense.moneyforward.com/expense_reports"
@@ -45,7 +45,7 @@
                   class="secondary workspace-copy-url"
                   data-copy-url="https://expense.moneyforward.com/expense_reports"
                 >
-                  Copy URL
+                  URLをコピー
                 </button>
               </div>
             </li>
@@ -53,17 +53,17 @@
         </div>
 
         <div class="card">
-          <h2>Custom links</h2>
-          <p class="muted">Add extra links as needed for each month.</p>
+          <h2>追加リンク</h2>
+          <p class="muted">必要に応じてリンクを追加できます。</p>
           <form id="workspace-link-form" class="form workspace-link-form">
             <label for="workspace-link-label">
-              Link label
+              リンク名
               <input
                 id="workspace-link-label"
                 type="text"
                 name="label"
                 maxlength="80"
-                placeholder="e.g. MF Expense Submission Inbox"
+                placeholder="例: MF経費申請一覧"
                 required
               />
             </label>
@@ -78,22 +78,22 @@
               />
             </label>
             <div class="step-actions">
-              <button type="submit" class="primary">Add link</button>
-              <button type="button" class="secondary" id="workspace-clear-links">Clear custom links</button>
+              <button type="submit" class="primary">リンクを追加</button>
+              <button type="button" class="secondary" id="workspace-clear-links">追加リンクを全削除</button>
             </div>
           </form>
           <ul id="workspace-custom-links" class="workspace-link-list"></ul>
-          <p id="workspace-custom-links-empty" class="muted">No custom links yet.</p>
+          <p id="workspace-custom-links-empty" class="muted">追加リンクはまだありません。</p>
         </div>
       </section>
 
       <section class="card workspace-prompt-card">
-        <h2>Prompt composer</h2>
+        <h2>プロンプト作成</h2>
         <p class="muted">
-          Edit the prompt text freely, then copy it in one click. The draft is auto-saved in this browser.
+          プロンプト本文を自由に編集し、ワンクリックでコピーできます。下書きは自動保存されます。
         </p>
         <label for="workspace-prompt-editor">
-          Prompt text
+          プロンプト本文
           <textarea
             id="workspace-prompt-editor"
             class="workspace-prompt-editor"
@@ -102,12 +102,12 @@
           ></textarea>
         </label>
         <div class="workspace-prompt-meta">
-          <span id="workspace-prompt-status" class="muted">Autosave ready.</span>
-          <span id="workspace-prompt-count" class="muted">0 chars</span>
+          <span id="workspace-prompt-status" class="muted">自動保存待機中。</span>
+          <span id="workspace-prompt-count" class="muted">0 文字</span>
         </div>
         <div class="step-actions">
-          <button type="button" id="workspace-copy-prompt" class="primary">Copy prompt</button>
-          <button type="button" id="workspace-reset-prompt" class="secondary">Restore template</button>
+          <button type="button" id="workspace-copy-prompt" class="primary">プロンプトをコピー</button>
+          <button type="button" id="workspace-reset-prompt" class="secondary">テンプレートに戻す</button>
         </div>
         <div class="workspace-token-help">
           <span class="workspace-token-chip">{month}</span>

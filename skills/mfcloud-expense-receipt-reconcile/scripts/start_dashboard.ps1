@@ -9,6 +9,7 @@ param(
 $ErrorActionPreference = "Stop"
 
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+$scriptPath = $MyInvocation.MyCommand.Path
 $root = (Resolve-Path (Join-Path $scriptDir "..")).Path
 Set-Location $root
 
@@ -133,15 +134,61 @@ function Ensure-UvBinary {
   return $uvExe
 }
 
+function Get-ActiveDashboardListener {
+  param([int]$LocalPort)
+  return Get-NetTCPConnection -LocalPort $LocalPort -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1
+}
+
+function Stop-DashboardListener {
+  param($Listener)
+  if ($Listener -and $Listener.OwningProcess) {
+    try {
+      Stop-Process -Id $Listener.OwningProcess -Force -ErrorAction Stop
+    } catch {}
+    Start-Sleep -Seconds 1
+  }
+}
+
+function Get-LatestDashboardCodeWriteTime {
+  $dashboardDir = Join-Path $root "dashboard"
+  $codeFiles = @()
+  if (Test-Path $dashboardDir) {
+    $codeFiles = Get-ChildItem -Path $dashboardDir -Recurse -File -ErrorAction SilentlyContinue |
+      Where-Object { $_.Extension -in @(".py", ".html", ".js", ".css") }
+  }
+  if (Test-Path $scriptPath) {
+    $codeFiles = @($codeFiles) + @(Get-Item -Path $scriptPath)
+  }
+  if (-not $codeFiles -or $codeFiles.Count -eq 0) {
+    return $null
+  }
+  return ($codeFiles | Sort-Object LastWriteTime -Descending | Select-Object -First 1 -ExpandProperty LastWriteTime)
+}
+
+function Should-RestartForCodeChange {
+  param([int]$LocalPort)
+  $listener = Get-ActiveDashboardListener -LocalPort $LocalPort
+  if (-not $listener -or -not $listener.OwningProcess) {
+    return $false
+  }
+  try {
+    $proc = Get-Process -Id $listener.OwningProcess -ErrorAction Stop
+  } catch {
+    return $false
+  }
+  $latestWrite = Get-LatestDashboardCodeWriteTime
+  if (-not $latestWrite) {
+    return $false
+  }
+  return ($latestWrite -gt $proc.StartTime.AddSeconds(1))
+}
+
 try {
   $resp = Invoke-WebRequest -UseBasicParsing $url -TimeoutSec 2
   if ($resp.StatusCode -eq 200) {
-    if ($Restart) {
-      $listener = Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1
-      if ($listener -and $listener.OwningProcess) {
-        try { Stop-Process -Id $listener.OwningProcess -Force -ErrorAction Stop } catch {}
-        Start-Sleep -Seconds 1
-      }
+    $listener = Get-ActiveDashboardListener -LocalPort $Port
+    if ($Restart -or (Should-RestartForCodeChange -LocalPort $Port)) {
+      Stop-DashboardListener -Listener $listener
     } else {
       if (-not $NoOpen) {
         Start-Process $url
