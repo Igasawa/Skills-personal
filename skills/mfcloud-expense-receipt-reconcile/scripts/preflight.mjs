@@ -138,6 +138,15 @@ async function findMenuButtons(container) {
   // NOTE: MF Cloud's "kebab" menu trigger differs by tenant/version.
   // Prefer selectors that cover button/a/role=button without relying on visible text.
   const selectors = [
+    // MUI icon buttons (common in MF Cloud). Horizontal three-dots is typical.
+    "button:has([data-testid='MoreHorizIcon'])",
+    "button:has([data-testid='MoreVertIcon'])",
+    "button:has([data-testid*='MoreHoriz' i])",
+    "button:has([data-testid*='MoreVert' i])",
+    "button:has(svg[data-testid*='More' i])",
+    ".MuiCardHeader-action button.MuiIconButton-root",
+    "button.MuiIconButton-root:has(svg)",
+
     // Accessible labels (icon-only triggers are often labeled this way).
     ":is(button, a, [role='button'])[aria-label*='メニュー']",
     ":is(button, a, [role='button'])[aria-label*='その他']",
@@ -172,21 +181,30 @@ async function findMenuButtons(container) {
     const loc = container.locator(sel);
     if ((await loc.count()) > 0) return loc;
   }
-  const dotted = container.locator("button, a, [role='button']").filter({ hasText: /…|⋯|・・・|\.{3}/ });
+  // Last resort: some tenants use an unlabeled icon button with visible dots/ellipsis.
+  // Include vertical ellipsis variants as well.
+  const dotted = container.locator("button, a, [role='button']").filter({ hasText: /…|⋯|⋮|︙|・・・|\.{3}/ });
   if ((await dotted.count()) > 0) return dotted;
   return container.locator("[data-preflight-menu='none']");
 }
 
 async function clickReacquire(page) {
-  let menu = page.locator("[role='menu']").filter({ hasText: /再取得/ });
-  if ((await menu.count()) > 0) {
-    const item = menu.locator("[role='menuitem'], button, a, li, div", { hasText: /再取得/ }).first();
-    if ((await item.count()) > 0) {
-      await item.click().catch(() => {});
-      return true;
-    }
+  // Prefer the currently opened menu/popover rather than searching the whole page.
+  const menus = [
+    page.locator("[role='menu']").filter({ hasText: /再取得/ }),
+    page.locator(".MuiMenu-paper, .MuiMenu-list, .MuiPopover-root").filter({ hasText: /再取得/ }),
+    page.locator(".dropdown-menu, [data-popper-placement]").filter({ hasText: /再取得/ }),
+  ];
+  for (const menu of menus) {
+    if ((await menu.count()) === 0) continue;
+    const item = menu.locator("[role='menuitem'], button, a, li, div, span", { hasText: /再取得/ }).first();
+    if ((await item.count()) === 0) continue;
+    await item.click().catch(() => {});
+    return true;
   }
-  const fallback = page.locator("button, a, li, div", { hasText: /再取得/ }).first();
+
+  // Fallback: sometimes the menu root has no role/class we can rely on.
+  const fallback = page.locator("button, a, li, div, span", { hasText: /再取得/ }).first();
   if ((await fallback.count()) > 0) {
     await fallback.click().catch(() => {});
     return true;
@@ -207,7 +225,24 @@ async function confirmReacquireIfNeeded(page) {
   return false;
 }
 
+async function ensureLinkedServiceListTab(page) {
+  // Some tenants land on a different sub-tab within the accounts area.
+  // Clicking this tab is safe even if already active.
+  const tab = page
+    .locator("a, button, [role='tab'], [role='button']")
+    .filter({ hasText: "連携サービス一覧" })
+    .first();
+  if ((await tab.count()) === 0) return false;
+  const visible = await tab.isVisible().catch(() => false);
+  if (!visible) return false;
+  await tab.click({ timeout: 5000 }).catch(() => {});
+  await page.waitForLoadState("networkidle").catch(() => {});
+  await page.waitForTimeout(250);
+  return true;
+}
+
 async function refreshLinkedServices(page) {
+  await ensureLinkedServiceListTab(page).catch(() => {});
   const container = await locateServiceContainer(page);
   const menuButtons = await findMenuButtons(container);
   const count = await menuButtons.count();
@@ -217,18 +252,27 @@ async function refreshLinkedServices(page) {
   }
   let refreshed = 0;
   let attempted = 0;
-  for (let i = 0; i < count; i++) {
+  let visibleTotal = 0;
+  // Guard against unexpected selector explosions.
+  const maxButtons = Math.min(count, 80);
+  console.log(`[mfcloud] menu buttons detected: ${count}`);
+  for (let i = 0; i < maxButtons; i++) {
     const btn = menuButtons.nth(i);
+    const visible = await btn.isVisible().catch(() => false);
+    if (!visible) continue;
+    visibleTotal += 1;
     try {
       await btn.scrollIntoViewIfNeeded().catch(() => {});
-      await btn.click({ timeout: 2000 }).catch(() => {});
-      attempted += 1;
-      await page.waitForTimeout(200);
+      await btn.click({ timeout: 3000, force: true }).catch(() => {});
+      // Wait briefly for the menu to render before searching for "再取得".
+      await page.locator("text=再取得").first().waitFor({ state: "visible", timeout: 1500 }).catch(() => {});
       const clicked = await clickReacquire(page);
       if (clicked) {
+        attempted += 1;
         refreshed += 1;
         await page.waitForTimeout(400);
         await confirmReacquireIfNeeded(page);
+        console.log(`[mfcloud] reacquire clicked (${refreshed}/${attempted})`);
       } else {
         await page.keyboard.press("Escape").catch(() => {});
       }
@@ -236,7 +280,10 @@ async function refreshLinkedServices(page) {
       // continue
     }
   }
-  return { total: count, attempted, refreshed };
+  if (attempted === 0 && visibleTotal > 0) {
+    console.log(`[mfcloud] menu opened but '再取得' not found (visible buttons ${visibleTotal}/${count})`);
+  }
+  return { total: visibleTotal, attempted, refreshed };
 }
 
 async function main() {
@@ -297,6 +344,7 @@ async function main() {
       results.mfcloud.ok = true;
       results.mfcloud.refreshed = refreshed.refreshed;
       results.mfcloud.total_cards = refreshed.total;
+      results.mfcloud.attempted = refreshed.attempted;
       await saveStorageState(context, mfStorage);
       await context.close().catch(() => {});
       console.log(`[preflight] MF Cloud refresh done (refreshed ${refreshed.refreshed}/${refreshed.total})`);

@@ -32,7 +32,6 @@
         data-archive-href-template="/runs/__YM__/archived-receipts"
       >
         <h2>経費精算ステップウィザード</h2>
-        <p class="muted">上から順に進めてください。Amazonと楽天は並行で進められます。</p>
         <div id="wizard-next" class="next-step hidden" aria-live="polite"></div>
         <div class="wizard-step">
           <div class="step-head">
@@ -60,15 +59,10 @@
               メモ（任意）
               <input type="text" name="notes" value="{{ defaults.notes }}" placeholder="税理士提出用の補足や例外対応など" />
             </label>
-            <div class="muted">メモは月次の補足があるときだけ入力すればOKです。</div>
             <input type="hidden" name="rakuten_orders_url" value="{{ defaults.rakuten_orders_url }}" />
             <div class="form-row">
               <div class="muted">このフォームの年月・URLがウィザード実行に使われます。</div>
             </div>
-            <p class="muted">
-              Amazonと楽天は並行で進められます（各サイト内では「取得→除外判断→印刷」の順）。<br />
-              MF抽出＋突合＋下書き作成は、Amazon/楽天の両方で「取得→除外判断→印刷」が完了してから実行してください。
-            </p>
           </form>
         </div>
         <div class="wizard-steps">
@@ -188,7 +182,6 @@
               </button>
               <span class="muted">手順1〜4の結果を反映して、突合と下書き作成を実行します。</span>
               <span class="muted">手順3/4を更新した後は、手順5を再実行してください（何回でも実行できます）。</span>
-              <span class="muted" data-mf-summary>サマリー: 未実行</span>
             </div>
           </div>
         </div>
