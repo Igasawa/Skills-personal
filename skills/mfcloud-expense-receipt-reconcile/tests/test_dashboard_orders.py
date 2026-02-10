@@ -319,3 +319,44 @@ def test_collect_orders_defaults_to_excluded_when_total_is_dash(tmp_path: Path) 
     assert by_id["AMZ-DASH"]["can_toggle"] is True
     assert by_id["AMZ-DASH"]["auto_excluded"] is False
     assert by_id["AMZ-PRICE"]["excluded"] is False
+
+
+def test_collect_orders_defaults_to_excluded_when_total_is_zero(tmp_path: Path) -> None:
+    root = tmp_path / "2026-01"
+    _write_jsonl(
+        root / "amazon" / "orders.jsonl",
+        [
+            {"order_id": "AMZ-ZERO", "order_date": "2026-01-21", "status": "ok", "total_yen": 0},
+            {"order_id": "AMZ-PRICE", "order_date": "2026-01-21", "status": "ok", "total_yen": 1200},
+        ],
+    )
+
+    orders = _collect_orders(root, "2026-01", set())
+    assert len(orders) == 2
+
+    by_id = {order["order_id"]: order for order in orders}
+    assert by_id["AMZ-ZERO"]["excluded"] is True
+    assert by_id["AMZ-ZERO"]["can_toggle"] is True
+    assert by_id["AMZ-ZERO"]["auto_excluded"] is False
+    assert by_id["AMZ-PRICE"]["excluded"] is False
+
+
+def test_collect_orders_does_not_default_exclude_after_confirmation(tmp_path: Path) -> None:
+    root = tmp_path / "2026-01"
+    (root / "reports").mkdir(parents=True, exist_ok=True)
+    (root / "reports" / "workflow.json").write_text(
+        json.dumps({"amazon": {"confirmed_at": "2026-02-10T00:00:00"}}, ensure_ascii=False),
+        encoding="utf-8",
+    )
+    _write_jsonl(
+        root / "amazon" / "orders.jsonl",
+        [{"order_id": "AMZ-ZERO", "order_date": "2026-01-21", "status": "ok", "total_yen": 0}],
+    )
+
+    orders = _collect_orders(root, "2026-01", set())
+    assert len(orders) == 1
+    assert orders[0]["excluded"] is False
+
+    orders = _collect_orders(root, "2026-01", {("amazon", "AMZ-ZERO")})
+    assert len(orders) == 1
+    assert orders[0]["excluded"] is True

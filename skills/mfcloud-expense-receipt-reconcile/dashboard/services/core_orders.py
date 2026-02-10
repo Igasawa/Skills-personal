@@ -123,11 +123,58 @@ def _is_low_confidence_item_name(value: Any) -> bool:
 
 
 def _is_missing_total(value: Any) -> bool:
+    """Return True when the total amount is missing or effectively 0.
+
+    Points-only purchases can show up as 0 in the scraped data; the UI renders 0 as a bar
+    because templates use `value or "-"`. Treat those as missing so they default to excluded
+    during the initial exclusion decision step.
+    """
+
     if value is None:
         return True
+
+    if isinstance(value, (int, float)):
+        try:
+            v = float(value)
+        except Exception:
+            return True
+        return v == 0
+
     if isinstance(value, str):
-        return value.strip() in {"", "-", "ー", "―", "—", "–"}
+        text = unicodedata.normalize("NFKC", value or "").strip()
+        if not text:
+            return True
+
+        # Common dash/bar representations.
+        if text in {"-", "\uFF70", "\u30FC", "\u2015", "\u2212"}:
+            return True
+
+        cleaned = text.replace(",", "")
+        cleaned = cleaned.replace("\u00A0", "").replace("\u2009", "")
+        cleaned = cleaned.replace("\u00A5", "").replace("\uFFE5", "").strip()
+        if cleaned.endswith("\u5186"):  # JPY suffix
+            cleaned = cleaned[: -len("\u5186")].strip()
+
+        if re.fullmatch(r"\d+(?:\.\d+)?", cleaned or ""):
+            try:
+                return float(cleaned) == 0
+            except Exception:
+                return False
+
+        return False
+
     return False
+
+
+def _confirmed_sources(root: Path) -> set[str]:
+    reports_dir = root / "reports"
+    wf = _read_workflow(reports_dir)
+    confirmed: set[str] = set()
+    for source in ("amazon", "rakuten"):
+        section = wf.get(source) if isinstance(wf.get(source), dict) else {}
+        if section and section.get("confirmed_at"):
+            confirmed.add(source)
+    return confirmed
 
 
 def _normalize_pdf_line(text: str) -> str:
@@ -293,6 +340,7 @@ def _is_rakuten_books_order(rec: dict[str, Any]) -> bool:
 
 
 def _collect_orders(root: Path, ym: str, exclusions: set[tuple[str, str]]) -> list[dict[str, Any]]:
+    confirmed_sources = _confirmed_sources(root)
     raw: list[dict[str, Any]] = []
     for source in ("amazon", "rakuten"):
         path = root / source / "orders.jsonl"
@@ -386,8 +434,14 @@ def _collect_orders(root: Path, ym: str, exclusions: set[tuple[str, str]]) -> li
         status = str(rec.get("status") or "ok")
         order_id = rec.get("order_id")
         auto_excluded = status == "gift_card"
+        # Default exclusion suggestions should only apply before the user confirms exclusions
+        # for that source. After confirmation, do not re-apply defaults so manual toggles
+        # remain effective.
+        is_confirmed = bool(order_id) and (rec.get("source") in confirmed_sources)
         missing_total = _is_missing_total(rec.get("total_yen"))
-        default_excluded = (rec.get("include_flag") is False or missing_total) and not auto_excluded
+        # `include_flag=False` is an import-time decision and should always remain excluded.
+        # Missing/zero totals are only suggested before confirmation so user toggles can stick.
+        default_excluded = (rec.get("include_flag") is False or ((not is_confirmed) and missing_total)) and not auto_excluded
         excluded = auto_excluded or default_excluded or (order_id and (rec.get("source"), order_id) in exclusions)
         can_toggle = bool(order_id) and not auto_excluded
         item_name = rec.get("item_name")
@@ -455,6 +509,7 @@ def _resolve_pdf_path(root: Path, source: str, name_or_path: Any) -> Path | None
 
 
 def _collect_excluded_pdfs(root: Path, ym: str, exclusions: set[tuple[str, str]]) -> list[dict[str, Any]]:
+    confirmed_sources = _confirmed_sources(root)
     records: dict[tuple[str, str, str], dict[str, Any]] = {}
     for source in ("amazon", "rakuten"):
         path = root / source / "orders.jsonl"
@@ -468,8 +523,9 @@ def _collect_excluded_pdfs(root: Path, ym: str, exclusions: set[tuple[str, str]]
             item_name = str(obj.get("item_name") or "").strip() or None
             include_flag = obj.get("include")
             auto_excluded = status == "gift_card"
+            is_confirmed = bool(order_id) and (source in confirmed_sources)
             missing_total = _is_missing_total(total)
-            default_excluded = (include_flag is False or missing_total) and not auto_excluded
+            default_excluded = (include_flag is False or ((not is_confirmed) and missing_total)) and not auto_excluded
             excluded = auto_excluded or default_excluded or (order_id and (source, order_id) in exclusions)
             if not excluded:
                 continue
