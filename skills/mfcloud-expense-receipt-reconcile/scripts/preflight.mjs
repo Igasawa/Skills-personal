@@ -245,8 +245,60 @@ async function ensureLinkedServiceListTab(page) {
   return true;
 }
 
+async function refreshLinkedServicesLegacy(page, debugDir) {
+  // Some MF Cloud tenants still serve the legacy (non-MUI) accounts page:
+  // - "ul.list-accounts" with per-account dropdown and an in-DOM "再取得" form.
+  // In that case, it is more reliable to POST the "aggregation_queue" forms directly
+  // rather than trying to click the (sometimes div-based) dropdown trigger.
+  const list = page.locator("ul.list-accounts").first();
+  if ((await list.count()) === 0) return null;
+  await list.waitFor({ state: "visible", timeout: 15000 }).catch(() => {});
+
+  const forms = list.locator("form[action$='/aggregation_queue']");
+  const count = await forms.count();
+  if (count === 0) return null;
+
+  console.log(`[mfcloud] legacy aggregation forms detected: ${count}`);
+  let attempted = 0;
+  let refreshed = 0;
+  // Guard against unexpected selector explosions.
+  const maxForms = Math.min(count, 80);
+  for (let i = 0; i < maxForms; i++) {
+    const form = forms.nth(i);
+    try {
+      const ok = await form.evaluate(async (el) => {
+        try {
+          const fd = new FormData(el);
+          const res = await fetch(el.action, { method: "POST", body: fd, credentials: "same-origin" });
+          return Boolean(res && (res.ok || (res.status >= 200 && res.status < 400)));
+        } catch {
+          return false;
+        }
+      });
+      attempted += 1;
+      if (ok) refreshed += 1;
+      await page.waitForTimeout(200);
+    } catch {
+      // continue
+    }
+  }
+
+  // If it took effect, MF often shows "取得中" on the card.
+  // The legacy page sometimes updates this indicator only after reload.
+  await page.waitForTimeout(500);
+  await page.reload({ waitUntil: "domcontentloaded" }).catch(() => {});
+  await page.waitForLoadState("networkidle").catch(() => {});
+  await page.locator("text=取得中").first().waitFor({ state: "visible", timeout: 8000 }).catch(() => {});
+  if (debugDir) await writeDebug(page, debugDir, "mfcloud_accounts_legacy_after_submit");
+  return { total: count, attempted, refreshed };
+}
+
 async function refreshLinkedServices(page, debugDir) {
   await ensureLinkedServiceListTab(page).catch(() => {});
+
+  const legacy = await refreshLinkedServicesLegacy(page, debugDir).catch(() => null);
+  if (legacy) return legacy;
+
   // Cards are rendered asynchronously; avoid false "0 cards" due to early probing.
   await page.locator("text=今月の明細").first().waitFor({ state: "visible", timeout: 15000 }).catch(() => {});
   await page.locator("text=更新日").first().waitFor({ state: "visible", timeout: 15000 }).catch(() => {});
