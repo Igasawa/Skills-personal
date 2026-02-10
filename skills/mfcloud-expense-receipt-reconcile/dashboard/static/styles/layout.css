@@ -173,3 +173,42 @@ h1 {
     flex-direction: column;
   }
 }
+
+/* 直近の実行セクション */
+.latest-run-section {
+  padding: 16px;
+  background: rgb(var(--surface-2));
+  border-radius: 12px;
+  border: 1px solid rgb(var(--semantic-field-border-default));
+  margin-bottom: 20px;
+  transition: border-color var(--transition-fast), background var(--transition-fast);
+}
+
+/* ステータス別の強調表示 */
+.latest-run-section.running {
+  border-color: rgb(var(--semantic-feedback-warning-surface));
+  background: rgb(var(--semantic-feedback-warning-surface) / 0.08);
+}
+
+.latest-run-section.success {
+  border-color: rgb(var(--semantic-feedback-success-surface));
+  background: rgb(var(--semantic-feedback-success-surface) / 0.08);
+}
+
+.latest-run-section.failed {
+  border-color: rgb(var(--semantic-feedback-danger-surface));
+  background: rgb(var(--semantic-feedback-danger-surface) / 0.08);
+}
+
+/* セクション区切り */
+.section-divider {
+  margin: 24px 0 16px;
+  padding-top: 0;
+}
+
+.section-divider h3 {
+  margin: 0 0 16px;
+  font-size: 16px;
+  font-weight: 600;
+  color: rgb(var(--text-default));
+}

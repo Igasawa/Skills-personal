@@ -173,6 +173,14 @@
       latestRunLinkEl.removeAttribute("tabindex");
     }
 
+    // セクション全体のステータスクラスを更新
+    const section = document.querySelector("[data-latest-run-section]");
+    if (section) {
+      section.classList.remove("success", "failed", "running");
+      const dotClass = normalizeStatusForDot(statusRaw);
+      if (dotClass) section.classList.add(dotClass);
+    }
+
     if (logRunIdEl && runId) logRunIdEl.textContent = `Run: ${runId}`;
     if (logRunStatusEl && statusRaw) logRunStatusEl.textContent = statusRaw;
 

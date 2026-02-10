@@ -25,7 +25,41 @@
 
       <section class="grid two">
         <div class="card">
-          <h2>実行履歴</h2>
+          <h2>実行状況</h2>
+
+          <!-- 直近の実行セクション -->
+          {% if latest_job %}
+          <div class="latest-run-section {{ latest_job.status }}" data-latest-run-section>
+            <div class="stack">
+              <div class="status-row">
+                <span class="status-dot {{ latest_job.status }}" data-latest-run-dot></span>
+                <span class="status-label" data-latest-run-status>{{ latest_job.status }}</span>
+                <span class="status-time" data-latest-run-time>{{ latest_job.started_at }}</span>
+              </div>
+              <div class="detail">
+                <div>Run ID: <span data-latest-run-id>{{ latest_job.run_id }}</span></div>
+                <div>対象: <span data-latest-run-ym>{{ latest_job.params.year }}-{{ "%02d"|format(latest_job.params.month) }}</span></div>
+              </div>
+              {% if latest_job_ym %}
+              <a class="secondary" data-latest-run-link href="/runs/{{ latest_job_ym }}">成果物を見る</a>
+              {% endif %}
+              {% if running_job %}
+              <button type="button" id="stop-run" class="danger" data-run-id="{{ running_job.run_id }}">停止する</button>
+              {% endif %}
+            </div>
+          </div>
+          {% else %}
+          <div class="latest-run-section" data-latest-run-section>
+            <p class="muted">直近の実行はありません。</p>
+          </div>
+          {% endif %}
+
+          <!-- セクション区切り -->
+          <div class="section-divider">
+            <h3>実行履歴</h3>
+          </div>
+
+          <!-- 実行履歴リスト -->
           {% if artifacts %}
           <div class="cards">
             {% for item in artifacts %}
@@ -59,7 +93,11 @@
           {% else %}
           <p class="muted">まだ実行履歴がありません。</p>
           {% endif %}
-          <h3>アーカイブ履歴</h3>
+
+          <!-- アーカイブ履歴 -->
+          <div class="section-divider">
+            <h3>アーカイブ履歴</h3>
+          </div>
           <ul class="archive-history" data-archive-history-list>
             {% if archive_history %}
             {% for item in archive_history %}
@@ -72,31 +110,6 @@
             <li class="archive-history-item muted" data-archive-history-empty>アーカイブ履歴はありません。</li>
             {% endif %}
           </ul>
-        </div>
-
-        <div class="card">
-          <h2>直近の実行</h2>
-          {% if latest_job %}
-          <div class="stack">
-            <div class="status-row">
-              <span class="status-dot {{ latest_job.status }}" data-latest-run-dot></span>
-              <span class="status-label" data-latest-run-status>{{ latest_job.status }}</span>
-              <span class="status-time" data-latest-run-time>{{ latest_job.started_at }}</span>
-            </div>
-            <div class="detail">
-              <div>Run ID: <span data-latest-run-id>{{ latest_job.run_id }}</span></div>
-              <div>対象: <span data-latest-run-ym>{{ latest_job.params.year }}-{{ "%02d"|format(latest_job.params.month) }}</span></div>
-            </div>
-            {% if latest_job_ym %}
-            <a class="secondary" data-latest-run-link href="/runs/{{ latest_job_ym }}">成果物を見る</a>
-            {% endif %}
-            {% if running_job %}
-            <button type="button" id="stop-run" class="danger" data-run-id="{{ running_job.run_id }}">停止する</button>
-            {% endif %}
-          </div>
-          {% else %}
-          <p class="muted">直近の実行はありません。</p>
-          {% endif %}
         </div>
       </section>
 
