@@ -240,6 +240,130 @@
   border: 1px solid rgb(var(--semantic-field-border-default));
 }
 
+.workspace-page .card h2 {
+  margin-top: 0;
+}
+
+.workspace-link-form {
+  margin-bottom: 14px;
+}
+
+.workspace-link-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+
+.workspace-link-item {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border-radius: 12px;
+  background: rgb(var(--surface-2));
+  border: 1px solid rgb(var(--semantic-field-border-default));
+}
+
+.workspace-link-main {
+  display: grid;
+  gap: 6px;
+}
+
+.workspace-link-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: rgb(var(--text-default));
+}
+
+.workspace-link-url {
+  color: rgb(var(--semantic-button-link-text));
+  text-decoration: none;
+  word-break: break-all;
+  font-size: 13px;
+}
+
+.workspace-link-url:hover {
+  color: rgb(var(--semantic-button-link-text-hover));
+  text-decoration: underline;
+}
+
+.workspace-link-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.workspace-link-actions .secondary,
+.workspace-link-actions .step-reset {
+  min-height: 34px;
+}
+
+.workspace-link-list-static {
+  margin-top: 8px;
+}
+
+.workspace-prompt-card {
+  display: grid;
+  gap: 12px;
+}
+
+.workspace-prompt-editor {
+  width: 100%;
+  min-height: 240px;
+  border-radius: var(--radius-default);
+  border: 1px solid rgb(var(--semantic-field-border-default));
+  background: rgb(var(--semantic-field-background));
+  color: rgb(var(--semantic-field-text));
+  padding: 12px;
+  resize: vertical;
+  line-height: 1.5;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size: 13px;
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast), background var(--transition-fast);
+}
+
+.workspace-prompt-editor:hover {
+  border-color: rgb(var(--semantic-field-border-hover));
+}
+
+.workspace-prompt-editor:focus-visible {
+  border-color: rgb(var(--semantic-field-border-focus));
+}
+
+.workspace-prompt-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.workspace-token-help {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.workspace-token-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: rgb(var(--surface-2));
+  border: 1px solid rgb(var(--semantic-field-border-default));
+  color: rgb(var(--text-secondary));
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size: 12px;
+}
+
+@media (min-width: 900px) {
+  .workspace-link-item {
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+  }
+}
+
 @media (max-width: 720px) {
   .step-head,
   .task-head {

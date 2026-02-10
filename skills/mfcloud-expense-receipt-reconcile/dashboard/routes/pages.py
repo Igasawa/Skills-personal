@@ -56,6 +56,16 @@ def create_pages_router(templates: Jinja2Templates) -> APIRouter:
             },
         )
 
+    @router.get("/workspace", response_class=HTMLResponse)
+    def workspace(request: Request) -> HTMLResponse:
+        return templates.TemplateResponse(
+            "workspace.html",
+            {
+                "request": request,
+                "ax_home": str(core._ax_home()),
+            },
+        )
+
     @router.get("/runs/{ym}", response_class=HTMLResponse)
     def run_detail(request: Request, ym: str) -> HTMLResponse:
         ym = core._safe_ym(ym)

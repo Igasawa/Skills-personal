@@ -91,6 +91,8 @@ def test_index_page_shows_manual_archive_button(monkeypatch: pytest.MonkeyPatch,
     client = _create_client(monkeypatch, tmp_path)
     res = client.get("/")
     assert res.status_code == 200
+    assert 'data-workspace-link' in res.text
+    assert 'href="/workspace"' in res.text
     assert 'data-task-id="amazon"' in res.text
     assert 'data-task-status="amazon"' in res.text
     assert 'data-step-action="amazon_download"' in res.text
@@ -184,6 +186,22 @@ def test_index_page_exposes_latest_run_status_hooks(monkeypatch: pytest.MonkeyPa
     assert "data-latest-run-ym" in res.text
     assert "data-log-run-id" in res.text
     assert "data-log-run-status" in res.text
+
+
+def test_workspace_page_shows_core_link_and_prompt_tools(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    client = _create_client(monkeypatch, tmp_path)
+    res = client.get("/workspace")
+    assert res.status_code == 200
+    assert "Agent Workspace" in res.text
+    assert "https://expense.moneyforward.com/expense_reports" in res.text
+    assert 'id="workspace-link-form"' in res.text
+    assert 'id="workspace-custom-links"' in res.text
+    assert 'id="workspace-prompt-editor"' in res.text
+    assert 'id="workspace-copy-prompt"' in res.text
+    assert 'id="workspace-reset-prompt"' in res.text
+    assert "/static/js/workspace.js" in res.text
 
 
 def test_run_page_shows_detail_shortcut_when_pdf_missing(

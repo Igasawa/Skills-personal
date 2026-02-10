@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Agent Workspace</title>
+    <link rel="stylesheet" href="/static/styles.css" />
+  </head>
+  <body>
+    <div class="page workspace-page">
+      <header class="hero">
+        <div>
+          <p class="eyebrow">Workspace</p>
+          <h1>Agent Workspace</h1>
+          <p class="subtitle">
+            Keep URLs and agent prompts in one place. This page is local-only and saves custom settings in your browser.
+          </p>
+        </div>
+        <div class="hero-meta">
+          <a class="pill" href="/">Dashboard Home</a>
+          <div class="pill">AX_HOME: {{ ax_home }}</div>
+        </div>
+      </header>
+
+      <section class="grid two">
+        <div class="card">
+          <h2>Core links</h2>
+          <p class="muted">Fixed link for the monthly expense flow.</p>
+          <ul class="workspace-link-list workspace-link-list-static">
+            <li class="workspace-link-item">
+              <div class="workspace-link-main">
+                <span class="workspace-link-label">MF Expense Reports</span>
+                <a
+                  class="workspace-link-url"
+                  href="https://expense.moneyforward.com/expense_reports"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  https://expense.moneyforward.com/expense_reports
+                </a>
+              </div>
+              <div class="workspace-link-actions">
+                <button
+                  type="button"
+                  class="secondary workspace-copy-url"
+                  data-copy-url="https://expense.moneyforward.com/expense_reports"
+                >
+                  Copy URL
+                </button>
+              </div>
+            </li>
+          </ul>
+        </div>
+
+        <div class="card">
+          <h2>Custom links</h2>
+          <p class="muted">Add extra links as needed for each month.</p>
+          <form id="workspace-link-form" class="form workspace-link-form">
+            <label for="workspace-link-label">
+              Link label
+              <input
+                id="workspace-link-label"
+                type="text"
+                name="label"
+                maxlength="80"
+                placeholder="e.g. MF Expense Submission Inbox"
+                required
+              />
+            </label>
+            <label for="workspace-link-url">
+              URL
+              <input
+                id="workspace-link-url"
+                type="url"
+                name="url"
+                placeholder="https://..."
+                required
+              />
+            </label>
+            <div class="step-actions">
+              <button type="submit" class="primary">Add link</button>
+              <button type="button" class="secondary" id="workspace-clear-links">Clear custom links</button>
+            </div>
+          </form>
+          <ul id="workspace-custom-links" class="workspace-link-list"></ul>
+          <p id="workspace-custom-links-empty" class="muted">No custom links yet.</p>
+        </div>
+      </section>
+
+      <section class="card workspace-prompt-card">
+        <h2>Prompt composer</h2>
+        <p class="muted">
+          Edit the prompt text freely, then copy it in one click. The draft is auto-saved in this browser.
+        </p>
+        <label for="workspace-prompt-editor">
+          Prompt text
+          <textarea
+            id="workspace-prompt-editor"
+            class="workspace-prompt-editor"
+            rows="14"
+            spellcheck="false"
+          ></textarea>
+        </label>
+        <div class="workspace-prompt-meta">
+          <span id="workspace-prompt-status" class="muted">Autosave ready.</span>
+          <span id="workspace-prompt-count" class="muted">0 chars</span>
+        </div>
+        <div class="step-actions">
+          <button type="button" id="workspace-copy-prompt" class="primary">Copy prompt</button>
+          <button type="button" id="workspace-reset-prompt" class="secondary">Restore template</button>
+        </div>
+        <div class="workspace-token-help">
+          <span class="workspace-token-chip">{month}</span>
+          <span class="workspace-token-chip">{reports_path}</span>
+          <span class="workspace-token-chip">{notes}</span>
+        </div>
+      </section>
+    </div>
+
+    <div id="toast" class="toast" aria-live="polite"></div>
+    <script src="/static/js/common.js"></script>
+    <script src="/static/js/workspace.js"></script>
+  </body>
+</html>
