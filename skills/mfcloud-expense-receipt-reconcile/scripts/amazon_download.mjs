@@ -1171,7 +1171,47 @@ function normalizeAmazonOrderErrorReason(rawError) {
     return `document_validation_failed:${msg}`;
   }
   if (msg.includes("AUTH_REQUIRED")) return "auth_required";
-  return msg;
+  // Keep error_reason stable for audit; put any raw text into error_detail instead.
+  return "unknown_error";
+}
+
+function formatElapsedMs(ms) {
+  const totalSec = Math.max(0, Math.floor(Number(ms || 0) / 1000));
+  const h = Math.floor(totalSec / 3600);
+  const m = Math.floor((totalSec % 3600) / 60);
+  const s = totalSec % 60;
+  if (h > 0) return `${h}h${String(m).padStart(2, "0")}m${String(s).padStart(2, "0")}s`;
+  if (m > 0) return `${m}m${String(s).padStart(2, "0")}s`;
+  return `${s}s`;
+}
+
+function createHeartbeat(label, buildState) {
+  const startedAt = Date.now();
+  let lastLogAt = 0;
+  const interval = setInterval(() => {
+    try {
+      const state = buildState ? buildState() : {};
+      const now = Date.now();
+      if (now - lastLogAt < 20000) return;
+      lastLogAt = now;
+      const elapsed = formatElapsedMs(now - startedAt);
+      console.log(
+        `[${label}] progress elapsed=${elapsed} ` +
+          Object.entries(state)
+            .map(([k, v]) => `${k}=${v == null ? "-" : String(v)}`)
+            .join(" ")
+      );
+    } catch {
+      // best-effort
+    }
+  }, 10000);
+  interval.unref?.();
+  return {
+    stop() {
+      clearInterval(interval);
+    },
+    startedAt,
+  };
 }
 
 function computeCoverageSummary({ monthlyOrdersTotal, pdfSaved, noReceipt, failedOrders }) {
@@ -1247,13 +1287,23 @@ async function main() {
   page.setDefaultNavigationTimeout(navTimeoutMs);
   console.log("[amazon] open orders page");
 
-  const lines = [];
+  const outStream = fs.createWriteStream(outJsonl, { flags: "w" });
   const failedOrders = [];
   let monthlyOrdersTotal = 0;
   let pdfSaved = 0;
   let noReceipt = 0;
   let debugDetailSaved = false;
   const seenOrderKeys = new Set();
+  let errorCount = 0;
+  const current = { orderId: "", stage: "" };
+  const heartbeat = createHeartbeat("amazon", () => ({
+    in_month: monthlyOrdersTotal,
+    pdf_saved: pdfSaved,
+    no_receipt: noReceipt,
+    errors: errorCount,
+    current_order: current.orderId || "-",
+    stage: current.stage || "-",
+  }));
 
   try {
     await page.goto(ordersUrl, { waitUntil: "domcontentloaded" });
@@ -1305,6 +1355,7 @@ async function main() {
         let receiptUrl = null;
         let pdfPath = null;
         let errorReason = null;
+        let errorDetail = null;
         order.receipt_name_applied = false;
         let documents = [];
         let docType = null;
@@ -1319,17 +1370,21 @@ async function main() {
         let splitInvoice = false;
         let pdfHeadOnlyApplied = false;
 
-        console.log(`[amazon] processing order ${monthlyOrdersTotal} id=${order.order_id || "unknown"}`);
+        current.orderId = order.order_id || "unknown";
+        current.stage = "start";
+        console.log(`[amazon] processing order ${monthlyOrdersTotal} id=${current.orderId}`);
 
         try {
           if (isGiftCardOrder(order.card_text || "")) {
             status = "gift_card";
           } else {
+            current.stage = "find_receipt_link";
             const receiptLink = await findReceiptLinkInCard(card);
             if (!receiptLink) {
               status = "error";
               errorReason = "menu_not_found";
             } else {
+              current.stage = "resolve_receipt_source";
               const source = await resolveReceiptSource(context, page, receiptLink);
               receiptUrl = source.receiptUrl;
               const popupPage = source.popupPage;
@@ -1343,6 +1398,7 @@ async function main() {
 
               try {
                 if (download) {
+                  current.stage = "save_pdf_from_download";
                   await download.saveAs(plannedPdfPath);
                   if (!fileLooksLikePdf(plannedPdfPath)) {
                     throw new Error("amazon_downloaded_file_not_pdf");
@@ -1608,7 +1664,10 @@ async function main() {
           }
         } catch (e) {
           status = "error";
-          errorReason = normalizeAmazonOrderErrorReason(e?.message || e);
+          const rawMsg = String(e?.message || e || "");
+          errorReason = normalizeAmazonOrderErrorReason(rawMsg);
+          errorDetail = rawMsg.length > 300 ? `${rawMsg.slice(0, 300)}...` : rawMsg;
+          errorCount += 1;
           console.error(`[amazon] order ${order.order_id || "unknown"} error: ${errorReason}`);
           if (debugDir) await writeDebug(page, debugDir, `order_${safeFilePart(order.order_id || "unknown")}_error`);
         }
@@ -1658,13 +1717,14 @@ async function main() {
           split_invoice: splitInvoice,
           status,
           error_reason: errorReason,
+          error_detail: errorDetail || null,
           history_only_flow: true,
         };
         if (status === "gift_card") {
           row.include = false;
           row.gift_card = true;
         }
-        lines.push(JSON.stringify(row));
+        outStream.write(JSON.stringify(row) + "\n");
 
         if (!pdfPath) {
           failedOrders.push({
@@ -1673,6 +1733,7 @@ async function main() {
             error_reason: errorReason || null,
           });
         }
+        current.stage = "done";
       }
 
       const next = page.locator("a", { hasText: "次へ" }).first();
@@ -1683,7 +1744,10 @@ async function main() {
       await page.waitForLoadState("networkidle").catch(() => {});
     }
 
-    fs.writeFileSync(outJsonl, lines.join("\n") + (lines.length ? "\n" : ""), "utf-8");
+    // Ensure buffered JSONL is flushed.
+    await new Promise((resolve) => {
+      outStream.end(() => resolve(true));
+    }).catch(() => {});
 
     const summary = computeCoverageSummary({
       monthlyOrdersTotal,
@@ -1708,6 +1772,12 @@ async function main() {
     if (debugDir) await writeDebug(page, debugDir, "fatal");
     throw e;
   } finally {
+    heartbeat.stop();
+    try {
+      outStream.end();
+    } catch {
+      // ignore
+    }
     await context.close().catch(() => {});
     if (pdfContext !== context) await pdfContext.close().catch(() => {});
     await browser.close().catch(() => {});

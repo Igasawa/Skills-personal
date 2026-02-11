@@ -6,6 +6,51 @@ import { pathToFileURL } from "node:url";
 import { chromium } from "playwright";
 import { ensureDir, locatorVisible, parseArgs, safeFilePart, writeDebug } from "./mjs_common.mjs";
 
+function formatElapsedMs(ms) {
+  const totalSec = Math.max(0, Math.floor(Number(ms || 0) / 1000));
+  const h = Math.floor(totalSec / 3600);
+  const m = Math.floor((totalSec % 3600) / 60);
+  const s = totalSec % 60;
+  if (h > 0) return `${h}h${String(m).padStart(2, "0")}m${String(s).padStart(2, "0")}s`;
+  if (m > 0) return `${m}m${String(s).padStart(2, "0")}s`;
+  return `${s}s`;
+}
+
+function createHeartbeat(label, buildState) {
+  const startedAt = Date.now();
+  let lastLogAt = 0;
+  const interval = setInterval(() => {
+    try {
+      const now = Date.now();
+      if (now - lastLogAt < 20000) return;
+      lastLogAt = now;
+      const elapsed = formatElapsedMs(now - startedAt);
+      const state = buildState ? buildState() : {};
+      console.log(
+        `[${label}] progress elapsed=${elapsed} ` +
+          Object.entries(state)
+            .map(([k, v]) => `${k}=${v == null ? "-" : String(v)}`)
+            .join(" ")
+      );
+    } catch {
+      // best-effort
+    }
+  }, 10000);
+  interval.unref?.();
+  return { stop: () => clearInterval(interval), startedAt };
+}
+
+function normalizeRakutenOrderError(rawError) {
+  const msg = String(rawError || "").trim();
+  if (!msg) return { code: "unknown_error", detail: null };
+  // Prefer stable reason codes in error_reason; keep raw detail separately.
+  if (msg.includes("AUTH_REQUIRED")) return { code: "auth_required", detail: msg };
+  if (msg.includes("net::")) return { code: "network_error", detail: msg };
+  if (msg.toLowerCase().includes("timeout")) return { code: "timeout", detail: msg };
+  if (msg.startsWith("rakuten_") || msg.startsWith("books_")) return { code: msg, detail: null };
+  return { code: "unknown_error", detail: msg };
+}
+
 function normalizeText(s) {
   return String(s || "")
     .replace(/[０-９]/g, (d) => String.fromCharCode(d.charCodeAt(0) - 0xfee0))
@@ -498,9 +543,12 @@ function shouldDowngradeRakutenReceiptError(reasonRaw, detailUrlRaw) {
   const isBooksOrder = /books\.rakuten\.co\.jp/i.test(String(detailUrlRaw || ""));
   if (!isBooksOrder) return false;
   // Keep downgrade narrow for known non-fatal pages only.
-  // books_faq_page and other invalid transitions should remain hard errors.
   if (reason === "rakuten_receipt_invalid_page:books_status_page") return true;
+  // books FAQ indicates the receipt flow is not available for the order.
+  if (reason === "rakuten_receipt_invalid_page:books_faq_page") return true;
   if (reason === "rakuten_receipt_page_missing_signal") return true;
+  if (reason === "books_receipt_print_not_ready") return true;
+  if (reason === "books_receipt_print_timeout") return true;
   return false;
 }
 
@@ -1739,10 +1787,26 @@ async function main() {
     let filtered = 0;
     let errorCount = 0;
     let inMonthOrders = 0;
+    let processed = 0;
+    const current = { orderId: "", stage: "", detailUrl: "" };
+    const heartbeat = createHeartbeat("rakuten", () => ({
+      processed,
+      total: detailUrls.length,
+      in_month: inMonthOrders,
+      pdf_saved: pdfSaved,
+      no_receipt: noReceipt,
+      errors: errorCount,
+      current_order: current.orderId || "-",
+      stage: current.stage || "-",
+    }));
 
     const ymPrefix = `${year}-${String(month).padStart(2, "0")}-`;
     for (const detailUrl of detailUrls) {
       if (existing.detailUrls.has(detailUrl)) continue;
+      processed += 1;
+      current.detailUrl = detailUrl;
+      current.orderId = "";
+      current.stage = "start";
       let status = "ok";
       let receiptUrl = null;
       let pdfPath = null;
@@ -1756,8 +1820,10 @@ async function main() {
       let receiptNameApplied = false;
       let appliedName = null;
       let errorReason = null;
+      let errorDetail = null;
 
       try {
+        current.stage = "open_detail";
         console.error(`[rakuten] order start detail=${detailUrl}`);
         const dateFromUrl = parseOrderDateFromUrl(detailUrl);
         if (dateFromUrl && !dateFromUrl.startsWith(ymPrefix)) {
@@ -1795,6 +1861,8 @@ async function main() {
         totalYen = parsed.totalYen;
         paymentMethod = parsed.paymentMethod;
         itemName = parsed.itemName;
+        current.orderId = orderId || "unknown";
+        current.stage = "detail_parsed";
 
         if (orderDate) {
           const m = Number.parseInt(orderDate.slice(5, 7), 10);
@@ -1951,7 +2019,8 @@ async function main() {
               status = "error";
               include = false;
               const currentUrl = page.url();
-              errorReason = `receipt_timeout (detail_url=${detailUrl}, current_url=${currentUrl})`;
+              errorReason = "receipt_timeout";
+              errorDetail = `detail_url=${detailUrl}, current_url=${currentUrl}`;
               console.error(`[rakuten] receipt timeout: ${orderId || "unknown"} detail=${detailUrl} current=${currentUrl}`);
               if (debugDir) {
                 await writeDebug(page, debugDir, `order_${safeFilePart(orderId || "unknown")}_timeout`);
@@ -2178,19 +2247,24 @@ async function main() {
           filtered += 1;
         }
       } catch (e) {
-        const reason = String(e?.message || e);
-        if (include && shouldDowngradeRakutenReceiptError(reason, detailUrl)) {
+        const raw = String(e?.message || e || "");
+        const normalized = normalizeRakutenOrderError(raw);
+        if (include && shouldDowngradeRakutenReceiptError(normalized.code, detailUrl)) {
           status = "no_receipt";
-          errorReason = reason;
+          errorReason = normalized.code;
+          if (!errorDetail && normalized.detail) errorDetail = normalized.detail;
           noReceipt += 1;
           console.error(
-            `[rakuten] order ${orderId || "unknown"} downgraded error to no_receipt reason=${reason}`
+            `[rakuten] order ${orderId || "unknown"} downgraded error to no_receipt reason=${normalized.code}`
           );
+          current.stage = "no_receipt";
         } else {
           status = "error";
-          errorReason = reason;
+          errorReason = normalized.code;
+          if (!errorDetail && normalized.detail) errorDetail = normalized.detail;
           errorCount += 1;
           if (debugDir) await writeDebug(page, debugDir, `order_${safeFilePart(orderId || "unknown")}_error`);
+          current.stage = "error";
         }
       }
 
@@ -2211,6 +2285,7 @@ async function main() {
         pdf_path: pdfPath,
         status,
         error_reason: errorReason,
+        error_detail: errorDetail || null,
       };
       outStream.write(JSON.stringify(record) + "\n");
     }
@@ -2239,6 +2314,16 @@ async function main() {
     if (debugDir) await writeDebug(page, debugDir, "fatal");
     throw e;
   } finally {
+    try {
+      heartbeat.stop();
+    } catch {
+      // ignore
+    }
+    try {
+      outStream.end();
+    } catch {
+      // ignore
+    }
     await context.close().catch(() => {});
     if (pdfContext !== context) await pdfContext.close().catch(() => {});
     await browser.close().catch(() => {});

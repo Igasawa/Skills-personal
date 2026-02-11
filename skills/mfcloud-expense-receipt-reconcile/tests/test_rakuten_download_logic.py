@@ -94,7 +94,7 @@ def test_should_downgrade_books_only_for_whitelisted_non_fatal_reasons() -> None
     )
     assert data["books_invalid"] is False
     assert data["books_status"] is True
-    assert data["books_faq"] is False
+    assert data["books_faq"] is True
     assert data["books_missing_signal"] is True
     assert data["regular_invalid"] is False
 
