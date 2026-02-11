@@ -36,6 +36,7 @@ function normalizeDraftError(message) {
     "edit_register_button_not_found",
     "create_button_not_found",
     "editor_not_closed_after_create",
+    "validation_failed",
     "ocr_checkbox_not_checked",
     "ocr_checkbox_not_found",
     "file_input_not_found",
@@ -529,13 +530,177 @@ async function ensureOcrChecked(page) {
   return "eval";
 }
 
-async function clickCreate(page) {
+function pickBestOption(options, preferTexts) {
+  const cleaned = (options || [])
+    .map((o) => ({ value: String(o?.value || ""), text: String(o?.text || "").trim() }))
+    .filter((o) => o.value && o.value !== "0" && o.text && !/選択|未選択|---/i.test(o.text));
+
+  const prefs = (preferTexts || []).map((t) => String(t || "").trim()).filter(Boolean);
+  for (const pref of prefs) {
+    const hit = cleaned.find((o) => o.text.includes(pref));
+    if (hit) return hit;
+  }
+  return cleaned[0] || null;
+}
+
+async function setSelectValue(selectLocator, value) {
+  if (!value) return false;
+  try {
+    await selectLocator.selectOption({ value: String(value) });
+    return true;
+  } catch {
+    const ok = await selectLocator
+      .evaluate((el, v) => {
+        if (!el) return false;
+        el.value = String(v);
+        el.dispatchEvent(new Event("input", { bubbles: true }));
+        el.dispatchEvent(new Event("change", { bubbles: true }));
+        return true;
+      }, String(value))
+      .catch(() => false);
+    return ok;
+  }
+}
+
+async function collectEditorValidationErrors(editorRoot) {
+  const errors = await editorRoot
+    .evaluate((root) => {
+      const isVisible = (el) => {
+        if (!el) return false;
+        const style = window.getComputedStyle(el);
+        if (style.display === "none" || style.visibility === "hidden" || style.opacity === "0") return false;
+        const rect = el.getBoundingClientRect();
+        return rect.width > 0 && rect.height > 0;
+      };
+
+      const candidates = new Set();
+      const selectors = [
+        ".error",
+        ".errors",
+        ".error-message",
+        ".field_with_errors",
+        "[aria-invalid='true']",
+        ".is-invalid",
+        ".invalid-feedback",
+      ];
+      for (const sel of selectors) {
+        for (const el of Array.from(root.querySelectorAll(sel))) {
+          if (!isVisible(el)) continue;
+          const t = (el.textContent || "").trim();
+          if (t && t.length <= 240) candidates.add(t);
+        }
+      }
+      return Array.from(candidates).slice(0, 20);
+    })
+    .catch(() => []);
+  return (errors || []).map((x) => String(x || "").trim()).filter(Boolean);
+}
+
+async function autofillSelectIfEmpty(selectLocator, fieldName, preferTexts) {
+  if ((await selectLocator.count()) === 0) return null;
+  const sel = selectLocator.first();
+  const current = await sel.evaluate((el) => String(el?.value || "")).catch(() => "");
+  if (current && current !== "0") return null;
+
+  const options = await sel
+    .evaluate((el) =>
+      Array.from(el.options || []).map((o) => ({ value: String(o?.value || ""), text: String(o?.textContent || "") }))
+    )
+    .catch(() => []);
+  const picked = pickBestOption(options, preferTexts);
+  if (!picked) return null;
+
+  const ok = await setSelectValue(sel, picked.value);
+  if (!ok) return null;
+  return { field: fieldName, value: picked.value, text: picked.text };
+}
+
+async function autofillRequiredFields(page, editorRoot, options) {
+  const out = [];
+  const preferAccount = options?.accountTitlePreferTexts || ["雑費", "その他"];
+
+  // Account title / expense category is the most common required field.
+  const accountTitleSelect = editorRoot.locator(
+    "select[name*='account_title' i], select[id*='account_title' i], select[name*='accountTitle' i], select[name*='account_item' i], select[name*='account_item_id' i]"
+  );
+  const accountFilled = await autofillSelectIfEmpty(accountTitleSelect, "account_title", preferAccount);
+  if (accountFilled) out.push(accountFilled);
+
+  // Some tenants require department/project/tax category; fill first reasonable option if empty.
+  const genericSelects = [
+    { key: "department", sel: "select[name*='department' i], select[id*='department' i]" },
+    { key: "project", sel: "select[name*='project' i], select[id*='project' i]" },
+    { key: "tax", sel: "select[name*='tax' i], select[id*='tax' i]" },
+  ];
+  for (const g of genericSelects) {
+    const filled = await autofillSelectIfEmpty(editorRoot.locator(g.sel), g.key, []);
+    if (filled) out.push(filled);
+  }
+
+  // If there are still visibly-invalid selects, try to fill them as well.
+  const invalidSelects = editorRoot.locator("select[aria-invalid='true'], select.is-invalid");
+  const invalidCount = Math.min(await invalidSelects.count().catch(() => 0), 6);
+  for (let i = 0; i < invalidCount; i++) {
+    const filled = await autofillSelectIfEmpty(invalidSelects.nth(i), "unknown_select", []);
+    if (filled) out.push(filled);
+  }
+
+  // Sometimes the focus is lost; keep editor in front.
+  await page.bringToFront().catch(() => {});
+  return out;
+}
+
+async function clickCreateAttempt(page) {
   const editorRoot = await resolveEditorRoot(page);
   const createButton = editorSubmitLocator(editorRoot);
   if ((await createButton.count()) === 0) throw new Error("create_button_not_found");
   await createButton.click({ timeout: 10000 });
+
+  // If validation fails, MF keeps the editor open and shows error text quickly.
+  await page.waitForTimeout(1200);
+  if (!(await isExpenseEditorOpen(page))) return { ok: true, errors: [] };
+
+  const errors = await collectEditorValidationErrors(editorRoot);
+  if (errors.length > 0) return { ok: false, errors };
+
   const closed = await waitForEditorClose(page, 20000);
-  if (!closed) throw new Error("editor_not_closed_after_create");
+  return closed ? { ok: true, errors: [] } : { ok: false, errors: [] };
+}
+
+async function clickCreateWithAutofill(page, target, auditJsonl, opts) {
+  const enableAutofill = opts?.enableAutofill !== false;
+  const accountTitlePreferTexts = (opts?.accountTitlePreferTexts || []).filter(Boolean);
+  const actions = [];
+
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    const res = await clickCreateAttempt(page);
+    if (res.ok) return { attempts: attempt, autofill: actions };
+
+    appendJsonl(auditJsonl, {
+      ts: nowIso(),
+      action: "create_validation_failed",
+      mf_expense_id: target?.mf_expense_id || null,
+      attempt,
+      errors: res.errors,
+    });
+
+    if (!enableAutofill) break;
+    const editorRoot = await resolveEditorRoot(page);
+    const filled = await autofillRequiredFields(page, editorRoot, {
+      accountTitlePreferTexts: accountTitlePreferTexts.length ? accountTitlePreferTexts : undefined,
+    });
+    if (filled.length === 0) break;
+    actions.push(...filled);
+    appendJsonl(auditJsonl, {
+      ts: nowIso(),
+      action: "autofill_required_fields",
+      mf_expense_id: target?.mf_expense_id || null,
+      attempt,
+      filled,
+    });
+  }
+
+  throw new Error("validation_failed");
 }
 
 async function closeEditorBestEffort(page) {
@@ -587,6 +752,9 @@ async function main() {
   const reportJson = args["report-json"];
   const outJson = args["out-json"];
   const auditJsonl = args["audit-jsonl"] ? String(args["audit-jsonl"]) : "";
+  const enableAutofill =
+    !(args["no-autofill"] === true) && !String(args["autofill"] || "").toLowerCase().startsWith("f"); // allow --autofill false
+  const autofillAccountTitle = args["autofill-account-title"] ? String(args["autofill-account-title"]).trim() : "";
   const debugDir = args["debug-dir"];
   const headed = args.headed !== false;
   const slowMoMs = Number.parseInt(String(args["slow-mo-ms"] || "0"), 10);
@@ -743,7 +911,10 @@ async function main() {
         stage = "ensure_ocr";
         const ocrMethod = await ensureOcrChecked(page);
         stage = "click_create";
-        await clickCreate(page);
+        const createResult = await clickCreateWithAutofill(page, target, auditJsonl, {
+          enableAutofill,
+          accountTitlePreferTexts: autofillAccountTitle ? [autofillAccountTitle, "雑費", "その他"] : ["雑費", "その他"],
+        });
         created += 1;
         results.push({
           mf_expense_id: target.mf_expense_id,
@@ -757,6 +928,7 @@ async function main() {
           attach_method: attachResult.attachMethod,
           attach_verify: attachResult.verifyMethod,
           ocr_method: ocrMethod,
+          autofill: createResult.autofill.length ? createResult.autofill : undefined,
           order_id: target.order_id || null,
         });
         appendJsonl(auditJsonl, {
@@ -772,6 +944,7 @@ async function main() {
           attach_method: attachResult.attachMethod,
           attach_verify: attachResult.verifyMethod,
           ocr_method: ocrMethod,
+          autofill: createResult.autofill.length ? createResult.autofill : undefined,
           order_id: target.order_id || null,
         });
         console.error(`[mf_draft] created ${target.mf_expense_id}`);
