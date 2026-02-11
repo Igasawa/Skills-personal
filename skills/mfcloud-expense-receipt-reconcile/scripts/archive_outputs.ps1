@@ -201,6 +201,7 @@ if ($cleanupEnabled) {
   $cleanupTargets = @(
     @{ key = "manual_inbox"; path = (Join-Path $root "manual\inbox") },
     @{ key = "mf_bulk_upload_inbox"; path = (Join-Path $root "mf_bulk_upload\inbox") },
+    @{ key = "mf_csv_import_inbox"; path = (Join-Path $root "mf_csv_import\inbox") },
     @{ key = "debug"; path = (Join-Path $root "debug") }
   )
   $cleanupRows = New-Object System.Collections.Generic.List[object]
