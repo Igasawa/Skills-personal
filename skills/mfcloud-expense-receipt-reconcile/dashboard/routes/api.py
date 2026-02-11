@@ -1182,6 +1182,71 @@ def create_api_router() -> APIRouter:
             cleanup=True,
         )
 
+    @router.get("/api/month-close-checklist/{ym}")
+    def api_get_month_close_checklist(ym: str) -> JSONResponse:
+        ym = core._safe_ym(ym)
+        root = core._artifact_root() / ym / "reports"
+        root.mkdir(parents=True, exist_ok=True)
+        checklist_path = root / "month_close_checklist.json"
+        data = core._read_json(checklist_path)
+        if not isinstance(data, dict) or data.get("ym") != ym:
+            data = {
+                "ym": ym,
+                "checklist": {
+                    "transportation_expense": False,
+                    "expense_submission": False,
+                    "document_printout": False,
+                    "mf_accounting_link": False,
+                },
+                "updated_at": None,
+            }
+        return JSONResponse(data)
+
+    @router.post("/api/month-close-checklist/{ym}")
+    def api_set_month_close_checklist(ym: str, payload: dict[str, Any], request: Request) -> JSONResponse:
+        ym = core._safe_ym(ym)
+        year, month = core._split_ym(ym)
+        actor = _actor_from_request(request)
+        checklist = payload.get("checklist")
+        if not isinstance(checklist, dict):
+            raise HTTPException(status_code=400, detail="checklist must be a dict.")
+
+        # Validate checklist keys
+        expected_keys = {"transportation_expense", "expense_submission", "document_printout", "mf_accounting_link"}
+        if set(checklist.keys()) != expected_keys:
+            raise HTTPException(
+                status_code=400,
+                detail=f"checklist must contain exactly these keys: {expected_keys}",
+            )
+
+        # Validate checklist values (must be boolean)
+        for key, value in checklist.items():
+            if not isinstance(value, bool):
+                raise HTTPException(status_code=400, detail=f"checklist.{key} must be a boolean.")
+
+        root = core._artifact_root() / ym / "reports"
+        root.mkdir(parents=True, exist_ok=True)
+        checklist_path = root / "month_close_checklist.json"
+
+        data = {
+            "ym": ym,
+            "checklist": checklist,
+            "updated_at": datetime.now().isoformat(timespec="seconds"),
+        }
+        core._write_json(checklist_path, data)
+
+        core._append_audit_event(
+            year=year,
+            month=month,
+            event_type="month_close_checklist",
+            action="update",
+            status="success",
+            actor=actor,
+            details={"checklist": checklist},
+        )
+
+        return JSONResponse({"status": "ok", "checklist": checklist})
+
     @router.post("/api/print-pdf/{ym}/{source}/{filename}")
     def api_print_pdf(ym: str, source: str, filename: str, request: Request) -> JSONResponse:
         ym = core._safe_ym(ym)

@@ -192,6 +192,27 @@
               <button type="button" class="secondary" data-archive-action="month_close">
                 月次クローズ（アーカイブ+クリーンアップ）
               </button>
+              <div class="month-close-checklist" data-month-close-checklist>
+                <div class="checklist-header">月次クローズ前の確認項目</div>
+                <div class="checklist-items">
+                  <label class="checklist-item">
+                    <input type="checkbox" data-checklist-item="transportation_expense">
+                    <span>①交通費の登録</span>
+                  </label>
+                  <label class="checklist-item">
+                    <input type="checkbox" data-checklist-item="expense_submission">
+                    <span>②月内全ての経費精算を確定させて申請ボタンを押す</span>
+                  </label>
+                  <label class="checklist-item">
+                    <input type="checkbox" data-checklist-item="document_printout">
+                    <span>③申請書類はプリントアウトして保存</span>
+                  </label>
+                  <label class="checklist-item">
+                    <input type="checkbox" data-checklist-item="mf_accounting_link">
+                    <span>④MF会計と連携</span>
+                  </label>
+                </div>
+              </div>
               <span class="muted">月次処理完了後、成果物をアーカイブし、翌月へ移行します。</span>
               <span class="muted">「月次クローズ」実行後、フォームの年月が自動的に翌月に切り替わります。</span>
             </div>

@@ -30,6 +30,18 @@
   const STEP_REFRESH_STALE_MS = 15000;
   const archiveStateOverrides = Object.create(null);
 
+  // Month Close Checklist state
+  let checklistState = {
+    transportation_expense: false,
+    expense_submission: false,
+    document_printout: false,
+    mf_accounting_link: false,
+  };
+
+  function isChecklistComplete() {
+    return Object.values(checklistState).every((value) => value === true);
+  }
+
   function formatDateTimeInJst(dateValue) {
     const date = dateValue instanceof Date ? dateValue : new Date(dateValue);
     if (Number.isNaN(date.getTime())) return "";
@@ -981,13 +993,33 @@
       const rakutenDone = Boolean(data.rakuten?.confirmed && data.rakuten?.printed);
       const allowed = amazonDone || rakutenDone;
       const blockedByRunning = Boolean(runningMode);
-      button.disabled = blockedByRunning || !allowed;
-      if (blockedByRunning) {
-        button.title = "他の手順を実行中のためアーカイブできません。";
-      } else if (!allowed) {
-        button.title = "Amazonまたは楽天で「除外・印刷（完了記録まで）」完了後に実行できます。";
+      const action = button.dataset.archiveAction;
+
+      // For month_close button, also check checklist state
+      if (action === "month_close") {
+        const checklistComplete = isChecklistComplete();
+        button.disabled = blockedByRunning || !allowed || !checklistComplete;
+        if (blockedByRunning) {
+          button.title = "他の手順を実行中のためアーカイブできません。";
+        } else if (!allowed && !checklistComplete) {
+          button.title = "Amazonまたは楽天で「除外・印刷（完了記録まで）」完了後に実行できます。また、月次クローズ前の確認項目をすべてチェックする必要があります。";
+        } else if (!allowed) {
+          button.title = "Amazonまたは楽天で「除外・印刷（完了記録まで）」完了後に実行できます。";
+        } else if (!checklistComplete) {
+          button.title = "月次クローズ前の確認項目をすべてチェックしてください。";
+        } else {
+          button.title = "";
+        }
       } else {
-        button.title = "";
+        // For archive_outputs button, keep original logic
+        button.disabled = blockedByRunning || !allowed;
+        if (blockedByRunning) {
+          button.title = "他の手順を実行中のためアーカイブできません。";
+        } else if (!allowed) {
+          button.title = "Amazonまたは楽天で「除外・印刷（完了記録まで）」完了後に実行できます。";
+        } else {
+          button.title = "";
+        }
       }
     });
   }
@@ -1198,6 +1230,7 @@
       const runningMode = String(data.running_mode || "");
 
       applyActionAvailability(data);
+      await loadMonthCloseChecklist(ym);
       applyArchiveAvailability(data);
       applyManualAvailability(data);
       applyProviderAvailability(data);
@@ -1356,6 +1389,59 @@
   }
 
   bindCopyButtons();
+
+  // ========== Month Close Checklist ==========
+  async function loadMonthCloseChecklist(ym) {
+    if (!ym) return;
+    try {
+      const data = await apiGetJson(`/api/month-close-checklist/${ym}`);
+      if (data && data.checklist) {
+        checklistState = { ...data.checklist };
+        updateCheckboxes();
+      }
+    } catch (err) {
+      console.warn("Failed to load checklist:", err);
+    }
+  }
+
+  async function saveMonthCloseChecklist(ym) {
+    if (!ym) return;
+    try {
+      const res = await fetch(`/api/month-close-checklist/${ym}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ checklist: checklistState }),
+      });
+      if (!res.ok) {
+        console.warn("Failed to save checklist:", res.statusText);
+      }
+    } catch (err) {
+      console.warn("Failed to save checklist:", err);
+    }
+  }
+
+  function updateCheckboxes() {
+    document.querySelectorAll("[data-checklist-item]").forEach((checkbox) => {
+      const key = checkbox.dataset.checklistItem;
+      if (key in checklistState) {
+        checkbox.checked = checklistState[key];
+      }
+    });
+  }
+
+  // Bind checkbox change events
+  document.querySelectorAll("[data-checklist-item]").forEach((checkbox) => {
+    checkbox.addEventListener("change", async (e) => {
+      const key = e.target.dataset.checklistItem;
+      if (key in checklistState) {
+        checklistState[key] = e.target.checked;
+        const ym = getYmFromForm();
+        await saveMonthCloseChecklist(ym);
+        // Refresh steps to update button state
+        refreshSteps({ force: true });
+      }
+    });
+  });
 })();
 
 
