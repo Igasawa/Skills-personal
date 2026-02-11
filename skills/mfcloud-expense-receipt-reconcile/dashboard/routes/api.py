@@ -1107,6 +1107,61 @@ def create_api_router() -> APIRouter:
             }
         )
 
+    @router.post("/api/folders/{ym}/mf-csv-inbox")
+    def api_open_mf_csv_inbox(ym: str, request: Request) -> JSONResponse:
+        ym = core._safe_ym(ym)
+        year, month = core._split_ym(ym)
+        actor = _actor_from_request(request)
+        target = core._mf_csv_import_inbox_dir_for_ym(year, month, create=True)
+        shortcut_path: Path | None = None
+        try:
+            shortcut_path = _write_folder_shortcut(target, f"AX_{ym}_Step4_MfCsvInbox")
+        except Exception:
+            shortcut_path = None
+        res = _open_directory(target)
+        if res.returncode != 0:
+            detail = (
+                "Open folder failed:\n"
+                f"path: {target}\n"
+                f"exit: {res.returncode}\n"
+                f"stdout:\n{res.stdout}\n"
+                f"stderr:\n{res.stderr}\n"
+            )
+            core._append_audit_event(
+                year=year,
+                month=month,
+                event_type="mf_csv_import",
+                action="open_inbox",
+                status="failed",
+                actor=actor,
+                details={
+                    "reason": detail,
+                    "path": str(target),
+                    "shortcut_path": str(shortcut_path) if shortcut_path else "",
+                },
+            )
+            raise HTTPException(status_code=500, detail=detail)
+        core._append_audit_event(
+            year=year,
+            month=month,
+            event_type="mf_csv_import",
+            action="open_inbox",
+            status="success",
+            actor=actor,
+            details={
+                "path": str(target),
+                "shortcut_path": str(shortcut_path) if shortcut_path else "",
+            },
+        )
+        return JSONResponse(
+            {
+                "status": "ok",
+                "ym": ym,
+                "path": str(target),
+                "shortcut_path": str(shortcut_path) if shortcut_path else "",
+            }
+        )
+
     @router.post("/api/mf-bulk-upload/{ym}")
     def api_mf_bulk_upload(ym: str, request: Request) -> JSONResponse:
         ym = core._safe_ym(ym)
@@ -1159,6 +1214,62 @@ def create_api_router() -> APIRouter:
                 "submitted_count": result.get("submitted_count"),
                 "queued_count": result.get("queued_count"),
                 "read_count": result.get("read_count"),
+                "result_json": result.get("result_json"),
+            },
+        )
+        return JSONResponse(result)
+
+    @router.post("/api/mf-csv-import/{ym}")
+    def api_mf_csv_import(ym: str, request: Request) -> JSONResponse:
+        ym = core._safe_ym(ym)
+        year, month = core._split_ym(ym)
+        actor = _actor_from_request(request)
+        running_mode = core._running_mode_for_ym(year, month)
+        if running_mode:
+            detail = "Another run is already in progress. Wait for completion before MF CSV import."
+            core._append_audit_event(
+                year=year,
+                month=month,
+                event_type="mf_csv_import",
+                action="run",
+                status="rejected",
+                actor=actor,
+                details={"reason": detail, "running_mode": running_mode},
+            )
+            raise HTTPException(status_code=409, detail=detail)
+
+        try:
+            result = core._run_mf_csv_import_for_ym(
+                year,
+                month,
+                auth_handoff=True,
+                headed=True,
+                slow_mo_ms=0,
+                import_url=core.DEFAULT_MFCLOUD_TRANSACTIONS_IMPORT_URL,
+            )
+        except HTTPException as exc:
+            core._append_audit_event(
+                year=year,
+                month=month,
+                event_type="mf_csv_import",
+                action="run",
+                status="rejected" if exc.status_code in {400, 404, 409} else "failed",
+                actor=actor,
+                details={"reason": str(exc.detail)},
+            )
+            raise
+
+        core._append_audit_event(
+            year=year,
+            month=month,
+            event_type="mf_csv_import",
+            action="run",
+            status="success",
+            actor=actor,
+            details={
+                "files_found": result.get("files_found"),
+                "submitted_count": result.get("submitted_count"),
+                "queued_count": result.get("queued_count"),
                 "result_json": result.get("result_json"),
             },
         )

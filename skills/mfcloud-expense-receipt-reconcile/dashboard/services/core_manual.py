@@ -11,6 +11,7 @@ from fastapi import HTTPException
 from .core_shared import SKILL_ROOT, _artifact_root, _ax_home, _read_json
 
 DEFAULT_MFCLOUD_TRANSACTIONS_URL = "https://expense.moneyforward.com/transactions"
+DEFAULT_MFCLOUD_TRANSACTIONS_IMPORT_URL = "https://expense.moneyforward.com/import_transactions/new"
 PROVIDER_KEYS: tuple[str, ...] = ("aquavoice", "claude", "chatgpt", "gamma")
 PROVIDER_LABELS: dict[str, str] = {
     "aquavoice": "Aqua Voice",
@@ -127,6 +128,13 @@ def _provider_inbox_status_for_ym(year: int, month: int) -> dict[str, Any]:
 
 def _mf_bulk_upload_inbox_dir_for_ym(year: int, month: int, *, create: bool = True) -> Path:
     path = _manual_month_root_for_ym(year, month) / "mf_bulk_upload" / "inbox"
+    if create:
+        path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def _mf_csv_import_inbox_dir_for_ym(year: int, month: int, *, create: bool = True) -> Path:
+    path = _manual_month_root_for_ym(year, month) / "mf_csv_import" / "inbox"
     if create:
         path.mkdir(parents=True, exist_ok=True)
     return path
@@ -472,5 +480,117 @@ def _run_mf_bulk_upload_for_ym(
         "submitted_count": int(data.get("submitted_count") or 0) if isinstance(data, dict) else 0,
         "queued_count": int(data.get("queued_count") or 0) if isinstance(data, dict) else 0,
         "read_count": int(data.get("read_count") or 0) if isinstance(data, dict) else 0,
+        "archived_dir": str(data.get("archived_dir") or "") if isinstance(data, dict) else "",
+    }
+
+
+def _run_mf_csv_import_for_ym(
+    year: int,
+    month: int,
+    *,
+    auth_handoff: bool = True,
+    headed: bool = True,
+    slow_mo_ms: int = 0,
+    import_url: str = DEFAULT_MFCLOUD_TRANSACTIONS_IMPORT_URL,
+) -> dict[str, Any]:
+    if month < 1 or month > 12:
+        raise HTTPException(status_code=400, detail="Month must be between 1 and 12.")
+
+    output_root = _manual_month_root_for_ym(year, month)
+    output_root.mkdir(parents=True, exist_ok=True)
+    inbox_dir = _mf_csv_import_inbox_dir_for_ym(year, month, create=True)
+    reports_dir = output_root / "reports"
+    reports_dir.mkdir(parents=True, exist_ok=True)
+    debug_dir = output_root / "debug" / "mf_csv_import"
+    debug_dir.mkdir(parents=True, exist_ok=True)
+
+    script = SKILL_ROOT / "scripts" / "mfcloud_csv_import.py"
+    if not script.exists():
+        raise HTTPException(status_code=500, detail=f"mfcloud csv import script not found: {script}")
+
+    storage_state = _resolve_mfcloud_storage_state_for_ym(year, month)
+    if not storage_state.exists():
+        raise HTTPException(
+            status_code=404,
+            detail=(
+                "MF Cloud storage state was not found. "
+                f"Expected: {storage_state}. Run preflight login first."
+            ),
+        )
+
+    out_json = reports_dir / "mf_csv_import_result.json"
+    cmd = [
+        sys.executable,
+        str(script),
+        "--year",
+        str(year),
+        "--month",
+        str(month),
+        "--storage-state",
+        str(storage_state),
+        "--import-url",
+        str(import_url),
+        "--inbox-dir",
+        str(inbox_dir),
+        "--out-json",
+        str(out_json),
+        "--debug-dir",
+        str(debug_dir),
+        "--slow-mo-ms",
+        str(max(0, int(slow_mo_ms))),
+    ]
+    if auth_handoff:
+        cmd.append("--auth-handoff")
+    if headed:
+        cmd.append("--headed")
+    else:
+        cmd.append("--headless")
+
+    res = subprocess.run(cmd, cwd=str(SKILL_ROOT), capture_output=True, text=True, check=False)
+    if res.returncode != 0:
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                "mfcloud_csv_import.py failed:\n"
+                f"cmd: {cmd}\n"
+                f"exit: {res.returncode}\n"
+                f"stdout:\n{res.stdout}\n"
+                f"stderr:\n{res.stderr}\n"
+            ),
+        )
+
+    payload: dict[str, Any] | None = None
+    for line in reversed((res.stdout or "").splitlines()):
+        text = str(line).strip()
+        if not text.startswith("{") or not text.endswith("}"):
+            continue
+        try:
+            maybe = json.loads(text)
+        except Exception:
+            continue
+        if isinstance(maybe, dict):
+            payload = maybe
+            break
+
+    if not payload:
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                "mfcloud_csv_import.py returned no JSON payload.\n"
+                f"stdout:\n{res.stdout}\n"
+                f"stderr:\n{res.stderr}\n"
+            ),
+        )
+
+    data = payload.get("data") if isinstance(payload.get("data"), dict) else payload
+    return {
+        "status": "ok",
+        "ym": f"{year:04d}-{month:02d}",
+        "import_url": str(import_url),
+        "inbox_dir": str(inbox_dir),
+        "result_json": str(out_json),
+        "files_found": int(data.get("files_found") or 0) if isinstance(data, dict) else 0,
+        "submitted_count": int(data.get("submitted_count") or 0) if isinstance(data, dict) else 0,
+        "queued_count": int(data.get("queued_count") or 0) if isinstance(data, dict) else 0,
         "archived_dir": str(data.get("archived_dir") or "") if isinstance(data, dict) else "",
     }

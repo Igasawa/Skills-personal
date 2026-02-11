@@ -1266,6 +1266,109 @@ def test_api_mf_bulk_upload_rejects_when_run_is_in_progress(
     assert events[-1].get("status") == "rejected"
 
 
+def test_api_open_mf_csv_inbox_creates_and_opens_folder(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    client = _create_client(monkeypatch, tmp_path)
+    ym = "2026-01"
+    shortcut_root = tmp_path / "desktop"
+    monkeypatch.setenv("AX_DASHBOARD_SHORTCUT_DIR", str(shortcut_root))
+    calls: list[list[str]] = []
+
+    def _fake_run(cmd: Any, *args: Any, **kwargs: Any) -> subprocess.CompletedProcess[str]:
+        calls.append([str(c) for c in cmd])
+        return subprocess.CompletedProcess(args=cmd, returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(api_routes.subprocess, "run", _fake_run)
+
+    res = client.post("/api/folders/2026-01/mf-csv-inbox")
+    assert res.status_code == 200
+    body = res.json()
+    assert body["status"] == "ok"
+    assert body["ym"] == ym
+    opened = Path(str(body["path"]))
+    assert opened.exists()
+    assert opened.name == "inbox"
+    assert opened.parent.name == "mf_csv_import"
+    shortcut_value = str(body.get("shortcut_path") or "")
+    if sys.platform.startswith("win"):
+        assert shortcut_value
+        shortcut_path = Path(shortcut_value)
+        assert shortcut_path.exists()
+        assert shortcut_path.suffix.lower() == ".url"
+        assert shortcut_path.parent == shortcut_root
+    else:
+        assert shortcut_value == ""
+
+    assert calls
+    entries = _read_audit_entries(tmp_path, ym)
+    events = [e for e in entries if e.get("event_type") == "mf_csv_import" and e.get("action") == "open_inbox"]
+    assert events
+    assert events[-1].get("status") == "success"
+    details = events[-1].get("details") or {}
+    if sys.platform.startswith("win"):
+        assert str(details.get("shortcut_path") or "")
+
+
+def test_api_mf_csv_import_returns_summary_and_writes_audit(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    client = _create_client(monkeypatch, tmp_path)
+    ym = "2026-01"
+
+    def _fake_run(year: int, month: int, **kwargs: Any) -> dict[str, Any]:
+        assert (year, month) == (2026, 1)
+        assert kwargs["auth_handoff"] is True
+        assert kwargs["headed"] is True
+        assert kwargs["import_url"] == api_routes.core.DEFAULT_MFCLOUD_TRANSACTIONS_IMPORT_URL
+        return {
+            "status": "ok",
+            "ym": ym,
+            "files_found": 5,
+            "submitted_count": 4,
+            "queued_count": 4,
+            "result_json": "C:\\tmp\\mf_csv_import_result.json",
+        }
+
+    monkeypatch.setattr(api_routes.core, "_run_mf_csv_import_for_ym", _fake_run)
+
+    res = client.post("/api/mf-csv-import/2026-01")
+    assert res.status_code == 200
+    body = res.json()
+    assert body["status"] == "ok"
+    assert body["files_found"] == 5
+    assert body["submitted_count"] == 4
+    assert body["queued_count"] == 4
+
+    entries = _read_audit_entries(tmp_path, ym)
+    events = [e for e in entries if e.get("event_type") == "mf_csv_import" and e.get("action") == "run"]
+    assert events
+    last = events[-1]
+    assert last.get("status") == "success"
+    details = last.get("details") or {}
+    assert details.get("files_found") == 5
+    assert details.get("submitted_count") == 4
+    assert details.get("queued_count") == 4
+
+
+def test_api_mf_csv_import_rejects_when_run_is_in_progress(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    client = _create_client(monkeypatch, tmp_path)
+    ym = "2026-01"
+    monkeypatch.setattr(api_routes.core, "_running_mode_for_ym", lambda y, m: "preflight")
+
+    res = client.post("/api/mf-csv-import/2026-01")
+    assert res.status_code == 409
+    detail = str(res.json().get("detail") or "")
+    assert "Another run is already in progress" in detail
+
+    entries = _read_audit_entries(tmp_path, ym)
+    events = [e for e in entries if e.get("event_type") == "mf_csv_import" and e.get("action") == "run"]
+    assert events
+    assert events[-1].get("status") == "rejected"
+
+
 def test_api_open_provider_inbox_creates_and_opens_folder(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

@@ -444,6 +444,38 @@ def test_workflow_state_tracks_mf_bulk_upload_step_state(
     assert state["providers"]["step_done"] is False
 
 
+def test_workflow_state_tracks_mf_csv_import_step_state(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("AX_HOME", str(tmp_path))
+    ym = "2026-01"
+
+    state = _workflow_state_for_ym(2026, 1)
+    assert state["mf_csv_import"]["attempted"] is False
+    assert state["mf_csv_import"]["done"] is False
+    assert state["mf_csv_import"]["submitted_count"] == 0
+
+    _write_json(
+        _reports_dir(tmp_path, ym) / "mf_csv_import_result.json",
+        {
+            "status": "ok",
+            "data": {
+                "files_found": 2,
+                "queued_count": 2,
+                "submitted_count": 2,
+            },
+        },
+    )
+
+    state = _workflow_state_for_ym(2026, 1)
+    assert state["mf_csv_import"]["attempted"] is True
+    assert state["mf_csv_import"]["done"] is True
+    assert state["mf_csv_import"]["status"] == "ok"
+    assert state["mf_csv_import"]["files_found"] == 2
+    assert state["mf_csv_import"]["queued_count"] == 2
+    assert state["mf_csv_import"]["submitted_count"] == 2
+
+
 def test_workflow_state_archive_state_defaults_to_not_created(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

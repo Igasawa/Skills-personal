@@ -583,6 +583,81 @@
     }
   }
 
+  async function openMfCsvInbox(buttonEl) {
+    const ym = getYmFromForm();
+    if (!ym) {
+      showToast("年月を入力してください。", "error");
+      return;
+    }
+
+    if (buttonEl) {
+      buttonEl.disabled = true;
+      buttonEl.dataset.busy = "1";
+    }
+    clearError();
+    try {
+      const res = await fetch(`/api/folders/${ym}/mf-csv-inbox`, { method: "POST" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const message = toFriendlyMessage(data.detail || "交通費CSVインポート用フォルダを開けませんでした。");
+        showError(message);
+        showToast(message, "error");
+        return;
+      }
+      const openedPath = String(data.path || "").trim();
+      const message = openedPath
+        ? `交通費CSVインポート用フォルダを開きました: ${openedPath}`
+        : "交通費CSVインポート用フォルダを開きました。";
+      showToast(message, "success");
+    } catch {
+      const message = "交通費CSVインポート用フォルダを開けませんでした。";
+      showError(message);
+      showToast(message, "error");
+    } finally {
+      if (buttonEl) delete buttonEl.dataset.busy;
+      refreshSteps({ force: true });
+    }
+  }
+
+  async function runMfCsvImport(buttonEl) {
+    const ym = getYmFromForm();
+    if (!ym) {
+      showToast("年月を入力してください。", "error");
+      return;
+    }
+
+    if (buttonEl) {
+      buttonEl.disabled = true;
+      buttonEl.dataset.busy = "1";
+    }
+    clearError();
+    showToast("交通費CSVインポートを開始します...", "success");
+    try {
+      const res = await fetch(`/api/mf-csv-import/${ym}`, { method: "POST" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const message = toFriendlyMessage(data.detail || "交通費CSVインポートに失敗しました。");
+        showError(message);
+        showToast(message, "error");
+        return;
+      }
+      const found = Number.parseInt(String(data.files_found ?? 0), 10) || 0;
+      const submitted = Number.parseInt(String(data.submitted_count ?? 0), 10) || 0;
+      const queued = Number.parseInt(String(data.queued_count ?? 0), 10) || 0;
+      const archivedDir = String(data.archived_dir || "").trim();
+      const details = archivedDir ? ` / 保管: ${archivedDir}` : "";
+      const message = `交通費CSVインポート: 発見 ${found}件 / キュー ${queued}件 / 送信 ${submitted}件${details}`;
+      showToast(message, "success");
+    } catch {
+      const message = "交通費CSVインポートに失敗しました。";
+      showError(message);
+      showToast(message, "error");
+    } finally {
+      if (buttonEl) delete buttonEl.dataset.busy;
+      refreshSteps({ force: true });
+    }
+  }
+
   function runManualAction(action, buttonEl) {
     if (action === "open_inbox") {
       openManualInbox(buttonEl);
@@ -598,6 +673,14 @@
     }
     if (action === "run_mf_bulk_upload") {
       runMfBulkUpload(buttonEl);
+      return;
+    }
+    if (action === "open_mf_csv_inbox") {
+      openMfCsvInbox(buttonEl);
+      return;
+    }
+    if (action === "run_mf_csv_import") {
+      runMfCsvImport(buttonEl);
     }
   }
 
@@ -1034,7 +1117,7 @@
       }
       const blockedByRunning = Boolean(runningMode);
       const action = String(button.dataset.manualAction || "");
-      const needsPreflight = action === "run_mf_bulk_upload";
+      const needsPreflight = action === "run_mf_bulk_upload" || action === "run_mf_csv_import";
       const blockedByPreflight = needsPreflight && !preflightDone;
       button.disabled = blockedByRunning || blockedByPreflight;
       if (blockedByRunning) {
@@ -1138,11 +1221,11 @@
     const amazonRunning = runningMode === "amazon_download" || runningMode === "amazon_print";
     const rakutenRunning = runningMode === "rakuten_download" || runningMode === "rakuten_print";
     const providerRunning = runningMode === "import_provider_receipts";
-    const mfBulkUploadRunning = runningMode === "mf_bulk_upload";
+    const mfBulkUploadRunning = runningMode === "mf_bulk_upload" || runningMode === "mf_csv_import";
     const amazonDone = Boolean(data.amazon?.confirmed && data.amazon?.printed);
     const rakutenDone = Boolean(data.rakuten?.confirmed && data.rakuten?.printed);
     const providerDone = Boolean(data.providers?.step_done);
-    const mfBulkUploadDone = Boolean(data.mf_bulk_upload?.done);
+    const mfBulkUploadDone = Boolean(data.mf_bulk_upload?.done || data.mf_csv_import?.done);
     return {
       preflight: data.preflight?.done ? "done" : runningMode === "preflight" ? "running" : "pending",
       amazon_download: amazonRunning ? "running" : data.amazon?.downloaded ? "done" : "pending",
@@ -1216,6 +1299,7 @@
         rakuten: raw.rakuten || {},
         providers: raw.providers || {},
         mf_bulk_upload: raw.mf_bulk_upload || {},
+        mf_csv_import: raw.mf_csv_import || {},
         archive: raw.archive || {},
         mf: raw.mf || {},
         running_mode: raw.running_mode || "",

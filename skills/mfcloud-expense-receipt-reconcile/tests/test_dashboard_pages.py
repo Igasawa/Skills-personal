@@ -123,6 +123,8 @@ def test_index_page_shows_manual_archive_button(monkeypatch: pytest.MonkeyPatch,
     assert 'data-step-status="mf_bulk_upload_task"' in res.text
     assert 'data-manual-action="open_mf_bulk_inbox"' in res.text
     assert 'data-manual-action="run_mf_bulk_upload"' in res.text
+    assert 'data-manual-action="open_mf_csv_inbox"' in res.text
+    assert 'data-manual-action="run_mf_csv_import"' in res.text
     assert 'data-provider-action="open_shared_inbox"' in res.text
     assert 'data-provider-action="import_provider_receipts"' in res.text
     assert 'data-provider-action="print_provider_receipts"' in res.text
