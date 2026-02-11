@@ -16,6 +16,10 @@ def _args() -> argparse.Namespace:
         skip_mfcloud=True,
         skip_reconcile=True,
         mf_draft_create=False,
+        mf_draft_no_autofill=False,
+        mf_draft_autofill_account_title="",
+        mf_draft_only_expense_id="",
+        mf_draft_max_targets=None,
         print_list=False,
         print_sources="",
         skip_receipt_name=False,
@@ -135,6 +139,7 @@ def test_execute_pipeline_runs_mf_draft_create_when_enabled(monkeypatch, tmp_pat
     args.skip_mfcloud = False
     args.skip_reconcile = False
     args.mf_draft_create = True
+    args.mf_draft_max_targets = 1
 
     rc = _rc(tmp_path)
     for state_path in (rc.amazon_storage_state, rc.mfcloud_storage_state, rc.rakuten_storage_state):
@@ -159,6 +164,8 @@ def test_execute_pipeline_runs_mf_draft_create_when_enabled(monkeypatch, tmp_pat
     assert "--report-json" in mf_draft_args
     assert "--out-json" in mf_draft_args
     assert "--audit-jsonl" in mf_draft_args
+    assert "--max-targets" in mf_draft_args
+    assert mf_draft_args[mf_draft_args.index("--max-targets") + 1] == "1"
     assert result["data"]["mf_draft"]["created"] == 1
     assert result["data"]["reports"]["mf_draft_create_result_json"].endswith("mf_draft_create_result.json")
     assert result["data"]["reports"]["mf_draft_create_actions_jsonl"].endswith("mf_draft_create_actions.jsonl")

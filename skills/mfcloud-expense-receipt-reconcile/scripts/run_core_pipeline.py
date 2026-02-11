@@ -358,6 +358,22 @@ def execute_pipeline(
                     str(month),
                     "--debug-dir",
                     str(debug_dir / "mfcloud_draft"),
+                    *(["--no-autofill"] if bool(getattr(args, "mf_draft_no_autofill", False)) else []),
+                    *(
+                        ["--autofill-account-title", str(getattr(args, "mf_draft_autofill_account_title", "")).strip()]
+                        if str(getattr(args, "mf_draft_autofill_account_title", "") or "").strip()
+                        else []
+                    ),
+                    *(
+                        ["--only-expense-id", str(getattr(args, "mf_draft_only_expense_id", "")).strip()]
+                        if str(getattr(args, "mf_draft_only_expense_id", "") or "").strip()
+                        else []
+                    ),
+                    *(
+                        ["--max-targets", str(int(getattr(args, "mf_draft_max_targets")))]
+                        if getattr(args, "mf_draft_max_targets", None)
+                        else []
+                    ),
                     *(["--auth-handoff"] if rc.interactive else []),
                     "--headed" if rc.headed else "--headless",
                     "--slow-mo-ms",

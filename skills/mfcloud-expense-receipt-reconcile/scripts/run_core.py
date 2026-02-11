@@ -336,6 +336,10 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="after reconcile, open MF outgo_input and create drafts by attaching matched receipt PDFs",
     )
+    ap.add_argument("--mf-draft-no-autofill", action="store_true", help="disable MF draft create autofill on validation failure")
+    ap.add_argument("--mf-draft-autofill-account-title", help="preferred account title/category for MF draft create autofill (e.g. 雑費)")
+    ap.add_argument("--mf-draft-only-expense-id", help="comma-separated MF expense ids to process (for spot checks)")
+    ap.add_argument("--mf-draft-max-targets", type=int, help="limit number of MF draft targets (for spot checks)")
     ap.add_argument("--print-list", action="store_true", help="generate print list after downloads")
     ap.add_argument("--print-sources", help="comma-separated sources for print list (amazon,rakuten,mfcloud)")
     ap.add_argument("--preflight", action="store_true", help="login and refresh MF linked services before running steps")

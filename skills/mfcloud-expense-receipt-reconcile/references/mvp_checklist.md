@@ -46,7 +46,7 @@
 - [x] 添付後、画面中央の `OCR入力` にチェックを入れる
 - [x] `作成する` を押して下書き作成まで完了できる（申請はしない）
 - [ ] 経費科目など未入力の状態でも下書き作成できることを現物で確認できる
-- [ ] 失敗時は `audit_log.jsonl` と `_runs/*.log` で行単位に原因追跡できる
+- [ ] 失敗時は `reports/mf_draft_create_actions.jsonl` と `_runs/*.log`（および debug snapshot）で行単位に原因追跡できる
 
 ## 8. 完了判定（MVP）
 - [ ] 1〜7がすべて満たされる
@@ -63,4 +63,3 @@
 - [x] Amazon/Rakuten bulk print buttons are separated on the run page.
 - [x] Bulk print opens merged PDF only (manual print policy).
 - [x] No automatic printer output is triggered by bulk print.
-

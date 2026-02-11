@@ -755,6 +755,12 @@ async function main() {
   const enableAutofill =
     !(args["no-autofill"] === true) && !String(args["autofill"] || "").toLowerCase().startsWith("f"); // allow --autofill false
   const autofillAccountTitle = args["autofill-account-title"] ? String(args["autofill-account-title"]).trim() : "";
+  const onlyExpenseIdRaw = args["only-expense-id"] ? String(args["only-expense-id"]) : "";
+  const onlyExpenseIds = onlyExpenseIdRaw
+    .split(",")
+    .map((x) => String(x || "").trim())
+    .filter(Boolean);
+  const maxTargets = Number.parseInt(String(args["max-targets"] || "0"), 10);
   const debugDir = args["debug-dir"];
   const headed = args.headed !== false;
   const slowMoMs = Number.parseInt(String(args["slow-mo-ms"] || "0"), 10);
@@ -773,7 +779,19 @@ async function main() {
   if (debugDir) ensureDir(debugDir);
   if (auditJsonl) ensureDir(path.dirname(auditJsonl));
 
-  const { targets, preSkipped } = loadTargets(reportJson, year, month);
+  const loaded = loadTargets(reportJson, year, month);
+  let targets = loaded.targets;
+  let preSkipped = loaded.preSkipped;
+
+  if (onlyExpenseIds.length) {
+    const allow = new Set(onlyExpenseIds);
+    targets = targets.filter((t) => allow.has(String(t.mf_expense_id || "")));
+    preSkipped = preSkipped.filter((r) => allow.has(String(r.mf_expense_id || "")));
+  }
+  if (Number.isFinite(maxTargets) && maxTargets > 0) {
+    targets = targets.slice(0, maxTargets);
+  }
+
   const results = [...preSkipped];
   if (targets.length === 0) {
     const payload = {
@@ -781,6 +799,8 @@ async function main() {
       data: {
         out_json: outJson,
         audit_jsonl: auditJsonl || null,
+        only_expense_ids: onlyExpenseIds.length ? onlyExpenseIds : null,
+        max_targets: Number.isFinite(maxTargets) && maxTargets > 0 ? maxTargets : null,
         targets_total: 0,
         attempted: 0,
         created: 0,
@@ -989,6 +1009,8 @@ async function main() {
     data: {
       out_json: outJson,
       audit_jsonl: auditJsonl || null,
+      only_expense_ids: onlyExpenseIds.length ? onlyExpenseIds : null,
+      max_targets: Number.isFinite(maxTargets) && maxTargets > 0 ? maxTargets : null,
       // Treat "already has receipt" as out-of-scope for creation (user confirmed no mis-attachments by others).
       targets_total: Math.max(0, targets.length - skippedAlreadyAttached),
       attempted,
