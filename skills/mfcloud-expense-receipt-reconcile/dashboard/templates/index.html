@@ -175,14 +175,25 @@
             </div>
             <div class="step-actions">
               <button type="button" class="primary" data-step-action="mf_reconcile">MF抽出 + 突合 + 下書き作成を実行</button>
+              <span class="muted">手順1〜4の結果を反映して、突合と下書き作成を実行します。</span>
+              <span class="muted">手順3/4を更新した後は、手順5を再実行してください（何回でも実行できます）。</span>
+            </div>
+          </div>
+          <div class="wizard-step" data-step-id="month_close">
+            <div class="step-head">
+              <span class="step-num">6</span>
+              <span class="step-title">手順6 月次クローズ（完了時のみ）</span>
+              <span class="step-status pending">未実行</span>
+            </div>
+            <div class="step-actions">
               <button type="button" class="secondary" data-archive-action="archive_outputs">
                 アーカイブ作成（保存のみ）
               </button>
               <button type="button" class="secondary" data-archive-action="month_close">
                 月次クローズ（アーカイブ+クリーンアップ）
               </button>
-              <span class="muted">手順1〜4の結果を反映して、突合と下書き作成を実行します。</span>
-              <span class="muted">手順3/4を更新した後は、手順5を再実行してください（何回でも実行できます）。</span>
+              <span class="muted">月次処理完了後、成果物をアーカイブし、翌月へ移行します。</span>
+              <span class="muted">「月次クローズ」実行後、フォームの年月が自動的に翌月に切り替わります。</span>
             </div>
           </div>
         </div>

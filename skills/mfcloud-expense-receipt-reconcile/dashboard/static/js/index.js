@@ -924,7 +924,7 @@
     if (nextStep === "provider_ingest") return { message: "次の手順: 手順3 共通フォルダ取り込みを実行してください。", href: null };
     if (nextStep === "mf_reconcile") return { message: "次の手順: 手順5 MF突合・下書き作成を実行してください。", href: null };
     if (nextStep === "done") {
-      return { message: "必要に応じて手順5を再実行してください。月次完了時は「月次クローズ」を実行します。", href: null };
+      return { message: "必要に応じて手順5を再実行してください。月次完了時は手順6「月次クローズ」を実行します。", href: null };
     }
     return { message: "ステップ状態を判定できませんでした。再読み込みしてください。", href: null };
   }
