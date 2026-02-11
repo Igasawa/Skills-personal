@@ -17,6 +17,7 @@ Phase 1.5（MF下書き作成）で残っていること:
 - 候補PDFの領収書添付が安定して完了すること（現物確認）
 - 経費科目など未入力の状態でも下書き作成できること（現物確認）
 - 失敗時に `reports/mf_draft_create_actions.jsonl` と `_runs/*.log`（および debug snapshot）で「行単位」に原因追跡できること
+- MFクラウド経費の周辺操作ナレッジを `references/mfcloud_expense_knowledge.md` に整理し、手順・必須項目・原因調査の共通理解を固定する
 
 運用（Step 4.5 手動取り込み）で残っていること:
 - `manual/inbox/` 直下配置ルールの運用徹底（サブフォルダ禁止）
