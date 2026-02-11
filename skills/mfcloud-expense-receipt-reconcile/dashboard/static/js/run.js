@@ -394,4 +394,206 @@
   }
 
   bindCopyButtons();
+
+  const mfDraftViewer = document.querySelector("[data-mf-draft-viewer]");
+  const mfDraftFilterInput = document.getElementById("mf-draft-filter");
+  const mfDraftRefreshButton = document.getElementById("mf-draft-refresh");
+  const mfDraftStatusEl = document.getElementById("mf-draft-status");
+  const mfDraftTableBody = document.getElementById("mf-draft-table-body");
+
+  let mfDraftItems = [];
+  let mfDraftFilterTimer = null;
+
+  function setMfDraftStatus(message, kind) {
+    if (!mfDraftStatusEl) return;
+    mfDraftStatusEl.textContent = String(message || "");
+    mfDraftStatusEl.classList.remove("success", "error");
+    if (kind) mfDraftStatusEl.classList.add(kind);
+  }
+
+  function setMfDraftStat(name, value) {
+    const el = document.querySelector(`[data-mf-draft-stat=\"${name}\"]`);
+    if (!el) return;
+    el.textContent = value == null ? "-" : String(value);
+  }
+
+  function normalizeSearchText(text) {
+    const normalize = Common.normalizeSearchText || ((t) => String(t || "").toLowerCase().replace(/\\s+/g, " ").trim());
+    return normalize(text);
+  }
+
+  function buildStatusPill(status) {
+    const s = String(status || "").trim() || "-";
+    const pill = document.createElement("span");
+    pill.className = "mf-draft-status-pill";
+    if (s === "created") pill.classList.add("created");
+    if (s === "failed") pill.classList.add("failed");
+    if (s === "skipped") pill.classList.add("skipped");
+    pill.textContent = s;
+    return pill;
+  }
+
+  function formatYen(value) {
+    const n = Number.parseInt(String(value ?? ""), 10);
+    if (!Number.isFinite(n)) return "-";
+    return `${n.toLocaleString("ja-JP")}円`;
+  }
+
+  function setEmptyRow(text) {
+    if (!mfDraftTableBody) return;
+    mfDraftTableBody.innerHTML = "";
+    const tr = document.createElement("tr");
+    tr.setAttribute("data-mf-draft-empty", "1");
+    const td = document.createElement("td");
+    td.colSpan = 7;
+    td.className = "muted";
+    td.textContent = text;
+    tr.appendChild(td);
+    mfDraftTableBody.appendChild(tr);
+  }
+
+  function renderMfDraftTable() {
+    if (!mfDraftTableBody) return;
+    const q = normalizeSearchText(mfDraftFilterInput?.value || "");
+
+    const filtered = mfDraftItems.filter((item) => {
+      if (!q) return true;
+      const parts = [
+        item.mf_expense_id,
+        item.status,
+        item.reason,
+        item.detail,
+        item.order_id,
+        item.order_source,
+        item.mf_vendor,
+        item.mf_memo,
+      ];
+      return normalizeSearchText(parts.join(" ")).includes(q);
+    });
+
+    mfDraftTableBody.innerHTML = "";
+    if (!filtered.length) {
+      setEmptyRow("該当するログがありません。");
+      return;
+    }
+
+    filtered.forEach((item) => {
+      const tr = document.createElement("tr");
+
+      const tdStatus = document.createElement("td");
+      tdStatus.appendChild(buildStatusPill(item.status));
+      tr.appendChild(tdStatus);
+
+      const tdId = document.createElement("td");
+      tdId.className = "mf-draft-code";
+      tdId.textContent = String(item.mf_expense_id || "-");
+      tr.appendChild(tdId);
+
+      const tdDateAmount = document.createElement("td");
+      const dateText = String(item.mf_use_date || item.row_date || "-");
+      tdDateAmount.innerHTML = `<div>${dateText}</div><div class=\"muted\">${formatYen(item.mf_amount_yen ?? item.row_amount_yen)}</div>`;
+      tr.appendChild(tdDateAmount);
+
+      const tdSummary = document.createElement("td");
+      const vendor = String(item.mf_vendor || "").trim();
+      const memo = String(item.mf_memo || "").trim();
+      tdSummary.textContent = [vendor, memo].filter(Boolean).join(" / ") || "-";
+      tdSummary.className = "wide";
+      tr.appendChild(tdSummary);
+
+      const tdOrder = document.createElement("td");
+      const orderBits = [];
+      if (item.order_source) orderBits.push(String(item.order_source));
+      if (item.order_id) orderBits.push(String(item.order_id));
+      if (item.order_date) orderBits.push(String(item.order_date));
+      if (item.order_total_yen != null) orderBits.push(formatYen(item.order_total_yen));
+      tdOrder.textContent = orderBits.join(" / ") || "-";
+      tr.appendChild(tdOrder);
+
+      const tdReason = document.createElement("td");
+      const reason = String(item.reason || "").trim();
+      const detail = String(item.detail || "").trim();
+      tdReason.innerHTML = reason ? `<div class=\"mf-draft-code\">${reason}</div>` : "<div class=\"muted\">-</div>";
+      if (detail) {
+        const d = document.createElement("div");
+        d.className = "muted mf-draft-code";
+        d.textContent = detail;
+        tdReason.appendChild(d);
+      }
+      tr.appendChild(tdReason);
+
+      const tdAutofill = document.createElement("td");
+      const filled = Array.isArray(item.autofill) ? item.autofill : [];
+      if (!filled.length) {
+        tdAutofill.innerHTML = "<span class=\"muted\">-</span>";
+      } else {
+        tdAutofill.innerHTML = filled
+          .map((row) => {
+            const field = String(row.field || "");
+            const text = String(row.text || "");
+            return `<div class=\"mf-draft-code\">${field}:${text}</div>`;
+          })
+          .join("");
+      }
+      tr.appendChild(tdAutofill);
+
+      mfDraftTableBody.appendChild(tr);
+    });
+  }
+
+  async function refreshMfDraftActions() {
+    if (!mfDraftViewer) return;
+    const ym = String(mfDraftViewer.dataset.ym || "").trim();
+    if (!ym) return;
+
+    setMfDraftStatus("MF下書き作成ログを読み込み中...", "success");
+    setEmptyRow("ログを読み込み中です。");
+
+    const res = await fetch(`/api/mf-draft-actions/${encodeURIComponent(ym)}`, { cache: "no-store" }).catch(() => null);
+    if (!res || !res.ok) {
+      setMfDraftStatus("ログの取得に失敗しました。", "error");
+      setEmptyRow("ログの取得に失敗しました。");
+      return;
+    }
+    const data = await res.json().catch(() => null);
+    const exists = Boolean(data?.exists);
+    const summary = data?.summary || {};
+    const items = Array.isArray(data?.items) ? data.items : [];
+
+    setMfDraftStat("targets", summary.targets);
+    setMfDraftStat("created", summary.created);
+    setMfDraftStat("skipped", summary.skipped);
+    setMfDraftStat("failed", summary.failed);
+
+    mfDraftItems = items.map((raw) => (raw && typeof raw === "object" ? raw : {}));
+
+    if (!exists) {
+      setMfDraftStatus("この月のMF下書き作成ログはありません。", "");
+      setEmptyRow("まだ Step5 のログがありません。Step5実行後に表示されます。");
+      return;
+    }
+
+    const loaded = Number.parseInt(String(data?.events_loaded ?? ""), 10);
+    const total = Number.parseInt(String(data?.events_total ?? ""), 10);
+    const suffix = Number.isFinite(loaded) && Number.isFinite(total) && total > 0 ? `（events ${loaded}/${total}）` : "";
+    setMfDraftStatus(`読み込みました ${suffix}`, "success");
+    renderMfDraftTable();
+  }
+
+  if (mfDraftViewer) {
+    refreshMfDraftActions();
+
+    if (mfDraftRefreshButton) {
+      mfDraftRefreshButton.addEventListener("click", () => refreshMfDraftActions());
+    }
+
+    if (mfDraftFilterInput) {
+      mfDraftFilterInput.addEventListener("input", () => {
+        clearTimeout(mfDraftFilterTimer);
+        mfDraftFilterTimer = setTimeout(() => {
+          renderMfDraftTable();
+        }, 180);
+      });
+    }
+  }
 })();

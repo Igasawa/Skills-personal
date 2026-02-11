@@ -206,6 +206,64 @@ select:focus-visible {
   color: rgb(var(--text-default));
 }
 
+.mf-draft-viewer .form-row {
+  align-items: flex-end;
+}
+
+.mf-draft-filter {
+  min-width: min(520px, 100%);
+}
+
+.mf-draft-filter input[type="text"] {
+  width: min(520px, 100%);
+}
+
+.mf-draft-stats {
+  margin-top: 12px;
+}
+
+.mf-draft-status-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  border: 1px solid rgb(var(--semantic-field-border-default));
+  background: rgb(var(--surface-1));
+  color: rgb(var(--text-secondary));
+  white-space: nowrap;
+}
+
+.mf-draft-status-pill.created {
+  border-color: rgb(var(--semantic-feedback-success-surface) / 0.36);
+  background: rgb(var(--semantic-feedback-success-surface) / 0.2);
+  color: rgb(var(--semantic-feedback-warning-text));
+}
+
+.mf-draft-status-pill.failed {
+  border-color: rgb(var(--semantic-feedback-danger-surface) / 0.42);
+  background: rgb(var(--semantic-feedback-danger-surface) / 0.14);
+  color: rgb(var(--text-default));
+}
+
+.mf-draft-status-pill.skipped {
+  border-color: rgb(var(--semantic-feedback-warning-surface) / 0.42);
+  background: rgb(var(--semantic-feedback-warning-surface) / 0.16);
+  color: rgb(var(--semantic-feedback-warning-text));
+}
+
+.mf-draft-table td {
+  vertical-align: top;
+}
+
+.mf-draft-code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size: 12px;
+  word-break: break-word;
+}
+
 .toast {
   position: fixed;
   right: 24px;

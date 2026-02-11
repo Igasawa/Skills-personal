@@ -120,6 +120,7 @@ def create_pages_router(templates: Jinja2Templates) -> APIRouter:
         rakuten_pdfs = list((root / "rakuten" / "pdfs").glob("*.pdf")) if (root / "rakuten" / "pdfs").exists() else []
 
         print_script = reports_dir / "print_all.ps1"
+        mf_draft_actions = reports_dir / "mf_draft_create_actions.jsonl"
         amazon_print_manifest = reports_dir / "print_manifest.amazon.json"
         rakuten_print_manifest = reports_dir / "print_manifest.rakuten.json"
         amazon_bulk_print_ready = bool(amazon_workflow.get("print_prepared_at")) and amazon_print_manifest.exists()
@@ -145,12 +146,14 @@ def create_pages_router(templates: Jinja2Templates) -> APIRouter:
                 "rakuten_print_prepared": bool(rakuten_workflow.get("print_prepared_at")),
                 "amazon_bulk_print_ready": amazon_bulk_print_ready,
                 "rakuten_bulk_print_ready": rakuten_bulk_print_ready,
+                "mf_draft_actions_exists": mf_draft_actions.exists(),
                 "file_labels": {
                     "missing_csv": "未添付候補CSV",
                     "missing_json": "未添付候補JSON",
                     "monthly_thread": "月次メモ",
                     "run_config": "実行設定",
                     "audit_log": "監査ログ(JSONL)",
+                    "mf_draft_actions": "MF下書き作成ログ(JSONL)",
                     "print_script": "印刷用スクリプト",
                 },
             },
@@ -238,6 +241,7 @@ def create_pages_router(templates: Jinja2Templates) -> APIRouter:
             "monthly_thread": root / "reports" / "monthly_thread.md",
             "run_config": root / "run_config.resolved.json",
             "audit_log": root / "reports" / "audit_log.jsonl",
+            "mf_draft_actions": root / "reports" / "mf_draft_create_actions.jsonl",
             "print_script": root / "reports" / "print_all.ps1",
         }
         if kind not in mapping:

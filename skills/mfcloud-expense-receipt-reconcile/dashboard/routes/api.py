@@ -1300,4 +1300,11 @@ def create_api_router() -> APIRouter:
         log_text = core._tail_text(log_path, max_bytes=8000)
         return JSONResponse({"run": meta, "log_tail": log_text}, headers={"Cache-Control": "no-store"})
 
+    @router.get("/api/mf-draft-actions/{ym}")
+    def api_get_mf_draft_actions(ym: str, limit_events: int = 0) -> JSONResponse:
+        ym = core._safe_ym(ym)
+        year, month = core._split_ym(ym)
+        payload = core._mf_draft_actions_summary_for_ym(year, month, limit_events=limit_events)
+        return JSONResponse(payload, headers={"Cache-Control": "no-store"})
+
     return router

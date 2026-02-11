@@ -21,6 +21,7 @@ from .core_shared import (
     SKILL_ROOT,
     _artifact_root,
     _read_json,
+    _read_jsonl,
     _runs_root,
     _write_json,
 )
@@ -57,6 +58,178 @@ def _preflight_global_path() -> Path:
 
 def _audit_log_path(year: int, month: int) -> Path:
     return _artifact_root() / f"{year:04d}-{month:02d}" / "reports" / "audit_log.jsonl"
+
+def _mf_draft_actions_path(year: int, month: int) -> Path:
+    return _artifact_root() / f"{year:04d}-{month:02d}" / "reports" / "mf_draft_create_actions.jsonl"
+
+
+def _mf_draft_actions_summary_for_ym(
+    year: int,
+    month: int,
+    *,
+    limit_events: int = 0,
+) -> dict[str, Any]:
+    path = _mf_draft_actions_path(year, month)
+    if not path.exists():
+        return {
+            "ym": f"{year:04d}-{month:02d}",
+            "exists": False,
+            "path": str(path),
+            "file_url": f"/files/{year:04d}-{month:02d}/mf_draft_actions",
+            "summary": {"targets": 0, "created": 0, "skipped": 0, "failed": 0},
+            "items": [],
+            "events_total": 0,
+            "events_loaded": 0,
+        }
+
+    events = _read_jsonl(path, required=False, strict=False)
+    events_total = len(events)
+    if limit_events and limit_events > 0 and events_total > limit_events:
+        events = events[-limit_events:]
+
+    items_by_id: dict[str, dict[str, Any]] = {}
+
+    def _get_item(expense_id: str) -> dict[str, Any]:
+        item = items_by_id.get(expense_id)
+        if item is not None:
+            return item
+        item = {
+            "mf_expense_id": expense_id,
+            "status": "",
+            "reason": "",
+            "detail": "",
+            "stage": "",
+            "ts_first": None,
+            "ts_last": None,
+            "mf_use_date": None,
+            "mf_amount_yen": None,
+            "mf_vendor": None,
+            "mf_memo": None,
+            "order_id": None,
+            "order_source": None,
+            "order_date": None,
+            "order_total_yen": None,
+            "pdf_path": None,
+            "row_score": None,
+            "row_date": None,
+            "row_amount_yen": None,
+            "click_selector": None,
+            "autofill": [],
+            "validation_errors": [],
+        }
+        items_by_id[expense_id] = item
+        return item
+
+    for ev in events:
+        if not isinstance(ev, dict):
+            continue
+        expense_id = str(ev.get("mf_expense_id") or "").strip()
+        if not expense_id:
+            continue
+        action = str(ev.get("action") or "").strip()
+        ts = str(ev.get("ts") or "").strip() or None
+
+        item = _get_item(expense_id)
+        if ts:
+            if not item.get("ts_first"):
+                item["ts_first"] = ts
+            item["ts_last"] = ts
+
+        if action == "target_start":
+            for key in (
+                "mf_use_date",
+                "mf_amount_yen",
+                "mf_vendor",
+                "mf_memo",
+                "order_id",
+                "order_source",
+                "order_date",
+                "order_total_yen",
+                "pdf_path",
+            ):
+                if key in ev and ev.get(key) is not None:
+                    item[key] = ev.get(key)
+            continue
+
+        if action == "matching_row_found":
+            for key in ("row_score", "row_date", "row_amount_yen"):
+                if key in ev and ev.get(key) is not None:
+                    item[key] = ev.get(key)
+            continue
+
+        if action == "create_validation_failed":
+            errors = ev.get("errors")
+            if isinstance(errors, list):
+                item["validation_errors"] = [str(x) for x in errors if str(x).strip()][:20]
+            continue
+
+        if action == "autofill_required_fields":
+            filled = ev.get("filled")
+            if isinstance(filled, list):
+                item["autofill"] = [x for x in filled if isinstance(x, dict)][:20]
+            continue
+
+        if action == "target_created":
+            item["status"] = "created"
+            item["stage"] = str(ev.get("stage") or item.get("stage") or "")
+            item["reason"] = ""
+            item["detail"] = ""
+            item["click_selector"] = ev.get("click_selector") or item.get("click_selector")
+            if isinstance(ev.get("autofill"), list):
+                item["autofill"] = [x for x in ev.get("autofill") if isinstance(x, dict)][:20]
+            continue
+
+        if action == "target_skipped":
+            item["status"] = "skipped"
+            item["stage"] = str(ev.get("stage") or item.get("stage") or "")
+            item["reason"] = str(ev.get("reason") or "").strip()
+            item["detail"] = ""
+            item["click_selector"] = ev.get("click_selector") or item.get("click_selector")
+            continue
+
+        if action == "target_failed":
+            item["status"] = "failed"
+            item["stage"] = str(ev.get("stage") or item.get("stage") or "")
+            item["reason"] = str(ev.get("reason") or "").strip()
+            item["detail"] = str(ev.get("detail") or "").strip()
+            item["click_selector"] = ev.get("click_selector") or item.get("click_selector")
+            continue
+
+    items = list(items_by_id.values())
+
+    def _severity_key(row: dict[str, Any]) -> tuple[int, str]:
+        status = str(row.get("status") or "")
+        if status == "failed":
+            sev = 0
+        elif status == "skipped":
+            sev = 1
+        elif status == "created":
+            sev = 2
+        else:
+            sev = 3
+        return (sev, str(row.get("mf_expense_id") or ""))
+
+    items.sort(key=_severity_key)
+
+    created = sum(1 for x in items if x.get("status") == "created")
+    failed = sum(1 for x in items if x.get("status") == "failed")
+    skipped = sum(1 for x in items if x.get("status") == "skipped")
+
+    return {
+        "ym": f"{year:04d}-{month:02d}",
+        "exists": True,
+        "path": str(path),
+        "file_url": f"/files/{year:04d}-{month:02d}/mf_draft_actions",
+        "summary": {
+            "targets": len(items),
+            "created": created,
+            "skipped": skipped,
+            "failed": failed,
+        },
+        "items": items,
+        "events_total": events_total,
+        "events_loaded": len(events),
+    }
 
 
 def _safe_int(value: Any) -> int | None:

@@ -82,6 +82,12 @@
               <a href="/files/{{ ym }}/audit_log" class="download">{{ file_labels.audit_log }}</a>
               <div class="muted">実行・確認・印刷の操作履歴</div>
             </div>
+            {% if mf_draft_actions_exists %}
+            <div class="download-card">
+              <a href="/files/{{ ym }}/mf_draft_actions" class="download">{{ file_labels.mf_draft_actions }}</a>
+              <div class="muted">Step5（MF下書き作成）の行単位ログ</div>
+            </div>
+            {% endif %}
             <div class="download-card">
               <a href="/runs/{{ ym }}/archived-receipts" class="download">アーカイブ済み領収書一覧</a>
               <div class="muted">Step5で保存したアーカイブ内PDFの確認</div>
@@ -234,6 +240,61 @@
         {% else %}
         <p class="muted">注文データがありません。Amazon/楽天の取得を先に実行してください。</p>
         {% endif %}
+      </section>
+
+      <section class="card mf-draft-viewer" data-mf-draft-viewer data-ym="{{ ym }}">
+        <h2>MF下書き作成ログ（Step5）</h2>
+        <p class="muted">
+          `reports/mf_draft_create_actions.jsonl` を読み取り、MF明細（mf_expense_id）ごとに作成/スキップ/失敗を一覧表示します。
+          <br />失敗したものは `reason/detail` と `autofill` を見て原因を潰してください。
+        </p>
+        <div class="form-row">
+          <label class="mf-draft-filter">
+            <span>絞り込み</span>
+            <input type="text" id="mf-draft-filter" placeholder="mf_expense_id / order_id / reason で検索" />
+          </label>
+          <button type="button" class="secondary" id="mf-draft-refresh">更新</button>
+          <a class="secondary" id="mf-draft-download" href="/files/{{ ym }}/mf_draft_actions">JSONLをダウンロード</a>
+          <span id="mf-draft-status" class="status-note"></span>
+        </div>
+        <div class="stats-grid mf-draft-stats" data-mf-draft-stats>
+          <div class="stat">
+            <span class="label">Targets</span>
+            <span class="value" data-mf-draft-stat="targets">-</span>
+          </div>
+          <div class="stat">
+            <span class="label">Created</span>
+            <span class="value" data-mf-draft-stat="created">-</span>
+          </div>
+          <div class="stat">
+            <span class="label">Skipped</span>
+            <span class="value" data-mf-draft-stat="skipped">-</span>
+          </div>
+          <div class="stat">
+            <span class="label">Failed</span>
+            <span class="value" data-mf-draft-stat="failed">-</span>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table class="mf-draft-table">
+            <thead>
+              <tr>
+                <th>状態</th>
+                <th>MF ID</th>
+                <th>利用日/金額</th>
+                <th>摘要</th>
+                <th>注文</th>
+                <th>原因</th>
+                <th>補完</th>
+              </tr>
+            </thead>
+            <tbody id="mf-draft-table-body">
+              <tr data-mf-draft-empty>
+                <td colspan="7" class="muted">ログを読み込み中です。</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
       </section>
 
       <section class="card">

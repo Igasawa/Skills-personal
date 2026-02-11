@@ -269,6 +269,27 @@ def test_run_page_shows_manual_print_prepare_and_complete_controls(
     assert 'id="run-print-script" data-ym' not in res.text
 
 
+def test_run_page_shows_mf_draft_actions_download_when_present(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    client = _create_client(monkeypatch, tmp_path)
+    ym = "2026-01"
+    run_root = _artifact_root(tmp_path) / ym
+    reports_dir = run_root / "reports"
+    reports_dir.mkdir(parents=True, exist_ok=True)
+    (reports_dir / "mf_draft_create_actions.jsonl").write_text(
+        '{"ts":"2026-02-11T10:00:00","action":"target_created","mf_expense_id":"MF-1"}\n',
+        encoding="utf-8",
+    )
+
+    res = client.get(f"/runs/{ym}")
+    assert res.status_code == 200
+    assert f"/files/{ym}/mf_draft_actions" in res.text
+
+    dl = client.get(f"/files/{ym}/mf_draft_actions")
+    assert dl.status_code == 200
+
+
 def test_archive_receipts_page_lists_archived_pdfs_with_month_switch(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
