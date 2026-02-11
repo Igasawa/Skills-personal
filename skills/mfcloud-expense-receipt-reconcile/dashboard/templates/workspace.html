@@ -13,7 +13,7 @@
           <p class="eyebrow">作業スペース</p>
           <h1>エージェント作業スペース</h1>
           <p class="subtitle">
-            必要なURLとエージェント向けプロンプトを1か所で管理します。設定内容はこのブラウザに保存されます。
+            必要なリンクとエージェント向けのプロンプトをまとめて管理します。設定内容はこのブラウザだけでなく共有保存されます。
           </p>
         </div>
         <div class="hero-meta">
@@ -31,15 +31,29 @@
           <p class="muted">月次経費処理で必須のリンクです。</p>
           <ul class="workspace-link-list workspace-link-list-static">
             <li class="workspace-link-item">
-              <div class="workspace-link-main">
-                <span class="workspace-link-label">MF経費精算ページ</span>
+              <div class="workspace-link-main" data-full-url="https://expense.moneyforward.com/expense_reports">
+                <div class="workspace-link-head">
+                  <a
+                    class="secondary workspace-link-open"
+                    data-workspace-link-open
+                    href="https://expense.moneyforward.com/expense_reports"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    title="https://expense.moneyforward.com/expense_reports"
+                    aria-label="MF経費精算ページを開く（https://expense.moneyforward.com/expense_reports）"
+                  >
+                    MF経費精算ページ
+                  </a>
+                  <button type="button" class="workspace-url-toggle" data-workspace-url-toggle aria-label="URLを表示">URL</button>
+                </div>
                 <a
-                  class="workspace-link-url"
+                  class="workspace-link-domain"
                   href="https://expense.moneyforward.com/expense_reports"
                   target="_blank"
                   rel="noopener noreferrer"
+                  title="https://expense.moneyforward.com/expense_reports"
                 >
-                  https://expense.moneyforward.com/expense_reports
+                  expense.moneyforward.com
                 </a>
               </div>
               <div class="workspace-link-actions">
@@ -105,9 +119,9 @@
       </section>
 
       <section class="card workspace-prompt-card">
-        <h2>プロンプト作成</h2>
+        <h2>プロンプト編集</h2>
         <p class="muted">
-          プロンプト本文を自由に編集し、ワンクリックでコピーできます。下書きは自動保存されます。
+          プロンプト本文を自由に編集し、ワンクリックでコピーできます。上書きは自動保存されます。
         </p>
         <div class="muted">編集対象: <span id="workspace-prompt-active-label">MF経費精算ページ</span></div>
         <label for="workspace-prompt-editor">

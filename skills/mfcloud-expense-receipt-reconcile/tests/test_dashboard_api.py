@@ -1601,3 +1601,125 @@ def test_api_month_close_checklist_post_rejects_invalid_payload(
     res_non_bool = client.post("/api/month-close-checklist/2026-01", json={"checklist": non_bool})
     assert res_non_bool.status_code == 400
     assert "checklist.expense_submission must be a boolean" in str(res_non_bool.json().get("detail") or "")
+
+
+def test_api_workspace_state_get_returns_default(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    client = _create_client(monkeypatch, tmp_path)
+
+    res = client.get("/api/workspace/state")
+    assert res.status_code == 200
+    body = res.json()
+    assert body["status"] == "ok"
+    assert body["links"] == []
+    assert body["prompts"] == {}
+    assert body["active_prompt_key"] == "mf_expense_reports"
+    assert body["revision"] == 0
+    assert body["updated_at"] is None
+
+
+def test_api_workspace_state_post_persists_and_sanitizes(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    client = _create_client(monkeypatch, tmp_path)
+
+    res = client.post(
+        "/api/workspace/state",
+        json={
+            "links": [
+                {"label": " MF 経費  ", "url": "https://expense.moneyforward.com/expense_reports"},
+                {"label": "duplicate", "url": "https://expense.moneyforward.com/expense_reports"},
+                {"label": "invalid", "url": "ftp://example.com/a"},
+            ],
+            "prompts": {
+                "mf_expense_reports": "core prompt",
+                "custom:https%3A%2F%2Fexample.com": "custom prompt",
+                "invalid": "should be ignored",
+            },
+            "active_prompt_key": "invalid",
+        },
+    )
+    assert res.status_code == 200
+    body = res.json()
+    assert body["status"] == "ok"
+    assert body["links"] == [{"label": "MF 経費", "url": "https://expense.moneyforward.com/expense_reports"}]
+    assert body["prompts"] == {
+        "mf_expense_reports": "core prompt",
+        "custom:https%3A%2F%2Fexample.com": "custom prompt",
+    }
+    assert body["active_prompt_key"] == "mf_expense_reports"
+    assert body["revision"] == 1
+    assert body["conflict_resolved"] is False
+    assert isinstance(body["updated_at"], str)
+    assert body["updated_at"]
+
+    state_path = _artifact_root(tmp_path) / "_workspace" / "workspace_state.json"
+    assert state_path.exists()
+    persisted = json.loads(state_path.read_text(encoding="utf-8"))
+    assert persisted["links"] == body["links"]
+    assert persisted["prompts"] == body["prompts"]
+    assert persisted["active_prompt_key"] == body["active_prompt_key"]
+    assert persisted["revision"] == body["revision"]
+
+    res_partial = client.post(
+        "/api/workspace/state",
+        json={"active_prompt_key": "custom:https%3A%2F%2Fexample.com", "base_revision": body["revision"]},
+    )
+    assert res_partial.status_code == 200
+    body_partial = res_partial.json()
+    assert body_partial["links"] == body["links"]
+    assert body_partial["prompts"] == body["prompts"]
+    assert body_partial["active_prompt_key"] == "custom:https%3A%2F%2Fexample.com"
+    assert body_partial["revision"] == body["revision"] + 1
+    assert body_partial["conflict_resolved"] is False
+
+
+def test_api_workspace_state_post_merges_on_revision_conflict(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    client = _create_client(monkeypatch, tmp_path)
+
+    first = client.post(
+        "/api/workspace/state",
+        json={
+            "links": [{"label": "A", "url": "https://a.example.com/"}],
+            "prompts": {"mf_expense_reports": "first"},
+            "active_prompt_key": "mf_expense_reports",
+        },
+    )
+    assert first.status_code == 200
+    first_body = first.json()
+    assert first_body["revision"] == 1
+    assert first_body["conflict_resolved"] is False
+
+    second = client.post(
+        "/api/workspace/state",
+        json={
+            "base_revision": first_body["revision"],
+            "links": [{"label": "B", "url": "https://b.example.com/"}],
+            "prompts": {"custom:https%3A%2F%2Fb.example.com%2F": "second"},
+            "active_prompt_key": "custom:https%3A%2F%2Fb.example.com%2F",
+        },
+    )
+    assert second.status_code == 200
+    second_body = second.json()
+    assert second_body["revision"] == 2
+    assert second_body["conflict_resolved"] is False
+
+    # stale update with base_revision=1 should be merged with latest revision=2
+    third = client.post(
+        "/api/workspace/state",
+        json={
+            "base_revision": first_body["revision"],
+            "links": [{"label": "A2", "url": "https://a.example.com/"}],
+            "prompts": {"mf_expense_reports": "third"},
+            "active_prompt_key": "mf_expense_reports",
+        },
+    )
+    assert third.status_code == 200
+    third_body = third.json()
+    assert third_body["revision"] == 3
+    assert third_body["conflict_resolved"] is True
+    assert third_body["active_prompt_key"] == "mf_expense_reports"
+    assert third_body["prompts"]["mf_expense_reports"] == "third"
+    assert third_body["prompts"]["custom:https%3A%2F%2Fb.example.com%2F"] == "second"
+    urls = [row.get("url") for row in third_body["links"]]
+    assert "https://a.example.com/" in urls
+    assert "https://b.example.com/" in urls

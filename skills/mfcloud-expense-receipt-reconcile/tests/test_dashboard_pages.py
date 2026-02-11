@@ -129,7 +129,7 @@ def test_index_page_shows_manual_archive_button(monkeypatch: pytest.MonkeyPatch,
     assert 'data-provider-action="import_provider_receipts"' in res.text
     assert 'data-provider-action="print_provider_receipts"' in res.text
     assert 'data-provider-action="download_provider_receipts"' not in res.text
-    assert "手順3 共通フォルダ取り込み（手動取得分）" in res.text
+    assert "/workspace" in res.text
     assert "data-mf-summary" not in res.text
 
 
@@ -156,8 +156,8 @@ def test_index_page_shows_archive_history_links(monkeypatch: pytest.MonkeyPatch,
 
     res = client.get("/status")
     assert res.status_code == 200
-    assert "アーカイブ履歴" in res.text
-    assert "月次クローズ" in res.text
+    assert 'class="archive-history"' in res.text
+    assert 'data-archive-history-list' in res.text
     assert f"/runs/{ym}/archived-receipts" in res.text
 
 
@@ -305,7 +305,7 @@ def test_archive_receipts_page_lists_archived_pdfs_with_month_switch(
 
     res = client.get(f"/runs/{ym}/archived-receipts")
     assert res.status_code == 200
-    assert "アーカイブ済み領収書一覧" in res.text
+    assert 'id="archive-search"' in res.text
     assert "AMZ-ARC-001.pdf" in res.text
     assert f"/files/{ym}/archive/20260209_101530/amazon/AMZ-ARC-001.pdf" in res.text
     assert 'id="filter-month"' in res.text

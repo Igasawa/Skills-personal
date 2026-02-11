@@ -315,26 +315,87 @@
 }
 
 .workspace-link-main {
+  position: relative;
   display: grid;
-  gap: 6px;
+  gap: 8px;
 }
 
-.workspace-link-label {
+.workspace-link-main::after {
+  content: attr(data-full-url);
+  position: absolute;
+  left: 0;
+  top: calc(100% + 8px);
+  z-index: 20;
+  max-width: min(560px, 100vw - 64px);
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid rgb(var(--semantic-field-border-default));
+  background: rgb(var(--surface-0));
+  color: rgb(var(--text-default));
+  font-size: 12px;
+  line-height: 1.45;
+  word-break: break-all;
+  box-shadow: 0 10px 28px rgb(var(--shadow-color) / 0.26);
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(4px);
+  transition: opacity var(--transition-fast), transform var(--transition-fast), visibility var(--transition-fast);
+  pointer-events: none;
+}
+
+.workspace-link-main:hover::after,
+.workspace-link-main:focus-within::after,
+.workspace-link-main[data-url-expanded="1"]::after {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
+}
+
+.workspace-link-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.workspace-link-open {
+  min-height: 38px;
   font-size: 13px;
-  font-weight: 600;
+}
+
+.workspace-link-domain {
+  color: rgb(var(--text-secondary));
+  text-decoration: none;
+  font-size: 12px;
+  word-break: break-all;
+}
+
+.workspace-link-domain:hover {
+  color: rgb(var(--semantic-button-link-text-hover));
+  text-decoration: underline;
+}
+
+.workspace-url-toggle {
+  min-height: 32px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid rgb(var(--semantic-field-border-default));
+  background: rgb(var(--surface-2));
+  color: rgb(var(--text-secondary));
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: border-color var(--transition-fast), background var(--transition-fast), color var(--transition-fast);
+}
+
+.workspace-url-toggle:hover {
+  border-color: rgb(var(--semantic-field-border-hover));
   color: rgb(var(--text-default));
 }
 
-.workspace-link-url {
-  color: rgb(var(--semantic-button-link-text));
-  text-decoration: none;
-  word-break: break-all;
-  font-size: 13px;
-}
-
-.workspace-link-url:hover {
-  color: rgb(var(--semantic-button-link-text-hover));
-  text-decoration: underline;
+.workspace-url-toggle:focus-visible {
+  outline: 2px solid rgb(var(--semantic-field-border-focus));
+  outline-offset: 2px;
 }
 
 .workspace-link-actions {

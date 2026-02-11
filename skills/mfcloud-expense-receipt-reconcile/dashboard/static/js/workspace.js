@@ -8,6 +8,11 @@
   const STORAGE_PROMPT_ACTIVE_KEY = "mf-dashboard-workspace-prompt-active-v1";
   const MAX_LINKS = 100;
   const PROMPT_KEY_MF_EXPENSE_REPORTS = "mf_expense_reports";
+  const WORKSPACE_STATE_ENDPOINT = "/api/workspace/state";
+  const WORKSPACE_SYNC_DEBOUNCE_MS = 300;
+  let workspaceSyncTimer = null;
+  let workspaceSyncInFlight = false;
+  let workspaceStateRevision = 0;
   const LEGACY_DEFAULT_PROMPT = [
     "Goal:",
     "- Complete monthly MF expense submission safely and quickly.",
@@ -91,6 +96,39 @@
     }
   }
 
+  function formatUrlHost(value) {
+    const url = normalizeUrl(value);
+    if (!url) return "";
+    try {
+      return new URL(url).host || url;
+    } catch {
+      return url;
+    }
+  }
+
+  function attachUrlToggle(main, button) {
+    if (!(main instanceof HTMLElement) || !(button instanceof HTMLElement)) return;
+    const setExpanded = (expanded) => {
+      if (expanded) main.dataset.urlExpanded = "1";
+      else delete main.dataset.urlExpanded;
+      button.setAttribute("aria-pressed", expanded ? "true" : "false");
+    };
+    setExpanded(false);
+    button.addEventListener("click", () => {
+      if (main.dataset.urlExpanded === "1") {
+        setExpanded(false);
+        return;
+      }
+      setExpanded(true);
+      window.setTimeout(() => {
+        if (main.dataset.urlExpanded === "1") setExpanded(false);
+      }, 4500);
+    });
+    main.addEventListener("mouseleave", () => {
+      if (main.dataset.urlExpanded === "1") setExpanded(false);
+    });
+  }
+
   function buildCustomPromptKey(url) {
     return `custom:${encodeURIComponent(String(url || ""))}`;
   }
@@ -111,6 +149,118 @@
     if (!text) return false;
     if (text === PROMPT_KEY_MF_EXPENSE_REPORTS) return true;
     return text.startsWith("custom:");
+  }
+
+  function collectLocalWorkspaceState() {
+    return {
+      links: readCustomLinks(),
+      prompts: readPromptMap(),
+      active_prompt_key: readActivePromptKey() || PROMPT_KEY_MF_EXPENSE_REPORTS,
+    };
+  }
+
+  function hasMeaningfulWorkspaceState(state) {
+    if (!isObject(state)) return false;
+    const links = Array.isArray(state.links) ? state.links : [];
+    const prompts = isObject(state.prompts) ? state.prompts : {};
+    return links.length > 0 || Object.keys(prompts).length > 0;
+  }
+
+  function applyWorkspaceStateToLocalStorage(state) {
+    const links = Array.isArray(state?.links) ? state.links : [];
+    const prompts = isObject(state?.prompts) ? state.prompts : {};
+    const activePromptKey = isValidPromptKey(state?.active_prompt_key)
+      ? String(state.active_prompt_key)
+      : PROMPT_KEY_MF_EXPENSE_REPORTS;
+    try {
+      window.localStorage.setItem(STORAGE_LINKS_KEY, JSON.stringify(links));
+      window.localStorage.setItem(STORAGE_PROMPTS_KEY, JSON.stringify(prompts));
+      window.localStorage.setItem(STORAGE_PROMPT_ACTIVE_KEY, activePromptKey);
+      const revision = Number.parseInt(String(state?.revision ?? "0"), 10);
+      workspaceStateRevision = Number.isFinite(revision) && revision >= 0 ? revision : 0;
+      promptMapCache = null;
+    } catch {
+      // ignore
+    }
+  }
+
+  async function fetchWorkspaceStateFromServer() {
+    try {
+      const res = await fetch(WORKSPACE_STATE_ENDPOINT, { cache: "no-store" });
+      if (!res.ok) return null;
+      const data = await res.json().catch(() => null);
+      if (!isObject(data)) return null;
+      return {
+        links: Array.isArray(data.links) ? data.links : [],
+        prompts: isObject(data.prompts) ? data.prompts : {},
+        active_prompt_key: isValidPromptKey(data.active_prompt_key)
+          ? String(data.active_prompt_key)
+          : PROMPT_KEY_MF_EXPENSE_REPORTS,
+        revision: (() => {
+          const parsed = Number.parseInt(String(data.revision ?? "0"), 10);
+          return Number.isFinite(parsed) && parsed >= 0 ? parsed : 0;
+        })(),
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  async function pushWorkspaceStateToServer(snapshot = null) {
+    const payload = isObject(snapshot) ? snapshot : collectLocalWorkspaceState();
+    const body = { ...payload, base_revision: workspaceStateRevision };
+    if (workspaceSyncInFlight) return false;
+    workspaceSyncInFlight = true;
+    try {
+      const res = await fetch(WORKSPACE_STATE_ENDPOINT, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) return false;
+      const data = await res.json().catch(() => null);
+      if (isObject(data)) {
+        applyWorkspaceStateToLocalStorage({
+          links: Array.isArray(data.links) ? data.links : [],
+          prompts: isObject(data.prompts) ? data.prompts : {},
+          active_prompt_key: isValidPromptKey(data.active_prompt_key)
+            ? String(data.active_prompt_key)
+            : PROMPT_KEY_MF_EXPENSE_REPORTS,
+          revision: (() => {
+            const parsed = Number.parseInt(String(data.revision ?? "0"), 10);
+            return Number.isFinite(parsed) && parsed >= 0 ? parsed : 0;
+          })(),
+        });
+      }
+      return true;
+    } catch {
+      return false;
+    } finally {
+      workspaceSyncInFlight = false;
+    }
+  }
+
+  function scheduleWorkspaceSync() {
+    if (workspaceSyncTimer) window.clearTimeout(workspaceSyncTimer);
+    workspaceSyncTimer = window.setTimeout(() => {
+      workspaceSyncTimer = null;
+      void pushWorkspaceStateToServer();
+    }, WORKSPACE_SYNC_DEBOUNCE_MS);
+  }
+
+  async function bootstrapWorkspaceState() {
+    const localState = collectLocalWorkspaceState();
+    const remoteState = await fetchWorkspaceStateFromServer();
+    if (remoteState && Number.isFinite(Number(remoteState.revision))) {
+      workspaceStateRevision = Number.parseInt(String(remoteState.revision), 10) || 0;
+    }
+    if (remoteState && hasMeaningfulWorkspaceState(remoteState)) {
+      applyWorkspaceStateToLocalStorage(remoteState);
+      return;
+    }
+    if (remoteState && hasMeaningfulWorkspaceState(localState)) {
+      await pushWorkspaceStateToServer(localState);
+    }
   }
 
   function readPromptMap() {
@@ -135,6 +285,7 @@
     const safeMap = isObject(map) ? map : {};
     try {
       window.localStorage.setItem(STORAGE_PROMPTS_KEY, JSON.stringify(safeMap));
+      scheduleWorkspaceSync();
       return true;
     } catch {
       return false;
@@ -177,6 +328,7 @@
     if (!isValidPromptKey(key)) return;
     try {
       window.localStorage.setItem(STORAGE_PROMPT_ACTIVE_KEY, String(key));
+      scheduleWorkspaceSync();
     } catch {
       // ignore
     }
@@ -351,6 +503,7 @@
       : [];
     try {
       window.localStorage.setItem(STORAGE_LINKS_KEY, JSON.stringify(safeLinks));
+      scheduleWorkspaceSync();
       return true;
     } catch {
       return false;
@@ -391,20 +544,41 @@
 
     const main = document.createElement("div");
     main.className = "workspace-link-main";
+    main.dataset.fullUrl = String(link.url || "");
 
-    const label = document.createElement("span");
-    label.className = "workspace-link-label";
-    label.textContent = link.label;
+    const head = document.createElement("div");
+    head.className = "workspace-link-head";
 
-    const urlAnchor = document.createElement("a");
-    urlAnchor.className = "workspace-link-url";
-    urlAnchor.href = link.url;
-    urlAnchor.target = "_blank";
-    urlAnchor.rel = "noopener noreferrer";
-    urlAnchor.textContent = link.url;
+    const openLink = document.createElement("a");
+    openLink.className = "secondary workspace-link-open";
+    openLink.setAttribute("data-workspace-link-open", "");
+    openLink.href = link.url;
+    openLink.target = "_blank";
+    openLink.rel = "noopener noreferrer";
+    openLink.title = link.url;
+    openLink.setAttribute("aria-label", `${link.label} を開く（${link.url}）`);
+    openLink.textContent = link.label;
 
-    main.appendChild(label);
-    main.appendChild(urlAnchor);
+    const urlToggleButton = document.createElement("button");
+    urlToggleButton.type = "button";
+    urlToggleButton.className = "workspace-url-toggle";
+    urlToggleButton.setAttribute("data-workspace-url-toggle", "");
+    urlToggleButton.setAttribute("aria-label", "URLを表示");
+    urlToggleButton.textContent = "URL";
+    attachUrlToggle(main, urlToggleButton);
+
+    const domainAnchor = document.createElement("a");
+    domainAnchor.className = "workspace-link-domain";
+    domainAnchor.href = link.url;
+    domainAnchor.target = "_blank";
+    domainAnchor.rel = "noopener noreferrer";
+    domainAnchor.title = link.url;
+    domainAnchor.textContent = formatUrlHost(link.url) || link.url;
+
+    head.appendChild(openLink);
+    head.appendChild(urlToggleButton);
+    main.appendChild(head);
+    main.appendChild(domainAnchor);
 
     const actions = document.createElement("div");
     actions.className = "workspace-link-actions";
@@ -488,16 +662,14 @@
     const container = element ? element.closest(".workspace-link-item") : null;
     if (!container) return {};
 
-    const labelNode = container.querySelector(".workspace-link-label");
-    const urlNode = container.querySelector(".workspace-link-url");
+    const labelNode = container.querySelector(".workspace-link-open");
+    const urlContainer = container.querySelector(".workspace-link-main");
     const context = {};
 
     const label = labelNode ? normalizeText(labelNode.textContent, 80) : "";
     if (label) context.label = label;
 
-    const urlRaw = urlNode
-      ? urlNode.getAttribute("href") || urlNode.textContent || ""
-      : "";
+    const urlRaw = urlContainer instanceof HTMLElement ? String(urlContainer.dataset.fullUrl || "") : "";
     const url = normalizeUrl(urlRaw);
     if (url) context.url = url;
 
@@ -505,7 +677,13 @@
   }
 
   function bindStaticCopyButtons() {
-    document.querySelectorAll(".workspace-copy-url[data-copy-url]").forEach((button) => {
+    document.querySelectorAll(".workspace-link-list-static [data-workspace-url-toggle]").forEach((button) => {
+      const main = button.closest(".workspace-link-main");
+      if (!main) return;
+      attachUrlToggle(main, button);
+    });
+
+    document.querySelectorAll(".workspace-link-list-static .workspace-copy-url[data-copy-url]").forEach((button) => {
       button.addEventListener("click", async () => {
         const value = button.getAttribute("data-copy-url") || "";
         const ok = await copyToClipboard(value);
@@ -514,14 +692,14 @@
       });
     });
 
-    document.querySelectorAll(".workspace-copy-prompt[data-prompt-key]").forEach((button) => {
+    document.querySelectorAll(".workspace-link-list-static .workspace-copy-prompt[data-prompt-key]").forEach((button) => {
       button.addEventListener("click", () => {
         const key = button.getAttribute("data-prompt-key") || "";
         void copyPromptForKey(key, resolvePromptContextFromButton(button));
       });
     });
 
-    document.querySelectorAll(".workspace-edit-prompt[data-prompt-key]").forEach((button) => {
+    document.querySelectorAll(".workspace-link-list-static .workspace-edit-prompt[data-prompt-key]").forEach((button) => {
       button.addEventListener("click", () => {
         const key = button.getAttribute("data-prompt-key") || "";
         activatePromptEditorForKey(key, resolvePromptContextFromButton(button));
@@ -567,9 +745,8 @@
 
     if (clearLinksButton) {
       clearLinksButton.addEventListener("click", () => {
-        try {
-          window.localStorage.removeItem(STORAGE_LINKS_KEY);
-        } catch {
+        const saved = saveCustomLinks([]);
+        if (!saved) {
           showToast("追加リンクを削除できませんでした。", "error");
           return;
         }
@@ -625,6 +802,11 @@
     }
   }
 
-  initializeLinks();
-  initializePrompt();
+  async function bootstrap() {
+    await bootstrapWorkspaceState();
+    initializeLinks();
+    initializePrompt();
+  }
+
+  void bootstrap();
 })();

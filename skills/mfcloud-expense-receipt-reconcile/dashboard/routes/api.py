@@ -6,6 +6,7 @@ import sys
 from datetime import datetime
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse
@@ -16,6 +17,11 @@ from services import core
 
 def create_api_router() -> APIRouter:
     router = APIRouter()
+    WORKSPACE_MAX_LINKS = 100
+    WORKSPACE_MAX_LABEL_CHARS = 80
+    WORKSPACE_MAX_PROMPT_ENTRIES = 200
+    WORKSPACE_MAX_PROMPT_CHARS = 50000
+    WORKSPACE_DEFAULT_PROMPT_KEY = "mf_expense_reports"
 
     def _actor_from_request(request: Request) -> dict[str, str]:
         ip = request.client.host if request.client else ""
@@ -61,6 +67,152 @@ def create_api_router() -> APIRouter:
                 stderr=result.stderr,
             )
         return result
+
+    def _workspace_state_path() -> Path:
+        return core._artifact_root() / "_workspace" / "workspace_state.json"
+
+    def _workspace_default_state() -> dict[str, Any]:
+        return {
+            "links": [],
+            "prompts": {},
+            "active_prompt_key": WORKSPACE_DEFAULT_PROMPT_KEY,
+            "revision": 0,
+            "updated_at": None,
+        }
+
+    def _normalize_workspace_label(value: Any) -> str:
+        return " ".join(str(value or "").strip().split())[:WORKSPACE_MAX_LABEL_CHARS]
+
+    def _normalize_workspace_url(value: Any) -> str | None:
+        url = str(value or "").strip()
+        if not url:
+            return None
+        parsed = urlparse(url)
+        if parsed.scheme not in {"http", "https"}:
+            return None
+        if not parsed.netloc:
+            return None
+        return parsed.geturl()
+
+    def _sanitize_workspace_links(value: Any) -> list[dict[str, str]]:
+        if not isinstance(value, list):
+            return []
+        out: list[dict[str, str]] = []
+        seen: set[str] = set()
+        for row in value:
+            if not isinstance(row, dict):
+                continue
+            url = _normalize_workspace_url(row.get("url"))
+            if not url:
+                continue
+            key = url.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            label = _normalize_workspace_label(row.get("label"))
+            if not label:
+                label = urlparse(url).netloc or url
+            out.append({"label": label, "url": url})
+            if len(out) >= WORKSPACE_MAX_LINKS:
+                break
+        return out
+
+    def _is_valid_prompt_key(key: Any) -> bool:
+        text = str(key or "").strip()
+        if not text:
+            return False
+        if text == WORKSPACE_DEFAULT_PROMPT_KEY:
+            return True
+        return text.startswith("custom:")
+
+    def _sanitize_workspace_prompts(value: Any) -> dict[str, str]:
+        if not isinstance(value, dict):
+            return {}
+        out: dict[str, str] = {}
+        for key, raw in value.items():
+            prompt_key = str(key or "").strip()
+            if not _is_valid_prompt_key(prompt_key):
+                continue
+            text = str(raw or "")
+            if len(text) > WORKSPACE_MAX_PROMPT_CHARS:
+                text = text[:WORKSPACE_MAX_PROMPT_CHARS]
+            out[prompt_key] = text
+            if len(out) >= WORKSPACE_MAX_PROMPT_ENTRIES:
+                break
+        return out
+
+    def _sanitize_workspace_active_prompt_key(value: Any) -> str:
+        key = str(value or "").strip()
+        if _is_valid_prompt_key(key):
+            return key
+        return WORKSPACE_DEFAULT_PROMPT_KEY
+
+    def _normalize_workspace_state(payload: Any) -> dict[str, Any]:
+        if not isinstance(payload, dict):
+            return _workspace_default_state()
+        links = _sanitize_workspace_links(payload.get("links"))
+        prompts = _sanitize_workspace_prompts(payload.get("prompts"))
+        active_prompt_key = _sanitize_workspace_active_prompt_key(payload.get("active_prompt_key"))
+        revision = core._safe_non_negative_int(payload.get("revision"), default=0)
+        updated_at = str(payload.get("updated_at") or "").strip() or None
+        return {
+            "links": links,
+            "prompts": prompts,
+            "active_prompt_key": active_prompt_key,
+            "revision": int(revision),
+            "updated_at": updated_at,
+        }
+
+    def _read_workspace_state() -> dict[str, Any]:
+        state = _normalize_workspace_state(core._read_json(_workspace_state_path()))
+        if not state.get("active_prompt_key"):
+            state["active_prompt_key"] = WORKSPACE_DEFAULT_PROMPT_KEY
+        state["revision"] = core._safe_non_negative_int(state.get("revision"), default=0)
+        return state
+
+    def _write_workspace_state(state: dict[str, Any], *, revision: int | None = None) -> dict[str, Any]:
+        now = datetime.now().isoformat(timespec="seconds")
+        sanitized = _normalize_workspace_state(state)
+        if revision is None:
+            current = _normalize_workspace_state(core._read_json(_workspace_state_path()))
+            next_revision = core._safe_non_negative_int(current.get("revision"), default=0) + 1
+        else:
+            next_revision = core._safe_non_negative_int(revision, default=0)
+        sanitized["revision"] = int(next_revision)
+        sanitized["updated_at"] = now
+        path = _workspace_state_path()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        core._write_json(path, sanitized)
+        return sanitized
+
+    def _merge_workspace_links(
+        client_links: list[dict[str, str]],
+        server_links: list[dict[str, str]],
+    ) -> list[dict[str, str]]:
+        merged: list[dict[str, str]] = []
+        seen: set[str] = set()
+        for row in [*client_links, *server_links]:
+            if not isinstance(row, dict):
+                continue
+            url = _normalize_workspace_url(row.get("url"))
+            if not url:
+                continue
+            key = url.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            label = _normalize_workspace_label(row.get("label"))
+            if not label:
+                label = urlparse(url).netloc or url
+            merged.append({"label": label, "url": url})
+            if len(merged) >= WORKSPACE_MAX_LINKS:
+                break
+        return merged
+
+    def _merge_workspace_prompts(client_prompts: dict[str, str], server_prompts: dict[str, str]) -> dict[str, str]:
+        merged = dict(server_prompts)
+        merged.update(client_prompts)
+        return _sanitize_workspace_prompts(merged)
 
     def _extract_print_file_paths(manifest: dict[str, Any] | None) -> list[str]:
         if not isinstance(manifest, dict):
@@ -1399,6 +1551,44 @@ def create_api_router() -> APIRouter:
         )
 
         return JSONResponse({"status": "ok", "checklist": checklist})
+
+    @router.get("/api/workspace/state")
+    def api_get_workspace_state() -> JSONResponse:
+        state = _read_workspace_state()
+        return JSONResponse({"status": "ok", **state}, headers={"Cache-Control": "no-store"})
+
+    @router.post("/api/workspace/state")
+    def api_set_workspace_state(payload: dict[str, Any]) -> JSONResponse:
+        payload = payload if isinstance(payload, dict) else {}
+        current = _read_workspace_state()
+        current_revision = core._safe_non_negative_int(current.get("revision"), default=0)
+        base_revision_raw = payload.get("base_revision")
+        has_base_revision = base_revision_raw is not None
+        base_revision = core._safe_non_negative_int(base_revision_raw, default=-1)
+        revision_conflict = bool(has_base_revision and base_revision != current_revision)
+
+        if "links" in payload:
+            links_payload = _sanitize_workspace_links(payload.get("links"))
+            if revision_conflict:
+                current["links"] = _merge_workspace_links(links_payload, _sanitize_workspace_links(current.get("links")))
+            else:
+                current["links"] = links_payload
+        if "prompts" in payload:
+            prompts_payload = _sanitize_workspace_prompts(payload.get("prompts"))
+            if revision_conflict:
+                current["prompts"] = _merge_workspace_prompts(
+                    prompts_payload,
+                    _sanitize_workspace_prompts(current.get("prompts")),
+                )
+            else:
+                current["prompts"] = prompts_payload
+        if "active_prompt_key" in payload:
+            current["active_prompt_key"] = _sanitize_workspace_active_prompt_key(payload.get("active_prompt_key"))
+        saved = _write_workspace_state(current, revision=current_revision + 1)
+        return JSONResponse(
+            {"status": "ok", **saved, "conflict_resolved": revision_conflict},
+            headers={"Cache-Control": "no-store"},
+        )
 
     @router.post("/api/print-pdf/{ym}/{source}/{filename}")
     def api_print_pdf(ym: str, source: str, filename: str, request: Request) -> JSONResponse:
