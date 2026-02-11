@@ -93,6 +93,7 @@
     if (!data || typeof data !== "object") return false;
     if (String(data.running_mode || "").trim()) return false;
     if (normalizedMode === "preflight") return Boolean(data.preflight?.done);
+    if (normalizedMode === "preflight_mf") return Boolean(data.preflight?.done);
     if (normalizedMode === "amazon_download") return Boolean(data.amazon?.downloaded);
     if (normalizedMode === "rakuten_download") return Boolean(data.rakuten?.downloaded);
     if (normalizedMode === "amazon_print") return Boolean(data.amazon?.confirmed && data.amazon?.printed);
@@ -929,7 +930,7 @@
   }
 
   function inferAllowedModes(data) {
-    const allowed = ["preflight"];
+    const allowed = ["preflight", "preflight_mf"];
     if (!data.preflight?.done) return allowed;
     allowed.push("amazon_download");
     allowed.push("rakuten_download");

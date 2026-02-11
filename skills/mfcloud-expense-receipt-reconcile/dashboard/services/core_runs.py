@@ -381,7 +381,7 @@ def _reset_workflow_for_redownload(year: int, month: int, source: str) -> None:
 
 
 def _assert_run_mode_allowed(year: int, month: int, mode: str) -> None:
-    if mode == "preflight":
+    if mode in {"preflight", "preflight_mf"}:
         return
     state = _workflow_state_for_ym(year, month)
     allowed = state.get("allowed_run_modes") if isinstance(state.get("allowed_run_modes"), list) else []
@@ -1031,7 +1031,15 @@ def _start_run(payload: dict[str, Any]) -> dict[str, Any]:
         raise HTTPException(status_code=409, detail="Another run is already in progress.")
 
     mode = str(payload.get("mode") or "full").strip()
-    valid_modes = {"preflight", "amazon_download", "rakuten_download", "amazon_print", "rakuten_print", "mf_reconcile"}
+    valid_modes = {
+        "preflight",
+        "preflight_mf",
+        "amazon_download",
+        "rakuten_download",
+        "amazon_print",
+        "rakuten_print",
+        "mf_reconcile",
+    }
     if mode not in valid_modes:
         raise HTTPException(status_code=400, detail="Invalid mode.")
 
@@ -1106,9 +1114,11 @@ def _start_run(payload: dict[str, Any]) -> dict[str, Any]:
     if skip_receipt_name:
         cmd += ["--skip-receipt-name"]
 
-    if mode == "preflight":
+    if mode in {"preflight", "preflight_mf"}:
         _mark_preflight_started(year, month)
         cmd += ["--preflight", "--mfcloud-accounts-url", DEFAULT_MFCLOUD_ACCOUNTS_URL]
+        if mode == "preflight_mf":
+            cmd += ["--skip-amazon", "--skip-rakuten"]
     elif mode in {"amazon_download", "amazon_print"}:
         if mode == "amazon_download":
             _reset_workflow_for_redownload(year, month, "amazon")
