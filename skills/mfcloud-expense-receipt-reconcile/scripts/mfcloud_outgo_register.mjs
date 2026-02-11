@@ -615,16 +615,52 @@ async function autofillSelectIfEmpty(selectLocator, fieldName, preferTexts) {
   return { field: fieldName, value: picked.value, text: picked.text };
 }
 
+function inferAutofillNeedsFromErrors(errors) {
+  const text = Array.isArray(errors) ? errors.join(" ") : String(errors || "");
+  const t = String(text || "");
+  const has = (re) => re.test(t);
+
+  return {
+    account_title: has(/経費科目|勘定科目|科目|カテゴリ|分類/),
+    department: has(/部門/),
+    project: has(/プロジェクト/),
+    tax: has(/税|税区分|税率|インボイス/),
+    // Generic fallback for "something is required but unknown"
+    any_required_select: has(/必須|入力してください|選択してください/),
+  };
+}
+
+async function autofillAllEmptySelects(page, editorRoot, selects, fieldPrefix, preferTexts) {
+  const out = [];
+  const max = Math.min(await selects.count().catch(() => 0), 10);
+  for (let i = 0; i < max; i++) {
+    const sel = selects.nth(i);
+    const visible = await sel.isVisible().catch(() => false);
+    if (!visible) continue;
+
+    const idOrName = await sel.evaluate((el) => el?.getAttribute("name") || el?.id || "").catch(() => "");
+    const fieldName = idOrName ? `${fieldPrefix}:${String(idOrName)}` : fieldPrefix;
+    const filled = await autofillSelectIfEmpty(sel, fieldName, preferTexts);
+    if (filled) out.push(filled);
+  }
+  await page.bringToFront().catch(() => {});
+  return out;
+}
+
 async function autofillRequiredFields(page, editorRoot, options) {
   const out = [];
   const preferAccount = options?.accountTitlePreferTexts || ["雑費", "その他"];
+  const validationErrors = Array.isArray(options?.validationErrors) ? options.validationErrors : [];
+  const needs = inferAutofillNeedsFromErrors(validationErrors);
 
   // Account title / expense category is the most common required field.
   const accountTitleSelect = editorRoot.locator(
     "select[name*='account_title' i], select[id*='account_title' i], select[name*='accountTitle' i], select[name*='account_item' i], select[name*='account_item_id' i]"
   );
-  const accountFilled = await autofillSelectIfEmpty(accountTitleSelect, "account_title", preferAccount);
-  if (accountFilled) out.push(accountFilled);
+  if (needs.account_title || needs.any_required_select || validationErrors.length === 0) {
+    const accountFilled = await autofillSelectIfEmpty(accountTitleSelect, "account_title", preferAccount);
+    if (accountFilled) out.push(accountFilled);
+  }
 
   // Some tenants require department/project/tax category; fill first reasonable option if empty.
   const genericSelects = [
@@ -633,17 +669,20 @@ async function autofillRequiredFields(page, editorRoot, options) {
     { key: "tax", sel: "select[name*='tax' i], select[id*='tax' i]" },
   ];
   for (const g of genericSelects) {
-    const filled = await autofillSelectIfEmpty(editorRoot.locator(g.sel), g.key, []);
-    if (filled) out.push(filled);
+    if (needs[g.key] || needs.any_required_select) {
+      const filled = await autofillSelectIfEmpty(editorRoot.locator(g.sel), g.key, []);
+      if (filled) out.push(filled);
+    }
   }
 
   // If there are still visibly-invalid selects, try to fill them as well.
   const invalidSelects = editorRoot.locator("select[aria-invalid='true'], select.is-invalid");
-  const invalidCount = Math.min(await invalidSelects.count().catch(() => 0), 6);
-  for (let i = 0; i < invalidCount; i++) {
-    const filled = await autofillSelectIfEmpty(invalidSelects.nth(i), "unknown_select", []);
-    if (filled) out.push(filled);
-  }
+  out.push(...(await autofillAllEmptySelects(page, editorRoot, invalidSelects, "invalid_select", [])));
+
+  // As a last resort, fill selects that declare required/aria-required and are visible.
+  // This is restricted to selects (no text inputs) to avoid accidental data entry.
+  const requiredSelects = editorRoot.locator("select[required], select[aria-required='true'], select[data-required='true']");
+  out.push(...(await autofillAllEmptySelects(page, editorRoot, requiredSelects, "required_select", [])));
 
   // Sometimes the focus is lost; keep editor in front.
   await page.bringToFront().catch(() => {});
@@ -688,6 +727,7 @@ async function clickCreateWithAutofill(page, target, auditJsonl, opts) {
     const editorRoot = await resolveEditorRoot(page);
     const filled = await autofillRequiredFields(page, editorRoot, {
       accountTitlePreferTexts: accountTitlePreferTexts.length ? accountTitlePreferTexts : undefined,
+      validationErrors: res.errors,
     });
     if (filled.length === 0) break;
     actions.push(...filled);

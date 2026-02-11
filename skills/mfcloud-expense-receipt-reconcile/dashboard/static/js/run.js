@@ -513,11 +513,18 @@
       const tdReason = document.createElement("td");
       const reason = String(item.reason || "").trim();
       const detail = String(item.detail || "").trim();
+      const validationErrors = Array.isArray(item.validation_errors) ? item.validation_errors : [];
       tdReason.innerHTML = reason ? `<div class=\"mf-draft-code\">${reason}</div>` : "<div class=\"muted\">-</div>";
       if (detail) {
         const d = document.createElement("div");
         d.className = "muted mf-draft-code";
         d.textContent = detail;
+        tdReason.appendChild(d);
+      }
+      if (validationErrors.length) {
+        const d = document.createElement("div");
+        d.className = "muted mf-draft-code";
+        d.textContent = `validation: ${validationErrors.join(" / ")}`;
         tdReason.appendChild(d);
       }
       tr.appendChild(tdReason);
