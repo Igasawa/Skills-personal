@@ -898,6 +898,19 @@ def test_api_month_close_runs_archive_with_cleanup_and_writes_audit(
         reports / "workflow.json",
         {"rakuten": {"confirmed_at": "2026-02-08T10:00:00", "printed_at": "2026-02-08T10:10:00"}},
     )
+    _write_json(
+        reports / "month_close_checklist.json",
+        {
+            "ym": ym,
+            "checklist": {
+                "transportation_expense": True,
+                "expense_submission": True,
+                "document_printout": True,
+                "mf_accounting_link": True,
+            },
+            "updated_at": "2026-02-08T09:59:59",
+        },
+    )
     _touch(reports / "quality_gate.json", "{}")
 
     calls: list[list[str]] = []
@@ -941,6 +954,56 @@ def test_api_month_close_runs_archive_with_cleanup_and_writes_audit(
     details = last.get("details") or {}
     assert details.get("cleanup") is True
     assert details.get("cleanup_removed") == 3
+
+
+def test_api_month_close_rejects_when_checklist_is_incomplete(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    client = _create_client(monkeypatch, tmp_path)
+    ym = "2026-01"
+    reports = _reports_dir(tmp_path, ym)
+    _write_json(
+        reports / "workflow.json",
+        {"amazon": {"confirmed_at": "2026-02-08T10:00:00", "printed_at": "2026-02-08T10:10:00"}},
+    )
+    _write_json(
+        reports / "month_close_checklist.json",
+        {
+            "ym": ym,
+            "checklist": {
+                "transportation_expense": True,
+                "expense_submission": False,
+                "document_printout": True,
+                "mf_accounting_link": False,
+            },
+            "updated_at": "2026-02-08T09:59:59",
+        },
+    )
+    _touch(reports / "quality_gate.json", "{}")
+
+    calls: list[list[str]] = []
+
+    def _fake_run(cmd: Any, *args: Any, **kwargs: Any) -> subprocess.CompletedProcess[str]:
+        calls.append([str(c) for c in cmd])
+        return subprocess.CompletedProcess(args=cmd, returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(core_runs.subprocess, "run", _fake_run)
+
+    res = client.post("/api/month-close/2026-01")
+    assert res.status_code == 409
+    detail = str(res.json().get("detail") or "")
+    assert "Month close checklist is incomplete" in detail
+    assert "expense_submission" in detail
+    assert "mf_accounting_link" in detail
+    assert not calls
+
+    entries = _read_audit_entries(tmp_path, ym)
+    archive_events = [e for e in entries if e.get("event_type") == "archive"]
+    assert archive_events
+    last = archive_events[-1]
+    assert last["action"] == "month_close"
+    assert last["status"] == "rejected"
+    assert "Month close checklist is incomplete" in str((last.get("details") or {}).get("reason"))
 
 
 def test_api_archive_rejects_when_confirm_print_not_completed(
@@ -1328,3 +1391,81 @@ def test_api_provider_download_rejected_as_manual_only(
     assert last.get("status") == "rejected"
     details = last.get("details") or {}
     assert details.get("mode") == "manual_only"
+
+
+def test_api_month_close_checklist_get_returns_default(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    client = _create_client(monkeypatch, tmp_path)
+
+    res = client.get("/api/month-close-checklist/2026-01")
+    assert res.status_code == 200
+    body = res.json()
+    assert body["ym"] == "2026-01"
+    assert body["updated_at"] is None
+    assert body["checklist"] == {
+        "transportation_expense": False,
+        "expense_submission": False,
+        "document_printout": False,
+        "mf_accounting_link": False,
+    }
+
+
+def test_api_month_close_checklist_post_persists_state_and_writes_audit(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    client = _create_client(monkeypatch, tmp_path)
+    ym = "2026-01"
+    checklist = {
+        "transportation_expense": True,
+        "expense_submission": True,
+        "document_printout": False,
+        "mf_accounting_link": True,
+    }
+
+    post_res = client.post(f"/api/month-close-checklist/{ym}", json={"checklist": checklist})
+    assert post_res.status_code == 200
+    post_body = post_res.json()
+    assert post_body["status"] == "ok"
+    assert post_body["checklist"] == checklist
+
+    get_res = client.get(f"/api/month-close-checklist/{ym}")
+    assert get_res.status_code == 200
+    get_body = get_res.json()
+    assert get_body["ym"] == ym
+    assert get_body["checklist"] == checklist
+    assert isinstance(get_body["updated_at"], str)
+    assert get_body["updated_at"]
+
+    entries = _read_audit_entries(tmp_path, ym)
+    checklist_events = [e for e in entries if e.get("event_type") == "month_close_checklist"]
+    assert checklist_events
+    last = checklist_events[-1]
+    assert last["action"] == "update"
+    assert last["status"] == "success"
+    assert (last.get("details") or {}).get("checklist") == checklist
+
+
+def test_api_month_close_checklist_post_rejects_invalid_payload(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    client = _create_client(monkeypatch, tmp_path)
+
+    missing_key = {
+        "transportation_expense": True,
+        "expense_submission": True,
+        "document_printout": True,
+    }
+    res_missing = client.post("/api/month-close-checklist/2026-01", json={"checklist": missing_key})
+    assert res_missing.status_code == 400
+    assert "must contain exactly these keys" in str(res_missing.json().get("detail") or "")
+
+    non_bool = {
+        "transportation_expense": True,
+        "expense_submission": "yes",
+        "document_printout": True,
+        "mf_accounting_link": True,
+    }
+    res_non_bool = client.post("/api/month-close-checklist/2026-01", json={"checklist": non_bool})
+    assert res_non_bool.status_code == 400
+    assert "checklist.expense_submission must be a boolean" in str(res_non_bool.json().get("detail") or "")

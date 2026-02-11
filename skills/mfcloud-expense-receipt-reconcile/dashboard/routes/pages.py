@@ -19,9 +19,9 @@ def create_pages_router(templates: Jinja2Templates) -> APIRouter:
     def index(request: Request) -> HTMLResponse:
         defaults = core._resolve_form_defaults()
         return templates.TemplateResponse(
+            request,
             "index.html",
             {
-                "request": request,
                 "defaults": defaults,
                 "ax_home": str(core._ax_home()),
                 "active_tab": "wizard",
@@ -47,9 +47,9 @@ def create_pages_router(templates: Jinja2Templates) -> APIRouter:
                 latest_job_ym = None
 
         return templates.TemplateResponse(
+            request,
             "status.html",
             {
-                "request": request,
                 "artifacts": artifacts,
                 "archive_history": archive_history,
                 "latest_job": latest_job,
@@ -63,9 +63,9 @@ def create_pages_router(templates: Jinja2Templates) -> APIRouter:
     @router.get("/workspace", response_class=HTMLResponse)
     def workspace(request: Request) -> HTMLResponse:
         return templates.TemplateResponse(
+            request,
             "workspace.html",
             {
-                "request": request,
                 "ax_home": str(core._ax_home()),
                 "active_tab": "workspace",
             },
@@ -127,9 +127,9 @@ def create_pages_router(templates: Jinja2Templates) -> APIRouter:
         rakuten_bulk_print_ready = bool(rakuten_workflow.get("print_prepared_at")) and rakuten_print_manifest.exists()
 
         return templates.TemplateResponse(
+            request,
             "run.html",
             {
-                "request": request,
                 "ym": ym,
                 "counts": merged_counts,
                 "rows": rows[:50],
@@ -179,9 +179,9 @@ def create_pages_router(templates: Jinja2Templates) -> APIRouter:
         amazon_count = sum(1 for r in rows if r.get("source") == "amazon")
         rakuten_count = sum(1 for r in rows if r.get("source") == "rakuten")
         return templates.TemplateResponse(
+            request,
             "excluded_pdfs.html",
             {
-                "request": request,
                 "ym": ym,
                 "rows": rows,
                 "total": len(rows),
@@ -208,9 +208,9 @@ def create_pages_router(templates: Jinja2Templates) -> APIRouter:
             available_months.insert(0, ym)
         available_months = list(dict.fromkeys(available_months))
         return templates.TemplateResponse(
+            request,
             "archive_receipts.html",
             {
-                "request": request,
                 "ym": ym,
                 "rows": archive_data.get("rows") if isinstance(archive_data.get("rows"), list) else [],
                 "snapshots": archive_data.get("snapshots") if isinstance(archive_data.get("snapshots"), list) else [],

@@ -1113,6 +1113,16 @@ def create_api_router() -> APIRouter:
         include_pdfs = True
         include_debug = False
         try:
+            if action == "month_close":
+                checklist_payload = core._read_month_close_checklist_for_ym(ym)
+                checklist = checklist_payload.get("checklist")
+                missing_items = core._incomplete_month_close_checklist_keys(checklist)
+                if missing_items:
+                    joined = ", ".join(missing_items)
+                    raise HTTPException(
+                        status_code=409,
+                        detail=f"Month close checklist is incomplete: {joined}",
+                    )
             core._assert_archive_allowed(year, month)
             result = core._archive_outputs_for_ym(
                 year,
@@ -1185,21 +1195,7 @@ def create_api_router() -> APIRouter:
     @router.get("/api/month-close-checklist/{ym}")
     def api_get_month_close_checklist(ym: str) -> JSONResponse:
         ym = core._safe_ym(ym)
-        root = core._artifact_root() / ym / "reports"
-        root.mkdir(parents=True, exist_ok=True)
-        checklist_path = root / "month_close_checklist.json"
-        data = core._read_json(checklist_path)
-        if not isinstance(data, dict) or data.get("ym") != ym:
-            data = {
-                "ym": ym,
-                "checklist": {
-                    "transportation_expense": False,
-                    "expense_submission": False,
-                    "document_printout": False,
-                    "mf_accounting_link": False,
-                },
-                "updated_at": None,
-            }
+        data = core._read_month_close_checklist_for_ym(ym)
         return JSONResponse(data)
 
     @router.post("/api/month-close-checklist/{ym}")
@@ -1207,26 +1203,8 @@ def create_api_router() -> APIRouter:
         ym = core._safe_ym(ym)
         year, month = core._split_ym(ym)
         actor = _actor_from_request(request)
-        checklist = payload.get("checklist")
-        if not isinstance(checklist, dict):
-            raise HTTPException(status_code=400, detail="checklist must be a dict.")
-
-        # Validate checklist keys
-        expected_keys = {"transportation_expense", "expense_submission", "document_printout", "mf_accounting_link"}
-        if set(checklist.keys()) != expected_keys:
-            raise HTTPException(
-                status_code=400,
-                detail=f"checklist must contain exactly these keys: {expected_keys}",
-            )
-
-        # Validate checklist values (must be boolean)
-        for key, value in checklist.items():
-            if not isinstance(value, bool):
-                raise HTTPException(status_code=400, detail=f"checklist.{key} must be a boolean.")
-
-        root = core._artifact_root() / ym / "reports"
-        root.mkdir(parents=True, exist_ok=True)
-        checklist_path = root / "month_close_checklist.json"
+        checklist = core._validate_month_close_checklist_payload(payload.get("checklist"))
+        checklist_path = core._month_close_checklist_path_for_ym(ym)
 
         data = {
             "ym": ym,

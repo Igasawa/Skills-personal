@@ -69,11 +69,11 @@
 
 ## 9. フェーズ計画の管理
 - フェーズ計画は `references/roadmap.md` を正本として管理する
-- 現在の最優先は Phase 1.5（Amazon/楽天MVP + MF下書き作成）とする
-- Phase 2（Aqua Voice / ChatGPT / Claude / Replit など）は、Phase 1.5の完了条件を満たした後に着手する
+- Phase 1 / Phase 1.5 は完了済みとし、現在の最優先は運用安定化（監査性・月次クローズ品質の維持）とする
+- Phase 2（他サービス自動取得拡張）はスコープ外とし、必要時に別計画として再定義する
 - Step4.5（Aqua Voice / ChatGPT / Claude / Gamma）は当面「手動取得のみ」とする
-  - 各サービス側でPDF/画像を手動取得し、`manual/inbox/`（共通フォルダ）の**直下**へ格納する
-  - サブフォルダは使用せず、すべてのファイルを `manual/inbox/` 直下に配置する
+  - 各サービス側でPDF/画像を手動取得し、`manual/inbox/`（共通フォルダ）へ格納する
+  - 配置先は `manual/inbox/` 直下を基本とし、必要に応じて `manual/inbox/{provider}/`（`chatgpt` / `claude` / `gamma` / `aquavoice`）も許可する
   - ダッシュボードでは「4サービス一括取り込み」のみを実行する
   - 自動取得（bot check回避を含む）はMVP範囲外として別フェーズで再検討する
 
