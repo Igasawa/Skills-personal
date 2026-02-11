@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 import subprocess
+import sys
 from typing import Any
 
 from fastapi import FastAPI
@@ -1062,6 +1063,8 @@ def test_api_open_manual_inbox_creates_and_opens_folder(
 ) -> None:
     client = _create_client(monkeypatch, tmp_path)
     ym = "2026-01"
+    shortcut_root = tmp_path / "desktop"
+    monkeypatch.setenv("AX_DASHBOARD_SHORTCUT_DIR", str(shortcut_root))
     calls: list[list[str]] = []
 
     def _fake_run(cmd: Any, *args: Any, **kwargs: Any) -> subprocess.CompletedProcess[str]:
@@ -1079,12 +1082,24 @@ def test_api_open_manual_inbox_creates_and_opens_folder(
     assert opened.exists()
     assert opened.name == "inbox"
     assert opened.parent.name == "manual"
+    shortcut_value = str(body.get("shortcut_path") or "")
+    if sys.platform.startswith("win"):
+        assert shortcut_value
+        shortcut_path = Path(shortcut_value)
+        assert shortcut_path.exists()
+        assert shortcut_path.suffix.lower() == ".url"
+        assert shortcut_path.parent == shortcut_root
+    else:
+        assert shortcut_value == ""
 
     assert calls
     entries = _read_audit_entries(tmp_path, ym)
     manual_events = [e for e in entries if e.get("event_type") == "manual" and e.get("action") == "open_inbox"]
     assert manual_events
     assert manual_events[-1].get("status") == "success"
+    details = manual_events[-1].get("details") or {}
+    if sys.platform.startswith("win"):
+        assert str(details.get("shortcut_path") or "")
 
 
 def test_api_manual_import_returns_counts_and_writes_audit(
@@ -1150,6 +1165,8 @@ def test_api_open_mf_bulk_inbox_creates_and_opens_folder(
 ) -> None:
     client = _create_client(monkeypatch, tmp_path)
     ym = "2026-01"
+    shortcut_root = tmp_path / "desktop"
+    monkeypatch.setenv("AX_DASHBOARD_SHORTCUT_DIR", str(shortcut_root))
     calls: list[list[str]] = []
 
     def _fake_run(cmd: Any, *args: Any, **kwargs: Any) -> subprocess.CompletedProcess[str]:
@@ -1167,12 +1184,24 @@ def test_api_open_mf_bulk_inbox_creates_and_opens_folder(
     assert opened.exists()
     assert opened.name == "inbox"
     assert opened.parent.name == "mf_bulk_upload"
+    shortcut_value = str(body.get("shortcut_path") or "")
+    if sys.platform.startswith("win"):
+        assert shortcut_value
+        shortcut_path = Path(shortcut_value)
+        assert shortcut_path.exists()
+        assert shortcut_path.suffix.lower() == ".url"
+        assert shortcut_path.parent == shortcut_root
+    else:
+        assert shortcut_value == ""
 
     assert calls
     entries = _read_audit_entries(tmp_path, ym)
     events = [e for e in entries if e.get("event_type") == "mf_bulk_upload" and e.get("action") == "open_inbox"]
     assert events
     assert events[-1].get("status") == "success"
+    details = events[-1].get("details") or {}
+    if sys.platform.startswith("win"):
+        assert str(details.get("shortcut_path") or "")
 
 
 def test_api_mf_bulk_upload_returns_summary_and_writes_audit(

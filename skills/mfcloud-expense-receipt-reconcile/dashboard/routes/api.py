@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 from datetime import datetime
@@ -133,6 +134,31 @@ def create_api_router() -> APIRouter:
         else:
             cmd = ["xdg-open", str(path)]
         return subprocess.run(cmd, capture_output=True, text=True, check=False)
+
+    def _desktop_shortcut_root() -> Path:
+        override = str(os.environ.get("AX_DASHBOARD_SHORTCUT_DIR") or "").strip()
+        if override:
+            root = Path(override).expanduser()
+        else:
+            root = Path.home() / "Desktop"
+        root.mkdir(parents=True, exist_ok=True)
+        return root
+
+    def _write_folder_shortcut(target: Path, shortcut_name: str) -> Path | None:
+        if not sys.platform.startswith("win"):
+            return None
+        clean_name = str(shortcut_name or "").strip()
+        if not clean_name:
+            return None
+        shortcut_path = _desktop_shortcut_root() / f"{clean_name}.url"
+        content = (
+            "[InternetShortcut]\n"
+            f"URL={target.resolve().as_uri()}\n"
+            "IconFile=explorer.exe\n"
+            "IconIndex=0\n"
+        )
+        shortcut_path.write_text(content, encoding="utf-8")
+        return shortcut_path
 
     def _merge_pdfs(input_paths: list[Path], merged_path: Path) -> tuple[int, int]:
         writer = PdfWriter()
@@ -694,6 +720,11 @@ def create_api_router() -> APIRouter:
         year, month = core._split_ym(ym)
         actor = _actor_from_request(request)
         target = core._manual_inbox_dir_for_ym(year, month, create=True)
+        shortcut_path: Path | None = None
+        try:
+            shortcut_path = _write_folder_shortcut(target, f"AX_{ym}_Step3_CommonInbox")
+        except Exception:
+            shortcut_path = None
         res = _open_directory(target)
         if res.returncode != 0:
             detail = (
@@ -710,7 +741,11 @@ def create_api_router() -> APIRouter:
                 action="open_inbox",
                 status="failed",
                 actor=actor,
-                details={"reason": detail, "path": str(target)},
+                details={
+                    "reason": detail,
+                    "path": str(target),
+                    "shortcut_path": str(shortcut_path) if shortcut_path else "",
+                },
             )
             raise HTTPException(status_code=500, detail=detail)
 
@@ -721,9 +756,19 @@ def create_api_router() -> APIRouter:
             action="open_inbox",
             status="success",
             actor=actor,
-            details={"path": str(target)},
+            details={
+                "path": str(target),
+                "shortcut_path": str(shortcut_path) if shortcut_path else "",
+            },
         )
-        return JSONResponse({"status": "ok", "ym": ym, "path": str(target)})
+        return JSONResponse(
+            {
+                "status": "ok",
+                "ym": ym,
+                "path": str(target),
+                "shortcut_path": str(shortcut_path) if shortcut_path else "",
+            }
+        )
 
     @router.post("/api/folders/{ym}/provider-inbox/{provider}")
     def api_open_provider_inbox(ym: str, provider: str, request: Request) -> JSONResponse:
@@ -1013,6 +1058,11 @@ def create_api_router() -> APIRouter:
         year, month = core._split_ym(ym)
         actor = _actor_from_request(request)
         target = core._mf_bulk_upload_inbox_dir_for_ym(year, month, create=True)
+        shortcut_path: Path | None = None
+        try:
+            shortcut_path = _write_folder_shortcut(target, f"AX_{ym}_Step4_MfBulkInbox")
+        except Exception:
+            shortcut_path = None
         res = _open_directory(target)
         if res.returncode != 0:
             detail = (
@@ -1029,7 +1079,11 @@ def create_api_router() -> APIRouter:
                 action="open_inbox",
                 status="failed",
                 actor=actor,
-                details={"reason": detail, "path": str(target)},
+                details={
+                    "reason": detail,
+                    "path": str(target),
+                    "shortcut_path": str(shortcut_path) if shortcut_path else "",
+                },
             )
             raise HTTPException(status_code=500, detail=detail)
         core._append_audit_event(
@@ -1039,9 +1093,19 @@ def create_api_router() -> APIRouter:
             action="open_inbox",
             status="success",
             actor=actor,
-            details={"path": str(target)},
+            details={
+                "path": str(target),
+                "shortcut_path": str(shortcut_path) if shortcut_path else "",
+            },
         )
-        return JSONResponse({"status": "ok", "ym": ym, "path": str(target)})
+        return JSONResponse(
+            {
+                "status": "ok",
+                "ym": ym,
+                "path": str(target),
+                "shortcut_path": str(shortcut_path) if shortcut_path else "",
+            }
+        )
 
     @router.post("/api/mf-bulk-upload/{ym}")
     def api_mf_bulk_upload(ym: str, request: Request) -> JSONResponse:
