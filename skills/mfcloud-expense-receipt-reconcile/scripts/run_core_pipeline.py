@@ -265,6 +265,7 @@ def execute_pipeline(
     quality_gate_json = reports_dir / "quality_gate.json"
     monthly_thread_md = reports_dir / "monthly_thread.md"
     mf_draft_result_json = reports_dir / "mf_draft_create_result.json"
+    mf_draft_actions_jsonl = reports_dir / "mf_draft_create_actions.jsonl"
     exclude_orders_json = reports_dir / "exclude_orders.json"
 
     rec_json: dict[str, Any] = {}
@@ -335,6 +336,8 @@ def execute_pipeline(
             if not rec_out_json.exists():
                 raise RuntimeError("Missing reports/missing_evidence_candidates.json. Reconcile must run before MF draft create.")
             print("[run] MF draft create start", flush=True)
+            # Overwrite per run (avoid mixing rows across runs).
+            mf_draft_actions_jsonl.write_text("", encoding="utf-8")
             mf_draft_out = run_node_playwright_script(
                 script_path=SCRIPT_DIR / "mfcloud_outgo_register.mjs",
                 cwd=SCRIPT_DIR,
@@ -347,6 +350,8 @@ def execute_pipeline(
                     str(rec_out_json),
                     "--out-json",
                     str(mf_draft_result_json),
+                    "--audit-jsonl",
+                    str(mf_draft_actions_jsonl),
                     "--year",
                     str(year),
                     "--month",
@@ -434,6 +439,7 @@ def execute_pipeline(
                 "quality_gate_json": str(quality_gate_json),
                 "monthly_thread_md": str(monthly_thread_md),
                 "mf_draft_create_result_json": str(mf_draft_result_json),
+                "mf_draft_create_actions_jsonl": str(mf_draft_actions_jsonl),
             },
             "reconcile": rec_json.get("data", rec_json),
             "mf_draft": mf_draft_summary,

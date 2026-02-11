@@ -5,6 +5,54 @@ import process from "node:process";
 import { chromium } from "playwright";
 import { ensureDir, parseArgs, safeFilePart, writeDebug } from "./mjs_common.mjs";
 
+function nowIso() {
+  return new Date().toISOString();
+}
+
+function truncateString(value, maxLen = 400) {
+  const s = String(value || "");
+  if (s.length <= maxLen) return s;
+  return `${s.slice(0, maxLen)}...`;
+}
+
+function appendJsonl(filePath, payload) {
+  if (!filePath) return;
+  try {
+    ensureDir(path.dirname(filePath));
+    fs.appendFileSync(filePath, `${JSON.stringify(payload)}\n`, "utf-8");
+  } catch (err) {
+    // Never fail the run because logging failed.
+    console.error(`[mf_draft] audit_jsonl_write_failed path=${filePath} err=${String(err && err.message ? err.message : err)}`);
+  }
+}
+
+function normalizeDraftError(message) {
+  const m = String(message || "");
+  if (!m) return { reason: "unknown_error", detail: "" };
+
+  const direct = [
+    "matching_row_not_found",
+    "expense_editor_not_opened",
+    "edit_register_button_not_found",
+    "create_button_not_found",
+    "editor_not_closed_after_create",
+    "ocr_checkbox_not_checked",
+    "ocr_checkbox_not_found",
+    "file_input_not_found",
+    "filechooser_not_opened",
+    "receipt_file_attach_failed",
+  ];
+  for (const code of direct) {
+    if (m.includes(code)) return { reason: code, detail: m };
+  }
+
+  if (m.startsWith("receipt_pdf_not_found:")) return { reason: "receipt_pdf_not_found", detail: m };
+  if (m.startsWith("report json not found:")) return { reason: "report_json_not_found", detail: m };
+  if (m.includes("AUTH_REQUIRED")) return { reason: "auth_required", detail: m };
+
+  return { reason: "unclassified_error", detail: m };
+}
+
 function normalizeText(s) {
   return String(s || "")
     .replace(/[０-９]/g, (d) => String.fromCharCode(d.charCodeAt(0) - 0xfee0))
@@ -191,6 +239,9 @@ function loadTargets(reportJsonPath, year, month) {
       mf_vendor: String(row.mf_vendor || "").trim(),
       mf_memo: String(row.mf_memo || "").trim(),
       order_id: String(row.order_id || "").trim() || null,
+      order_source: String(row.order_source || "").trim() || null,
+      order_date: String(row.order_date || "").trim() || null,
+      order_total_yen: Number.isFinite(Number(row.total_yen)) ? Number(row.total_yen) : null,
       rank,
       pdf_path: resolvedPdfPath,
     };
@@ -535,6 +586,7 @@ async function main() {
   const outgoUrl = args["outgo-url"];
   const reportJson = args["report-json"];
   const outJson = args["out-json"];
+  const auditJsonl = args["audit-jsonl"] ? String(args["audit-jsonl"]) : "";
   const debugDir = args["debug-dir"];
   const headed = args.headed !== false;
   const slowMoMs = Number.parseInt(String(args["slow-mo-ms"] || "0"), 10);
@@ -551,6 +603,7 @@ async function main() {
 
   ensureDir(path.dirname(outJson));
   if (debugDir) ensureDir(debugDir);
+  if (auditJsonl) ensureDir(path.dirname(auditJsonl));
 
   const { targets, preSkipped } = loadTargets(reportJson, year, month);
   const results = [...preSkipped];
@@ -559,6 +612,7 @@ async function main() {
       status: "success",
       data: {
         out_json: outJson,
+        audit_jsonl: auditJsonl || null,
         targets_total: 0,
         attempted: 0,
         created: 0,
@@ -580,6 +634,8 @@ async function main() {
   let failed = 0;
   let attempted = 0;
   let skippedAlreadyAttached = 0;
+  const runStartedAt = Date.now();
+  let lastHeartbeatAt = 0;
   try {
     await page.goto(outgoUrl, { waitUntil: "domcontentloaded" });
     await page.waitForLoadState("networkidle").catch(() => {});
@@ -589,23 +645,64 @@ async function main() {
       const target = targets[i];
       const safeId = safeFilePart(target.mf_expense_id || `idx_${i + 1}`);
       attempted += 1;
+      let stage = "start";
+
+      appendJsonl(auditJsonl, {
+        ts: nowIso(),
+        action: "target_start",
+        mf_expense_id: target.mf_expense_id,
+        mf_use_date: target.mf_use_date || null,
+        mf_amount_yen: target.mf_amount_yen ?? null,
+        mf_vendor: target.mf_vendor || null,
+        mf_memo: target.mf_memo || null,
+        order_id: target.order_id || null,
+        order_source: target.order_source || null,
+        order_date: target.order_date || null,
+        order_total_yen: target.order_total_yen ?? null,
+        pdf_path: target.pdf_path || null,
+        idx: i + 1,
+        total: targets.length,
+      });
+
       console.error(
         `[mf_draft] start ${target.mf_expense_id} date=${target.mf_use_date || "unknown"} amount=${target.mf_amount_yen ?? "unknown"}`
       );
       try {
+        if (Date.now() - lastHeartbeatAt > 20000) {
+          lastHeartbeatAt = Date.now();
+          console.error(
+            `[mf_draft] progress idx=${i + 1}/${targets.length} attempted=${attempted} created=${created} failed=${failed} skipped=${preSkipped.length + skippedAlreadyAttached} elapsed_s=${Math.round(
+              (Date.now() - runStartedAt) / 1000
+            )}`
+          );
+        }
+
         await ensureAuthenticated(page, authHandoff, "MF Cloud outgo_input");
         await page.bringToFront().catch(() => {});
         await page.waitForLoadState("domcontentloaded").catch(() => {});
 
+        stage = "find_matching_row";
         const best = await findBestTargetRow(page, target);
         if (!best || !best.row || best.score < 100) {
           throw new Error("matching_row_not_found");
         }
+        appendJsonl(auditJsonl, {
+          ts: nowIso(),
+          action: "matching_row_found",
+          mf_expense_id: target.mf_expense_id,
+          row_score: best.score,
+          row_date: best.date || null,
+          row_amount_yen: best.amount ?? null,
+          row_preview: truncateString(best.text, 180),
+        });
+
+        stage = "open_editor";
         const clickSel = await clickEditRegister(best.row);
         await waitForEditorOpen(page, 15000);
 
         // If a receipt is already attached on MF, do not re-attach.
         // This prevents duplicate attachments when the extraction/reconcile input is stale or MF UI detection is imperfect.
+        stage = "check_already_attached";
         const editorRoot = await resolveEditorRoot(page);
         const alreadyAttached = await hasAnyReceiptAlreadyAttached(editorRoot);
         if (alreadyAttached.ok) {
@@ -614,6 +711,7 @@ async function main() {
             mf_expense_id: target.mf_expense_id,
             status: "skipped",
             reason: "already_has_receipt",
+            stage,
             row_score: best.score,
             row_date: best.date || null,
             row_amount_yen: best.amount ?? null,
@@ -622,19 +720,50 @@ async function main() {
             detected: { method: alreadyAttached.method, filename: alreadyAttached.filename || null },
             order_id: target.order_id || null,
           });
+          appendJsonl(auditJsonl, {
+            ts: nowIso(),
+            action: "target_skipped",
+            mf_expense_id: target.mf_expense_id,
+            reason: "already_has_receipt",
+            stage,
+            row_score: best.score,
+            row_date: best.date || null,
+            row_amount_yen: best.amount ?? null,
+            click_selector: clickSel,
+            detected: { method: alreadyAttached.method, filename: alreadyAttached.filename || null },
+          });
           console.error(`[mf_draft] skipped ${target.mf_expense_id} reason=already_has_receipt`);
           await closeEditorBestEffort(page);
           await page.waitForTimeout(300);
           continue;
         }
 
+        stage = "attach_receipt";
         const attachResult = await attachReceiptFile(page, target.pdf_path);
+        stage = "ensure_ocr";
         const ocrMethod = await ensureOcrChecked(page);
+        stage = "click_create";
         await clickCreate(page);
         created += 1;
         results.push({
           mf_expense_id: target.mf_expense_id,
           status: "created",
+          stage,
+          row_score: best.score,
+          row_date: best.date || null,
+          row_amount_yen: best.amount ?? null,
+          pdf_path: target.pdf_path,
+          click_selector: clickSel,
+          attach_method: attachResult.attachMethod,
+          attach_verify: attachResult.verifyMethod,
+          ocr_method: ocrMethod,
+          order_id: target.order_id || null,
+        });
+        appendJsonl(auditJsonl, {
+          ts: nowIso(),
+          action: "target_created",
+          mf_expense_id: target.mf_expense_id,
+          stage,
           row_score: best.score,
           row_date: best.date || null,
           row_amount_yen: best.amount ?? null,
@@ -650,14 +779,27 @@ async function main() {
       } catch (err) {
         failed += 1;
         const message = String(err && err.message ? err.message : err);
+        const normalized = normalizeDraftError(message);
         results.push({
           mf_expense_id: target.mf_expense_id,
           status: "failed",
-          reason: message,
+          reason: normalized.reason,
+          detail: normalized.detail,
+          stage,
           pdf_path: target.pdf_path,
           order_id: target.order_id || null,
         });
-        console.error(`[mf_draft] failed ${target.mf_expense_id} reason=${message}`);
+        appendJsonl(auditJsonl, {
+          ts: nowIso(),
+          action: "target_failed",
+          mf_expense_id: target.mf_expense_id,
+          reason: normalized.reason,
+          detail: truncateString(normalized.detail, 800),
+          stage,
+          pdf_path: target.pdf_path || null,
+          order_id: target.order_id || null,
+        });
+        console.error(`[mf_draft] failed ${target.mf_expense_id} reason=${normalized.reason} detail=${message}`);
         if (debugDir) {
           await writeDebug(page, debugDir, `mf_draft_${safeId}_failed`).catch(() => {});
         }
@@ -673,6 +815,7 @@ async function main() {
     status: failed > 0 ? "partial_success" : "success",
     data: {
       out_json: outJson,
+      audit_jsonl: auditJsonl || null,
       // Treat "already has receipt" as out-of-scope for creation (user confirmed no mis-attachments by others).
       targets_total: Math.max(0, targets.length - skippedAlreadyAttached),
       attempted,

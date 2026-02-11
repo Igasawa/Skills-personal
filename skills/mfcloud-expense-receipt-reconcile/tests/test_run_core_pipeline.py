@@ -158,8 +158,10 @@ def test_execute_pipeline_runs_mf_draft_create_when_enabled(monkeypatch, tmp_pat
     mf_draft_args = captured.get("mf_draft_args") or []
     assert "--report-json" in mf_draft_args
     assert "--out-json" in mf_draft_args
+    assert "--audit-jsonl" in mf_draft_args
     assert result["data"]["mf_draft"]["created"] == 1
     assert result["data"]["reports"]["mf_draft_create_result_json"].endswith("mf_draft_create_result.json")
+    assert result["data"]["reports"]["mf_draft_create_actions_jsonl"].endswith("mf_draft_create_actions.jsonl")
 
 
 def test_execute_pipeline_reconcile_includes_manual_orders_when_available(

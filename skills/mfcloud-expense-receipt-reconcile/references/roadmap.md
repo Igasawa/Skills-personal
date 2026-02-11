@@ -16,7 +16,7 @@ Phase 1.5（MF下書き作成）で残っていること:
 - Step0（preflight + 連携更新）で「取得中」表示が出ればOK（`outgo_input` の表示確認は必須ではない）
 - 候補PDFの領収書添付が安定して完了すること（現物確認）
 - 経費科目など未入力の状態でも下書き作成できること（現物確認）
-- 失敗時に `reports/audit_log.jsonl` と `_runs/*.log` で「行単位」に原因追跡できること
+- 失敗時に `reports/mf_draft_create_actions.jsonl` と `_runs/*.log`（および debug snapshot）で「行単位」に原因追跡できること
 
 運用（Step 4.5 手動取り込み）で残っていること:
 - `manual/inbox/` 直下配置ルールの運用徹底（サブフォルダ禁止）
@@ -88,14 +88,14 @@ Phase 2完了条件（各ソース共通）:
 ## 実装優先順位
 1. 「保存して印刷準備」体験で誤表示（成功/失敗）が出ないことを保証する（運用安定性）
 2. Phase 1（Amazon/楽天）のMVP受け入れテスト整備（チェックリストの自動化/現物確認手順の固定）
-3. Phase 1.5（MF下書き作成）: 領収書添付の安定化と、失敗時の行単位ログ追跡（`reports/audit_log.jsonl` + `_runs/*.log`）
+3. Phase 1.5（MF下書き作成）: 領収書添付の安定化と、失敗時の行単位ログ追跡（`reports/mf_draft_create_actions.jsonl` + `_runs/*.log`）
 4. Step 4.5（手動取り込み）: `manual/orders.jsonl` 反映とStep5突合までの導線を受け入れ条件として固定
 5. Phase 2の共通アダプタ仕様策定
 6. Aqua Voice -> ChatGPT -> Claude -> Replit の順で実装
 
 ## 運用上の固定ルール
 - 印刷は常に「手前まで自動」「最終実行は手動」
-- 監査可能性を維持するため、各アクションを `reports/audit_log.jsonl` に記録する
+- 監査可能性を維持するため、各アクションを `reports/audit_log.jsonl`（ダッシュボード操作）と `reports/mf_draft_create_actions.jsonl`（MF下書き作成）に記録する
 - 仕様変更時は本ファイルと `operation_policy.md` の両方を更新する
 
 ## 実行チェックリスト
