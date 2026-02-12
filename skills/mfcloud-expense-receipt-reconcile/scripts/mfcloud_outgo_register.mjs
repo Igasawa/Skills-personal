@@ -42,6 +42,7 @@ function normalizeDraftError(message) {
     "file_input_not_found",
     "filechooser_not_opened",
     "receipt_file_attach_failed",
+    "overwrite_confirm_unresolved",
   ];
   for (const code of direct) {
     if (m.includes(code)) return { reason: code, detail: m };
@@ -118,17 +119,110 @@ function editorSubmitLocator(scope) {
 }
 
 async function hasAnyReceiptAlreadyAttached(editorRoot) {
-  // Prefer a conservative signal to avoid false positives.
-  // Many MF tenants show a filename label that stays as "未選択/選択されていません" when no receipt is attached.
-  const filenameLabel = editorRoot.locator(".js-receipt-preview__filename, .receipt-preview__filename").first();
-  const labelText = await filenameLabel.textContent().catch(() => "");
-  const normalized = String(labelText || "").trim();
-  if (!normalized) return { ok: false, method: "no_label_text" };
-  const placeholders = ["選択されていません", "未選択", "選択してください"];
-  for (const token of placeholders) {
-    if (normalized.includes(token)) return { ok: false, method: "placeholder_label" };
+  // Some tenants keep a filename-like label even when not attached.
+  // Treat filename text alone as untrusted; require an additional strong signal.
+  const inspected = await editorRoot
+    .evaluate((root) => {
+      const txt = (v) => String(v || "").replace(/\s+/g, " ").trim();
+      const placeholders = ["選択されていません", "未選択", "選択してください"];
+
+      const filenameNode = root.querySelector(".js-receipt-preview__filename, .receipt-preview__filename");
+      const filename = txt(filenameNode?.textContent || "");
+      const hasFilename = Boolean(filename) && !placeholders.some((p) => filename.includes(p));
+
+      const isStrongDeleteText = (v) => /削除|解除|取り消し|取消|remove|delete|clear/i.test(txt(v));
+      const isStrongDownloadText = (v) => /ダウンロード|download|証憑|添付|領収書/i.test(txt(v));
+
+      const regions = Array.from(
+        root.querySelectorAll(
+          [
+            ".js-receipt-preview",
+            ".receipt-preview",
+            "[class*='receipt']",
+            "[id*='receipt']",
+            "[class*='attachment']",
+            "[id*='attachment']",
+          ].join(", ")
+        )
+      );
+      const scanRoots = regions.length ? regions : [root];
+
+      let hasDeleteControl = false;
+      let hasEvidenceLink = false;
+      for (const scope of scanRoots) {
+        const controls = Array.from(scope.querySelectorAll("button, a, input[type='button'], input[type='submit']"));
+        for (const el of controls) {
+          const text = txt(el.textContent || el.getAttribute("value") || "");
+          const href = txt(el.getAttribute("href") || el.getAttribute("data-url") || el.getAttribute("data-href") || "");
+          if (isStrongDeleteText(text)) hasDeleteControl = true;
+          if (isStrongDownloadText(text) || /mf_file|attachment|download|receipt|evidence/i.test(href)) {
+            hasEvidenceLink = true;
+          }
+        }
+      }
+
+      const hiddenInputs = Array.from(root.querySelectorAll("input[type='hidden']"));
+      const hasHiddenFileId = hiddenInputs.some((el) => {
+        const name = txt(el.getAttribute("name") || "");
+        const id = txt(el.id || "");
+        const key = `${name} ${id}`.toLowerCase();
+        if (!/(mf_file|receipt|attachment|evidence)/i.test(key)) return false;
+        if (/content/i.test(key)) return false;
+        const value = txt(el.getAttribute("value") || "");
+        return Boolean(value) && value !== "0";
+      });
+
+      return {
+        filename: filename || null,
+        hasFilename,
+        hasDeleteControl,
+        hasEvidenceLink,
+        hasHiddenFileId,
+      };
+    })
+    .catch(() => ({
+      filename: null,
+      hasFilename: false,
+      hasDeleteControl: false,
+      hasEvidenceLink: false,
+      hasHiddenFileId: false,
+    }));
+
+  const strongSignals = [];
+  if (inspected.hasHiddenFileId) strongSignals.push("hidden_file_id");
+  if (inspected.hasDeleteControl) strongSignals.push("delete_control");
+  if (inspected.hasEvidenceLink) strongSignals.push("evidence_link");
+
+  if (inspected.hasFilename && strongSignals.length > 0) {
+    return {
+      ok: true,
+      method: `filename+${strongSignals.join("+")}`,
+      filename: inspected.filename || null,
+      signals: strongSignals,
+    };
   }
-  return { ok: true, method: "filename_label", filename: normalized };
+  if (inspected.hasHiddenFileId) {
+    return {
+      ok: true,
+      method: "hidden_file_id",
+      filename: inspected.filename || null,
+      signals: strongSignals,
+    };
+  }
+  if (inspected.hasFilename) {
+    return {
+      ok: false,
+      method: "filename_only_untrusted",
+      filename: inspected.filename || null,
+      signals: strongSignals,
+    };
+  }
+  return {
+    ok: false,
+    method: "no_attachment_signal",
+    filename: inspected.filename || null,
+    signals: strongSignals,
+  };
 }
 
 async function isExpenseEditorOpen(page) {
@@ -239,6 +333,7 @@ function loadTargets(reportJsonPath, year, month) {
       mf_amount_yen: Number.isFinite(Number(row.mf_amount_yen)) ? Number(row.mf_amount_yen) : null,
       mf_vendor: String(row.mf_vendor || "").trim(),
       mf_memo: String(row.mf_memo || "").trim(),
+      match_strategy: String(row.match_strategy || "").trim() || "amount_date_exact",
       order_id: String(row.order_id || "").trim() || null,
       order_source: String(row.order_source || "").trim() || null,
       order_date: String(row.order_date || "").trim() || null,
@@ -368,6 +463,122 @@ async function firstVisible(locator, maxCount = 12) {
   return null;
 }
 
+function isOverwritePromptText(text) {
+  const t = normalizeText(text);
+  if (!t) return false;
+  if (/内容.*上書き.*しますか/.test(t)) return true;
+  if (/修正候補/.test(t) && /上書き/.test(t)) return true;
+  if (/上書き/.test(t) && /(内容|候補|入力|反映)/.test(t)) return true;
+  return false;
+}
+
+async function findOverwriteConfirmButton(scope) {
+  if (!scope || typeof scope.locator !== "function") return null;
+  const candidates = [
+    scope.locator("button, a", { hasText: /^はい$/ }).first(),
+    scope.locator("button, a", { hasText: /^ok$/i }).first(),
+    scope.locator("button, a", { hasText: /上書き|保存|実行|更新|続行|確認|反映/ }).first(),
+    scope.locator("input[type='button'][value='はい'], input[type='submit'][value='はい']").first(),
+    scope.locator("input[type='button'][value='OK' i], input[type='submit'][value='OK' i]").first(),
+    scope.locator("input[type='button'][value*='上書き'], input[type='submit'][value*='上書き']").first(),
+    scope.locator("input[type='button'][value*='更新'], input[type='submit'][value*='更新']").first(),
+  ];
+  for (const locator of candidates) {
+    if ((await locator.count()) === 0) continue;
+    if (!(await locator.isVisible().catch(() => false))) continue;
+    return locator;
+  }
+  return null;
+}
+
+async function findVisibleOverwritePrompt(page, maxCount = 14) {
+  const containers = page.locator(
+    [
+      "[role='dialog']",
+      "[aria-modal='true']",
+      ".modal",
+      ".MuiDialog-root",
+      ".ReactModal__Content",
+      ".swal2-popup",
+      ".toast",
+      "[class*='toast']",
+      "[class*='notification']",
+      "[class*='confirm']",
+    ].join(", ")
+  );
+  const count = Math.min(await containers.count().catch(() => 0), maxCount);
+  for (let i = 0; i < count; i++) {
+    const container = containers.nth(i);
+    if (!(await container.isVisible().catch(() => false))) continue;
+    const text = normalizeText(await container.innerText().catch(() => ""));
+    if (!isOverwritePromptText(text)) continue;
+    return { container, text, source: "container" };
+  }
+
+  const labels = [
+    page.getByText(/内容.*上書き.*しますか/).first(),
+    page.getByText(/修正候補/).first(),
+    page.getByText(/上書きしますか/).first(),
+  ];
+  for (const label of labels) {
+    if ((await label.count()) === 0) continue;
+    if (!(await label.isVisible().catch(() => false))) continue;
+    const labelText = normalizeText(await label.innerText().catch(() => ""));
+    if (!isOverwritePromptText(labelText)) continue;
+    const ancestor = label.locator("xpath=ancestor::*[self::div or self::section or self::dialog or self::form][1]");
+    const container = (await ancestor.count()) > 0 ? ancestor.first() : page.locator("body");
+    const containerText = normalizeText(await container.innerText().catch(() => labelText));
+    return { container, text: containerText || labelText, source: "text_anchor" };
+  }
+
+  return null;
+}
+
+async function acceptOverwriteConfirmationIfNeeded(page, timeoutMs = 4500) {
+  const start = Date.now();
+  let promptSeen = false;
+  let promptPreview = "";
+
+  while (Date.now() - start < timeoutMs) {
+    const prompt = await findVisibleOverwritePrompt(page);
+    if (prompt) {
+      promptSeen = true;
+      promptPreview = truncateString(prompt.text || promptPreview || "", 200);
+      const confirmButton = (await findOverwriteConfirmButton(prompt.container)) || (await findOverwriteConfirmButton(page));
+      if (confirmButton) {
+        await confirmButton.click({ timeout: 2000, force: true }).catch(() => {});
+        await page.waitForTimeout(180);
+        const remaining = await findVisibleOverwritePrompt(page);
+        if (!remaining) {
+          return {
+            promptSeen: true,
+            resolved: true,
+            method: "confirm_button",
+            prompt: promptPreview || null,
+          };
+        }
+      }
+    }
+    await page.waitForTimeout(100);
+  }
+
+  const remaining = await findVisibleOverwritePrompt(page);
+  if (remaining) {
+    return {
+      promptSeen: true,
+      resolved: false,
+      method: "prompt_still_visible",
+      prompt: truncateString(remaining.text || promptPreview || "", 200),
+    };
+  }
+  return {
+    promptSeen,
+    resolved: true,
+    method: promptSeen ? "prompt_disappeared" : "not_present",
+    prompt: promptPreview || null,
+  };
+}
+
 async function waitForReceiptAttachUiReady(page, editorRoot, timeoutMs = 15000) {
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
@@ -446,11 +657,12 @@ async function attachReceiptViaDropdown(page, editorRoot, resolved) {
   return true;
 }
 
-async function attachReceiptFile(page, pdfPath) {
+async function attachReceiptFile(page, pdfPath, options = {}) {
   const resolved = path.resolve(pdfPath);
   if (!fs.existsSync(resolved)) throw new Error(`receipt_pdf_not_found: ${resolved}`);
   const expectedFileName = path.basename(resolved);
   const editorRoot = await resolveEditorRoot(page);
+  const overwriteTimeoutMs = Math.max(1500, Number.parseInt(String(options?.overwriteTimeoutMs || "4500"), 10) || 4500);
 
   // The bootstrap modal is sometimes considered "open" before the receipt uploader is ready.
   await waitForReceiptAttachUiReady(page, editorRoot, 20000).catch(() => {});
@@ -487,11 +699,19 @@ async function attachReceiptFile(page, pdfPath) {
   for (const attempt of attempts) {
     try {
       const attachMethod = await attempt();
+      const overwriteConfirm = await acceptOverwriteConfirmationIfNeeded(page, overwriteTimeoutMs);
+      if (overwriteConfirm.promptSeen && !overwriteConfirm.resolved) {
+        throw new Error(`overwrite_confirm_unresolved:${overwriteConfirm.method}`);
+      }
       const attached = await waitForReceiptAttached(page, editorRoot, expectedFileName, 30000);
       if (!attached.ok) {
         throw new Error(`receipt_file_attach_not_confirmed:${attachMethod || "unknown"}:${attached.method}`);
       }
-      return { attachMethod: attachMethod || "unknown", verifyMethod: attached.method };
+      return {
+        attachMethod: attachMethod || "unknown",
+        verifyMethod: attached.method,
+        overwriteConfirm,
+      };
     } catch (err) {
       lastErr = err;
     }
@@ -528,6 +748,118 @@ async function ensureOcrChecked(page) {
     .catch(() => false);
   if (!checked) throw new Error("ocr_checkbox_not_found");
   return "eval";
+}
+
+function buildSupplementMemoText(target) {
+  if (String(target?.match_strategy || "") !== "date_vendor_fallback") return "";
+  const useDate = String(target?.mf_use_date || "").trim();
+  const useDateLabel = useDate ? useDate.replace(/-/g, "/") : "不明";
+  const vendorLabel = String(target?.mf_vendor || "").trim() || "不明";
+  const orderRef = String(target?.order_id || "").trim();
+  const base = `利用日（${useDateLabel}）・請求先（${vendorLabel}）が一致するため、同一取引として領収書を手動添付して保存。`;
+  if (orderRef) return `${base}注文番号/明細ID（${orderRef}）確認済み。`;
+  return `${base}注文番号/明細IDは領収書側で確認済み。`;
+}
+
+async function appendSupplementMemoIfNeeded(page, target, auditJsonl) {
+  const memoText = buildSupplementMemoText(target);
+  if (!memoText) return { applied: false, reason: "not_required", field: null };
+
+  const editorRoot = await resolveEditorRoot(page);
+  const memoField = await firstVisible(
+    editorRoot.locator(
+      [
+        "textarea[name*='memo' i]",
+        "textarea[id*='memo' i]",
+        "textarea[name*='note' i]",
+        "textarea[id*='note' i]",
+        "textarea[name*='comment' i]",
+        "textarea[id*='comment' i]",
+        "textarea[name*='remark' i]",
+        "textarea[id*='remark' i]",
+        "textarea[name*='summary' i]",
+        "textarea[id*='summary' i]",
+        "textarea[name*='description' i]",
+        "textarea[id*='description' i]",
+        "textarea[name*='content' i]",
+        "textarea[id*='content' i]",
+        "input[type='text'][name*='memo' i]",
+        "input[type='text'][id*='memo' i]",
+        "input[type='text'][name*='note' i]",
+        "input[type='text'][id*='note' i]",
+        "input[type='text'][name*='comment' i]",
+        "input[type='text'][id*='comment' i]",
+      ].join(", ")
+    ),
+    24
+  );
+  if (!memoField) {
+    appendJsonl(auditJsonl, {
+      ts: nowIso(),
+      action: "supplement_memo_skipped",
+      mf_expense_id: target?.mf_expense_id || null,
+      reason: "field_not_found",
+      match_strategy: target?.match_strategy || null,
+    });
+    return { applied: false, reason: "field_not_found", field: null };
+  }
+
+  const fieldName = await memoField
+    .evaluate((el) => {
+      const name = el?.getAttribute?.("name") || "";
+      const id = el?.id || "";
+      return name || id || "";
+    })
+    .catch(() => "");
+  const currentValue = await memoField.inputValue().catch(() =>
+    memoField.evaluate((el) => String(el?.value || "")).catch(() => "")
+  );
+  if (normalizeText(currentValue).includes(normalizeText(memoText))) {
+    return { applied: false, reason: "already_present", field: fieldName || null };
+  }
+
+  const merged = String(currentValue || "").trim() ? `${String(currentValue || "").trim()}\n${memoText}` : memoText;
+  let writeOk = true;
+  try {
+    await memoField.fill(merged, { timeout: 6000 });
+  } catch {
+    writeOk = await memoField
+      .evaluate((el, value) => {
+        if (!el) return false;
+        el.focus();
+        el.value = String(value || "");
+        el.dispatchEvent(new Event("input", { bubbles: true }));
+        el.dispatchEvent(new Event("change", { bubbles: true }));
+        el.blur();
+        return true;
+      }, merged)
+      .catch(() => false);
+  }
+  if (!writeOk) {
+    appendJsonl(auditJsonl, {
+      ts: nowIso(),
+      action: "supplement_memo_skipped",
+      mf_expense_id: target?.mf_expense_id || null,
+      reason: "write_failed",
+      field: fieldName || null,
+      match_strategy: target?.match_strategy || null,
+    });
+    return { applied: false, reason: "write_failed", field: fieldName || null };
+  }
+
+  const updatedValue = await memoField.inputValue().catch(() =>
+    memoField.evaluate((el) => String(el?.value || "")).catch(() => "")
+  );
+  const applied = normalizeText(updatedValue).includes(normalizeText(memoText));
+  appendJsonl(auditJsonl, {
+    ts: nowIso(),
+    action: applied ? "supplement_memo_applied" : "supplement_memo_unconfirmed",
+    mf_expense_id: target?.mf_expense_id || null,
+    field: fieldName || null,
+    match_strategy: target?.match_strategy || null,
+    memo_preview: truncateString(memoText, 200),
+  });
+  return { applied, reason: applied ? "applied" : "unconfirmed", field: fieldName || null };
 }
 
 function pickBestOption(options, preferTexts) {
@@ -857,6 +1189,28 @@ async function main() {
   const browser = await chromium.launch({ headless: !headed, slowMo: slowMoMs });
   const context = await browser.newContext({ storageState });
   const page = await context.newPage();
+  let activeExpenseIdForDialog = null;
+  page.on("dialog", async (dialog) => {
+    const message = normalizeText(dialog.message() || "");
+    const kind = String(dialog.type() || "");
+    const isOverwrite = isOverwritePromptText(message);
+    try {
+      if (isOverwrite) {
+        await dialog.accept();
+        appendJsonl(auditJsonl, {
+          ts: nowIso(),
+          action: "overwrite_dialog_accepted",
+          mf_expense_id: activeExpenseIdForDialog || null,
+          dialog_type: kind || null,
+          message: truncateString(message, 200),
+        });
+      } else {
+        await dialog.dismiss();
+      }
+    } catch {
+      // ignore dialog races
+    }
+  });
 
   let created = 0;
   let failed = 0;
@@ -872,6 +1226,7 @@ async function main() {
     for (let i = 0; i < targets.length; i++) {
       const target = targets[i];
       const safeId = safeFilePart(target.mf_expense_id || `idx_${i + 1}`);
+      activeExpenseIdForDialog = target.mf_expense_id || null;
       attempted += 1;
       let stage = "start";
 
@@ -883,6 +1238,7 @@ async function main() {
         mf_amount_yen: target.mf_amount_yen ?? null,
         mf_vendor: target.mf_vendor || null,
         mf_memo: target.mf_memo || null,
+        match_strategy: target.match_strategy || null,
         order_id: target.order_id || null,
         order_source: target.order_source || null,
         order_date: target.order_date || null,
@@ -966,10 +1322,43 @@ async function main() {
           continue;
         }
 
-        stage = "attach_receipt";
-        const attachResult = await attachReceiptFile(page, target.pdf_path);
         stage = "ensure_ocr";
         const ocrMethod = await ensureOcrChecked(page);
+        stage = "confirm_overwrite_after_ocr";
+        const overwriteAfterOcr = await acceptOverwriteConfirmationIfNeeded(page, 4500);
+        if (overwriteAfterOcr.promptSeen && !overwriteAfterOcr.resolved) {
+          throw new Error(`overwrite_confirm_unresolved:${overwriteAfterOcr.method}`);
+        }
+        appendJsonl(auditJsonl, {
+          ts: nowIso(),
+          action: "overwrite_confirm_after_ocr",
+          mf_expense_id: target.mf_expense_id,
+          prompt_seen: overwriteAfterOcr.promptSeen,
+          resolved: overwriteAfterOcr.resolved,
+          method: overwriteAfterOcr.method,
+          prompt: overwriteAfterOcr.prompt || null,
+        });
+        stage = "attach_receipt";
+        const attachResult = await attachReceiptFile(page, target.pdf_path, { overwriteTimeoutMs: 4500 });
+        stage = "confirm_overwrite_after_attach";
+        const lateOverwriteAfterAttach = await acceptOverwriteConfirmationIfNeeded(page, 2500);
+        if (lateOverwriteAfterAttach.promptSeen && !lateOverwriteAfterAttach.resolved) {
+          throw new Error(`overwrite_confirm_unresolved:${lateOverwriteAfterAttach.method}`);
+        }
+        const overwriteAfterAttach = lateOverwriteAfterAttach.promptSeen
+          ? lateOverwriteAfterAttach
+          : attachResult?.overwriteConfirm || { promptSeen: false, resolved: true, method: "not_present", prompt: null };
+        appendJsonl(auditJsonl, {
+          ts: nowIso(),
+          action: "overwrite_confirm_after_attach",
+          mf_expense_id: target.mf_expense_id,
+          prompt_seen: Boolean(overwriteAfterAttach.promptSeen),
+          resolved: Boolean(overwriteAfterAttach.resolved),
+          method: overwriteAfterAttach.method || "not_present",
+          prompt: overwriteAfterAttach.prompt || null,
+        });
+        stage = "write_supplement_memo";
+        const supplementMemo = await appendSupplementMemoIfNeeded(page, target, auditJsonl);
         stage = "click_create";
         const createResult = await clickCreateWithAutofill(page, target, auditJsonl, {
           enableAutofill,
@@ -987,7 +1376,11 @@ async function main() {
           click_selector: clickSel,
           attach_method: attachResult.attachMethod,
           attach_verify: attachResult.verifyMethod,
+          overwrite_after_ocr: overwriteAfterOcr.method,
+          overwrite_after_attach: overwriteAfterAttach.method || "not_present",
           ocr_method: ocrMethod,
+          supplement_memo: supplementMemo.reason,
+          supplement_memo_field: supplementMemo.field || null,
           autofill: createResult.autofill.length ? createResult.autofill : undefined,
           order_id: target.order_id || null,
         });
@@ -1003,7 +1396,11 @@ async function main() {
           click_selector: clickSel,
           attach_method: attachResult.attachMethod,
           attach_verify: attachResult.verifyMethod,
+          overwrite_after_ocr: overwriteAfterOcr.method,
+          overwrite_after_attach: overwriteAfterAttach.method || "not_present",
           ocr_method: ocrMethod,
+          supplement_memo: supplementMemo.reason,
+          supplement_memo_field: supplementMemo.field || null,
           autofill: createResult.autofill.length ? createResult.autofill : undefined,
           order_id: target.order_id || null,
         });
@@ -1037,6 +1434,8 @@ async function main() {
           await writeDebug(page, debugDir, `mf_draft_${safeId}_failed`).catch(() => {});
         }
         await closeEditorBestEffort(page);
+      } finally {
+        activeExpenseIdForDialog = null;
       }
     }
   } finally {

@@ -90,6 +90,10 @@ class Order:
     pdf_path: str | None
     receipt_url: str | None
     source: str
+    provider: str | None = None
+    source_hint: str | None = None
+    item_name: str | None = None
+    import_source_name: str | None = None
 
     @staticmethod
     def from_obj(obj: dict[str, Any], *, default_source: str) -> "Order | None":
@@ -105,6 +109,10 @@ class Order:
             pdf_path=(str(obj.get("pdf_path")).strip() if obj.get("pdf_path") else None),
             receipt_url=(str(obj.get("receipt_url")).strip() if obj.get("receipt_url") else None),
             source=str(obj.get("source") or default_source),
+            provider=(str(obj.get("provider")).strip().lower() if obj.get("provider") else None),
+            source_hint=(str(obj.get("source_hint")).strip().lower() if obj.get("source_hint") else None),
+            item_name=(str(obj.get("item_name")).strip() if obj.get("item_name") else None),
+            import_source_name=(str(obj.get("import_source_name")).strip() if obj.get("import_source_name") else None),
         )
 
 
@@ -159,6 +167,43 @@ def _looks_like_rakuten(text: str) -> bool:
     return ("rakuten" in t) or ("楽天" in text)
 
 
+PROVIDER_VENDOR_HINTS: dict[str, tuple[str, ...]] = {
+    "chatgpt": ("openai", "chatgpt"),
+    "claude": ("anthropic", "claude"),
+    "gamma": ("gamma",),
+    "aquavoice": ("aqua voice", "aquavoice"),
+}
+
+
+def _normalize_match_text(value: Any) -> str:
+    return re.sub(r"\s+", " ", str(value or "").strip().lower())
+
+
+def _vendor_hint_tokens_for_order(order: Order) -> set[str]:
+    hints: set[str] = set()
+    source = str(order.source or "").strip().lower()
+    source_hint = str(order.source_hint or "").strip().lower()
+    provider = str(order.provider or "").strip().lower()
+
+    if source == "amazon" or source_hint == "amazon":
+        hints.update({"amazon", "アマゾン", "ｱﾏｿﾞﾝ"})
+    if source == "rakuten" or source_hint == "rakuten":
+        hints.update({"rakuten", "楽天"})
+    hints.update(PROVIDER_VENDOR_HINTS.get(provider, ()))
+
+    return {token for token in (_normalize_match_text(x) for x in hints) if token}
+
+
+def _vendor_matches_for_fallback(expense: MfExpense, order: Order) -> bool:
+    vendor_text = _normalize_match_text(f"{expense.vendor} {expense.memo}")
+    if not vendor_text:
+        return False
+    hint_tokens = _vendor_hint_tokens_for_order(order)
+    if not hint_tokens:
+        return False
+    return any(token in vendor_text for token in hint_tokens)
+
+
 def reconcile(
     *,
     orders: list[Order],
@@ -191,6 +236,7 @@ def reconcile(
     needs_review_missing_use_date = 0
     needs_review_missing_amount = 0
     needs_review_no_candidate = 0
+    matched_by_fallback = 0
     needs_review_expense_ids: set[str] = set()
     matched_expense_ids: set[str] = set()
 
@@ -221,6 +267,7 @@ def reconcile(
                     "pdf_path": None,
                     "diff_days": None,
                     "score": None,
+                    "match_strategy": None,
                 }
             )
             continue
@@ -241,11 +288,12 @@ def reconcile(
                     "pdf_path": None,
                     "diff_days": None,
                     "score": None,
+                    "match_strategy": None,
                 }
             )
             continue
 
-        candidates: list[dict[str, Any]] = []
+        strict_candidates: list[dict[str, Any]] = []
         for order in orders_in_month:
             if order.total_yen is None:
                 continue
@@ -263,7 +311,7 @@ def reconcile(
             if order.source == "rakuten" and _looks_like_rakuten(vendor_text):
                 score += 10
 
-            candidates.append(
+            strict_candidates.append(
                 {
                     "order_id": order.order_id,
                     "order_date": order.order_date.isoformat() if order.order_date else None,
@@ -273,8 +321,47 @@ def reconcile(
                     "order_source": order.source,
                     "diff_days": diff,
                     "score": score,
+                    "match_strategy": "amount_date_exact",
                 }
             )
+
+        candidates = strict_candidates
+        if not candidates:
+            fallback_candidates: list[dict[str, Any]] = []
+            for order in orders_in_month:
+                # Fallback is intentionally scoped to manual/provider imports:
+                # when receipts are foreign-currency (e.g. USD), amount equality often fails.
+                if order.source != "manual":
+                    continue
+                diff = _days_diff(expense.use_date, order.order_date)
+                if diff is None or diff != 0:
+                    continue
+                if not _vendor_matches_for_fallback(expense, order):
+                    continue
+
+                score = 70
+                if order.provider:
+                    score += 8
+                if order.source_hint in {"amazon", "rakuten"}:
+                    score += 4
+
+                fallback_candidates.append(
+                    {
+                        "order_id": order.order_id,
+                        "order_date": order.order_date.isoformat() if order.order_date else None,
+                        "total_yen": order.total_yen,
+                        "pdf_path": order.pdf_path,
+                        "receipt_url": order.receipt_url,
+                        "order_source": order.source,
+                        "diff_days": diff,
+                        "score": score,
+                        "match_strategy": "date_vendor_fallback",
+                    }
+                )
+            fallback_candidates.sort(key=lambda x: (-int(x["score"]), int(x["diff_days"]), str(x.get("order_id") or "")))
+            candidates = fallback_candidates
+            if candidates:
+                matched_by_fallback += 1
 
         candidates.sort(key=lambda x: (-int(x["score"]), int(x["diff_days"]), str(x.get("order_id") or "")))
         candidates = candidates[: max(0, int(max_candidates_per_mf))]
@@ -295,6 +382,7 @@ def reconcile(
                     "pdf_path": None,
                     "diff_days": None,
                     "score": None,
+                    "match_strategy": None,
                 }
             )
             continue
@@ -314,6 +402,7 @@ def reconcile(
                     "pdf_path": cand["pdf_path"],
                     "diff_days": cand["diff_days"],
                     "score": cand["score"],
+                    "match_strategy": cand["match_strategy"],
                 }
             )
 
@@ -338,6 +427,7 @@ def reconcile(
             "mf_scope_expenses": len(mf_scope),
             "mf_missing_evidence": len(mf_missing),
             "matched_expenses": matched_expenses,
+            "matched_by_fallback_date_vendor": matched_by_fallback,
             "needs_review_count": needs_review_count,
             "needs_review_missing_use_date": needs_review_missing_use_date,
             "needs_review_missing_amount": needs_review_missing_amount,
@@ -369,6 +459,7 @@ def _write_csv(path: Path, rows: list[dict[str, Any]]) -> None:
         "pdf_path",
         "diff_days",
         "score",
+        "match_strategy",
     ]
     with path.open("w", encoding="utf-8", newline="") as f:
         w = csv.DictWriter(f, fieldnames=fieldnames)

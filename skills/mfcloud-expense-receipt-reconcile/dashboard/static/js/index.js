@@ -30,16 +30,93 @@
   const STEP_REFRESH_STALE_MS = 15000;
   const archiveStateOverrides = Object.create(null);
 
+  const monthCloseChecklistKeys = ["expense_submission", "document_printout", "mf_accounting_link"];
+  const YM_STORAGE_KEY = "mfcloud.dashboard.selectedYm";
+  const YM_PATTERN = /^(\d{4})-(\d{2})$/;
+
+  function normalizeYm(yearValue, monthValue) {
+    const year = Number.parseInt(String(yearValue ?? "").trim(), 10);
+    const month = Number.parseInt(String(monthValue ?? "").trim(), 10);
+    if (!Number.isInteger(year) || year < 1) return "";
+    if (!Number.isInteger(month) || month < 1 || month > 12) return "";
+    return `${year.toString().padStart(4, "0")}-${String(month).padStart(2, "0")}`;
+  }
+
+  function parseYm(ymValue) {
+    const text = String(ymValue || "").trim();
+    const match = text.match(YM_PATTERN);
+    if (!match) return null;
+    const year = Number.parseInt(match[1], 10);
+    const month = Number.parseInt(match[2], 10);
+    if (!Number.isInteger(year) || year < 1) return null;
+    if (!Number.isInteger(month) || month < 1 || month > 12) return null;
+    return { year, month, ym: `${year.toString().padStart(4, "0")}-${String(month).padStart(2, "0")}` };
+  }
+
+  function readYmFromQueryString() {
+    if (typeof window === "undefined") return "";
+    try {
+      const params = new URLSearchParams(window.location.search || "");
+      return normalizeYm(params.get("year"), params.get("month"));
+    } catch {
+      return "";
+    }
+  }
+
+  function readYmFromLocalStorage() {
+    if (typeof window === "undefined" || !window.localStorage) return "";
+    try {
+      const raw = window.localStorage.getItem(YM_STORAGE_KEY);
+      const parsed = parseYm(raw);
+      return parsed ? parsed.ym : "";
+    } catch {
+      return "";
+    }
+  }
+
+  function persistYmSelection(ymValue) {
+    const parsed = parseYm(ymValue);
+    if (!parsed || typeof window === "undefined") return;
+    try {
+      if (window.localStorage) {
+        window.localStorage.setItem(YM_STORAGE_KEY, parsed.ym);
+      }
+    } catch {
+      // Best-effort only.
+    }
+    try {
+      const url = new URL(window.location.href);
+      url.searchParams.set("year", String(parsed.year));
+      url.searchParams.set("month", String(parsed.month));
+      const nextUrl = `${url.pathname}${url.search}${url.hash}`;
+      window.history.replaceState(window.history.state, "", nextUrl);
+    } catch {
+      // Best-effort only.
+    }
+  }
+
+  function restoreYmSelection() {
+    if (!form) return;
+    const queryYm = readYmFromQueryString();
+    const savedYm = queryYm || readYmFromLocalStorage();
+    if (savedYm) setYmToForm(savedYm);
+    persistYmSelection(getYmFromForm());
+  }
+
+  function normalizeChecklistState(raw) {
+    const source = raw && typeof raw === "object" ? raw : {};
+    const normalized = {};
+    monthCloseChecklistKeys.forEach((key) => {
+      normalized[key] = source[key] === true;
+    });
+    return normalized;
+  }
+
   // Month Close Checklist state
-  let checklistState = {
-    transportation_expense: false,
-    expense_submission: false,
-    document_printout: false,
-    mf_accounting_link: false,
-  };
+  let checklistState = normalizeChecklistState({});
 
   function isChecklistComplete() {
-    return Object.values(checklistState).every((value) => value === true);
+    return monthCloseChecklistKeys.every((key) => checklistState[key] === true);
   }
 
   function formatDateTimeInJst(dateValue) {
@@ -316,24 +393,22 @@
   }
 
   function nextYm(ym) {
-    const text = String(ym || "").trim();
-    const match = text.match(/^(\d{4})-(\d{2})$/);
-    if (!match) return "";
-    const year = Number.parseInt(match[1], 10);
-    const month = Number.parseInt(match[2], 10);
-    if (!Number.isInteger(year) || !Number.isInteger(month)) return "";
+    const parsed = parseYm(ym);
+    if (!parsed) return "";
+    const year = parsed.year;
+    const month = parsed.month;
     if (month >= 12) return `${year + 1}-01`;
     return `${year}-${String(month + 1).padStart(2, "0")}`;
   }
 
   function setYmToForm(ym) {
-    const text = String(ym || "").trim();
-    const match = text.match(/^(\d{4})-(\d{2})$/);
-    if (!match || !form) return;
+    const parsed = parseYm(ym);
+    if (!parsed || !form) return;
     const yearEl = form.querySelector("[name=year]");
     const monthEl = form.querySelector("[name=month]");
-    if (yearEl) yearEl.value = String(Number.parseInt(match[1], 10));
-    if (monthEl) monthEl.value = String(Number.parseInt(match[2], 10));
+    if (yearEl) yearEl.value = String(parsed.year);
+    if (monthEl) monthEl.value = String(parsed.month);
+    persistYmSelection(parsed.ym);
   }
 
   function prependArchiveHistoryRow(entry) {
@@ -745,7 +820,7 @@
       buttonEl.dataset.busy = "1";
     }
     clearError();
-      showToast("共通フォルダの領収書を取り込み中...", "success");
+    showToast("共通フォルダの領収書を取り込み中...", "success");
     try {
       const res = await fetch(`/api/providers/${ym}/import`, { method: "POST" });
       const data = await res.json().catch(() => ({}));
@@ -760,8 +835,36 @@
       const skipped = Number.parseInt(String(data.skipped_duplicates ?? 0), 10) || 0;
       const failed = Number.parseInt(String(data.failed ?? 0), 10) || 0;
       const message = `共通フォルダ取り込み: 検出 ${found}件 / 取込 ${imported}件 / 重複 ${skipped}件 / 失敗 ${failed}件`;
-      showToast(message, failed > 0 ? "error" : "success");
-      if (failed > 0) showError(message);
+      const manualActionRequired = Boolean(data.manual_action_required) || skipped > 0 || failed > 0;
+      if (!manualActionRequired) {
+        showToast(message, "success");
+        return;
+      }
+
+      const details = [message, "スキップ/失敗分はMFへ自動添付されていません。手動添付してください。"];
+      let skippedFolderPath = String(data.skipped_dir || "").trim();
+      if (skipped > 0) {
+        const openSkippedRes = await fetch(`/api/folders/${ym}/provider-skipped/latest`, { method: "POST" });
+        const openSkippedData = await openSkippedRes.json().catch(() => ({}));
+        if (openSkippedRes.ok) {
+          const opened = String(openSkippedData.path || "").trim();
+          if (opened) skippedFolderPath = opened;
+        }
+      }
+      if (skippedFolderPath) {
+        details.push(`未添付一覧フォルダ: ${skippedFolderPath}`);
+      }
+      const skippedFiles = Array.isArray(data.skipped_files)
+        ? data.skipped_files.map((value) => String(value || "").trim()).filter((value) => value)
+        : [];
+      if (skippedFiles.length > 0) {
+        const preview = skippedFiles.slice(0, 8);
+        const suffix = skippedFiles.length > preview.length ? ` ほか${skippedFiles.length - preview.length}件` : "";
+        details.push(`未添付ファイル: ${preview.join(", ")}${suffix}`);
+      }
+      const errorMessage = details.join("\n");
+      showError(errorMessage);
+      showToast("共通フォルダ取り込みでスキップ/失敗が発生しました。手動添付が必要です。", "error");
     } catch {
       const message = "共通フォルダ取り込みに失敗しました。";
       showError(message);
@@ -872,10 +975,7 @@
     if (!form) return "";
     const yearEl = form.querySelector("[name=year]");
     const monthEl = form.querySelector("[name=month]");
-    const year = String(yearEl?.value || "").padStart(4, "0");
-    const month = String(monthEl?.value || "").padStart(2, "0");
-    if (!year || !month || year === "0000") return "";
-    return `${year}-${month}`;
+    return normalizeYm(yearEl?.value, monthEl?.value);
   }
 
   function setStepStatus(id, state) {
@@ -1444,11 +1544,18 @@
       });
     });
 
-    form.querySelector("[name=year]")?.addEventListener("change", refreshSteps);
-    form.querySelector("[name=month]")?.addEventListener("change", refreshSteps);
-    form.querySelector("[name=year]")?.addEventListener("change", () => applyArchivePageLink(getYmFromForm()));
-    form.querySelector("[name=month]")?.addEventListener("change", () => applyArchivePageLink(getYmFromForm()));
-    applyArchivePageLink(getYmFromForm());
+    const handleYmChanged = () => {
+      const ym = getYmFromForm();
+      persistYmSelection(ym);
+      applyArchivePageLink(ym);
+      refreshSteps();
+    };
+    form.querySelector("[name=year]")?.addEventListener("change", handleYmChanged);
+    form.querySelector("[name=month]")?.addEventListener("change", handleYmChanged);
+
+    restoreYmSelection();
+    const initialYm = getYmFromForm();
+    applyArchivePageLink(initialYm);
     refreshSteps();
     if (!window.__stepTimer) {
       window.__stepTimer = setInterval(refreshSteps, 3000);
@@ -1480,7 +1587,7 @@
     try {
       const data = await apiGetJson(`/api/month-close-checklist/${ym}`);
       if (data && data.checklist) {
-        checklistState = { ...data.checklist };
+        checklistState = normalizeChecklistState(data.checklist);
         updateCheckboxes();
       }
     } catch (err) {
@@ -1494,7 +1601,7 @@
       const res = await fetch(`/api/month-close-checklist/${ym}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ checklist: checklistState }),
+        body: JSON.stringify({ checklist: normalizeChecklistState(checklistState) }),
       });
       if (!res.ok) {
         console.warn("Failed to save checklist:", res.statusText);
@@ -1527,5 +1634,3 @@
     });
   });
 })();
-
-

@@ -7,16 +7,15 @@ from fastapi import HTTPException
 from .core_shared import _artifact_root, _read_json
 
 MONTH_CLOSE_CHECKLIST_KEYS: tuple[str, ...] = (
-    "transportation_expense",
     "expense_submission",
     "document_printout",
     "mf_accounting_link",
 )
+MONTH_CLOSE_CHECKLIST_OPTIONAL_LEGACY_KEYS: tuple[str, ...] = ("transportation_expense",)
 
 
 def _default_month_close_checklist() -> dict[str, bool]:
     return {
-        "transportation_expense": False,
         "expense_submission": False,
         "document_printout": False,
         "mf_accounting_link": False,
@@ -56,10 +55,17 @@ def _validate_month_close_checklist_payload(payload: Any) -> dict[str, bool]:
         raise HTTPException(status_code=400, detail="checklist must be a dict.")
     payload_keys = set(payload.keys())
     expected_keys = set(MONTH_CLOSE_CHECKLIST_KEYS)
-    if payload_keys != expected_keys:
+    optional_legacy_keys = set(MONTH_CLOSE_CHECKLIST_OPTIONAL_LEGACY_KEYS)
+    missing_keys = expected_keys - payload_keys
+    unknown_keys = payload_keys - expected_keys - optional_legacy_keys
+    if missing_keys or unknown_keys:
         raise HTTPException(
             status_code=400,
-            detail=f"checklist must contain exactly these keys: {expected_keys}",
+            detail=(
+                "checklist must contain required keys and no unknown keys. "
+                f"required={sorted(expected_keys)} optional_legacy={sorted(optional_legacy_keys)} "
+                f"missing={sorted(missing_keys)} unknown={sorted(unknown_keys)}"
+            ),
         )
     normalized: dict[str, bool] = {}
     for key in MONTH_CLOSE_CHECKLIST_KEYS:

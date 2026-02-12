@@ -70,6 +70,62 @@ def create_api_router() -> APIRouter:
             )
         return result
 
+    def _derive_skipped_bucket_dir(moved_to: str) -> Path | None:
+        raw = str(moved_to or "").strip()
+        if not raw:
+            return None
+        moved = Path(raw).expanduser()
+        parent = moved.parent
+        if not str(parent):
+            return None
+        parts = list(parent.parts)
+        lowered = [str(part).lower() for part in parts]
+        if "_skipped" in lowered:
+            idx = lowered.index("_skipped")
+            if idx + 1 < len(parts):
+                return Path(*parts[: idx + 2])
+        return parent
+
+    def _resolve_provider_skipped_dir_for_ym(year: int, month: int) -> Path | None:
+        ym = f"{year:04d}-{month:02d}"
+        root = core._artifact_root() / ym
+        report_path = root / "manual" / "reports" / "provider_import_last.json"
+        report = core._read_json(report_path)
+
+        if isinstance(report, dict):
+            skipped_rows = report.get("skipped_rows")
+            if isinstance(skipped_rows, list):
+                dirs: list[Path] = []
+                seen: set[str] = set()
+                for row in skipped_rows:
+                    if not isinstance(row, dict):
+                        continue
+                    candidate = _derive_skipped_bucket_dir(str(row.get("moved_to") or ""))
+                    if candidate is None:
+                        continue
+                    key = str(candidate)
+                    if not key or key in seen:
+                        continue
+                    seen.add(key)
+                    dirs.append(candidate)
+                for candidate in dirs:
+                    if candidate.exists() and candidate.is_dir():
+                        return candidate
+                if dirs:
+                    return dirs[0]
+
+        skipped_root = root / "manual" / "inbox" / "_skipped"
+        if not skipped_root.exists() or not skipped_root.is_dir():
+            return None
+        run_dirs = sorted(
+            [path for path in skipped_root.iterdir() if path.is_dir()],
+            key=lambda path: path.stat().st_mtime,
+            reverse=True,
+        )
+        if run_dirs:
+            return run_dirs[0]
+        return None
+
     def _workspace_state_path() -> Path:
         return core._artifact_root() / "_workspace" / "workspace_state.json"
 
@@ -1012,6 +1068,56 @@ def create_api_router() -> APIRouter:
         )
         return JSONResponse({"status": "ok", "ym": ym, "provider": normalized_provider, "path": str(target)})
 
+    @router.post("/api/folders/{ym}/provider-skipped/latest")
+    def api_open_provider_skipped_latest(ym: str, request: Request) -> JSONResponse:
+        ym = core._safe_ym(ym)
+        year, month = core._split_ym(ym)
+        actor = _actor_from_request(request)
+        target = _resolve_provider_skipped_dir_for_ym(year, month)
+        if target is None:
+            detail = "No skipped receipt folder was found for the latest provider import."
+            core._append_audit_event(
+                year=year,
+                month=month,
+                event_type="provider_ingest",
+                action="open_skipped",
+                status="rejected",
+                actor=actor,
+                details={"reason": detail},
+            )
+            raise HTTPException(status_code=404, detail=detail)
+
+        res = _open_directory(target)
+        if res.returncode != 0:
+            detail = (
+                "Open folder failed:\n"
+                f"path: {target}\n"
+                f"exit: {res.returncode}\n"
+                f"stdout:\n{res.stdout}\n"
+                f"stderr:\n{res.stderr}\n"
+            )
+            core._append_audit_event(
+                year=year,
+                month=month,
+                event_type="provider_ingest",
+                action="open_skipped",
+                status="failed",
+                actor=actor,
+                details={"reason": detail, "path": str(target)},
+            )
+            raise HTTPException(status_code=500, detail=detail)
+
+        core._append_audit_event(
+            year=year,
+            month=month,
+            event_type="provider_ingest",
+            action="open_skipped",
+            status="success",
+            actor=actor,
+            details={"path": str(target)},
+        )
+        return JSONResponse({"status": "ok", "ym": ym, "path": str(target)})
+
     @router.post("/api/manual/{ym}/import")
     def api_manual_import(ym: str, request: Request) -> JSONResponse:
         ym = core._safe_ym(ym)
@@ -1093,12 +1199,35 @@ def create_api_router() -> APIRouter:
             )
             raise
 
+        skipped_duplicates = int(result.get("skipped_duplicates") or 0)
+        failed = int(result.get("failed") or 0)
+        manual_action_required = bool(result.get("manual_action_required")) or skipped_duplicates > 0 or failed > 0
+        result["manual_action_required"] = manual_action_required
+        if manual_action_required:
+            reason = str(result.get("manual_action_reason") or "").strip()
+            if not reason:
+                if skipped_duplicates > 0 and failed > 0:
+                    reason = "skipped_and_failed"
+                elif skipped_duplicates > 0:
+                    reason = "skipped"
+                else:
+                    reason = "failed"
+            result["manual_action_reason"] = reason
+            skipped_dir = str(result.get("skipped_dir") or "").strip()
+            if not skipped_dir:
+                resolved = _resolve_provider_skipped_dir_for_ym(year, month)
+                if resolved is not None:
+                    result["skipped_dir"] = str(resolved)
+            if not isinstance(result.get("skipped_files"), list):
+                result["skipped_files"] = []
+
+        audit_status = "warning" if manual_action_required else "success"
         core._append_audit_event(
             year=year,
             month=month,
             event_type="provider_ingest",
             action="import",
-            status="success",
+            status=audit_status,
             actor=actor,
             details={
                 "found_files": result.get("found_files"),
@@ -1108,6 +1237,10 @@ def create_api_router() -> APIRouter:
                 "providers": result.get("providers"),
                 "orders_jsonl": result.get("orders_jsonl"),
                 "provider_report_json": result.get("provider_report_json"),
+                "manual_action_required": manual_action_required,
+                "manual_action_reason": result.get("manual_action_reason"),
+                "skipped_dir": result.get("skipped_dir"),
+                "skipped_files": result.get("skipped_files"),
             },
         )
         return JSONResponse(result)

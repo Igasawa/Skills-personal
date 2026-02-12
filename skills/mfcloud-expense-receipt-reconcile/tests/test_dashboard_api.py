@@ -904,7 +904,6 @@ def test_api_month_close_runs_archive_with_cleanup_and_writes_audit(
         {
             "ym": ym,
             "checklist": {
-                "transportation_expense": True,
                 "expense_submission": True,
                 "document_printout": True,
                 "mf_accounting_link": True,
@@ -972,7 +971,6 @@ def test_api_month_close_rejects_when_checklist_is_incomplete(
         {
             "ym": ym,
             "checklist": {
-                "transportation_expense": True,
                 "expense_submission": False,
                 "document_printout": True,
                 "mf_accounting_link": False,
@@ -1431,6 +1429,41 @@ def test_api_open_provider_inbox_creates_and_opens_folder(
     assert events[-1].get("status") == "success"
 
 
+def test_api_open_provider_skipped_latest_creates_and_opens_folder(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    client = _create_client(monkeypatch, tmp_path)
+    ym = "2026-01"
+    skipped_dir = _artifact_root(tmp_path) / ym / "manual" / "inbox" / "_skipped" / "20260212_104250"
+    skipped_file = skipped_dir / "20260212.pdf"
+    _touch(skipped_file, "%PDF-1.4\n")
+    _write_json(
+        _artifact_root(tmp_path) / ym / "manual" / "reports" / "provider_import_last.json",
+        {"skipped_rows": [{"file": "20260212.pdf", "moved_to": str(skipped_file)}]},
+    )
+
+    calls: list[list[str]] = []
+
+    def _fake_run(cmd: Any, *args: Any, **kwargs: Any) -> subprocess.CompletedProcess[str]:
+        calls.append([str(c) for c in cmd])
+        return subprocess.CompletedProcess(args=cmd, returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(api_routes.subprocess, "run", _fake_run)
+
+    res = client.post("/api/folders/2026-01/provider-skipped/latest")
+    assert res.status_code == 200
+    body = res.json()
+    assert body["status"] == "ok"
+    assert body["ym"] == ym
+    assert body["path"] == str(skipped_dir)
+
+    assert calls
+    entries = _read_audit_entries(tmp_path, ym)
+    events = [e for e in entries if e.get("event_type") == "provider_ingest" and e.get("action") == "open_skipped"]
+    assert events
+    assert events[-1].get("status") == "success"
+
+
 def test_api_provider_import_returns_counts_and_writes_audit(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -1445,7 +1478,7 @@ def test_api_provider_import_returns_counts_and_writes_audit(
             "found_files": 5,
             "imported": 4,
             "imported_missing_amount": 1,
-            "skipped_duplicates": 1,
+            "skipped_duplicates": 0,
             "failed": 0,
             "providers": {
                 "chatgpt": {"found": 2, "imported": 2, "imported_missing_amount": 0, "skipped_duplicates": 0, "failed": 0}
@@ -1462,8 +1495,9 @@ def test_api_provider_import_returns_counts_and_writes_audit(
     assert body["status"] == "ok"
     assert body["found_files"] == 5
     assert body["imported"] == 4
-    assert body["skipped_duplicates"] == 1
+    assert body["skipped_duplicates"] == 0
     assert body["providers"]["chatgpt"]["imported"] == 2
+    assert body["manual_action_required"] is False
 
     entries = _read_audit_entries(tmp_path, ym)
     events = [e for e in entries if e.get("event_type") == "provider_ingest" and e.get("action") == "import"]
@@ -1473,6 +1507,52 @@ def test_api_provider_import_returns_counts_and_writes_audit(
     details = last.get("details") or {}
     assert details.get("found_files") == 5
     assert details.get("imported") == 4
+
+
+def test_api_provider_import_marks_warning_when_skipped_exists(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    client = _create_client(monkeypatch, tmp_path)
+    ym = "2026-01"
+
+    def _fake_import(year: int, month: int) -> dict[str, Any]:
+        assert (year, month) == (2026, 1)
+        return {
+            "status": "ok",
+            "ym": ym,
+            "found_files": 3,
+            "imported": 0,
+            "imported_missing_amount": 0,
+            "skipped_duplicates": 3,
+            "failed": 0,
+            "providers": {},
+            "orders_jsonl": "C:\\tmp\\manual\\orders.jsonl",
+            "provider_report_json": "C:\\tmp\\manual\\reports\\provider_import_last.json",
+            "manual_action_required": True,
+            "manual_action_reason": "skipped",
+            "skipped_dir": "C:\\tmp\\manual\\inbox\\_skipped\\20260212_104250",
+            "skipped_files": ["20260212.pdf", "20260212_001.pdf", "20260212_002.pdf"],
+        }
+
+    monkeypatch.setattr(api_routes.core, "_import_provider_receipts_for_ym", _fake_import)
+
+    res = client.post("/api/providers/2026-01/import")
+    assert res.status_code == 200
+    body = res.json()
+    assert body["status"] == "ok"
+    assert body["manual_action_required"] is True
+    assert body["manual_action_reason"] == "skipped"
+    assert body["skipped_dir"] == "C:\\tmp\\manual\\inbox\\_skipped\\20260212_104250"
+    assert body["skipped_files"] == ["20260212.pdf", "20260212_001.pdf", "20260212_002.pdf"]
+
+    entries = _read_audit_entries(tmp_path, ym)
+    events = [e for e in entries if e.get("event_type") == "provider_ingest" and e.get("action") == "import"]
+    assert events
+    last = events[-1]
+    assert last.get("status") == "warning"
+    details = last.get("details") or {}
+    assert details.get("manual_action_required") is True
+    assert details.get("manual_action_reason") == "skipped"
 
 
 def test_api_provider_print_run_merges_pdf_and_opens_manual_print(
@@ -1567,7 +1647,6 @@ def test_api_month_close_checklist_get_returns_default(
     assert body["ym"] == "2026-01"
     assert body["updated_at"] is None
     assert body["checklist"] == {
-        "transportation_expense": False,
         "expense_submission": False,
         "document_printout": False,
         "mf_accounting_link": False,
@@ -1580,7 +1659,6 @@ def test_api_month_close_checklist_post_persists_state_and_writes_audit(
     client = _create_client(monkeypatch, tmp_path)
     ym = "2026-01"
     checklist = {
-        "transportation_expense": True,
         "expense_submission": True,
         "document_printout": False,
         "mf_accounting_link": True,
@@ -1615,16 +1693,14 @@ def test_api_month_close_checklist_post_rejects_invalid_payload(
     client = _create_client(monkeypatch, tmp_path)
 
     missing_key = {
-        "transportation_expense": True,
         "expense_submission": True,
         "document_printout": True,
     }
     res_missing = client.post("/api/month-close-checklist/2026-01", json={"checklist": missing_key})
     assert res_missing.status_code == 400
-    assert "must contain exactly these keys" in str(res_missing.json().get("detail") or "")
+    assert "required keys and no unknown keys" in str(res_missing.json().get("detail") or "")
 
     non_bool = {
-        "transportation_expense": True,
         "expense_submission": "yes",
         "document_printout": True,
         "mf_accounting_link": True,
@@ -1632,6 +1708,29 @@ def test_api_month_close_checklist_post_rejects_invalid_payload(
     res_non_bool = client.post("/api/month-close-checklist/2026-01", json={"checklist": non_bool})
     assert res_non_bool.status_code == 400
     assert "checklist.expense_submission must be a boolean" in str(res_non_bool.json().get("detail") or "")
+
+
+def test_api_month_close_checklist_post_accepts_legacy_optional_key(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    client = _create_client(monkeypatch, tmp_path)
+    ym = "2026-01"
+    checklist = {
+        "transportation_expense": False,  # legacy key (ignored)
+        "expense_submission": True,
+        "document_printout": True,
+        "mf_accounting_link": True,
+    }
+
+    res = client.post(f"/api/month-close-checklist/{ym}", json={"checklist": checklist})
+    assert res.status_code == 200
+    body = res.json()
+    assert body["status"] == "ok"
+    assert body["checklist"] == {
+        "expense_submission": True,
+        "document_printout": True,
+        "mf_accounting_link": True,
+    }
 
 
 def test_api_workspace_state_get_returns_default(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

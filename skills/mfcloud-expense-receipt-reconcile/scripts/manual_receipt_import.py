@@ -5,7 +5,9 @@ import argparse
 from dataclasses import dataclass
 from datetime import date, datetime
 import hashlib
+import io
 import json
+import os
 from pathlib import Path
 import re
 import shutil
@@ -21,7 +23,11 @@ if str(SKILL_ROOT) not in sys.path:
 from common import artifact_root as _artifact_root  # noqa: E402
 from common import read_jsonl as _read_jsonl  # noqa: E402
 
-DATE_RE = re.compile(r"(20\d{2})\D{0,3}(\d{1,2})\D{0,3}(\d{1,2})")
+DATE_RE = re.compile(r"(20\d{2})\s*[./\-年]\s*(\d{1,2})\s*[./\-月]\s*(\d{1,2})")
+EN_DATE_MONTH_FIRST_RE = re.compile(r"\b([A-Za-z]{3,9})\s+(\d{1,2}),?\s*(20\d{2})\b")
+EN_DATE_DAY_FIRST_RE = re.compile(r"\b(\d{1,2})\s+([A-Za-z]{3,9})\s+(20\d{2})\b")
+NUMERIC_DATE_YMD_COMPACT_RE = re.compile(r"\b(20\d{2})(\d{2})(\d{2})\b")
+NUMERIC_DATE_DMY_OR_MDY_RE = re.compile(r"\b(\d{1,2})\s*[./\-]\s*(\d{1,2})\s*[./\-]\s*(20\d{2})\b")
 AMAZON_ORDER_ID_RE = re.compile(r"\b\d{3}-\d{7}-\d{7}\b")
 RAKUTEN_ORDER_ID_RE = re.compile(r"\b\d{6}-\d{8}-\d{10}\b")
 
@@ -59,6 +65,39 @@ ITEM_NOISE_TOKENS = (
     "支払方法",
     "〒",
 )
+
+EN_MONTH_TO_NUM: dict[str, int] = {
+    "jan": 1,
+    "january": 1,
+    "feb": 2,
+    "february": 2,
+    "mar": 3,
+    "march": 3,
+    "apr": 4,
+    "april": 4,
+    "may": 5,
+    "jun": 6,
+    "june": 6,
+    "jul": 7,
+    "july": 7,
+    "aug": 8,
+    "august": 8,
+    "sep": 9,
+    "sept": 9,
+    "september": 9,
+    "oct": 10,
+    "october": 10,
+    "nov": 11,
+    "november": 11,
+    "dec": 12,
+    "december": 12,
+}
+
+FOREIGN_CURRENCY_RE = re.compile(
+    r"\b(?:USD|EUR|GBP|AUD|CAD|CHF|CNY|HKD|SGD|NTD|KRW|INR|THB|VND|MYR|PHP)\b|(?:[$€£]\s*[0-9])",
+    re.IGNORECASE,
+)
+YEN_MARKER_RE = re.compile(r"(?:[¥￥]|円|\bJPY\b)", re.IGNORECASE)
 
 
 @dataclass(frozen=True)
@@ -99,11 +138,132 @@ def _read_pdf_text(path: Path) -> str:
     return _normalize_text("\n".join(parts))
 
 
+def _text_non_space_len(text: str) -> int:
+    return len(re.sub(r"\s+", "", str(text or "")))
+
+
+def _ocr_enabled() -> bool:
+    raw = str(os.environ.get("AX_MANUAL_RECEIPT_OCR", "1") or "").strip().lower()
+    return raw not in {"0", "false", "off", "no"}
+
+
+def _ocr_lang() -> str:
+    raw = str(os.environ.get("AX_MANUAL_RECEIPT_OCR_LANG", "") or "").strip()
+    return raw or "jpn+eng"
+
+
+def _resolve_tesseract_cmd() -> str | None:
+    override = str(os.environ.get("AX_MANUAL_RECEIPT_TESSERACT_CMD", "") or "").strip()
+    if override and Path(override).exists():
+        return override
+    cmd = shutil.which("tesseract")
+    if cmd:
+        return cmd
+    candidates = [
+        Path("C:/Program Files/Tesseract-OCR/tesseract.exe"),
+        Path("C:/Program Files (x86)/Tesseract-OCR/tesseract.exe"),
+        Path.home() / "AppData/Local/Programs/Tesseract-OCR/tesseract.exe",
+    ]
+    for candidate in candidates:
+        if candidate.exists():
+            return str(candidate)
+    return None
+
+
+def _extract_pdf_image_blobs(path: Path, *, max_pages: int = 3, max_images_per_page: int = 4) -> list[bytes]:
+    # pypdf image extraction requires Pillow; when unavailable, skip OCR gracefully.
+    try:
+        from PIL import Image  # type: ignore  # noqa: F401
+    except Exception:
+        return []
+
+    try:
+        from pypdf import PdfReader  # type: ignore
+    except Exception:
+        return []
+
+    try:
+        reader = PdfReader(str(path))
+    except Exception:
+        return []
+
+    blobs: list[bytes] = []
+    for page in list(reader.pages)[: max(1, int(max_pages))]:
+        page_images = getattr(page, "images", None)
+        if not page_images:
+            continue
+
+        taken = 0
+        try:
+            image_iter = iter(page_images)
+        except Exception:
+            continue
+
+        for image in image_iter:
+            if taken >= max(1, int(max_images_per_page)):
+                break
+            data = getattr(image, "data", b"")
+            try:
+                blob = bytes(data or b"")
+            except Exception:
+                blob = b""
+            if not blob:
+                continue
+            blobs.append(blob)
+            taken += 1
+
+    return blobs
+
+
+def _ocr_text_from_image_blobs(blobs: list[bytes]) -> str:
+    if not blobs:
+        return ""
+    if not _ocr_enabled():
+        return ""
+
+    try:
+        from PIL import Image  # type: ignore
+        import pytesseract  # type: ignore
+    except Exception:
+        return ""
+
+    tesseract_cmd = _resolve_tesseract_cmd()
+    if not tesseract_cmd:
+        return ""
+    try:
+        pytesseract.pytesseract.tesseract_cmd = str(tesseract_cmd)
+    except Exception:
+        return ""
+
+    lang = _ocr_lang()
+    parts: list[str] = []
+    for blob in blobs:
+        try:
+            with Image.open(io.BytesIO(blob)) as img:
+                target = img
+                if img.mode not in {"L", "RGB"}:
+                    target = img.convert("RGB")
+                text = pytesseract.image_to_string(target, lang=lang) or ""
+        except Exception:
+            continue
+        cleaned = _normalize_text(text)
+        if cleaned:
+            parts.append(cleaned)
+
+    return _normalize_text("\n".join(parts))
+
+
+def _read_pdf_text_via_ocr(path: Path) -> str:
+    blobs = _extract_pdf_image_blobs(path)
+    return _ocr_text_from_image_blobs(blobs)
+
+
 def _extract_date_from_text(text: str) -> date | None:
     lines = [line.strip() for line in text.splitlines() if line.strip()]
-    date_keywords = ("注文日", "発行日", "領収日", "利用日", "日付")
+    date_keywords = ("注文日", "発行日", "領収日", "利用日", "日付", "date", "issued", "invoice date", "date paid")
     for line in lines[:80]:
-        if not any(token in line for token in date_keywords):
+        lower_line = line.lower()
+        if not any(token in lower_line for token in date_keywords):
             continue
         m = DATE_RE.search(line)
         if not m:
@@ -113,50 +273,174 @@ def _extract_date_from_text(text: str) -> date | None:
             return date(y, month, day)
         except ValueError:
             continue
+
+    english_hits: list[tuple[int, date]] = []
+    for m in EN_DATE_MONTH_FIRST_RE.finditer(text):
+        month_token = str(m.group(1) or "").strip().lower().rstrip(".")
+        month_num = EN_MONTH_TO_NUM.get(month_token)
+        if not month_num:
+            continue
+        day = int(m.group(2))
+        year = int(m.group(3))
+        try:
+            english_hits.append((m.start(), date(year, month_num, day)))
+        except ValueError:
+            continue
+    for m in EN_DATE_DAY_FIRST_RE.finditer(text):
+        day = int(m.group(1))
+        month_token = str(m.group(2) or "").strip().lower().rstrip(".")
+        month_num = EN_MONTH_TO_NUM.get(month_token)
+        if not month_num:
+            continue
+        year = int(m.group(3))
+        try:
+            english_hits.append((m.start(), date(year, month_num, day)))
+        except ValueError:
+            continue
+    if english_hits:
+        english_hits.sort(key=lambda x: x[0])
+        return english_hits[0][1]
+
+    for m in NUMERIC_DATE_DMY_OR_MDY_RE.finditer(text):
+        first = int(m.group(1))
+        second = int(m.group(2))
+        year = int(m.group(3))
+
+        # Accept only unambiguous numeric dates to avoid swapping month/day incorrectly.
+        if first > 12 and second <= 12:
+            try:
+                return date(year, second, first)
+            except ValueError:
+                continue
+        if second > 12 and first <= 12:
+            try:
+                return date(year, first, second)
+            except ValueError:
+                continue
+
+    for m in NUMERIC_DATE_YMD_COMPACT_RE.finditer(text):
+        y, month, day = int(m.group(1)), int(m.group(2)), int(m.group(3))
+        try:
+            return date(y, month, day)
+        except ValueError:
+            continue
+
     for m in DATE_RE.finditer(text):
         y, month, day = int(m.group(1)), int(m.group(2)), int(m.group(3))
         try:
             return date(y, month, day)
         except ValueError:
             continue
+
     return None
 
 
 def _extract_amount_after_label(text: str, label: str) -> int | None:
-    pattern = re.compile(rf"{re.escape(label)}\s*[:：]?\s*[¥￥]?\s*([0-9][0-9,]*)", re.IGNORECASE)
+    pattern = re.compile(
+        rf"{re.escape(label)}\s*[:：]?\s*(?:[¥￥$€£]|JPY|USD)?\s*([0-9][0-9,]*(?:\.[0-9]{{1,2}})?)",
+        re.IGNORECASE,
+    )
     m = pattern.search(text)
     if not m:
         return None
-    raw = m.group(1).replace(",", "")
+    raw = m.group(1).replace(",", "").strip()
     try:
-        return int(raw)
+        return int(round(float(raw)))
     except ValueError:
         return None
 
 
+def _has_foreign_currency(text: str) -> bool:
+    return bool(FOREIGN_CURRENCY_RE.search(text or ""))
+
+
+def _has_yen_marker(text: str) -> bool:
+    return bool(YEN_MARKER_RE.search(text or ""))
+
+
+def _to_int_amount(raw: str) -> int | None:
+    text = str(raw or "").strip()
+    if not text:
+        return None
+
+    # OCR noise sometimes appends one digit (e.g. "19,9179"). If a trailing-digit
+    # trim restores a valid comma-grouped integer, prefer the restored form.
+    if "," in text and "." not in text:
+        compact = re.sub(r"\s+", "", text)
+        if not re.fullmatch(r"\d{1,3}(,\d{3})+", compact):
+            restored = compact
+            while restored and not re.fullmatch(r"\d{1,3}(,\d{3})+", restored):
+                restored = restored[:-1]
+            if re.fullmatch(r"\d{1,3}(,\d{3})+", restored):
+                text = restored
+            else:
+                text = compact
+        else:
+            text = compact
+
+    value = text.replace(",", "").strip()
+    if not value:
+        return None
+    try:
+        amount = int(round(float(value)))
+    except ValueError:
+        return None
+    max_yen_raw = str(os.environ.get("AX_MANUAL_RECEIPT_MAX_YEN", "") or "").strip()
+    try:
+        max_yen = int(max_yen_raw) if max_yen_raw else 10_000_000
+    except ValueError:
+        max_yen = 10_000_000
+    if amount <= 0 or amount > max_yen:
+        return None
+    return amount
+
+
 def _extract_total_yen(text: str) -> int | None:
+    has_foreign = _has_foreign_currency(text)
+    # For foreign-currency receipts (e.g. USD invoices), do not coerce to JPY.
+    # Any JPY-like token in such documents is often a tax/reference figure.
+    if has_foreign:
+        return None
+
     for label in AMOUNT_LABELS:
         hit = _extract_amount_after_label(text, label)
         if hit is not None:
             return hit
 
     yen_hits: list[int] = []
-    for m in re.finditer(r"[¥￥]\s*([0-9][0-9,]*)", text):
-        raw = m.group(1).replace(",", "")
-        try:
-            yen_hits.append(int(raw))
-        except ValueError:
-            continue
+    for m in re.finditer(r"(?:[¥￥]|JPY)\s*([0-9][0-9,]*(?:\.[0-9]{1,2})?)", text, re.IGNORECASE):
+        hit = _to_int_amount(m.group(1))
+        if hit is not None:
+            yen_hits.append(hit)
+    for m in re.finditer(r"([0-9][0-9,]*(?:\.[0-9]{1,2})?)\s*(?:円|JPY)", text, re.IGNORECASE):
+        hit = _to_int_amount(m.group(1))
+        if hit is not None:
+            yen_hits.append(hit)
     if yen_hits:
         return max(yen_hits)
 
+    if has_foreign:
+        return None
+
+    loose_hits: list[int] = []
+    for m in re.finditer(r"([0-9][0-9,\s]{2,}(?:\.[0-9]{1,2})?)", text):
+        raw = re.sub(r"\s+", "", str(m.group(1) or ""))
+        hit = _to_int_amount(raw)
+        if hit is not None:
+            loose_hits.append(hit)
+    if loose_hits:
+        freq: dict[int, int] = {}
+        for value in loose_hits:
+            freq[value] = int(freq.get(value, 0)) + 1
+        repeated = [value for value, count in freq.items() if count >= 2]
+        if repeated:
+            return max(repeated)
+
     plain_hits: list[int] = []
     for m in re.finditer(r"\b([0-9][0-9,]{2,})\b", text):
-        raw = m.group(1).replace(",", "")
-        try:
-            plain_hits.append(int(raw))
-        except ValueError:
-            continue
+        hit = _to_int_amount(m.group(1))
+        if hit is not None:
+            plain_hits.append(hit)
     return max(plain_hits) if plain_hits else None
 
 
@@ -283,13 +567,69 @@ def _append_jsonl(path: Path, rows: list[dict[str, Any]]) -> None:
             handle.write(json.dumps(row, ensure_ascii=False) + "\n")
 
 
+def _replace_order_by_hash(
+    orders_jsonl: Path,
+    *,
+    doc_hash: str,
+    updates: dict[str, Any],
+    now_iso: str,
+) -> tuple[bool, dict[str, Any] | None]:
+    rows = _read_jsonl(orders_jsonl, required=False, strict=False)
+    if not rows:
+        return False, None
+    digest = str(doc_hash or "").strip().lower()
+    if not digest:
+        return False, None
+
+    replaced = False
+    merged_row: dict[str, Any] | None = None
+    out_rows: list[dict[str, Any]] = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        if not replaced and str(row.get("doc_hash") or "").strip().lower() == digest:
+            merged = dict(row)
+            first_imported_at = merged.get("first_imported_at") or merged.get("imported_at")
+            merged.update(updates)
+            merged["doc_hash"] = digest
+            merged["imported_at"] = now_iso
+            if first_imported_at:
+                merged["first_imported_at"] = first_imported_at
+            merged["metadata_refreshed_at"] = now_iso
+            out_rows.append(merged)
+            merged_row = merged
+            replaced = True
+            continue
+        out_rows.append(row)
+
+    if not replaced:
+        return False, None
+
+    orders_jsonl.parent.mkdir(parents=True, exist_ok=True)
+    with orders_jsonl.open("w", encoding="utf-8") as handle:
+        for row in out_rows:
+            handle.write(json.dumps(row, ensure_ascii=False) + "\n")
+    return True, merged_row
+
+
 def _parse_receipt(path: Path) -> ParsedReceipt:
     text = _read_pdf_text(path)
     order_id = _extract_order_id(text)
     order_date = _extract_date_from_text(text)
     total_yen = _extract_total_yen(text)
-    source = _detect_source(text, order_id, path.name)
     item_name = _extract_item_name(text)
+
+    # OCR fallback for image-only PDFs or malformed embedded text.
+    if _ocr_enabled() and (_text_non_space_len(text) < 24 or (order_date is None and total_yen is None)):
+        ocr_text = _read_pdf_text_via_ocr(path)
+        if _text_non_space_len(ocr_text) > 0:
+            text = _normalize_text("\n".join(part for part in [text, ocr_text] if str(part or "").strip()))
+            order_id = _extract_order_id(text)
+            order_date = _extract_date_from_text(text)
+            total_yen = _extract_total_yen(text)
+            item_name = _extract_item_name(text)
+
+    source = _detect_source(text, order_id, path.name)
     return ParsedReceipt(
         source=source,
         order_id=order_id,
@@ -359,6 +699,7 @@ def _new_provider_stat() -> dict[str, int]:
         "found": 0,
         "imported": 0,
         "imported_missing_amount": 0,
+        "updated_duplicates": 0,
         "skipped_duplicates": 0,
         "failed": 0,
     }
@@ -402,6 +743,7 @@ def import_manual_receipts_for_month(
     failed_rows: list[dict[str, Any]] = []
     new_orders: list[dict[str, Any]] = []
     imported = 0
+    updated_duplicates = 0
     skipped_duplicates = 0
     failed = 0
     missing_amount = 0
@@ -433,6 +775,72 @@ def import_manual_receipts_for_month(
             continue
 
         if digest in existing_hashes:
+            if str(ingestion_channel or "").strip().lower() == "provider_inbox":
+                try:
+                    parsed = _parse_receipt_file(src)
+                    fallback_date = _fallback_date_from_name(src.name)
+                    mtime_date = date.fromtimestamp(src.stat().st_mtime)
+                    order_date = parsed.order_date or fallback_date or mtime_date
+                    source = parsed.source if parsed.source in {"amazon", "rakuten", "manual"} else "manual"
+                    total_yen = parsed.total_yen
+                    if total_yen is None:
+                        missing_amount += 1
+                        provider_stat["imported_missing_amount"] += 1
+                    order_id = parsed.order_id or f"MANUAL-{digest[:12].upper()}"
+                    provider_doc_id = parsed.order_id if provider in PROVIDER_KEYS and parsed.order_id else None
+                    provider_value: str | None = provider if provider in PROVIDER_KEYS else None
+                    updates: dict[str, Any] = {
+                        "source": "manual",
+                        "provider": provider_value,
+                        "source_hint": source,
+                        "ingestion_channel": str(ingestion_channel or "manual_inbox"),
+                        "provider_doc_id": provider_doc_id,
+                        "provider_invoice_url": None,
+                        "order_id": order_id,
+                        "order_date": order_date.isoformat(),
+                        "total_yen": total_yen,
+                        "order_total_yen": total_yen,
+                        "item_name": parsed.item_name,
+                        "status": "ok",
+                        "doc_type": "provider_upload" if provider_value else "manual_upload",
+                        "detail_url": None,
+                        "receipt_url": None,
+                        "include": True,
+                        "import_source_name": src.name,
+                        "import_source_relpath": str(rel).replace("\\", "/"),
+                    }
+                    replaced, merged = _replace_order_by_hash(
+                        orders_jsonl,
+                        doc_hash=digest,
+                        updates=updates,
+                        now_iso=now_iso,
+                    )
+                    if replaced:
+                        imported += 1
+                        updated_duplicates += 1
+                        provider_stat["imported"] += 1
+                        provider_stat["updated_duplicates"] += 1
+                        moved = _move_to_bucket(src, processed_dir, rel_to=inbox_dir)
+                        imported_rows.append(
+                            {
+                                "file": src.name,
+                                "relative_path": str(rel).replace("\\", "/"),
+                                "provider": provider,
+                                "moved_to": str(moved),
+                                "pdf_path": str((merged or {}).get("pdf_path") or ""),
+                                "source": source,
+                                "order_id": order_id,
+                                "order_date": order_date.isoformat(),
+                                "total_yen": total_yen,
+                                "doc_hash": digest,
+                                "updated_duplicate": True,
+                            }
+                        )
+                        continue
+                except Exception:
+                    # Fall back to duplicate-skip behavior below.
+                    pass
+
             skipped_duplicates += 1
             provider_stat["skipped_duplicates"] += 1
             moved = _move_to_bucket(src, skipped_dir, rel_to=inbox_dir)
@@ -540,6 +948,7 @@ def import_manual_receipts_for_month(
         "found_files": len(receipt_files),
         "found_pdfs": len(receipt_files),
         "imported": imported,
+        "updated_duplicates": updated_duplicates,
         "imported_missing_amount": missing_amount,
         "skipped_duplicates": skipped_duplicates,
         "failed": failed,

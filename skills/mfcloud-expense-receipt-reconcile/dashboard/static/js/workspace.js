@@ -68,6 +68,7 @@
   const linkForm = document.getElementById("workspace-link-form");
   const linkLabelInput = document.getElementById("workspace-link-label");
   const linkUrlInput = document.getElementById("workspace-link-url");
+  const linkPurposeInput = document.getElementById("workspace-link-purpose");
   const clearLinksButton = document.getElementById("workspace-clear-links");
   const customLinksList = document.getElementById("workspace-custom-links");
   const customLinksEmpty = document.getElementById("workspace-custom-links-empty");
@@ -483,8 +484,8 @@
       .split(/\r?\n/)
       .map((line) => line.trim())
       .filter(Boolean);
-    if (lines.length === 0) return "未登録です。";
-    return lines[0];
+    if (lines.length === 0) return "プロンプト先頭: 未登録です。";
+    return `プロンプト先頭: ${lines[0]}`;
   }
 
   function resolvePromptContextFromFront(node) {
@@ -755,12 +756,12 @@
     noteWrap.className = "workspace-link-note";
     const noteLabel = document.createElement("span");
     noteLabel.className = "workspace-link-note-label";
-    noteLabel.textContent = "メモ";
+    noteLabel.textContent = "目的";
     const noteEditor = document.createElement("textarea");
     noteEditor.className = "workspace-link-note-editor";
     noteEditor.rows = 3;
     noteEditor.maxLength = MAX_LINK_NOTE_CHARS;
-    noteEditor.placeholder = "業務プロセスなどのメモ";
+    noteEditor.placeholder = "このリンクを使う目的";
     noteEditor.setAttribute("data-workspace-link-note", "");
     noteEditor.dataset.noteKey = promptKey;
     noteWrap.appendChild(noteLabel);
@@ -797,6 +798,43 @@
       activatePromptEditorForKey(promptKey, link);
     });
 
+    const editLinkButton = document.createElement("button");
+    editLinkButton.type = "button";
+    editLinkButton.className = "secondary workspace-edit-link";
+    editLinkButton.textContent = "名称/目的を編集";
+    editLinkButton.addEventListener("click", () => {
+      const currentPurpose = getLinkNoteForKey(promptKey);
+      const nextLabelRaw = window.prompt("リンク名を編集してください。", String(link.label || ""));
+      if (nextLabelRaw === null) return;
+      const fallbackLabel = formatUrlHost(link.url) || String(link.url || "");
+      const nextLabel = normalizeText(nextLabelRaw, 80) || fallbackLabel;
+      if (!nextLabel) {
+        showToast("リンク名を入力してください。", "error");
+        return;
+      }
+
+      const nextPurposeRaw = window.prompt("目的を編集してください（空欄可）。", String(currentPurpose || ""));
+      if (nextPurposeRaw === null) return;
+      const nextPurpose = normalizeLinkNoteText(nextPurposeRaw);
+
+      const next = links.slice();
+      next[index] = { label: nextLabel, url: String(link.url || "") };
+      const linksSaved = saveCustomLinks(next);
+      const purposeSaved = saveLinkNoteForKey(promptKey, nextPurpose);
+      if (!linksSaved || !purposeSaved) {
+        showToast("リンク名/目的を更新できませんでした。", "error");
+        return;
+      }
+
+      if (activePromptKey === promptKey) {
+        setActivePrompt(promptKey, { label: nextLabel, url: String(link.url || "") });
+        if (promptEditor) updatePromptMeta(String(promptEditor.value || ""), "更新しました。");
+      }
+
+      renderCustomLinks(next);
+      showToast("リンク名/目的を更新しました。", "success");
+    });
+
     const removeButton = document.createElement("button");
     removeButton.type = "button";
     removeButton.className = "step-reset";
@@ -816,6 +854,7 @@
     actions.appendChild(copyUrlButton);
     actions.appendChild(copyPromptButton);
     actions.appendChild(editPromptButton);
+    actions.appendChild(editLinkButton);
     actions.appendChild(removeButton);
     details.appendChild(actions);
 
@@ -913,6 +952,7 @@
         }
         const fallback = new URL(url).hostname;
         const label = normalizeText(linkLabelInput.value, 80) || fallback;
+        const purpose = normalizeLinkNoteText(linkPurposeInput ? linkPurposeInput.value : "");
 
         const current = readCustomLinks();
         const duplicate = current.some((item) => String(item.url).toLowerCase() === String(url).toLowerCase());
@@ -926,8 +966,12 @@
           showToast("追加リンクを保存できませんでした。", "error");
           return;
         }
+        if (!saveLinkNoteForKey(buildCustomPromptKey(url), purpose)) {
+          showToast("リンクは保存しましたが、目的の保存に失敗しました。", "error");
+        }
         renderCustomLinks(next);
         linkForm.reset();
+        if (linkPurposeInput) linkPurposeInput.value = "";
         linkLabelInput.focus();
         showToast("追加リンクを保存しました。", "success");
       });

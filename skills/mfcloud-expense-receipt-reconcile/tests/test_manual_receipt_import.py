@@ -139,3 +139,126 @@ def test_import_manual_receipts_provider_folder_adds_provider_metadata(tmp_path:
 
     provider_report = Path(str(result.get("provider_report_json") or ""))
     assert provider_report.exists()
+
+
+def test_import_provider_inbox_refreshes_duplicate_metadata(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    output_root = tmp_path / "out"
+    inbox_pdf = output_root / "manual" / "inbox" / "chatgpt" / "dup.pdf"
+    _write_pdf(inbox_pdf, b"%PDF-1.4\n%duplicate\n")
+    digest = manual_import._file_sha1(inbox_pdf)
+
+    existing_pdf = output_root / "manual" / "pdfs" / "existing.pdf"
+    _write_pdf(existing_pdf, b"%PDF-1.4\n%existing\n")
+
+    orders_path = output_root / "manual" / "orders.jsonl"
+    orders_path.parent.mkdir(parents=True, exist_ok=True)
+    orders_path.write_text(
+        json.dumps(
+            {
+                "source": "manual",
+                "provider": "chatgpt",
+                "source_hint": "manual",
+                "ingestion_channel": "provider_inbox",
+                "order_id": "MANUAL-OLD",
+                "order_date": "2026-01-20",
+                "total_yen": 2610013,
+                "order_total_yen": 2610013,
+                "pdf_path": str(existing_pdf),
+                "doc_hash": digest,
+            },
+            ensure_ascii=False,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(
+        manual_import,
+        "_parse_receipt",
+        lambda path: manual_import.ParsedReceipt(
+            source="manual",
+            order_id="MANUAL-REFRESHED",
+            order_date=date(2026, 1, 18),
+            total_yen=None,
+            item_name="ChatGPT Pro Subscription",
+        ),
+    )
+
+    result = manual_import.import_manual_receipts_for_month(
+        output_root,
+        2026,
+        1,
+        provider_filter={"chatgpt"},
+        ingestion_channel="provider_inbox",
+    )
+    assert result["found_files"] == 1
+    assert result["imported"] == 1
+    assert result["updated_duplicates"] == 1
+    assert result["skipped_duplicates"] == 0
+
+    rows = [json.loads(line) for line in orders_path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    assert len(rows) == 1
+    row = rows[0]
+    assert row["order_id"] == "MANUAL-REFRESHED"
+    assert row["order_date"] == "2026-01-18"
+    assert row["total_yen"] is None
+    assert row["provider"] == "chatgpt"
+    assert row.get("metadata_refreshed_at")
+    assert row["pdf_path"] == str(existing_pdf)
+
+
+def test_extract_total_yen_returns_none_for_foreign_currency_text() -> None:
+    text = "Total $220.00 paid on January 18, 2026"
+    assert manual_import._extract_total_yen(text) is None
+
+
+def test_extract_total_yen_ignores_unreasonable_large_noise_numbers() -> None:
+    text = "合計 19,917円 / REF 17020001010196"
+    assert manual_import._extract_total_yen(text) == 19917
+
+
+def test_extract_total_yen_repairs_common_ocr_comma_tail_noise() -> None:
+    text = "消費税対象 19,9179"
+    assert manual_import._extract_total_yen(text) == 19917
+
+
+def test_extract_total_yen_prefers_repeated_total_over_single_noise_peak() -> None:
+    text = "Subtotal 19,917\nTotal 19,917\nRef 91,779"
+    assert manual_import._extract_total_yen(text) == 19917
+
+
+def test_extract_date_from_english_text() -> None:
+    text = "Date paid January 18, 2026\nDate due Feb 18, 2026"
+    assert manual_import._extract_date_from_text(text) == date(2026, 1, 18)
+
+
+def test_extract_date_from_numeric_unambiguous_day_first_text() -> None:
+    text = "Receipt issued 16/01/2026 7:28 PM"
+    assert manual_import._extract_date_from_text(text) == date(2026, 1, 16)
+
+
+def test_extract_date_from_compact_ymd_text() -> None:
+    text = "No 20260105-38"
+    assert manual_import._extract_date_from_text(text) == date(2026, 1, 5)
+
+
+def test_parse_receipt_uses_ocr_fallback_when_pdf_text_is_empty(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    pdf_path = tmp_path / "scan.pdf"
+    _write_pdf(pdf_path)
+
+    monkeypatch.setattr(manual_import, "_read_pdf_text", lambda path: "")
+    monkeypatch.setattr(manual_import, "_ocr_enabled", lambda: True)
+    monkeypatch.setattr(
+        manual_import,
+        "_read_pdf_text_via_ocr",
+        lambda path: "Date paid January 16, 2026\nTotal 25,243\nStore Azabudai Hills",
+    )
+
+    parsed = manual_import._parse_receipt(pdf_path)
+    assert parsed.order_date == date(2026, 1, 16)
+    assert parsed.total_yen == 25243
+    assert parsed.source == "manual"

@@ -80,6 +80,49 @@ def _iter_receipt_files(root_dir: Path) -> list[Path]:
     return out
 
 
+def _derive_skipped_bucket_dir(moved_to: str) -> Path | None:
+    raw = str(moved_to or "").strip()
+    if not raw:
+        return None
+    moved = Path(raw).expanduser()
+    parent = moved.parent
+    if not str(parent):
+        return None
+    parts = list(parent.parts)
+    lowered = [str(part).lower() for part in parts]
+    if "_skipped" in lowered:
+        idx = lowered.index("_skipped")
+        if idx + 1 < len(parts):
+            return Path(*parts[: idx + 2])
+    return parent
+
+
+def _extract_skipped_dirs_and_files(rows: Any) -> tuple[list[str], list[str]]:
+    if not isinstance(rows, list):
+        return [], []
+    dirs: list[str] = []
+    files: list[str] = []
+    seen_dirs: set[str] = set()
+    seen_files: set[str] = set()
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        moved_to = str(row.get("moved_to") or "").strip()
+        skipped_dir = _derive_skipped_bucket_dir(moved_to) if moved_to else None
+        if skipped_dir is not None:
+            skipped_dir_text = str(skipped_dir)
+            if skipped_dir_text and skipped_dir_text not in seen_dirs:
+                seen_dirs.add(skipped_dir_text)
+                dirs.append(skipped_dir_text)
+        file_name = str(row.get("file") or "").strip()
+        if not file_name and moved_to:
+            file_name = Path(moved_to).name
+        if file_name and file_name not in seen_files:
+            seen_files.add(file_name)
+            files.append(file_name)
+    return dirs, files
+
+
 def _provider_step_attempted_for_ym(year: int, month: int) -> bool:
     month_root = _manual_month_root_for_ym(year, month)
     provider_import_report = month_root / "manual" / "reports" / "provider_import_last.json"
@@ -253,14 +296,27 @@ def _import_provider_receipts_for_ym(year: int, month: int) -> dict[str, Any]:
         "failed": int(shared_stats.get("failed") or 0),
     }
 
+    skipped_duplicates = int(result.get("skipped_duplicates") or 0)
+    failed = int(result.get("failed") or 0)
+    skipped_dirs, skipped_files = _extract_skipped_dirs_and_files(result.get("skipped_rows"))
+    manual_action_required = skipped_duplicates > 0 or failed > 0
+    if skipped_duplicates > 0 and failed > 0:
+        manual_action_reason = "skipped_and_failed"
+    elif skipped_duplicates > 0:
+        manual_action_reason = "skipped"
+    elif failed > 0:
+        manual_action_reason = "failed"
+    else:
+        manual_action_reason = ""
+
     return {
         "status": "ok",
         "ym": result.get("ym"),
         "found_files": int(result.get("found_files") or result.get("found_pdfs") or 0),
         "imported": int(result.get("imported") or 0),
         "imported_missing_amount": int(result.get("imported_missing_amount") or 0),
-        "skipped_duplicates": int(result.get("skipped_duplicates") or 0),
-        "failed": int(result.get("failed") or 0),
+        "skipped_duplicates": skipped_duplicates,
+        "failed": failed,
         "providers": providers_result,
         "inbox_dir": str(result.get("inbox_dir") or ""),
         "pdfs_dir": str(result.get("pdfs_dir") or ""),
@@ -268,6 +324,12 @@ def _import_provider_receipts_for_ym(year: int, month: int) -> dict[str, Any]:
         "errors_jsonl": str(result.get("errors_jsonl") or ""),
         "report_json": str(result.get("report_json") or ""),
         "provider_report_json": str(result.get("provider_report_json") or ""),
+        "manual_action_required": manual_action_required,
+        "manual_action_reason": manual_action_reason,
+        "unattached_count": skipped_duplicates + failed,
+        "skipped_dir": skipped_dirs[0] if skipped_dirs else "",
+        "skipped_dirs": skipped_dirs,
+        "skipped_files": skipped_files,
     }
 
 

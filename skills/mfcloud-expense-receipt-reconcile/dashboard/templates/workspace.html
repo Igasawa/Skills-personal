@@ -65,12 +65,12 @@
                   data-prompt-url="https://expense.moneyforward.com/expense_reports"
                 ></div>
                 <label class="workspace-link-note">
-                  <span class="workspace-link-note-label">メモ</span>
+                  <span class="workspace-link-note-label">目的</span>
                   <textarea
                     class="workspace-link-note-editor"
                     rows="3"
                     maxlength="4000"
-                    placeholder="業務プロセスなどのメモ"
+                    placeholder="このリンクを使う目的"
                     data-workspace-link-note
                     data-note-key="mf_expense_reports"
                   ></textarea>
@@ -127,6 +127,16 @@
                 placeholder="https://..."
                 required
               />
+            </label>
+            <label for="workspace-link-purpose">
+              目的
+              <textarea
+                id="workspace-link-purpose"
+                name="purpose"
+                rows="3"
+                maxlength="4000"
+                placeholder="例: 月次申請の承認状況を確認する"
+              ></textarea>
             </label>
             <div class="step-actions">
               <button type="submit" class="primary">リンクを追加</button>

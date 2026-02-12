@@ -492,6 +492,92 @@ def test_reconcile_main_accepts_manual_provider_metadata_rows(tmp_path: Path) ->
     assert candidate_rows[0]["order_id"] == "MANUAL-PROVIDER-001"
 
 
+def test_reconcile_uses_date_vendor_fallback_for_manual_provider_rows() -> None:
+    orders = [
+        Order(
+            order_id="MANUAL-USD-001",
+            order_date=date(2026, 1, 29),
+            total_yen=None,
+            pdf_path="manual/pdfs/2026-01-29_chatgpt_manual_unknown_MANUAL-USD-001.pdf",
+            receipt_url=None,
+            source="manual",
+            provider="chatgpt",
+            source_hint="manual",
+        )
+    ]
+    mf_expenses = [
+        MfExpense(
+            expense_id="MF-USD-FALLBACK",
+            use_date=date(2026, 1, 29),
+            amount_yen=2990,
+            vendor="OpenAI",
+            memo="ChatGPT Team",
+            has_evidence=False,
+            detail_url=None,
+        )
+    ]
+
+    report = reconcile(
+        orders=orders,
+        mf_expenses=mf_expenses,
+        year=2026,
+        month=1,
+        date_window_days=7,
+        max_candidates_per_mf=5,
+    )
+
+    rows = [row for row in report["rows"] if row["mf_expense_id"] == "MF-USD-FALLBACK"]
+    assert len(rows) == 1
+    assert rows[0]["row_type"] == "candidate"
+    assert rows[0]["order_id"] == "MANUAL-USD-001"
+    assert rows[0]["match_strategy"] == "date_vendor_fallback"
+    assert report["counts"]["matched_by_fallback_date_vendor"] == 1
+    assert report["counts"]["needs_review_count"] == 0
+
+
+def test_reconcile_fallback_requires_vendor_hint_match() -> None:
+    orders = [
+        Order(
+            order_id="MANUAL-USD-002",
+            order_date=date(2026, 1, 29),
+            total_yen=None,
+            pdf_path="manual/pdfs/2026-01-29_chatgpt_manual_unknown_MANUAL-USD-002.pdf",
+            receipt_url=None,
+            source="manual",
+            provider="chatgpt",
+            source_hint="manual",
+        )
+    ]
+    mf_expenses = [
+        MfExpense(
+            expense_id="MF-USD-NO-VENDOR-MATCH",
+            use_date=date(2026, 1, 29),
+            amount_yen=2990,
+            vendor="Contoso",
+            memo="Monthly service",
+            has_evidence=False,
+            detail_url=None,
+        )
+    ]
+
+    report = reconcile(
+        orders=orders,
+        mf_expenses=mf_expenses,
+        year=2026,
+        month=1,
+        date_window_days=7,
+        max_candidates_per_mf=5,
+    )
+
+    rows = [row for row in report["rows"] if row["mf_expense_id"] == "MF-USD-NO-VENDOR-MATCH"]
+    assert len(rows) == 1
+    assert rows[0]["row_type"] == "needs_review"
+    assert rows[0]["review_reason"] == "no_candidate_in_window"
+    assert rows[0]["match_strategy"] is None
+    assert report["counts"]["matched_by_fallback_date_vendor"] == 0
+    assert report["counts"]["needs_review_count"] == 1
+
+
 def test_reconcile_main_requires_at_least_one_order_source(tmp_path: Path) -> None:
     mf_expenses_jsonl = tmp_path / "mf_expenses.jsonl"
     out_json = tmp_path / "out.json"
