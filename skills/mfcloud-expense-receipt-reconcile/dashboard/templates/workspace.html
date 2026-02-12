@@ -30,7 +30,7 @@
           <h2>固定リンク</h2>
           <p class="muted">月次経費処理で必須のリンクです。</p>
           <ul class="workspace-link-list workspace-link-list-static">
-            <li class="workspace-link-item">
+            <li class="workspace-link-item" data-details-expanded="0">
               <div class="workspace-link-main" data-full-url="https://expense.moneyforward.com/expense_reports">
                 <div class="workspace-link-head">
                   <a
@@ -44,8 +44,10 @@
                   >
                     MF経費精算ページ
                   </a>
-                  <button type="button" class="workspace-url-toggle" data-workspace-url-toggle aria-label="URLを表示">URL</button>
+                  <button type="button" class="workspace-url-toggle" data-workspace-url-toggle aria-label="詳細を表示">詳細</button>
                 </div>
+              </div>
+              <div class="workspace-link-details" data-workspace-link-details>
                 <a
                   class="workspace-link-domain"
                   href="https://expense.moneyforward.com/expense_reports"
@@ -55,29 +57,47 @@
                 >
                   expense.moneyforward.com
                 </a>
-              </div>
-              <div class="workspace-link-actions">
-                <button
-                  type="button"
-                  class="secondary workspace-copy-url"
-                  data-copy-url="https://expense.moneyforward.com/expense_reports"
-                >
-                  URLをコピー
-                </button>
-                <button
-                  type="button"
-                  class="secondary workspace-copy-prompt"
+                <div
+                  class="workspace-prompt-front"
+                  data-prompt-front
                   data-prompt-key="mf_expense_reports"
-                >
-                  プロンプトをコピー
-                </button>
-                <button
-                  type="button"
-                  class="secondary workspace-edit-prompt"
-                  data-prompt-key="mf_expense_reports"
-                >
-                  編集
-                </button>
+                  data-prompt-label="MF経費精算ページ"
+                  data-prompt-url="https://expense.moneyforward.com/expense_reports"
+                ></div>
+                <label class="workspace-link-note">
+                  <span class="workspace-link-note-label">メモ</span>
+                  <textarea
+                    class="workspace-link-note-editor"
+                    rows="3"
+                    maxlength="4000"
+                    placeholder="業務プロセスなどのメモ"
+                    data-workspace-link-note
+                    data-note-key="mf_expense_reports"
+                  ></textarea>
+                </label>
+                <div class="workspace-link-actions">
+                  <button
+                    type="button"
+                    class="secondary workspace-copy-url"
+                    data-copy-url="https://expense.moneyforward.com/expense_reports"
+                  >
+                    URLをコピー
+                  </button>
+                  <button
+                    type="button"
+                    class="secondary workspace-copy-prompt"
+                    data-prompt-key="mf_expense_reports"
+                  >
+                    プロンプトをコピー
+                  </button>
+                  <button
+                    type="button"
+                    class="secondary workspace-edit-prompt"
+                    data-prompt-key="mf_expense_reports"
+                  >
+                    編集
+                  </button>
+                </div>
               </div>
             </li>
           </ul>
@@ -138,8 +158,7 @@
           <span id="workspace-prompt-count" class="muted">0 文字</span>
         </div>
         <div class="step-actions">
-          <button type="button" id="workspace-copy-prompt" class="primary">プロンプトをコピー</button>
-          <button type="button" id="workspace-reset-prompt" class="secondary">テンプレートに戻す</button>
+          <button type="button" id="workspace-save-prompt" class="primary">登録</button>
         </div>
         <div class="workspace-token-help">
           <span class="workspace-token-chip">{month}</span>

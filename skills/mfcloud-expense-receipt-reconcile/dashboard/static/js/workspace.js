@@ -6,7 +6,10 @@
   const STORAGE_PROMPT_LEGACY_KEY = "mf-dashboard-workspace-prompt-v1";
   const STORAGE_PROMPTS_KEY = "mf-dashboard-workspace-prompts-v1";
   const STORAGE_PROMPT_ACTIVE_KEY = "mf-dashboard-workspace-prompt-active-v1";
+  const STORAGE_LINK_NOTES_KEY = "mf-dashboard-workspace-link-notes-v1";
   const MAX_LINKS = 100;
+  const MAX_LINK_NOTE_CHARS = 4000;
+  const LINK_NOTE_SAVE_DEBOUNCE_MS = 300;
   const PROMPT_KEY_MF_EXPENSE_REPORTS = "mf_expense_reports";
   const WORKSPACE_STATE_ENDPOINT = "/api/workspace/state";
   const WORKSPACE_SYNC_DEBOUNCE_MS = 300;
@@ -72,8 +75,7 @@
   const promptEditor = document.getElementById("workspace-prompt-editor");
   const promptStatus = document.getElementById("workspace-prompt-status");
   const promptCount = document.getElementById("workspace-prompt-count");
-  const copyPromptButton = document.getElementById("workspace-copy-prompt");
-  const resetPromptButton = document.getElementById("workspace-reset-prompt");
+  const savePromptButton = document.getElementById("workspace-save-prompt");
   const promptActiveLabel = document.getElementById("workspace-prompt-active-label");
 
   function isObject(value) {
@@ -106,26 +108,21 @@
     }
   }
 
-  function attachUrlToggle(main, button) {
-    if (!(main instanceof HTMLElement) || !(button instanceof HTMLElement)) return;
-    const setExpanded = (expanded) => {
-      if (expanded) main.dataset.urlExpanded = "1";
-      else delete main.dataset.urlExpanded;
-      button.setAttribute("aria-pressed", expanded ? "true" : "false");
-    };
-    setExpanded(false);
+  function setLinkDetailsExpanded(item, button, expanded) {
+    if (!(item instanceof HTMLElement) || !(button instanceof HTMLElement)) return;
+    item.dataset.detailsExpanded = expanded ? "1" : "0";
+    button.setAttribute("aria-expanded", expanded ? "true" : "false");
+    button.textContent = expanded ? "閉じる" : "詳細";
+  }
+
+  function attachLinkDetailsToggle(item, button, defaultExpanded = false) {
+    if (!(item instanceof HTMLElement) || !(button instanceof HTMLElement)) return;
+    if (button.dataset.detailsBound === "1") return;
+    button.dataset.detailsBound = "1";
+    setLinkDetailsExpanded(item, button, Boolean(defaultExpanded));
     button.addEventListener("click", () => {
-      if (main.dataset.urlExpanded === "1") {
-        setExpanded(false);
-        return;
-      }
-      setExpanded(true);
-      window.setTimeout(() => {
-        if (main.dataset.urlExpanded === "1") setExpanded(false);
-      }, 4500);
-    });
-    main.addEventListener("mouseleave", () => {
-      if (main.dataset.urlExpanded === "1") setExpanded(false);
+      const next = item.dataset.detailsExpanded !== "1";
+      setLinkDetailsExpanded(item, button, next);
     });
   }
 
@@ -151,10 +148,66 @@
     return text.startsWith("custom:");
   }
 
+  function normalizeLinkNoteText(value) {
+    return String(value ?? "").slice(0, MAX_LINK_NOTE_CHARS);
+  }
+
+  function readLinkNoteMap() {
+    try {
+      const raw = window.localStorage.getItem(STORAGE_LINK_NOTES_KEY);
+      if (!raw) return {};
+      const parsed = JSON.parse(raw);
+      if (!isObject(parsed)) return {};
+      const out = {};
+      Object.keys(parsed).forEach((k) => {
+        const safeKey = String(k || "").trim();
+        if (!isValidPromptKey(safeKey)) return;
+        out[safeKey] = normalizeLinkNoteText(parsed[k]);
+      });
+      return out;
+    } catch {
+      return {};
+    }
+  }
+
+  function saveLinkNoteMap(map) {
+    const safeMap = isObject(map) ? map : {};
+    try {
+      window.localStorage.setItem(STORAGE_LINK_NOTES_KEY, JSON.stringify(safeMap));
+      scheduleWorkspaceSync();
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  let linkNoteMapCache = null;
+  function getLinkNoteMapCached() {
+    if (linkNoteMapCache) return linkNoteMapCache;
+    linkNoteMapCache = readLinkNoteMap();
+    return linkNoteMapCache;
+  }
+
+  function getLinkNoteForKey(key) {
+    const safeKey = String(key || "").trim();
+    if (!isValidPromptKey(safeKey)) return "";
+    const map = getLinkNoteMapCached();
+    return normalizeLinkNoteText(map[safeKey] || "");
+  }
+
+  function saveLinkNoteForKey(key, text) {
+    const safeKey = String(key || "").trim();
+    if (!isValidPromptKey(safeKey)) return false;
+    const map = getLinkNoteMapCached();
+    map[safeKey] = normalizeLinkNoteText(text);
+    return saveLinkNoteMap(map);
+  }
+
   function collectLocalWorkspaceState() {
     return {
       links: readCustomLinks(),
       prompts: readPromptMap(),
+      link_notes: readLinkNoteMap(),
       active_prompt_key: readActivePromptKey() || PROMPT_KEY_MF_EXPENSE_REPORTS,
     };
   }
@@ -163,22 +216,26 @@
     if (!isObject(state)) return false;
     const links = Array.isArray(state.links) ? state.links : [];
     const prompts = isObject(state.prompts) ? state.prompts : {};
-    return links.length > 0 || Object.keys(prompts).length > 0;
+    const linkNotes = isObject(state.link_notes) ? state.link_notes : {};
+    return links.length > 0 || Object.keys(prompts).length > 0 || Object.keys(linkNotes).length > 0;
   }
 
   function applyWorkspaceStateToLocalStorage(state) {
     const links = Array.isArray(state?.links) ? state.links : [];
     const prompts = isObject(state?.prompts) ? state.prompts : {};
+    const linkNotes = isObject(state?.link_notes) ? state.link_notes : {};
     const activePromptKey = isValidPromptKey(state?.active_prompt_key)
       ? String(state.active_prompt_key)
       : PROMPT_KEY_MF_EXPENSE_REPORTS;
     try {
       window.localStorage.setItem(STORAGE_LINKS_KEY, JSON.stringify(links));
       window.localStorage.setItem(STORAGE_PROMPTS_KEY, JSON.stringify(prompts));
+      window.localStorage.setItem(STORAGE_LINK_NOTES_KEY, JSON.stringify(linkNotes));
       window.localStorage.setItem(STORAGE_PROMPT_ACTIVE_KEY, activePromptKey);
       const revision = Number.parseInt(String(state?.revision ?? "0"), 10);
       workspaceStateRevision = Number.isFinite(revision) && revision >= 0 ? revision : 0;
       promptMapCache = null;
+      linkNoteMapCache = null;
     } catch {
       // ignore
     }
@@ -193,6 +250,7 @@
       return {
         links: Array.isArray(data.links) ? data.links : [],
         prompts: isObject(data.prompts) ? data.prompts : {},
+        link_notes: isObject(data.link_notes) ? data.link_notes : {},
         active_prompt_key: isValidPromptKey(data.active_prompt_key)
           ? String(data.active_prompt_key)
           : PROMPT_KEY_MF_EXPENSE_REPORTS,
@@ -223,6 +281,7 @@
         applyWorkspaceStateToLocalStorage({
           links: Array.isArray(data.links) ? data.links : [],
           prompts: isObject(data.prompts) ? data.prompts : {},
+          link_notes: isObject(data.link_notes) ? data.link_notes : {},
           active_prompt_key: isValidPromptKey(data.active_prompt_key)
             ? String(data.active_prompt_key)
             : PROMPT_KEY_MF_EXPENSE_REPORTS,
@@ -406,7 +465,78 @@
     if (!isValidPromptKey(safeKey)) return false;
     const map = getPromptMapCached();
     map[safeKey] = String(text ?? "");
-    return savePromptMap(map);
+    const saved = savePromptMap(map);
+    if (saved) renderPromptFrontByKey(safeKey);
+    return saved;
+  }
+
+  function hasStoredPromptForKey(key) {
+    const safeKey = String(key || "").trim();
+    if (!isValidPromptKey(safeKey)) return false;
+    const map = getPromptMapCached();
+    const value = normalizeStoredPromptText(map[safeKey], safeKey);
+    return Boolean(value && value.trim());
+  }
+
+  function buildPromptPreview(text) {
+    const lines = String(text || "")
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean);
+    if (lines.length === 0) return "未登録です。";
+    return lines[0];
+  }
+
+  function resolvePromptContextFromFront(node) {
+    const element = node instanceof HTMLElement ? node : null;
+    if (!element) return {};
+    const context = {};
+    const label = normalizeText(element.dataset.promptLabel || "", 80);
+    if (label) context.label = label;
+    const url = normalizeUrl(element.dataset.promptUrl || "");
+    if (url) context.url = url;
+    return context;
+  }
+
+  function renderPromptFrontElement(node) {
+    const element = node instanceof HTMLElement ? node : null;
+    if (!element) return;
+    const key = String(element.dataset.promptKey || "").trim();
+    if (!isValidPromptKey(key)) return;
+    const context = resolvePromptContextFromFront(element);
+    const stored = hasStoredPromptForKey(key);
+    const promptText =
+      promptEditor && key === activePromptKey ? String(promptEditor.value || "") : getPromptTextForKey(key, context);
+    const preview = buildPromptPreview(promptText);
+
+    element.innerHTML = "";
+
+    const badge = document.createElement("span");
+    badge.className = `workspace-prompt-front-badge ${stored ? "is-registered" : "is-template"}`;
+    badge.textContent = stored ? "専用プロンプト" : "テンプレート";
+
+    const previewNode = document.createElement("p");
+    previewNode.className = "workspace-prompt-front-preview";
+    previewNode.textContent = preview;
+
+    element.appendChild(badge);
+    element.appendChild(previewNode);
+  }
+
+  function renderPromptFrontByKey(key) {
+    const safeKey = String(key || "").trim();
+    if (!isValidPromptKey(safeKey)) return;
+    document.querySelectorAll("[data-prompt-front][data-prompt-key]").forEach((node) => {
+      if (!(node instanceof HTMLElement)) return;
+      if (String(node.dataset.promptKey || "").trim() !== safeKey) return;
+      renderPromptFrontElement(node);
+    });
+  }
+
+  function renderPromptFronts() {
+    document.querySelectorAll("[data-prompt-front][data-prompt-key]").forEach((node) => {
+      renderPromptFrontElement(node);
+    });
   }
 
   let activePromptKey = PROMPT_KEY_MF_EXPENSE_REPORTS;
@@ -424,6 +554,7 @@
     activePromptContext = isObject(context) ? context : {};
     storeActivePromptKey(activePromptKey);
     updateActivePromptLabel();
+    renderPromptFrontByKey(activePromptKey);
   }
 
   async function copyPromptForKey(key, context = {}) {
@@ -538,6 +669,33 @@
     }
   }
 
+  function bindLinkNoteEditor(editor) {
+    if (!(editor instanceof HTMLTextAreaElement)) return;
+    const key = String(editor.dataset.noteKey || "").trim();
+    if (!isValidPromptKey(key)) return;
+
+    editor.value = getLinkNoteForKey(key);
+    if (editor.dataset.noteBound === "1") return;
+    editor.dataset.noteBound = "1";
+
+    let saveTimer = null;
+    editor.addEventListener("input", () => {
+      const next = normalizeLinkNoteText(editor.value || "");
+      if (next !== editor.value) editor.value = next;
+      if (saveTimer) window.clearTimeout(saveTimer);
+      saveTimer = window.setTimeout(() => {
+        void saveLinkNoteForKey(key, next);
+      }, LINK_NOTE_SAVE_DEBOUNCE_MS);
+    });
+  }
+
+  function bindLinkNoteEditors(root = document) {
+    if (!root || typeof root.querySelectorAll !== "function") return;
+    root.querySelectorAll("[data-workspace-link-note][data-note-key]").forEach((editor) => {
+      bindLinkNoteEditor(editor);
+    });
+  }
+
   function createLinkNode(link, index, links) {
     const item = document.createElement("li");
     item.className = "workspace-link-item";
@@ -563,9 +721,8 @@
     urlToggleButton.type = "button";
     urlToggleButton.className = "workspace-url-toggle";
     urlToggleButton.setAttribute("data-workspace-url-toggle", "");
-    urlToggleButton.setAttribute("aria-label", "URLを表示");
-    urlToggleButton.textContent = "URL";
-    attachUrlToggle(main, urlToggleButton);
+    urlToggleButton.setAttribute("aria-label", "詳細を表示");
+    urlToggleButton.textContent = "詳細";
 
     const domainAnchor = document.createElement("a");
     domainAnchor.className = "workspace-link-domain";
@@ -574,16 +731,45 @@
     domainAnchor.rel = "noopener noreferrer";
     domainAnchor.title = link.url;
     domainAnchor.textContent = formatUrlHost(link.url) || link.url;
+    const promptKey = buildCustomPromptKey(link.url);
+
+    const promptFront = document.createElement("div");
+    promptFront.className = "workspace-prompt-front";
+    promptFront.setAttribute("data-prompt-front", "");
+    promptFront.dataset.promptKey = promptKey;
+    promptFront.dataset.promptLabel = String(link.label || "");
+    promptFront.dataset.promptUrl = String(link.url || "");
+    renderPromptFrontElement(promptFront);
 
     head.appendChild(openLink);
     head.appendChild(urlToggleButton);
     main.appendChild(head);
-    main.appendChild(domainAnchor);
+
+    const details = document.createElement("div");
+    details.className = "workspace-link-details";
+    details.setAttribute("data-workspace-link-details", "");
+    details.appendChild(domainAnchor);
+    details.appendChild(promptFront);
+
+    const noteWrap = document.createElement("label");
+    noteWrap.className = "workspace-link-note";
+    const noteLabel = document.createElement("span");
+    noteLabel.className = "workspace-link-note-label";
+    noteLabel.textContent = "メモ";
+    const noteEditor = document.createElement("textarea");
+    noteEditor.className = "workspace-link-note-editor";
+    noteEditor.rows = 3;
+    noteEditor.maxLength = MAX_LINK_NOTE_CHARS;
+    noteEditor.placeholder = "業務プロセスなどのメモ";
+    noteEditor.setAttribute("data-workspace-link-note", "");
+    noteEditor.dataset.noteKey = promptKey;
+    noteWrap.appendChild(noteLabel);
+    noteWrap.appendChild(noteEditor);
+    details.appendChild(noteWrap);
+    bindLinkNoteEditor(noteEditor);
 
     const actions = document.createElement("div");
     actions.className = "workspace-link-actions";
-
-    const promptKey = buildCustomPromptKey(link.url);
 
     const copyUrlButton = document.createElement("button");
     copyUrlButton.type = "button";
@@ -631,9 +817,11 @@
     actions.appendChild(copyPromptButton);
     actions.appendChild(editPromptButton);
     actions.appendChild(removeButton);
+    details.appendChild(actions);
 
     item.appendChild(main);
-    item.appendChild(actions);
+    item.appendChild(details);
+    attachLinkDetailsToggle(item, urlToggleButton, false);
     return item;
   }
 
@@ -645,6 +833,7 @@
       customLinksList.appendChild(createLinkNode(link, index, safeLinks));
     });
     customLinksEmpty.classList.toggle("hidden", safeLinks.length > 0);
+    renderPromptFronts();
   }
 
   function updatePromptMeta(text, statusText) {
@@ -678,9 +867,9 @@
 
   function bindStaticCopyButtons() {
     document.querySelectorAll(".workspace-link-list-static [data-workspace-url-toggle]").forEach((button) => {
-      const main = button.closest(".workspace-link-main");
-      if (!main) return;
-      attachUrlToggle(main, button);
+      const item = button.closest(".workspace-link-item");
+      if (!item) return;
+      attachLinkDetailsToggle(item, button, false);
     });
 
     document.querySelectorAll(".workspace-link-list-static .workspace-copy-url[data-copy-url]").forEach((button) => {
@@ -711,6 +900,7 @@
     const links = readCustomLinks();
     renderCustomLinks(links);
     bindStaticCopyButtons();
+    bindLinkNoteEditors(document);
 
     if (linkForm && linkLabelInput && linkUrlInput) {
       linkForm.addEventListener("submit", (event) => {
@@ -765,6 +955,7 @@
     const initialText = getPromptTextForKey(activePromptKey, activePromptContext);
     promptEditor.value = initialText;
     updatePromptMeta(initialText, "自動保存待機中。");
+    renderPromptFronts();
 
     let saveTimer = null;
     promptEditor.addEventListener("input", () => {
@@ -777,27 +968,17 @@
       }, 250);
     });
 
-    if (copyPromptButton) {
-      copyPromptButton.addEventListener("click", async () => {
+    if (savePromptButton) {
+      savePromptButton.addEventListener("click", () => {
         const text = promptEditor.value || "";
-        if (!text.trim()) {
-          showToast("プロンプトが空です。", "error");
+        const ok = savePromptTextForKey(activePromptKey, text);
+        if (ok) {
+          updatePromptMeta(text, "登録しました。");
+          showToast("プロンプトを登録しました。", "success");
           return;
         }
-        const ok = await copyToClipboard(text);
-        if (ok) showToast("プロンプトをコピーしました。", "success");
-        else showToast("プロンプトのコピーに失敗しました。", "error");
-      });
-    }
-
-    if (resetPromptButton) {
-      resetPromptButton.addEventListener("click", () => {
-        const template = buildDefaultPromptForKey(activePromptKey, activePromptContext);
-        promptEditor.value = template;
-        const ok = savePromptTextForKey(activePromptKey, template);
-        if (ok) updatePromptMeta(template, "テンプレートを復元しました。");
-        else updatePromptMeta(template, "保存できませんでした（ストレージ利用不可）。");
-        showToast("テンプレートを復元しました。", "success");
+        updatePromptMeta(text, "保存できませんでした（ストレージ利用不可）。");
+        showToast("プロンプトを登録できませんでした。", "error");
       });
     }
   }

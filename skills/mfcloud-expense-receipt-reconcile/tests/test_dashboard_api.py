@@ -1612,6 +1612,7 @@ def test_api_workspace_state_get_returns_default(monkeypatch: pytest.MonkeyPatch
     assert body["status"] == "ok"
     assert body["links"] == []
     assert body["prompts"] == {}
+    assert body["link_notes"] == {}
     assert body["active_prompt_key"] == "mf_expense_reports"
     assert body["revision"] == 0
     assert body["updated_at"] is None
@@ -1633,6 +1634,11 @@ def test_api_workspace_state_post_persists_and_sanitizes(monkeypatch: pytest.Mon
                 "custom:https%3A%2F%2Fexample.com": "custom prompt",
                 "invalid": "should be ignored",
             },
+            "link_notes": {
+                "mf_expense_reports": "core note",
+                "custom:https%3A%2F%2Fexample.com": "custom note",
+                "invalid": "ignored note",
+            },
             "active_prompt_key": "invalid",
         },
     )
@@ -1643,6 +1649,10 @@ def test_api_workspace_state_post_persists_and_sanitizes(monkeypatch: pytest.Mon
     assert body["prompts"] == {
         "mf_expense_reports": "core prompt",
         "custom:https%3A%2F%2Fexample.com": "custom prompt",
+    }
+    assert body["link_notes"] == {
+        "mf_expense_reports": "core note",
+        "custom:https%3A%2F%2Fexample.com": "custom note",
     }
     assert body["active_prompt_key"] == "mf_expense_reports"
     assert body["revision"] == 1
@@ -1655,6 +1665,7 @@ def test_api_workspace_state_post_persists_and_sanitizes(monkeypatch: pytest.Mon
     persisted = json.loads(state_path.read_text(encoding="utf-8"))
     assert persisted["links"] == body["links"]
     assert persisted["prompts"] == body["prompts"]
+    assert persisted["link_notes"] == body["link_notes"]
     assert persisted["active_prompt_key"] == body["active_prompt_key"]
     assert persisted["revision"] == body["revision"]
 
@@ -1666,6 +1677,7 @@ def test_api_workspace_state_post_persists_and_sanitizes(monkeypatch: pytest.Mon
     body_partial = res_partial.json()
     assert body_partial["links"] == body["links"]
     assert body_partial["prompts"] == body["prompts"]
+    assert body_partial["link_notes"] == body["link_notes"]
     assert body_partial["active_prompt_key"] == "custom:https%3A%2F%2Fexample.com"
     assert body_partial["revision"] == body["revision"] + 1
     assert body_partial["conflict_resolved"] is False
@@ -1681,6 +1693,7 @@ def test_api_workspace_state_post_merges_on_revision_conflict(
         json={
             "links": [{"label": "A", "url": "https://a.example.com/"}],
             "prompts": {"mf_expense_reports": "first"},
+            "link_notes": {"mf_expense_reports": "first_note"},
             "active_prompt_key": "mf_expense_reports",
         },
     )
@@ -1695,6 +1708,7 @@ def test_api_workspace_state_post_merges_on_revision_conflict(
             "base_revision": first_body["revision"],
             "links": [{"label": "B", "url": "https://b.example.com/"}],
             "prompts": {"custom:https%3A%2F%2Fb.example.com%2F": "second"},
+            "link_notes": {"custom:https%3A%2F%2Fb.example.com%2F": "second_note"},
             "active_prompt_key": "custom:https%3A%2F%2Fb.example.com%2F",
         },
     )
@@ -1710,6 +1724,7 @@ def test_api_workspace_state_post_merges_on_revision_conflict(
             "base_revision": first_body["revision"],
             "links": [{"label": "A2", "url": "https://a.example.com/"}],
             "prompts": {"mf_expense_reports": "third"},
+            "link_notes": {"mf_expense_reports": "third_note"},
             "active_prompt_key": "mf_expense_reports",
         },
     )
@@ -1720,6 +1735,8 @@ def test_api_workspace_state_post_merges_on_revision_conflict(
     assert third_body["active_prompt_key"] == "mf_expense_reports"
     assert third_body["prompts"]["mf_expense_reports"] == "third"
     assert third_body["prompts"]["custom:https%3A%2F%2Fb.example.com%2F"] == "second"
+    assert third_body["link_notes"]["mf_expense_reports"] == "third_note"
+    assert third_body["link_notes"]["custom:https%3A%2F%2Fb.example.com%2F"] == "second_note"
     urls = [row.get("url") for row in third_body["links"]]
     assert "https://a.example.com/" in urls
     assert "https://b.example.com/" in urls

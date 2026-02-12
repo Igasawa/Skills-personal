@@ -203,8 +203,10 @@ def test_workspace_page_shows_core_link_and_prompt_tools(
     assert 'id="workspace-link-form"' in res.text
     assert 'id="workspace-custom-links"' in res.text
     assert 'id="workspace-prompt-editor"' in res.text
-    assert 'id="workspace-copy-prompt"' in res.text
-    assert 'id="workspace-reset-prompt"' in res.text
+    assert 'id="workspace-save-prompt"' in res.text
+    assert "data-prompt-front" in res.text
+    assert "data-workspace-link-note" in res.text
+    assert "data-workspace-link-details" in res.text
     assert 'id="workspace-prompt-active-label"' in res.text
     assert "/static/js/workspace.js" in res.text
 

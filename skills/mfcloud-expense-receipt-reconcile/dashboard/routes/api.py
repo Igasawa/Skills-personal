@@ -21,6 +21,8 @@ def create_api_router() -> APIRouter:
     WORKSPACE_MAX_LABEL_CHARS = 80
     WORKSPACE_MAX_PROMPT_ENTRIES = 200
     WORKSPACE_MAX_PROMPT_CHARS = 50000
+    WORKSPACE_MAX_NOTE_ENTRIES = 400
+    WORKSPACE_MAX_NOTE_CHARS = 4000
     WORKSPACE_DEFAULT_PROMPT_KEY = "mf_expense_reports"
 
     def _actor_from_request(request: Request) -> dict[str, str]:
@@ -75,6 +77,7 @@ def create_api_router() -> APIRouter:
         return {
             "links": [],
             "prompts": {},
+            "link_notes": {},
             "active_prompt_key": WORKSPACE_DEFAULT_PROMPT_KEY,
             "revision": 0,
             "updated_at": None,
@@ -141,6 +144,22 @@ def create_api_router() -> APIRouter:
                 break
         return out
 
+    def _sanitize_workspace_link_notes(value: Any) -> dict[str, str]:
+        if not isinstance(value, dict):
+            return {}
+        out: dict[str, str] = {}
+        for key, raw in value.items():
+            note_key = str(key or "").strip()
+            if not _is_valid_prompt_key(note_key):
+                continue
+            text = str(raw or "")
+            if len(text) > WORKSPACE_MAX_NOTE_CHARS:
+                text = text[:WORKSPACE_MAX_NOTE_CHARS]
+            out[note_key] = text
+            if len(out) >= WORKSPACE_MAX_NOTE_ENTRIES:
+                break
+        return out
+
     def _sanitize_workspace_active_prompt_key(value: Any) -> str:
         key = str(value or "").strip()
         if _is_valid_prompt_key(key):
@@ -152,12 +171,14 @@ def create_api_router() -> APIRouter:
             return _workspace_default_state()
         links = _sanitize_workspace_links(payload.get("links"))
         prompts = _sanitize_workspace_prompts(payload.get("prompts"))
+        link_notes = _sanitize_workspace_link_notes(payload.get("link_notes"))
         active_prompt_key = _sanitize_workspace_active_prompt_key(payload.get("active_prompt_key"))
         revision = core._safe_non_negative_int(payload.get("revision"), default=0)
         updated_at = str(payload.get("updated_at") or "").strip() or None
         return {
             "links": links,
             "prompts": prompts,
+            "link_notes": link_notes,
             "active_prompt_key": active_prompt_key,
             "revision": int(revision),
             "updated_at": updated_at,
@@ -213,6 +234,11 @@ def create_api_router() -> APIRouter:
         merged = dict(server_prompts)
         merged.update(client_prompts)
         return _sanitize_workspace_prompts(merged)
+
+    def _merge_workspace_link_notes(client_notes: dict[str, str], server_notes: dict[str, str]) -> dict[str, str]:
+        merged = dict(server_notes)
+        merged.update(client_notes)
+        return _sanitize_workspace_link_notes(merged)
 
     def _extract_print_file_paths(manifest: dict[str, Any] | None) -> list[str]:
         if not isinstance(manifest, dict):
@@ -1582,6 +1608,15 @@ def create_api_router() -> APIRouter:
                 )
             else:
                 current["prompts"] = prompts_payload
+        if "link_notes" in payload:
+            notes_payload = _sanitize_workspace_link_notes(payload.get("link_notes"))
+            if revision_conflict:
+                current["link_notes"] = _merge_workspace_link_notes(
+                    notes_payload,
+                    _sanitize_workspace_link_notes(current.get("link_notes")),
+                )
+            else:
+                current["link_notes"] = notes_payload
         if "active_prompt_key" in payload:
             current["active_prompt_key"] = _sanitize_workspace_active_prompt_key(payload.get("active_prompt_key"))
         saved = _write_workspace_state(current, revision=current_revision + 1)
