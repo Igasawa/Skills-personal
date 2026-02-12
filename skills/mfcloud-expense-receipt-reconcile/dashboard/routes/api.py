@@ -318,7 +318,20 @@ def create_api_router() -> APIRouter:
         if override:
             root = Path(override).expanduser()
         else:
-            root = Path.home() / "Desktop"
+            if sys.platform.startswith("win"):
+                candidates: list[Path] = []
+                onedrive = str(os.environ.get("OneDrive") or "").strip()
+                if onedrive:
+                    candidates.append(Path(onedrive).expanduser() / "Desktop")
+                userprofile = str(os.environ.get("USERPROFILE") or "").strip()
+                if userprofile:
+                    candidates.append(Path(userprofile).expanduser() / "Desktop")
+                home_desktop = Path.home() / "Desktop"
+                if all(path != home_desktop for path in candidates):
+                    candidates.append(home_desktop)
+                root = next((path for path in candidates if path.exists()), candidates[0] if candidates else home_desktop)
+            else:
+                root = Path.home() / "Desktop"
         root.mkdir(parents=True, exist_ok=True)
         return root
 

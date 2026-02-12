@@ -1102,6 +1102,37 @@ def test_api_open_manual_inbox_creates_and_opens_folder(
         assert str(details.get("shortcut_path") or "")
 
 
+def test_api_open_manual_inbox_prefers_onedrive_desktop_for_shortcut(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    if not sys.platform.startswith("win"):
+        pytest.skip("windows only")
+
+    client = _create_client(monkeypatch, tmp_path)
+    ym = "2026-01"
+    monkeypatch.delenv("AX_DASHBOARD_SHORTCUT_DIR", raising=False)
+    onedrive_desktop = tmp_path / "onedrive" / "Desktop"
+    userprofile_desktop = tmp_path / "userprofile" / "Desktop"
+    onedrive_desktop.mkdir(parents=True, exist_ok=True)
+    userprofile_desktop.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setenv("OneDrive", str(tmp_path / "onedrive"))
+    monkeypatch.setenv("USERPROFILE", str(tmp_path / "userprofile"))
+
+    monkeypatch.setattr(
+        api_routes.subprocess,
+        "run",
+        lambda cmd, *args, **kwargs: subprocess.CompletedProcess(args=cmd, returncode=0, stdout="", stderr=""),
+    )
+
+    res = client.post(f"/api/folders/{ym}/manual-inbox")
+    assert res.status_code == 200
+    body = res.json()
+    shortcut_value = str(body.get("shortcut_path") or "")
+    assert shortcut_value
+    shortcut_path = Path(shortcut_value)
+    assert shortcut_path.parent == onedrive_desktop
+
+
 def test_api_manual_import_returns_counts_and_writes_audit(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

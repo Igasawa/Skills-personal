@@ -26,6 +26,93 @@ $logOut = Join-Path $logDir "mf_dashboard_uvicorn.out.log"
 $logErr = Join-Path $logDir "mf_dashboard_uvicorn.err.log"
 
 $url = "http://$BindHost`:$Port/"
+$shortcutName = "MF_Expense_Dashboard"
+
+function Get-DesktopDirectory {
+  $override = [string]($env:AX_DASHBOARD_SHORTCUT_DIR)
+  if ($override.Trim()) {
+    $expanded = [Environment]::ExpandEnvironmentVariables($override.Trim())
+    New-Item -ItemType Directory -Force -Path $expanded | Out-Null
+    return $expanded
+  }
+
+  $candidates = @()
+  if ($env:OneDrive) {
+    $candidates += (Join-Path $env:OneDrive "Desktop")
+  }
+  if ($env:USERPROFILE) {
+    $candidates += (Join-Path $env:USERPROFILE "Desktop")
+  }
+
+  foreach ($candidate in $candidates) {
+    if ($candidate -and (Test-Path $candidate)) {
+      return $candidate
+    }
+  }
+
+  $fallback = $null
+  if ($candidates.Count -gt 0) {
+    $fallback = $candidates[0]
+  } else {
+    $fallback = [Environment]::GetFolderPath("Desktop")
+  }
+  if (-not $fallback) {
+    $fallback = Join-Path $env:USERPROFILE "Desktop"
+  }
+  New-Item -ItemType Directory -Force -Path $fallback | Out-Null
+  return $fallback
+}
+
+function Ensure-DashboardDesktopShortcut {
+  if ($env:OS -ne "Windows_NT") {
+    return
+  }
+  try {
+    $desktopDir = Get-DesktopDirectory
+    $shell = New-Object -ComObject WScript.Shell
+    $targetPath = Join-Path $PSHOME "powershell.exe"
+    if (-not (Test-Path $targetPath)) {
+      try {
+        $targetPath = (Get-Command powershell -ErrorAction Stop).Source
+      } catch {
+        $targetPath = $null
+      }
+    }
+    if (-not $targetPath) {
+      return
+    }
+
+    $shortcutPaths = @()
+    $existingShortcuts = Get-ChildItem -Path $desktopDir -Filter "*.lnk" -File -ErrorAction SilentlyContinue
+    foreach ($existingPath in $existingShortcuts) {
+      try {
+        $existingShortcut = $shell.CreateShortcut($existingPath.FullName)
+        $existingArgs = [string]$existingShortcut.Arguments
+        if ($existingArgs -match "start_dashboard\.ps1") {
+          $shortcutPaths += $existingPath.FullName
+        }
+      } catch {
+        continue
+      }
+    }
+
+    $defaultShortcutPath = Join-Path $desktopDir "$shortcutName.lnk"
+    if ($shortcutPaths -notcontains $defaultShortcutPath) {
+      $shortcutPaths += $defaultShortcutPath
+    }
+
+    foreach ($shortcutPath in ($shortcutPaths | Sort-Object -Unique)) {
+      $shortcut = $shell.CreateShortcut($shortcutPath)
+      $shortcut.TargetPath = $targetPath
+      $shortcut.Arguments = "-NoProfile -ExecutionPolicy Bypass -File `"$scriptPath`""
+      $shortcut.WorkingDirectory = $root
+      $shortcut.IconLocation = "$targetPath,0"
+      $shortcut.Save()
+    }
+  } catch {
+    # Shortcut regeneration is best effort; startup should continue even if it fails.
+  }
+}
 
 function Find-PythonRuntime {
   $python = $null
@@ -182,6 +269,8 @@ function Should-RestartForCodeChange {
   }
   return ($latestWrite -gt $proc.StartTime.AddSeconds(1))
 }
+
+Ensure-DashboardDesktopShortcut
 
 try {
   $resp = Invoke-WebRequest -UseBasicParsing $url -TimeoutSec 2
