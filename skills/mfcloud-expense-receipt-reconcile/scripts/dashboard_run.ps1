@@ -4,6 +4,13 @@ $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $skillRoot = (Resolve-Path (Join-Path $scriptDir "..")).Path
 $mfUrl = "https://expense.moneyforward.com/outgo_input"
 
+function Resolve-AxHome {
+  if ($env:AX_HOME -and $env:AX_HOME.Trim().Length -gt 0) {
+    return $env:AX_HOME
+  }
+  return Join-Path $env:USERPROFILE ".ax"
+}
+
 function Resolve-PythonRuntime {
   $cmd = $null
   $prefix = @()
@@ -44,7 +51,8 @@ Write-Host "Building print list (Amazon/Rakuten PDFs only)..."
   )
 )
 
-$outputRoot = "$env:USERPROFILE\.ax\artifacts\mfcloud-expense-receipt-reconcile\$(Get-Date -Format 'yyyy-MM')"
+$axHome = Resolve-AxHome
+$outputRoot = Join-Path $axHome "artifacts\mfcloud-expense-receipt-reconcile\$(Get-Date -Format 'yyyy-MM')"
 $reportsDir = Join-Path $outputRoot "reports"
 
 if (Test-Path $reportsDir) {

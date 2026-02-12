@@ -13,6 +13,15 @@ $scriptPath = $MyInvocation.MyCommand.Path
 $root = (Resolve-Path (Join-Path $scriptDir "..")).Path
 Set-Location $root
 
+function Resolve-AxHome {
+  if ($env:AX_HOME -and $env:AX_HOME.Trim().Length -gt 0) {
+    return $env:AX_HOME
+  }
+  return Join-Path $env:USERPROFILE ".ax"
+}
+
+$axHome = Resolve-AxHome
+
 if ($Port -lt 1 -or $Port -gt 65535) {
   throw "Invalid -Port: $Port (expected 1-65535)."
 }
@@ -20,7 +29,7 @@ if ($WaitSeconds -lt 1) {
   throw "Invalid -WaitSeconds: $WaitSeconds (expected >= 1)."
 }
 
-$logDir = Join-Path $env:USERPROFILE ".ax\logs"
+$logDir = Join-Path $axHome "logs"
 New-Item -ItemType Directory -Force -Path $logDir | Out-Null
 $logOut = Join-Path $logDir "mf_dashboard_uvicorn.out.log"
 $logErr = Join-Path $logDir "mf_dashboard_uvicorn.err.log"
@@ -199,7 +208,7 @@ function Test-PythonImportsAvailable {
 }
 
 function Ensure-UvBinary {
-  $runtimeDir = Join-Path $env:USERPROFILE ".ax\runtime\uv"
+  $runtimeDir = Join-Path $axHome "runtime\uv"
   $uvExe = Join-Path $runtimeDir "uv.exe"
   if (Test-Path $uvExe) {
     return $uvExe
