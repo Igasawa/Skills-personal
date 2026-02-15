@@ -264,7 +264,7 @@
       latestRunLinkEl.removeAttribute("tabindex");
     }
 
-    // 郢ｧ・ｻ郢ｧ・ｯ郢ｧ・ｷ郢晢ｽｧ郢晢ｽｳ陷茨ｽｨ闖ｴ阮吶・郢ｧ・ｹ郢昴・繝ｻ郢ｧ・ｿ郢ｧ・ｹ郢ｧ・ｯ郢晢ｽｩ郢ｧ・ｹ郢ｧ蜻亥ｳｩ隴・ｽｰ
+    // 繧ｻ繧ｯ繧ｷ繝ｧ繝ｳ蜈ｨ菴薙・繧ｹ繝・・繧ｿ繧ｹ繧ｯ繝ｩ繧ｹ繧呈峩譁ｰ
     const section = document.querySelector("[data-latest-run-section]");
     if (section) {
       section.classList.remove("success", "failed", "running");
@@ -294,9 +294,9 @@
     const previousStatus = runStatusById[runId];
     if (status && previousStatus && previousStatus !== status) {
       if (status === "failed") {
-        showToast("陞ｳ貅ｯ・｡蠕娯・陞滂ｽｱ隰ｨ蜉ｱ・邵ｺ・ｾ邵ｺ蜉ｱ笳・ｸｲ繧・溽ｹｧ・ｰ郢ｧ蝣､・｢・ｺ髫ｱ髦ｪ・邵ｺ・ｦ邵ｺ荳岩味邵ｺ霈費ｼ樒ｸｲ繝ｻ, "error");
+        showToast("螳溯｡後↓螟ｱ謨励＠縺ｾ縺励◆縲ゅΟ繧ｰ繧堤｢ｺ隱阪＠縺ｦ縺上□縺輔＞縲・, "error");
       } else if (status === "success") {
-        showToast("陞ｳ貅ｯ・｡蠕娯ｲ陞ｳ蠕｡・ｺ繝ｻ・邵ｺ・ｾ邵ｺ蜉ｱ笳・ｸｲ繝ｻ, "success");
+        showToast("螳溯｡後′螳御ｺ・＠縺ｾ縺励◆縲・, "success");
       }
     }
     if (status) {
@@ -304,7 +304,7 @@
     }
 
     if (status === "failed") {
-      showError("陞ｳ貅ｯ・｡蠕娯・陞滂ｽｱ隰ｨ蜉ｱ・邵ｺ・ｾ邵ｺ蜉ｱ笳・ｸｲ繧・溽ｹｧ・ｰ郢ｧ蝣､・｢・ｺ髫ｱ髦ｪ・邵ｺ・ｦ邵ｺ荳岩味邵ｺ霈費ｼ樒ｸｲ繝ｻ);
+      showError("螳溯｡後↓螟ｱ謨励＠縺ｾ縺励◆縲ゅΟ繧ｰ繧堤｢ｺ隱阪＠縺ｦ縺上□縺輔＞縲・);
     }
 
     if (status && status !== "running") {
@@ -349,7 +349,7 @@
     if (!payload) return;
 
     clearError();
-    showToast("陞ｳ貅ｯ・｡蠕鯉ｽ帝ｫ｢蜿･・ｧ荵晢ｼ邵ｺ・ｦ邵ｺ繝ｻ竏ｪ邵ｺ繝ｻ..", "success");
+    showToast("螳溯｡後ｒ髢句ｧ九＠縺ｦ縺・∪縺・..", "success");
 
     try {
       const res = await fetch("/api/runs", {
@@ -369,7 +369,7 @@
       const data = await res.json();
       if (logEl) {
         logEl.dataset.runId = data.run_id;
-        logEl.textContent = "陞ｳ貅ｯ・｡蠕鯉ｽ帝ｫ｢蜿･・ｧ荵晢ｼ邵ｺ・ｾ邵ｺ蜉ｱ笳・ｸｲ繧・溽ｹｧ・ｰ郢ｧ蜻亥ｳｩ隴・ｽｰ闕ｳ・ｭ...";
+        logEl.textContent = "螳溯｡後ｒ髢句ｧ九＠縺ｾ縺励◆縲ゅΟ繧ｰ繧呈峩譁ｰ荳ｭ...";
       }
 
       awaitingRunFinalization = true;
@@ -380,14 +380,14 @@
         params: { year: payload.year, month: payload.month },
       });
       runStatusById[data.run_id] = "running";
-      showToast("陞ｳ貅ｯ・｡蠕鯉ｽ帝ｫ｢蜿･・ｧ荵晢ｼ邵ｺ・ｾ邵ｺ蜉ｱ笳・ｸｲ繝ｻ, "success");
+      showToast("螳溯｡後ｒ髢句ｧ九＠縺ｾ縺励◆縲・, "success");
 
       startLogPolling(data.run_id);
       refreshLog(data.run_id);
       scheduleStepSync();
     } catch {
       awaitingRunFinalization = false;
-      const message = "陞ｳ貅ｯ・｡遒∝ｹ戊沂荵昶・陞滂ｽｱ隰ｨ蜉ｱ・邵ｺ・ｾ邵ｺ蜉ｱ笳・ｸｲ繧・・髫ｧ・ｦ髯ｦ蠕鯉ｼ邵ｺ・ｦ邵ｺ荳岩味邵ｺ霈費ｼ樒ｸｲ繝ｻ;
+      const message = "螳溯｡碁幕蟋九↓螟ｱ謨励＠縺ｾ縺励◆縲ょ・隧ｦ陦後＠縺ｦ縺上□縺輔＞縲・;
       showError(message);
       showToast(message, "error");
     }
@@ -421,7 +421,7 @@
 
     const ym = String(entry.ym || "").trim();
     const ts = String(entry.ts || "").trim();
-    const actionLabel = String(entry.action_label || "").trim() || "郢ｧ・｢郢晢ｽｼ郢ｧ・ｫ郢ｧ・､郢昴・;
+    const actionLabel = String(entry.action_label || "").trim() || "繧｢繝ｼ繧ｫ繧､繝・;
     const href = String(entry.archive_url || "").trim() || (ym ? `/runs/${ym}/archived-receipts` : "#");
 
     const item = document.createElement("li");
@@ -432,7 +432,7 @@
     const link = document.createElement("a");
     link.className = "secondary";
     link.href = href;
-    link.textContent = "郢ｧ・｢郢晢ｽｼ郢ｧ・ｫ郢ｧ・､郢晄じ・帝ｫ｢荵晢ｿ･";
+    link.textContent = "繧｢繝ｼ繧ｫ繧､繝悶ｒ髢九￥";
     item.appendChild(text);
     item.appendChild(link);
     list.prepend(item);
@@ -441,7 +441,7 @@
   async function runArchiveAction(action, buttonEl) {
     const ym = getYmFromForm();
     if (!ym) {
-      showToast("陝ｷ・ｴ隴帛現・定怦・･陷牙ｸ呻ｼ邵ｺ・ｦ邵ｺ荳岩味邵ｺ霈費ｼ樒ｸｲ繝ｻ, "error");
+      showToast("蟷ｴ譛医ｒ蜈･蜉帙＠縺ｦ縺上□縺輔＞縲・, "error");
       return;
     }
     const normalizedAction = String(action || "").trim();
@@ -453,14 +453,14 @@
       buttonEl.dataset.busy = "1";
     }
     const isMonthClose = normalizedAction === "month_close";
-    showToast(isMonthClose ? "隴帛沺・ｬ・｡郢ｧ・ｯ郢晢ｽｭ郢晢ｽｼ郢ｧ・ｺ郢ｧ雋橸ｽｮ貅ｯ・｡蠕鯉ｼ邵ｺ・ｦ邵ｺ繝ｻ竏ｪ邵ｺ繝ｻ.." : "郢ｧ・｢郢晢ｽｼ郢ｧ・ｫ郢ｧ・､郢晄じ・定抄諛医・邵ｺ蜉ｱ窶ｻ邵ｺ繝ｻ竏ｪ邵ｺ繝ｻ..", "success");
+    showToast(isMonthClose ? "譛域ｬ｡繧ｯ繝ｭ繝ｼ繧ｺ繧貞ｮ溯｡後＠縺ｦ縺・∪縺・.." : "繧｢繝ｼ繧ｫ繧､繝悶ｒ菴懈・縺励※縺・∪縺・..", "success");
 
     try {
       const endpoint = isMonthClose ? `/api/month-close/${ym}` : `/api/archive/${ym}`;
       const res = await fetch(endpoint, { method: "POST" });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        const message = toFriendlyMessage(data.detail || (isMonthClose ? "隴帛沺・ｬ・｡郢ｧ・ｯ郢晢ｽｭ郢晢ｽｼ郢ｧ・ｺ邵ｺ・ｫ陞滂ｽｱ隰ｨ蜉ｱ・邵ｺ・ｾ邵ｺ蜉ｱ笳・ｸｲ繝ｻ : "郢ｧ・｢郢晢ｽｼ郢ｧ・ｫ郢ｧ・､郢晉ｴ具ｽｽ諛医・邵ｺ・ｫ陞滂ｽｱ隰ｨ蜉ｱ・邵ｺ・ｾ邵ｺ蜉ｱ笳・ｸｲ繝ｻ));
+        const message = toFriendlyMessage(data.detail || (isMonthClose ? "譛域ｬ｡繧ｯ繝ｭ繝ｼ繧ｺ縺ｫ螟ｱ謨励＠縺ｾ縺励◆縲・ : "繧｢繝ｼ繧ｫ繧､繝紋ｽ懈・縺ｫ螟ｱ謨励＠縺ｾ縺励◆縲・));
         showError(message);
         showToast(message, "error");
         return;
@@ -475,21 +475,21 @@
         cleanup: Boolean(data.cleanup),
       };
       const cleanupRemoved = Number(data.cleanup_removed || 0);
-      const cleanupSuffix = Number.isFinite(cleanupRemoved) ? ` / 郢ｧ・ｯ郢晢ｽｪ郢晢ｽｼ郢晢ｽｳ郢ｧ・｢郢昴・繝ｻ ${cleanupRemoved}闔会ｽｶ` : "";
-      const baseMessage = isMonthClose ? "隴帛沺・ｬ・｡郢ｧ・ｯ郢晢ｽｭ郢晢ｽｼ郢ｧ・ｺ邵ｺ謔滂ｽｮ蠕｡・ｺ繝ｻ・邵ｺ・ｾ邵ｺ蜉ｱ笳・ : "郢ｧ・｢郢晢ｽｼ郢ｧ・ｫ郢ｧ・､郢晄じ・定抄諛医・邵ｺ蜉ｱ竏ｪ邵ｺ蜉ｱ笳・;
-      let message = archivedTo ? `${baseMessage}: ${archivedTo}${cleanupSuffix}` : `${baseMessage}邵ｲ繝ｻ{cleanupSuffix}`;
+      const cleanupSuffix = Number.isFinite(cleanupRemoved) ? ` / 繧ｯ繝ｪ繝ｼ繝ｳ繧｢繝・・ ${cleanupRemoved}莉ｶ` : "";
+      const baseMessage = isMonthClose ? "譛域ｬ｡繧ｯ繝ｭ繝ｼ繧ｺ縺悟ｮ御ｺ・＠縺ｾ縺励◆" : "繧｢繝ｼ繧ｫ繧､繝悶ｒ菴懈・縺励∪縺励◆";
+      let message = archivedTo ? `${baseMessage}: ${archivedTo}${cleanupSuffix}` : `${baseMessage}縲・{cleanupSuffix}`;
       if (isMonthClose) {
         const next = nextYm(ym);
         if (next) {
           setYmToForm(next);
           if (window.__stepState) window.__stepState = null;
-          message += ` / 郢ｧ・ｦ郢ｧ・｣郢ｧ・ｶ郢晢ｽｼ郢晏ｳｨ・・${next} 邵ｺ・ｫ陋ｻ繝ｻ・願ｭ厄ｽｿ邵ｺ蛹ｻ竏ｪ邵ｺ蜉ｱ笳・ｸｲ・｡;
+          message += ` / 繧ｦ繧｣繧ｶ繝ｼ繝峨ｒ ${next} 縺ｫ蛻・ｊ譖ｿ縺医∪縺励◆縲Ａ;
         }
       }
       prependArchiveHistoryRow(data.history_entry || null);
       showToast(message, "success");
     } catch {
-      const message = normalizedAction === "month_close" ? "隴帛沺・ｬ・｡郢ｧ・ｯ郢晢ｽｭ郢晢ｽｼ郢ｧ・ｺ邵ｺ・ｫ陞滂ｽｱ隰ｨ蜉ｱ・邵ｺ・ｾ邵ｺ蜉ｱ笳・ｸｲ繝ｻ : "郢ｧ・｢郢晢ｽｼ郢ｧ・ｫ郢ｧ・､郢晉ｴ具ｽｽ諛医・邵ｺ・ｫ陞滂ｽｱ隰ｨ蜉ｱ・邵ｺ・ｾ邵ｺ蜉ｱ笳・ｸｲ繝ｻ;
+      const message = normalizedAction === "month_close" ? "譛域ｬ｡繧ｯ繝ｭ繝ｼ繧ｺ縺ｫ螟ｱ謨励＠縺ｾ縺励◆縲・ : "繧｢繝ｼ繧ｫ繧､繝紋ｽ懈・縺ｫ螟ｱ謨励＠縺ｾ縺励◆縲・;
       showError(message);
       showToast(message, "error");
     } finally {
@@ -511,7 +511,7 @@
   async function openManualInbox(buttonEl) {
     const ym = getYmFromForm();
     if (!ym) {
-      showToast("陝ｷ・ｴ隴帛現・定怦・･陷牙ｸ呻ｼ邵ｺ・ｦ邵ｺ荳岩味邵ｺ霈費ｼ樒ｸｲ繝ｻ, "error");
+      showToast("蟷ｴ譛医ｒ蜈･蜉帙＠縺ｦ縺上□縺輔＞縲・, "error");
       return;
     }
 
@@ -524,16 +524,16 @@
       const res = await fetch(`/api/folders/${ym}/manual-inbox`, { method: "POST" });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        const message = toFriendlyMessage(data.detail || "陷茨ｽｱ鬨ｾ螢ｹ繝ｵ郢ｧ・ｩ郢晢ｽｫ郢敖郢ｧ蟶晏ｹ慕ｸｺ莉｣竏ｪ邵ｺ蟶呻ｽ鍋ｸｺ・ｧ邵ｺ蜉ｱ笳・ｸｲ繝ｻ);
+        const message = toFriendlyMessage(data.detail || "蜈ｱ騾壹ヵ繧ｩ繝ｫ繝繧帝幕縺代∪縺帙ｓ縺ｧ縺励◆縲・);
         showError(message);
         showToast(message, "error");
         return;
       }
       const openedPath = String(data.path || "").trim();
-      const message = openedPath ? `陷茨ｽｱ鬨ｾ螢ｹ繝ｵ郢ｧ・ｩ郢晢ｽｫ郢敖郢ｧ蟶晏ｹ慕ｸｺ髦ｪ竏ｪ邵ｺ蜉ｱ笳・ ${openedPath}` : "陷茨ｽｱ鬨ｾ螢ｹ繝ｵ郢ｧ・ｩ郢晢ｽｫ郢敖郢ｧ蟶晏ｹ慕ｸｺ髦ｪ竏ｪ邵ｺ蜉ｱ笳・ｸｲ繝ｻ;
+      const message = openedPath ? `蜈ｱ騾壹ヵ繧ｩ繝ｫ繝繧帝幕縺阪∪縺励◆: ${openedPath}` : "蜈ｱ騾壹ヵ繧ｩ繝ｫ繝繧帝幕縺阪∪縺励◆縲・;
       showToast(message, "success");
     } catch {
-      const message = "陷茨ｽｱ鬨ｾ螢ｹ繝ｵ郢ｧ・ｩ郢晢ｽｫ郢敖郢ｧ蟶晏ｹ慕ｸｺ莉｣竏ｪ邵ｺ蟶呻ｽ鍋ｸｺ・ｧ邵ｺ蜉ｱ笳・ｸｲ繝ｻ;
+      const message = "蜈ｱ騾壹ヵ繧ｩ繝ｫ繝繧帝幕縺代∪縺帙ｓ縺ｧ縺励◆縲・;
       showError(message);
       showToast(message, "error");
     } finally {
@@ -545,7 +545,7 @@
   async function importManualReceipts(buttonEl) {
     const ym = getYmFromForm();
     if (!ym) {
-      showToast("月を選択してください", "error");
+      showToast("蟷ｴ譛医ｒ蜈･蜉帙＠縺ｦ縺上□縺輔＞縲・, "error");
       return;
     }
 
@@ -554,57 +554,27 @@
       buttonEl.dataset.busy = "1";
     }
     clearError();
-    const sourceOpts = readManualSourceOptions();
-    const sourceDryRun = buttonEl?.dataset?.manualDryRun === "1";
-    const sourceMode = sourceDryRun ? "copy" : sourceOpts.sourceMode;
-    const label = sourceDryRun ? "事前チェック" : "取り込み";
-    showToast(`手動共通フォルダ${label}を開始します...`, "success");
+    showToast("謇句虚鬆伜庶譖ｸ縺ｮ蜿悶ｊ霎ｼ縺ｿ繧帝幕蟋九＠縺ｾ縺・..", "success");
     try {
-      const url = buildManualImportUrl(ym, {
-        sourceDir: sourceOpts.sourceDir,
-        sourceMode,
-        sourceDryRun,
-      });
-      const res = await fetch(url, { method: "POST" });
+      const res = await fetch(`/api/manual/${ym}/import`, { method: "POST" });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        const message = toFriendlyMessage(data.detail || "手動取り込みの開始に失敗しました。");
+        const message = toFriendlyMessage(data.detail || "鬆伜庶譖ｸ蜿悶ｊ霎ｼ縺ｿ縺ｫ螟ｱ謨励＠縺ｾ縺励◆縲・);
         showError(message);
         showToast(message, "error");
         return;
       }
-
-      const sourceImport = data.source_import;
-      const sourceSummary = formatManualSourceSummary(sourceImport);
-      if (sourceSummary) {
-        setManualSourceSummaryText(sourceSummary);
-      } else {
-        setManualSourceSummaryText("共通フォルダの事前チェック情報はありません");
-      }
-
-      if (String(data.status || "").trim().toLowerCase() === "error") {
-        const sourceErr = String(sourceImport?.error || "").trim();
-        const message = sourceErr || "手動取り込み実行でエラーが発生しました。";
-        showError(message);
-        showToast(message, "error");
-        return;
-      }
-
       const found = Number.parseInt(String(data.found_pdfs ?? 0), 10) || 0;
       const imported = Number.parseInt(String(data.imported ?? 0), 10) || 0;
       const skipped = Number.parseInt(String(data.skipped_duplicates ?? 0), 10) || 0;
       const failed = Number.parseInt(String(data.failed ?? 0), 10) || 0;
-      const message = sourceDryRun
-        ? `共通フォルダ事前チェック結果: ${sourceSummary || "該当情報なし"}`
-        : `手動取り込み結果: 共通フォルダ候補=${found} / 取り込み=${imported} / 重複=${skipped} / 失敗=${failed}${sourceSummary ? ` / ${sourceSummary}` : ""}`;
+      const message = `謇句虚鬆伜庶譖ｸ蜿悶ｊ霎ｼ縺ｿ: 逋ｺ隕・${found}莉ｶ / 蜿冶ｾｼ ${imported}莉ｶ / 驥崎､・${skipped}莉ｶ / 螟ｱ謨・${failed}莉ｶ`;
+      showToast(message, failed > 0 ? "error" : "success");
       if (failed > 0) {
         showError(message);
-        showToast(message, "error");
-        return;
       }
-      showToast(message, "success");
     } catch {
-      const message = "手動取り込み処理中に例外が発生しました。";
+      const message = "鬆伜庶譖ｸ蜿悶ｊ霎ｼ縺ｿ縺ｫ螟ｱ謨励＠縺ｾ縺励◆縲・;
       showError(message);
       showToast(message, "error");
     } finally {
@@ -613,66 +583,10 @@
     }
   }
 
-  function readManualSourceOptions() {
-    const sourceDirEl = document.querySelector("[data-manual-source-dir]");
-    const sourceModeEl = document.querySelector("[data-manual-source-mode]");
-    const sourceDir = String(sourceDirEl?.value || "").trim();
-    let sourceMode = String(sourceModeEl?.value || "copy").trim().toLowerCase();
-    if (sourceMode !== "move") sourceMode = "copy";
-    return { sourceDir, sourceMode };
-  }
-
-  function buildManualImportUrl(ym, options = {}) {
-    const sourceDir = String(options.sourceDir || "").trim();
-    const sourceMode = String(options.sourceMode || "").trim().toLowerCase() || "copy";
-    const sourceDryRun = Boolean(options.sourceDryRun);
-    const params = new URLSearchParams();
-    if (sourceDir) {
-      params.set("source_dir", sourceDir);
-    }
-    if (sourceMode) {
-      params.set("source_mode", sourceMode);
-    }
-    if (sourceDryRun) {
-      params.set("source_dry_run", "true");
-    }
-    const query = params.toString();
-    return query ? `/api/manual/${ym}/import?${query}` : `/api/manual/${ym}/import`;
-  }
-
-  function setManualSourceSummaryText(message) {
-    const summaryEl = document.querySelector("[data-manual-source-summary]");
-    if (!summaryEl) return;
-    summaryEl.textContent = String(message || "").trim();
-  }
-
-  function formatManualSourceSummary(sourceImport) {
-    if (!sourceImport || typeof sourceImport !== "object" || sourceImport.enabled !== true) return "";
-    const scan = sourceImport.scan;
-    if (!scan || typeof scan !== "object") return "";
-    const checked = Number.parseInt(String(scan.checked || 0), 10) || 0;
-    const pdfFiles = Number.parseInt(String(scan.pdf_files || 0), 10) || 0;
-    const matched = Number.parseInt(String(scan.matched || 0), 10) || 0;
-    const ignoredHidden = Number.parseInt(String(scan.ignored_hidden || 0), 10) || 0;
-    const ignoredNonPdf = Number.parseInt(String(scan.ignored_non_pdf || 0), 10) || 0;
-    const ignoredOutOfMonth = Number.parseInt(String(scan.ignored_out_of_month || 0), 10) || 0;
-    const ignoredUnmatchedName = Number.parseInt(String(scan.ignored_unmatched_name || 0), 10) || 0;
-    const sourceDir = String(scan.source_dir || sourceImport.source_dir || "").trim();
-    const mode = String(sourceImport.mode || "").trim() || "copy";
-    const sample = Array.isArray(scan.sample_matched) ? scan.sample_matched : [];
-    const sampleText = sample
-      .map((value) => String(value || "").trim())
-      .filter(Boolean)
-      .slice(0, 4)
-      .join(", ");
-    const tail = sampleText ? ` サンプル: ${sampleText}` : "";
-    const accessInfo = scan.accessible ? "アクセス可" : "アクセス不可";
-    return `共通フォルダ事前チェック: ${accessInfo} / checked=${checked} / pdf_files=${pdfFiles} / matched=${matched} / ignored(hidden=${ignoredHidden}, non_pdf=${ignoredNonPdf}, out_of_month=${ignoredOutOfMonth}, unmatched=${ignoredUnmatchedName}) / mode=${mode} / source=${sourceDir || "(none)"}${tail}`;
-  }
   async function openMfBulkInbox(buttonEl) {
     const ym = getYmFromForm();
     if (!ym) {
-      showToast("陝ｷ・ｴ隴帛現・定怦・･陷牙ｸ呻ｼ邵ｺ・ｦ邵ｺ荳岩味邵ｺ霈費ｼ樒ｸｲ繝ｻ, "error");
+      showToast("蟷ｴ譛医ｒ蜈･蜉帙＠縺ｦ縺上□縺輔＞縲・, "error");
       return;
     }
 
@@ -685,18 +599,18 @@
       const res = await fetch(`/api/folders/${ym}/mf-bulk-inbox`, { method: "POST" });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        const message = toFriendlyMessage(data.detail || "MF闕ｳﾂ隲｡・ｬ郢ｧ・｢郢昴・繝ｻ郢晢ｽｭ郢晢ｽｼ郢晁・逡醍ｹ晁ｼ斐°郢晢ｽｫ郢敖郢ｧ蟶晏ｹ慕ｸｺ莉｣竏ｪ邵ｺ蟶呻ｽ鍋ｸｺ・ｧ邵ｺ蜉ｱ笳・ｸｲ繝ｻ);
+        const message = toFriendlyMessage(data.detail || "MF荳諡ｬ繧｢繝・・繝ｭ繝ｼ繝臥畑繝輔か繝ｫ繝繧帝幕縺代∪縺帙ｓ縺ｧ縺励◆縲・);
         showError(message);
         showToast(message, "error");
         return;
       }
       const openedPath = String(data.path || "").trim();
       const message = openedPath
-        ? `MF闕ｳﾂ隲｡・ｬ郢ｧ・｢郢昴・繝ｻ郢晢ｽｭ郢晢ｽｼ郢晁・逡醍ｹ晁ｼ斐°郢晢ｽｫ郢敖郢ｧ蟶晏ｹ慕ｸｺ髦ｪ竏ｪ邵ｺ蜉ｱ笳・ ${openedPath}`
-        : "MF闕ｳﾂ隲｡・ｬ郢ｧ・｢郢昴・繝ｻ郢晢ｽｭ郢晢ｽｼ郢晁・逡醍ｹ晁ｼ斐°郢晢ｽｫ郢敖郢ｧ蟶晏ｹ慕ｸｺ髦ｪ竏ｪ邵ｺ蜉ｱ笳・ｸｲ繝ｻ;
+        ? `MF荳諡ｬ繧｢繝・・繝ｭ繝ｼ繝臥畑繝輔か繝ｫ繝繧帝幕縺阪∪縺励◆: ${openedPath}`
+        : "MF荳諡ｬ繧｢繝・・繝ｭ繝ｼ繝臥畑繝輔か繝ｫ繝繧帝幕縺阪∪縺励◆縲・;
       showToast(message, "success");
     } catch {
-      const message = "MF闕ｳﾂ隲｡・ｬ郢ｧ・｢郢昴・繝ｻ郢晢ｽｭ郢晢ｽｼ郢晁・逡醍ｹ晁ｼ斐°郢晢ｽｫ郢敖郢ｧ蟶晏ｹ慕ｸｺ莉｣竏ｪ邵ｺ蟶呻ｽ鍋ｸｺ・ｧ邵ｺ蜉ｱ笳・ｸｲ繝ｻ;
+      const message = "MF荳諡ｬ繧｢繝・・繝ｭ繝ｼ繝臥畑繝輔か繝ｫ繝繧帝幕縺代∪縺帙ｓ縺ｧ縺励◆縲・;
       showError(message);
       showToast(message, "error");
     } finally {
@@ -708,7 +622,7 @@
   async function runMfBulkUpload(buttonEl) {
     const ym = getYmFromForm();
     if (!ym) {
-      showToast("陝ｷ・ｴ隴帛現・定怦・･陷牙ｸ呻ｼ邵ｺ・ｦ邵ｺ荳岩味邵ｺ霈費ｼ樒ｸｲ繝ｻ, "error");
+      showToast("蟷ｴ譛医ｒ蜈･蜉帙＠縺ｦ縺上□縺輔＞縲・, "error");
       return;
     }
 
@@ -717,12 +631,12 @@
       buttonEl.dataset.busy = "1";
     }
     clearError();
-    showToast("MF闕ｳﾂ隲｡・ｬ郢ｧ・｢郢昴・繝ｻ郢晢ｽｭ郢晢ｽｼ郢晏ｳｨ・帝ｫ｢蜿･・ｧ荵晢ｼ邵ｺ・ｾ邵ｺ繝ｻ..", "success");
+    showToast("MF荳諡ｬ繧｢繝・・繝ｭ繝ｼ繝峨ｒ髢句ｧ九＠縺ｾ縺・..", "success");
     try {
       const res = await fetch(`/api/mf-bulk-upload/${ym}`, { method: "POST" });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        const message = toFriendlyMessage(data.detail || "MF闕ｳﾂ隲｡・ｬ郢ｧ・｢郢昴・繝ｻ郢晢ｽｭ郢晢ｽｼ郢晏ｳｨ竊楢棔・ｱ隰ｨ蜉ｱ・邵ｺ・ｾ邵ｺ蜉ｱ笳・ｸｲ繝ｻ);
+        const message = toFriendlyMessage(data.detail || "MF荳諡ｬ繧｢繝・・繝ｭ繝ｼ繝峨↓螟ｱ謨励＠縺ｾ縺励◆縲・);
         showError(message);
         showToast(message, "error");
         return;
@@ -732,11 +646,11 @@
       const queued = Number.parseInt(String(data.queued_count ?? 0), 10) || 0;
       const readCount = Number.parseInt(String(data.read_count ?? 0), 10) || 0;
       const archivedDir = String(data.archived_dir || "").trim();
-      const details = archivedDir ? ` / 闖ｫ譎会ｽｮ・｡: ${archivedDir}` : "";
-      const message = `MF闕ｳﾂ隲｡・ｬ郢ｧ・｢郢昴・繝ｻ郢晢ｽｭ郢晢ｽｼ郢昴・ 騾具ｽｺ髫輔・${found}闔会ｽｶ / 髫ｱ・ｭ髴趣ｽｼ ${readCount}闔会ｽｶ / 郢ｧ・ｭ郢晢ｽ･郢晢ｽｼ ${queued}闔会ｽｶ / 鬨ｾ竏ｽ・ｿ・｡ ${submitted}闔会ｽｶ${details}`;
+      const details = archivedDir ? ` / 菫晉ｮ｡: ${archivedDir}` : "";
+      const message = `MF荳諡ｬ繧｢繝・・繝ｭ繝ｼ繝・ 逋ｺ隕・${found}莉ｶ / 隱ｭ霎ｼ ${readCount}莉ｶ / 繧ｭ繝･繝ｼ ${queued}莉ｶ / 騾∽ｿ｡ ${submitted}莉ｶ${details}`;
       showToast(message, "success");
     } catch {
-      const message = "MF闕ｳﾂ隲｡・ｬ郢ｧ・｢郢昴・繝ｻ郢晢ｽｭ郢晢ｽｼ郢晏ｳｨ竊楢棔・ｱ隰ｨ蜉ｱ・邵ｺ・ｾ邵ｺ蜉ｱ笳・ｸｲ繝ｻ;
+      const message = "MF荳諡ｬ繧｢繝・・繝ｭ繝ｼ繝峨↓螟ｱ謨励＠縺ｾ縺励◆縲・;
       showError(message);
       showToast(message, "error");
     } finally {
@@ -748,7 +662,7 @@
   async function openMfCsvInbox(buttonEl) {
     const ym = getYmFromForm();
     if (!ym) {
-      showToast("陝ｷ・ｴ隴帛現・定怦・･陷牙ｸ呻ｼ邵ｺ・ｦ邵ｺ荳岩味邵ｺ霈費ｼ樒ｸｲ繝ｻ, "error");
+      showToast("蟷ｴ譛医ｒ蜈･蜉帙＠縺ｦ縺上□縺輔＞縲・, "error");
       return;
     }
 
@@ -761,18 +675,18 @@
       const res = await fetch(`/api/folders/${ym}/mf-csv-inbox`, { method: "POST" });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        const message = toFriendlyMessage(data.detail || "闔・､鬨ｾ螟奇ｽｲ・ｻCSV郢ｧ・､郢晢ｽｳ郢晄亢繝ｻ郢晁ご逡醍ｹ晁ｼ斐°郢晢ｽｫ郢敖郢ｧ蟶晏ｹ慕ｸｺ莉｣竏ｪ邵ｺ蟶呻ｽ鍋ｸｺ・ｧ邵ｺ蜉ｱ笳・ｸｲ繝ｻ);
+        const message = toFriendlyMessage(data.detail || "莠､騾夊ｲｻCSV繧､繝ｳ繝昴・繝育畑繝輔か繝ｫ繝繧帝幕縺代∪縺帙ｓ縺ｧ縺励◆縲・);
         showError(message);
         showToast(message, "error");
         return;
       }
       const openedPath = String(data.path || "").trim();
       const message = openedPath
-        ? `闔・､鬨ｾ螟奇ｽｲ・ｻCSV郢ｧ・､郢晢ｽｳ郢晄亢繝ｻ郢晁ご逡醍ｹ晁ｼ斐°郢晢ｽｫ郢敖郢ｧ蟶晏ｹ慕ｸｺ髦ｪ竏ｪ邵ｺ蜉ｱ笳・ ${openedPath}`
-        : "闔・､鬨ｾ螟奇ｽｲ・ｻCSV郢ｧ・､郢晢ｽｳ郢晄亢繝ｻ郢晁ご逡醍ｹ晁ｼ斐°郢晢ｽｫ郢敖郢ｧ蟶晏ｹ慕ｸｺ髦ｪ竏ｪ邵ｺ蜉ｱ笳・ｸｲ繝ｻ;
+        ? `莠､騾夊ｲｻCSV繧､繝ｳ繝昴・繝育畑繝輔か繝ｫ繝繧帝幕縺阪∪縺励◆: ${openedPath}`
+        : "莠､騾夊ｲｻCSV繧､繝ｳ繝昴・繝育畑繝輔か繝ｫ繝繧帝幕縺阪∪縺励◆縲・;
       showToast(message, "success");
     } catch {
-      const message = "闔・､鬨ｾ螟奇ｽｲ・ｻCSV郢ｧ・､郢晢ｽｳ郢晄亢繝ｻ郢晁ご逡醍ｹ晁ｼ斐°郢晢ｽｫ郢敖郢ｧ蟶晏ｹ慕ｸｺ莉｣竏ｪ邵ｺ蟶呻ｽ鍋ｸｺ・ｧ邵ｺ蜉ｱ笳・ｸｲ繝ｻ;
+      const message = "莠､騾夊ｲｻCSV繧､繝ｳ繝昴・繝育畑繝輔か繝ｫ繝繧帝幕縺代∪縺帙ｓ縺ｧ縺励◆縲・;
       showError(message);
       showToast(message, "error");
     } finally {
@@ -784,7 +698,7 @@
   async function runMfCsvImport(buttonEl) {
     const ym = getYmFromForm();
     if (!ym) {
-      showToast("陝ｷ・ｴ隴帛現・定怦・･陷牙ｸ呻ｼ邵ｺ・ｦ邵ｺ荳岩味邵ｺ霈費ｼ樒ｸｲ繝ｻ, "error");
+      showToast("蟷ｴ譛医ｒ蜈･蜉帙＠縺ｦ縺上□縺輔＞縲・, "error");
       return;
     }
 
@@ -793,12 +707,12 @@
       buttonEl.dataset.busy = "1";
     }
     clearError();
-    showToast("闔・､鬨ｾ螟奇ｽｲ・ｻCSV郢ｧ・､郢晢ｽｳ郢晄亢繝ｻ郢晏現・帝ｫ｢蜿･・ｧ荵晢ｼ邵ｺ・ｾ邵ｺ繝ｻ..", "success");
+    showToast("莠､騾夊ｲｻCSV繧､繝ｳ繝昴・繝医ｒ髢句ｧ九＠縺ｾ縺・..", "success");
     try {
       const res = await fetch(`/api/mf-csv-import/${ym}`, { method: "POST" });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        const message = toFriendlyMessage(data.detail || "闔・､鬨ｾ螟奇ｽｲ・ｻCSV郢ｧ・､郢晢ｽｳ郢晄亢繝ｻ郢晏現竊楢棔・ｱ隰ｨ蜉ｱ・邵ｺ・ｾ邵ｺ蜉ｱ笳・ｸｲ繝ｻ);
+        const message = toFriendlyMessage(data.detail || "莠､騾夊ｲｻCSV繧､繝ｳ繝昴・繝医↓螟ｱ謨励＠縺ｾ縺励◆縲・);
         showError(message);
         showToast(message, "error");
         return;
@@ -807,11 +721,11 @@
       const submitted = Number.parseInt(String(data.submitted_count ?? 0), 10) || 0;
       const queued = Number.parseInt(String(data.queued_count ?? 0), 10) || 0;
       const archivedDir = String(data.archived_dir || "").trim();
-      const details = archivedDir ? ` / 闖ｫ譎会ｽｮ・｡: ${archivedDir}` : "";
-      const message = `闔・､鬨ｾ螟奇ｽｲ・ｻCSV郢ｧ・､郢晢ｽｳ郢晄亢繝ｻ郢昴・ 騾具ｽｺ髫輔・${found}闔会ｽｶ / 郢ｧ・ｭ郢晢ｽ･郢晢ｽｼ ${queued}闔会ｽｶ / 鬨ｾ竏ｽ・ｿ・｡ ${submitted}闔会ｽｶ${details}`;
+      const details = archivedDir ? ` / 菫晉ｮ｡: ${archivedDir}` : "";
+      const message = `莠､騾夊ｲｻCSV繧､繝ｳ繝昴・繝・ 逋ｺ隕・${found}莉ｶ / 繧ｭ繝･繝ｼ ${queued}莉ｶ / 騾∽ｿ｡ ${submitted}莉ｶ${details}`;
       showToast(message, "success");
     } catch {
-      const message = "闔・､鬨ｾ螟奇ｽｲ・ｻCSV郢ｧ・､郢晢ｽｳ郢晄亢繝ｻ郢晏現竊楢棔・ｱ隰ｨ蜉ｱ・邵ｺ・ｾ邵ｺ蜉ｱ笳・ｸｲ繝ｻ;
+      const message = "莠､騾夊ｲｻCSV繧､繝ｳ繝昴・繝医↓螟ｱ謨励＠縺ｾ縺励◆縲・;
       showError(message);
       showToast(message, "error");
     } finally {
@@ -823,14 +737,6 @@
   function runManualAction(action, buttonEl) {
     if (action === "open_inbox") {
       openManualInbox(buttonEl);
-      return;
-    }
-    if (action === "check_manual_source") {
-      importManualReceipts(buttonEl);
-      return;
-    }
-    if (action === "import_manual_receipts") {
-      importManualReceipts(buttonEl);
       return;
     }
     if (action === "import_receipts") {
@@ -867,11 +773,11 @@
     const ym = getYmFromForm();
     const normalizedProvider = String(provider || "").trim().toLowerCase();
     if (!ym) {
-      showToast("陝ｷ・ｴ隴帛現・定怦・･陷牙ｸ呻ｼ邵ｺ・ｦ邵ｺ荳岩味邵ｺ霈費ｼ樒ｸｲ繝ｻ, "error");
+      showToast("蟷ｴ譛医ｒ蜈･蜉帙＠縺ｦ縺上□縺輔＞縲・, "error");
       return;
     }
     if (!normalizedProvider) {
-      showToast("陝・ｽｾ髮趣ｽ｡郢ｧ・ｵ郢晢ｽｼ郢晁侭縺帷ｸｺ譴ｧ谺陞ｳ螢ｹ・・ｹｧ蠕娯ｻ邵ｺ繝ｻ竏ｪ邵ｺ蟶呻ｽ鍋ｸｲ繝ｻ, "error");
+      showToast("蟇ｾ雎｡繧ｵ繝ｼ繝薙せ縺梧欠螳壹＆繧後※縺・∪縺帙ｓ縲・, "error");
       return;
     }
 
@@ -884,17 +790,17 @@
       const res = await fetch(`/api/folders/${ym}/provider-inbox/${encodeURIComponent(normalizedProvider)}`, { method: "POST" });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        const message = toFriendlyMessage(data.detail || "郢ｧ・ｵ郢晢ｽｼ郢晁侭縺幄崕・･郢晁ｼ斐°郢晢ｽｫ郢敖郢ｧ蟶晏ｹ慕ｸｺ莉｣竏ｪ邵ｺ蟶呻ｽ鍋ｸｺ・ｧ邵ｺ蜉ｱ笳・ｸｲ繝ｻ);
+        const message = toFriendlyMessage(data.detail || "繧ｵ繝ｼ繝薙せ蛻･繝輔か繝ｫ繝繧帝幕縺代∪縺帙ｓ縺ｧ縺励◆縲・);
         showError(message);
         showToast(message, "error");
         return;
       }
       const openedPath = String(data.path || "").trim();
       const label = providerLabel(normalizedProvider);
-      const message = openedPath ? `${label}郢晁ｼ斐°郢晢ｽｫ郢敖郢ｧ蟶晏ｹ慕ｸｺ髦ｪ竏ｪ邵ｺ蜉ｱ笳・ ${openedPath}` : `${label}郢晁ｼ斐°郢晢ｽｫ郢敖郢ｧ蟶晏ｹ慕ｸｺ髦ｪ竏ｪ邵ｺ蜉ｱ笳・ｸｲ・｡;
+      const message = openedPath ? `${label}繝輔か繝ｫ繝繧帝幕縺阪∪縺励◆: ${openedPath}` : `${label}繝輔か繝ｫ繝繧帝幕縺阪∪縺励◆縲Ａ;
       showToast(message, "success");
     } catch {
-      const message = "郢ｧ・ｵ郢晢ｽｼ郢晁侭縺幄崕・･郢晁ｼ斐°郢晢ｽｫ郢敖郢ｧ蟶晏ｹ慕ｸｺ莉｣竏ｪ邵ｺ蟶呻ｽ鍋ｸｺ・ｧ邵ｺ蜉ｱ笳・ｸｲ繝ｻ;
+      const message = "繧ｵ繝ｼ繝薙せ蛻･繝輔か繝ｫ繝繧帝幕縺代∪縺帙ｓ縺ｧ縺励◆縲・;
       showError(message);
       showToast(message, "error");
     } finally {
@@ -906,7 +812,7 @@
   async function importProviderReceipts(buttonEl) {
     const ym = getYmFromForm();
     if (!ym) {
-      showToast("陝ｷ・ｴ隴帛現・定怦・･陷牙ｸ呻ｼ邵ｺ・ｦ邵ｺ荳岩味邵ｺ霈費ｼ樒ｸｲ繝ｻ, "error");
+      showToast("蟷ｴ譛医ｒ蜈･蜉帙＠縺ｦ縺上□縺輔＞縲・, "error");
       return;
     }
 
@@ -915,12 +821,12 @@
       buttonEl.dataset.busy = "1";
     }
     clearError();
-    showToast("陷茨ｽｱ鬨ｾ螢ｹ繝ｵ郢ｧ・ｩ郢晢ｽｫ郢敖邵ｺ・ｮ鬯・ｼ懷ｺｶ隴厄ｽｸ郢ｧ雋槫徐郢ｧ鬘假ｽｾ・ｼ邵ｺ・ｿ闕ｳ・ｭ...", "success");
+    showToast("蜈ｱ騾壹ヵ繧ｩ繝ｫ繝縺ｮ鬆伜庶譖ｸ繧貞叙繧願ｾｼ縺ｿ荳ｭ...", "success");
     try {
       const res = await fetch(`/api/providers/${ym}/import`, { method: "POST" });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        const message = toFriendlyMessage(data.detail || "陷茨ｽｱ鬨ｾ螢ｹ繝ｵ郢ｧ・ｩ郢晢ｽｫ郢敖陷ｿ謔ｶ・企恷・ｼ邵ｺ・ｿ邵ｺ・ｫ陞滂ｽｱ隰ｨ蜉ｱ・邵ｺ・ｾ邵ｺ蜉ｱ笳・ｸｲ繝ｻ);
+        const message = toFriendlyMessage(data.detail || "蜈ｱ騾壹ヵ繧ｩ繝ｫ繝蜿悶ｊ霎ｼ縺ｿ縺ｫ螟ｱ謨励＠縺ｾ縺励◆縲・);
         showError(message);
         showToast(message, "error");
         return;
@@ -929,14 +835,14 @@
       const imported = Number.parseInt(String(data.imported ?? 0), 10) || 0;
       const skipped = Number.parseInt(String(data.skipped_duplicates ?? 0), 10) || 0;
       const failed = Number.parseInt(String(data.failed ?? 0), 10) || 0;
-      const message = `陷茨ｽｱ鬨ｾ螢ｹ繝ｵ郢ｧ・ｩ郢晢ｽｫ郢敖陷ｿ謔ｶ・企恷・ｼ邵ｺ・ｿ: 隶諛ｷ繝ｻ ${found}闔会ｽｶ / 陷ｿ蜀ｶ・ｾ・ｼ ${imported}闔会ｽｶ / 鬩･蟠趣ｽ､繝ｻ${skipped}闔会ｽｶ / 陞滂ｽｱ隰ｨ繝ｻ${failed}闔会ｽｶ`;
+      const message = `蜈ｱ騾壹ヵ繧ｩ繝ｫ繝蜿悶ｊ霎ｼ縺ｿ: 讀懷・ ${found}莉ｶ / 蜿冶ｾｼ ${imported}莉ｶ / 驥崎､・${skipped}莉ｶ / 螟ｱ謨・${failed}莉ｶ`;
       const manualActionRequired = Boolean(data.manual_action_required) || skipped > 0 || failed > 0;
       if (!manualActionRequired) {
         showToast(message, "success");
         return;
       }
 
-      const details = [message, "郢ｧ・ｹ郢ｧ・ｭ郢昴・繝ｻ/陞滂ｽｱ隰ｨ諤懊・邵ｺ・ｯMF邵ｺ・ｸ髢ｾ・ｪ陷榊｢難ｽｷ・ｻ闔牙･・・ｹｧ蠕娯ｻ邵ｺ繝ｻ竏ｪ邵ｺ蟶呻ｽ鍋ｸｲ繧育・陷榊｢難ｽｷ・ｻ闔牙･・邵ｺ・ｦ邵ｺ荳岩味邵ｺ霈費ｼ樒ｸｲ繝ｻ];
+      const details = [message, "繧ｹ繧ｭ繝・・/螟ｱ謨怜・縺ｯMF縺ｸ閾ｪ蜍墓ｷｻ莉倥＆繧後※縺・∪縺帙ｓ縲よ焔蜍墓ｷｻ莉倥＠縺ｦ縺上□縺輔＞縲・];
       let skippedFolderPath = String(data.skipped_dir || "").trim();
       if (skipped > 0) {
         const openSkippedRes = await fetch(`/api/folders/${ym}/provider-skipped/latest`, { method: "POST" });
@@ -947,21 +853,21 @@
         }
       }
       if (skippedFolderPath) {
-        details.push(`隴幢ｽｪ雎ｺ・ｻ闔牙・ｽｸﾂ髫包ｽｧ郢晁ｼ斐°郢晢ｽｫ郢敖: ${skippedFolderPath}`);
+        details.push(`譛ｪ豺ｻ莉倅ｸ隕ｧ繝輔か繝ｫ繝: ${skippedFolderPath}`);
       }
       const skippedFiles = Array.isArray(data.skipped_files)
         ? data.skipped_files.map((value) => String(value || "").trim()).filter((value) => value)
         : [];
       if (skippedFiles.length > 0) {
         const preview = skippedFiles.slice(0, 8);
-        const suffix = skippedFiles.length > preview.length ? ` 邵ｺ・ｻ邵ｺ繝ｻ{skippedFiles.length - preview.length}闔会ｽｶ` : "";
-        details.push(`隴幢ｽｪ雎ｺ・ｻ闔牙･繝ｵ郢ｧ・｡郢ｧ・､郢晢ｽｫ: ${preview.join(", ")}${suffix}`);
+        const suffix = skippedFiles.length > preview.length ? ` 縺ｻ縺・{skippedFiles.length - preview.length}莉ｶ` : "";
+        details.push(`譛ｪ豺ｻ莉倥ヵ繧｡繧､繝ｫ: ${preview.join(", ")}${suffix}`);
       }
       const errorMessage = details.join("\n");
       showError(errorMessage);
-      showToast("陷茨ｽｱ鬨ｾ螢ｹ繝ｵ郢ｧ・ｩ郢晢ｽｫ郢敖陷ｿ謔ｶ・企恷・ｼ邵ｺ・ｿ邵ｺ・ｧ郢ｧ・ｹ郢ｧ・ｭ郢昴・繝ｻ/陞滂ｽｱ隰ｨ蜉ｱ窶ｲ騾具ｽｺ騾墓ｺ假ｼ邵ｺ・ｾ邵ｺ蜉ｱ笳・ｸｲ繧育・陷榊｢難ｽｷ・ｻ闔牙･窶ｲ陟｢繝ｻ・ｦ竏壹堤ｸｺ蜷ｶﾂ繝ｻ, "error");
+      showToast("蜈ｱ騾壹ヵ繧ｩ繝ｫ繝蜿悶ｊ霎ｼ縺ｿ縺ｧ繧ｹ繧ｭ繝・・/螟ｱ謨励′逋ｺ逕溘＠縺ｾ縺励◆縲よ焔蜍墓ｷｻ莉倥′蠢・ｦ√〒縺吶・, "error");
     } catch {
-      const message = "陷茨ｽｱ鬨ｾ螢ｹ繝ｵ郢ｧ・ｩ郢晢ｽｫ郢敖陷ｿ謔ｶ・企恷・ｼ邵ｺ・ｿ邵ｺ・ｫ陞滂ｽｱ隰ｨ蜉ｱ・邵ｺ・ｾ邵ｺ蜉ｱ笳・ｸｲ繝ｻ;
+      const message = "蜈ｱ騾壹ヵ繧ｩ繝ｫ繝蜿悶ｊ霎ｼ縺ｿ縺ｫ螟ｱ謨励＠縺ｾ縺励◆縲・;
       showError(message);
       showToast(message, "error");
     } finally {
@@ -973,7 +879,7 @@
   async function printProviderReceipts(buttonEl) {
     const ym = getYmFromForm();
     if (!ym) {
-      showToast("陝ｷ・ｴ隴帛現・定怦・･陷牙ｸ呻ｼ邵ｺ・ｦ邵ｺ荳岩味邵ｺ霈費ｼ樒ｸｲ繝ｻ, "error");
+      showToast("蟷ｴ譛医ｒ蜈･蜉帙＠縺ｦ縺上□縺輔＞縲・, "error");
       return;
     }
 
@@ -982,21 +888,21 @@
       buttonEl.dataset.busy = "1";
     }
     clearError();
-    showToast("陷茨ｽｱ鬨ｾ螢ｹ繝ｵ郢ｧ・ｩ郢晢ｽｫ郢敖陷ｿ蜀ｶ・ｾ・ｼ雋ょ現竏ｩ邵ｺ・ｮPDF郢ｧ蝣､・ｵ莉咏ｲ狗ｸｺ蜉ｱ窶ｻ邵ｺ繝ｻ竏ｪ邵ｺ繝ｻ..", "success");
+    showToast("蜈ｱ騾壹ヵ繧ｩ繝ｫ繝蜿冶ｾｼ貂医∩縺ｮPDF繧堤ｵ仙粋縺励※縺・∪縺・..", "success");
     try {
       const res = await fetch(`/api/providers/${ym}/print-run`, { method: "POST" });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        const message = toFriendlyMessage(data.detail || "陷茨ｽｱ鬨ｾ螢ｹ繝ｵ郢ｧ・ｩ郢晢ｽｫ郢敖闕ｳﾂ隲｡・ｬ陷奇ｽｰ陋ｻ・ｷ邵ｺ・ｮ鬮｢蜿･・ｧ荵昶・陞滂ｽｱ隰ｨ蜉ｱ・邵ｺ・ｾ邵ｺ蜉ｱ笳・ｸｲ繝ｻ);
+        const message = toFriendlyMessage(data.detail || "蜈ｱ騾壹ヵ繧ｩ繝ｫ繝荳諡ｬ蜊ｰ蛻ｷ縺ｮ髢句ｧ九↓螟ｱ謨励＠縺ｾ縺励◆縲・);
         showError(message);
         showToast(message, "error");
         return;
       }
       const count = Number.parseInt(String(data.count ?? 0), 10) || 0;
-      const message = `陷茨ｽｱ鬨ｾ螢ｹ繝ｵ郢ｧ・ｩ郢晢ｽｫ郢敖陷ｿ蜀ｶ・ｾ・ｼ陋ｻ繝ｻ繝ｻ驍ｨ莉咏ｲ輝DF郢ｧ蟶晏ｹ慕ｸｺ髦ｪ竏ｪ邵ｺ蜉ｱ笳・・莠･・ｯ・ｾ髮趣ｽ｡ ${Math.max(0, count)} 闔会ｽｶ繝ｻ蟲ｨﾂ・｡;
+      const message = `蜈ｱ騾壹ヵ繧ｩ繝ｫ繝蜿冶ｾｼ蛻・・邨仙粋PDF繧帝幕縺阪∪縺励◆・亥ｯｾ雎｡ ${Math.max(0, count)} 莉ｶ・峨Ａ;
       showToast(message, "success");
     } catch {
-      const message = "陷茨ｽｱ鬨ｾ螢ｹ繝ｵ郢ｧ・ｩ郢晢ｽｫ郢敖闕ｳﾂ隲｡・ｬ陷奇ｽｰ陋ｻ・ｷ邵ｺ・ｮ鬮｢蜿･・ｧ荵昶・陞滂ｽｱ隰ｨ蜉ｱ・邵ｺ・ｾ邵ｺ蜉ｱ笳・ｸｲ繝ｻ;
+      const message = "蜈ｱ騾壹ヵ繧ｩ繝ｫ繝荳諡ｬ蜊ｰ蛻ｷ縺ｮ髢句ｧ九↓螟ｱ謨励＠縺ｾ縺励◆縲・;
       showError(message);
       showToast(message, "error");
     } finally {
@@ -1027,17 +933,17 @@
   async function resetStep(stepId, buttonEl) {
     const ym = getYmFromForm();
     if (!ym) {
-      showToast("陝ｷ・ｴ隴帛現・定怦・･陷牙ｸ呻ｼ邵ｺ・ｦ邵ｺ荳岩味邵ｺ霈費ｼ樒ｸｲ繝ｻ, "error");
+      showToast("蟷ｴ譛医ｒ蜈･蜉帙＠縺ｦ縺上□縺輔＞縲・, "error");
       return;
     }
     const labelByStep = {
-      amazon_download: "Amazon郢ｧ・ｫ郢晢ｽｼ郢昴・/ 陷ｿ髢・ｾ繝ｻ,
-      amazon_decide_print: "Amazon郢ｧ・ｫ郢晢ｽｼ郢昴・/ 鬮ｯ・､陞滄摩諢幄ｭ・ｽｭ郢晢ｽｻ陷奇ｽｰ陋ｻ・ｷ繝ｻ莠･・ｮ蠕｡・ｺ繝ｻ・ｨ蛟ｬ鮖ｸ邵ｺ・ｾ邵ｺ・ｧ繝ｻ繝ｻ,
-      rakuten_download: "隶鯉ｽｽ陞滂ｽｩ郢ｧ・ｫ郢晢ｽｼ郢昴・/ 陷ｿ髢・ｾ繝ｻ,
-      rakuten_decide_print: "隶鯉ｽｽ陞滂ｽｩ郢ｧ・ｫ郢晢ｽｼ郢昴・/ 鬮ｯ・､陞滄摩諢幄ｭ・ｽｭ郢晢ｽｻ陷奇ｽｰ陋ｻ・ｷ繝ｻ莠･・ｮ蠕｡・ｺ繝ｻ・ｨ蛟ｬ鮖ｸ邵ｺ・ｾ邵ｺ・ｧ繝ｻ繝ｻ,
+      amazon_download: "Amazon繧ｫ繝ｼ繝・/ 蜿門ｾ・,
+      amazon_decide_print: "Amazon繧ｫ繝ｼ繝・/ 髯､螟門愛譁ｭ繝ｻ蜊ｰ蛻ｷ・亥ｮ御ｺ・ｨ倬鹸縺ｾ縺ｧ・・,
+      rakuten_download: "讌ｽ螟ｩ繧ｫ繝ｼ繝・/ 蜿門ｾ・,
+      rakuten_decide_print: "讌ｽ螟ｩ繧ｫ繝ｼ繝・/ 髯､螟門愛譁ｭ繝ｻ蜊ｰ蛻ｷ・亥ｮ御ｺ・ｨ倬鹸縺ｾ縺ｧ・・,
     };
     const label = labelByStep[String(stepId || "")] || String(stepId || "");
-    const confirmed = window.confirm(`邵ｲ繝ｻ{label}邵ｲ髦ｪ・堤ｹ晢ｽｪ郢ｧ・ｻ郢昴・繝ｨ邵ｺ蜉ｱ竏ｪ邵ｺ蜷ｶﾂ繧・ｽｿ繝ｻ・ｦ竏壺・郢ｧ迚呻ｽｮ貅ｯ・｡蠕｡・ｸ・ｭ郢ｧ・ｸ郢晢ｽｧ郢晄じ・定屁諛茨ｽｭ・｢邵ｺ蜉ｱ竏ｪ邵ｺ蜷ｶﾂ繧会ｽｶ螟奇ｽ｡蠕鯉ｼ邵ｺ・ｾ邵ｺ蜷ｶﾂｰ繝ｻ豁・;
+    const confirmed = window.confirm(`縲・{label}縲阪ｒ繝ｪ繧ｻ繝・ヨ縺励∪縺吶ょｿ・ｦ√↑繧牙ｮ溯｡御ｸｭ繧ｸ繝ｧ繝悶ｒ蛛懈ｭ｢縺励∪縺吶らｶ夊｡後＠縺ｾ縺吶°・歔);
     if (!confirmed) return;
 
     if (buttonEl) buttonEl.disabled = true;
@@ -1052,13 +958,13 @@
         return;
       }
       const cancelledCount = Array.isArray(data.cancelled_runs) ? data.cancelled_runs.length : 0;
-      showToast(cancelledCount > 0 ? `郢晢ｽｪ郢ｧ・ｻ郢昴・繝ｨ陞ｳ蠕｡・ｺ繝ｻ 陞ｳ貅ｯ・｡蠕｡・ｸ・ｭ郢ｧ・ｸ郢晢ｽｧ郢昴・${cancelledCount} 闔会ｽｶ郢ｧ雋樞酪雎・ｽ｢邵ｺ蜉ｱ竏ｪ邵ｺ蜉ｱ笳・ｸｲ・｡ : "郢晢ｽｪ郢ｧ・ｻ郢昴・繝ｨ邵ｺ謔滂ｽｮ蠕｡・ｺ繝ｻ・邵ｺ・ｾ邵ｺ蜉ｱ笳・ｸｲ繝ｻ, "success");
+      showToast(cancelledCount > 0 ? `繝ｪ繧ｻ繝・ヨ螳御ｺ・ 螳溯｡御ｸｭ繧ｸ繝ｧ繝・${cancelledCount} 莉ｶ繧貞●豁｢縺励∪縺励◆縲Ａ : "繝ｪ繧ｻ繝・ヨ縺悟ｮ御ｺ・＠縺ｾ縺励◆縲・, "success");
       scheduleStepSync();
       if (activeLogRunId) {
         refreshLog(activeLogRunId);
       }
     } catch {
-      const message = "郢晢ｽｪ郢ｧ・ｻ郢昴・繝ｨ邵ｺ・ｫ陞滂ｽｱ隰ｨ蜉ｱ・邵ｺ・ｾ邵ｺ蜉ｱ笳・ｸｲ繝ｻ;
+      const message = "繝ｪ繧ｻ繝・ヨ縺ｫ螟ｱ謨励＠縺ｾ縺励◆縲・;
       showError(message);
       showToast(message, "error");
     } finally {
@@ -1078,21 +984,21 @@
     if (!el) return;
     el.classList.remove("done", "running", "pending");
     if (id === "mf_reconcile" && state !== "running") {
-      el.textContent = "陞ｳ貅ｯ・｡謔溷ｺ・;
+      el.textContent = "螳溯｡悟庄";
       el.classList.add("pending");
       return;
     }
     if (state === "done") {
-      el.textContent = "陞ｳ蠕｡・ｺ繝ｻ;
+      el.textContent = "螳御ｺ・;
       el.classList.add("done");
       return;
     }
     if (state === "running") {
-      el.textContent = "陞ｳ貅ｯ・｡蠕｡・ｸ・ｭ";
+      el.textContent = "螳溯｡御ｸｭ";
       el.classList.add("running");
       return;
     }
-    el.textContent = "隴幢ｽｪ陞ｳ貅ｯ・｡繝ｻ;
+    el.textContent = "譛ｪ螳溯｡・;
     el.classList.add("pending");
   }
 
@@ -1101,16 +1007,16 @@
     if (!el) return;
     el.classList.remove("done", "running", "pending");
     if (state === "done") {
-      el.textContent = "陞ｳ蠕｡・ｺ繝ｻ;
+      el.textContent = "螳御ｺ・;
       el.classList.add("done");
       return;
     }
     if (state === "running") {
-      el.textContent = "陞ｳ貅ｯ・｡蠕｡・ｸ・ｭ";
+      el.textContent = "螳溯｡御ｸｭ";
       el.classList.add("running");
       return;
     }
-    el.textContent = "隴幢ｽｪ陞ｳ貅ｯ・｡繝ｻ;
+    el.textContent = "譛ｪ螳溯｡・;
     el.classList.add("pending");
   }
 
@@ -1135,7 +1041,7 @@
     const link = document.createElement("a");
     link.href = href;
     link.className = "secondary";
-    link.textContent = String(linkLabel || "鬮｢荵晢ｿ･").trim() || "鬮｢荵晢ｿ･";
+    link.textContent = String(linkLabel || "髢九￥").trim() || "髢九￥";
     if (String(href || "").trim().startsWith("#")) {
       link.href = href;
       link.addEventListener("click", (event) => {
@@ -1191,7 +1097,7 @@
     if (!id.startsWith("#")) return;
     const target = document.querySelector(id);
     if (!target) {
-      showToast("陝・ｽｾ髮趣ｽ｡郢ｧ・ｻ郢ｧ・ｯ郢ｧ・ｷ郢晢ｽｧ郢晢ｽｳ邵ｺ迹夲ｽｦ荵昶命邵ｺ荵晢ｽ顔ｸｺ・ｾ邵ｺ蟶呻ｽ鍋ｸｲ繝ｻ, "warning");
+      showToast("蟇ｾ雎｡繧ｻ繧ｯ繧ｷ繝ｧ繝ｳ縺瑚ｦ九▽縺九ｊ縺ｾ縺帙ｓ縲・, "warning");
       return;
     }
 
@@ -1348,121 +1254,121 @@
     const nextStepReasonCode = String(data?.next_step_reason || "").trim();
     const nextStepGuidance = {
       preflight: {
-        message: "邵ｺ・ｾ邵ｺ螢ｹ繝ｻ陷題ざ鄂ｲ隴夲ｽ｡闔会ｽｶ邵ｺ・ｮ驕抵ｽｺ髫ｱ髦ｪﾂｰ郢ｧ陋ｾﾂ・ｲ郢ｧ竏壺ｻ邵ｺ荳岩味邵ｺ霈費ｼ樒ｸｲ繝ｻ,
-        reason: "郢晢ｽｭ郢ｧ・ｰ郢ｧ・､郢晢ｽｳ霑･・ｶ隲ｷ荵昶・隴帛沺・ｬ・｡隲繝ｻ・ｰ・ｱ郢ｧ蝣､・｢・ｺ髫ｱ髦ｪ・邵ｺ・ｦ邵ｲ竏晢ｽｮ貅ｯ・｡謔溷ｺ・妙・ｽ隴夲ｽ｡闔会ｽｶ郢ｧ蛛ｵ笳守ｹｧ髦ｪ竏ｴ邵ｺ・ｾ邵ｺ蜷ｶﾂ繝ｻ,
-        linkLabel: "雋・摩・呵淦・･驕樔ｹ昶・",
+        message: "縺ｾ縺壹・蜑肴署譚｡莉ｶ縺ｮ遒ｺ隱阪°繧蛾ｲ繧√※縺上□縺輔＞縲・,
+        reason: "繝ｭ繧ｰ繧､繝ｳ迥ｶ諷九→譛域ｬ｡諠・ｱ繧堤｢ｺ隱阪＠縺ｦ縲∝ｮ溯｡悟庄閭ｽ譚｡莉ｶ繧偵◎繧阪∴縺ｾ縺吶・,
+        linkLabel: "貅門ｙ蟾･遞九∈",
       },
       amazon_or_rakuten_download: {
-        message: "邵ｺ・ｾ邵ｺ螢ｹ繝ｻ Amazon 邵ｺ蛹ｺ・･・ｽ陞滂ｽｩ邵ｺ・ｮ邵ｺ繝ｻ笘・ｹｧ蠕個ｰ邵ｺ・ｮ鬯・ｼ懷ｺｶ隴厄ｽｸ陷ｿ髢・ｾ蜉ｱ・定怦蛹ｻ竊楢楜貅ｯ・｡蠕鯉ｼ邵ｺ・ｦ邵ｺ荳岩味邵ｺ霈費ｼ樒ｸｲ繝ｻ,
-        reason: "陝・ｻ｣竊醍ｸｺ荳岩・郢ｧ繝ｻ驕会ｽｾ陋ｻ繝ｻ繝ｻ鬯・ｼ懷ｺｶ隴厄ｽｸ陷ｿ髢・ｾ蜉ｱ窶ｲ陟｢繝ｻ・ｦ竏壹堤ｸｺ蜷ｶﾂ繧域ざ陷ｿ髢・ｾ蜉ｱ窶ｲ邵ｺ繧・ｽ狗ｸｺ・ｨ隹ｺ・｡邵ｺ・ｮ陷・ｽｦ騾・・竊馴ｨｾ・ｲ郢ｧ竏壺穐邵ｺ蟶呻ｽ鍋ｸｲ繝ｻ,
-        linkLabel: "Amazon繝ｻ荵暦ｽ･・ｽ陞滂ｽｩ 陷ｿ髢・ｾ蜉ｱ竏・,
+        message: "縺ｾ縺壹・ Amazon 縺区･ｽ螟ｩ縺ｮ縺・★繧後°縺ｮ鬆伜庶譖ｸ蜿門ｾ励ｒ蜈医↓螳溯｡後＠縺ｦ縺上□縺輔＞縲・,
+        reason: "蟆代↑縺上→繧・遉ｾ蛻・・鬆伜庶譖ｸ蜿門ｾ励′蠢・ｦ√〒縺吶よ悴蜿門ｾ励′縺ゅｋ縺ｨ谺｡縺ｮ蜃ｦ逅・↓騾ｲ繧√∪縺帙ｓ縲・,
+        linkLabel: "Amazon・乗･ｽ螟ｩ 蜿門ｾ励∈",
       },
       amazon_download: {
-        message: "Amazon 邵ｺ・ｮ鬯・ｼ懷ｺｶ隴厄ｽｸ郢ｧ雋槫徐陟募干・邵ｺ・ｦ邵ｺ荳岩味邵ｺ霈費ｼ樒ｸｲ繝ｻ,
-        reason: "Amazon 陋幢ｽｴ邵ｺ・ｮ陝・ｽｾ髮趣ｽ｡隴帛現繝ｧ郢晢ｽｼ郢ｧ・ｿ郢ｧ雋槫徐陟募干・邵ｺ・ｦ邵ｲ竏ｵ・ｬ・｡邵ｺ・ｮ鬮ｯ・､陞滄摩諢幄ｭ・ｽｭ郢晢ｽｻ陷奇ｽｰ陋ｻ・ｷ邵ｺ・ｸ鬨ｾ・ｲ邵ｺ・ｿ邵ｺ・ｾ邵ｺ蜷ｶﾂ繝ｻ,
-        linkLabel: "Amazon 陷ｿ髢・ｾ蜉ｱ竏・,
+        message: "Amazon 縺ｮ鬆伜庶譖ｸ繧貞叙蠕励＠縺ｦ縺上□縺輔＞縲・,
+        reason: "Amazon 蛛ｴ縺ｮ蟇ｾ雎｡譛医ョ繝ｼ繧ｿ繧貞叙蠕励＠縺ｦ縲∵ｬ｡縺ｮ髯､螟門愛譁ｭ繝ｻ蜊ｰ蛻ｷ縺ｸ騾ｲ縺ｿ縺ｾ縺吶・,
+        linkLabel: "Amazon 蜿門ｾ励∈",
       },
       amazon_decide_print: {
-        message: "Amazon 邵ｺ・ｮ鬮ｯ・､陞溷・・ｨ・ｭ陞ｳ螢ｹ繝ｻ陷奇ｽｰ陋ｻ・ｷ陝・ｽｾ髮趣ｽ｡郢ｧ蝣､・｢・ｺ髫ｱ髦ｪ・邵ｺ・ｦ邵ｺ荳岩味邵ｺ霈費ｼ樒ｸｲ繝ｻ,
-        reason: "鬮ｯ・､陞滄摩・ｯ・ｾ髮趣ｽ｡郢ｧ蝣､・｢・ｺ陞ｳ螢ｹ・邵ｺ・ｦ陷奇ｽｰ陋ｻ・ｷ陞ｳ蠕｡・ｺ繝ｻ竏ｪ邵ｺ・ｧ鬨ｾ・ｲ郢ｧ竏夲ｽ狗ｸｺ・ｨ霑･・ｶ隲ｷ荵昶ｲ闖ｫ譎擾ｽｭ蛟･・・ｹｧ蠕娯穐邵ｺ蜷ｶﾂ繝ｻ,
-        linkLabel: "Amazon 鬮ｯ・､陞滓じ繝ｻ陷奇ｽｰ陋ｻ・ｷ邵ｺ・ｸ",
+        message: "Amazon 縺ｮ髯､螟冶ｨｭ螳壹・蜊ｰ蛻ｷ蟇ｾ雎｡繧堤｢ｺ隱阪＠縺ｦ縺上□縺輔＞縲・,
+        reason: "髯､螟門ｯｾ雎｡繧堤｢ｺ螳壹＠縺ｦ蜊ｰ蛻ｷ螳御ｺ・∪縺ｧ騾ｲ繧√ｋ縺ｨ迥ｶ諷九′菫晏ｭ倥＆繧後∪縺吶・,
+        linkLabel: "Amazon 髯､螟悶・蜊ｰ蛻ｷ縺ｸ",
       },
       amazon_print: {
-        message: "Amazon邵ｺ・ｮ陷奇ｽｰ陋ｻ・ｷ陞ｳ蠕｡・ｺ繝ｻ・ｾ繝ｻ笆郢ｧ・ｹ郢昴・繝ｻ郢ｧ・ｿ郢ｧ・ｹ郢ｧ蝣､・｢・ｺ髫ｱ髦ｪ・邵ｺ・ｦ邵ｺ荳岩味邵ｺ霈費ｼ樒ｸｲ繝ｻ,
-        reason: "Amazon邵ｺ・ｮ陷奇ｽｰ陋ｻ・ｷ陷・ｽｦ騾・・窶ｲ陞ｳ蠕｡・ｺ繝ｻ・邵ｲ竏晢ｽｿ繝ｻ・ｦ竏壺・陟｢諛環ｧ邵ｺ・ｦ驕抵ｽｺ髫ｱ髦ｪ繝ｻ陷ｿ閧ｴ荳千ｹｧ螳夲ｽ｡蠕娯夢邵ｺ・ｦ邵ｺ荳岩味邵ｺ霈費ｼ樒ｸｲ繝ｻ,
-        linkLabel: "Amazon邵ｺ・ｮ陷奇ｽｰ陋ｻ・ｷ郢ｧ・ｹ郢昴・繝ｻ郢ｧ・ｿ郢ｧ・ｹ邵ｺ・ｸ",
+        message: "Amazon縺ｮ蜊ｰ蛻ｷ螳御ｺ・ｾ・■繧ｹ繝・・繧ｿ繧ｹ繧堤｢ｺ隱阪＠縺ｦ縺上□縺輔＞縲・,
+        reason: "Amazon縺ｮ蜊ｰ蛻ｷ蜃ｦ逅・′螳御ｺ・＠縲∝ｿ・ｦ√↓蠢懊§縺ｦ遒ｺ隱阪・蜿肴丐繧定｡後▲縺ｦ縺上□縺輔＞縲・,
+        linkLabel: "Amazon縺ｮ蜊ｰ蛻ｷ繧ｹ繝・・繧ｿ繧ｹ縺ｸ",
       },
       rakuten_download: {
-        message: "隶鯉ｽｽ陞滂ｽｩ邵ｺ・ｮ鬯・ｼ懷ｺｶ隴厄ｽｸ郢ｧ雋槫徐陟募干・邵ｺ・ｦ邵ｺ荳岩味邵ｺ霈費ｼ樒ｸｲ繝ｻ,
-        reason: "隶鯉ｽｽ陞滂ｽｩ陋幢ｽｴ邵ｺ・ｮ陝・ｽｾ髮趣ｽ｡隴帛現繝ｧ郢晢ｽｼ郢ｧ・ｿ郢ｧ雋槫徐陟募干・邵ｺ・ｦ邵ｲ竏ｵ・ｬ・｡邵ｺ・ｮ鬮ｯ・､陞滄摩諢幄ｭ・ｽｭ郢晢ｽｻ陷奇ｽｰ陋ｻ・ｷ邵ｺ・ｸ鬨ｾ・ｲ邵ｺ・ｿ邵ｺ・ｾ邵ｺ蜷ｶﾂ繝ｻ,
-        linkLabel: "隶鯉ｽｽ陞滂ｽｩ 陷ｿ髢・ｾ蜉ｱ竏・,
+        message: "讌ｽ螟ｩ縺ｮ鬆伜庶譖ｸ繧貞叙蠕励＠縺ｦ縺上□縺輔＞縲・,
+        reason: "讌ｽ螟ｩ蛛ｴ縺ｮ蟇ｾ雎｡譛医ョ繝ｼ繧ｿ繧貞叙蠕励＠縺ｦ縲∵ｬ｡縺ｮ髯､螟門愛譁ｭ繝ｻ蜊ｰ蛻ｷ縺ｸ騾ｲ縺ｿ縺ｾ縺吶・,
+        linkLabel: "讌ｽ螟ｩ 蜿門ｾ励∈",
       },
       rakuten_print: {
-        message: "隶鯉ｽｽ陞滂ｽｩ邵ｺ・ｮ陷奇ｽｰ陋ｻ・ｷ陞ｳ蠕｡・ｺ繝ｻ・ｾ繝ｻ笆郢ｧ・ｹ郢昴・繝ｻ郢ｧ・ｿ郢ｧ・ｹ郢ｧ蝣､・｢・ｺ髫ｱ髦ｪ・邵ｺ・ｦ邵ｺ荳岩味邵ｺ霈費ｼ樒ｸｲ繝ｻ,
-        reason: "隶鯉ｽｽ陞滂ｽｩ邵ｺ・ｮ陷奇ｽｰ陋ｻ・ｷ陷・ｽｦ騾・・窶ｲ陞ｳ蠕｡・ｺ繝ｻ・邵ｲ竏晢ｽｿ繝ｻ・ｦ竏壺・陟｢諛環ｧ邵ｺ・ｦ驕抵ｽｺ髫ｱ髦ｪ繝ｻ陷ｿ閧ｴ荳千ｹｧ螳夲ｽ｡蠕娯夢邵ｺ・ｦ邵ｺ荳岩味邵ｺ霈費ｼ樒ｸｲ繝ｻ,
-        linkLabel: "隶鯉ｽｽ陞滂ｽｩ邵ｺ・ｮ陷奇ｽｰ陋ｻ・ｷ郢ｧ・ｹ郢昴・繝ｻ郢ｧ・ｿ郢ｧ・ｹ邵ｺ・ｸ",
+        message: "讌ｽ螟ｩ縺ｮ蜊ｰ蛻ｷ螳御ｺ・ｾ・■繧ｹ繝・・繧ｿ繧ｹ繧堤｢ｺ隱阪＠縺ｦ縺上□縺輔＞縲・,
+        reason: "讌ｽ螟ｩ縺ｮ蜊ｰ蛻ｷ蜃ｦ逅・′螳御ｺ・＠縲∝ｿ・ｦ√↓蠢懊§縺ｦ遒ｺ隱阪・蜿肴丐繧定｡後▲縺ｦ縺上□縺輔＞縲・,
+        linkLabel: "讌ｽ螟ｩ縺ｮ蜊ｰ蛻ｷ繧ｹ繝・・繧ｿ繧ｹ縺ｸ",
       },
       rakuten_decide_print: {
-        message: "隶鯉ｽｽ陞滂ｽｩ邵ｺ・ｮ鬮ｯ・､陞溷・・ｨ・ｭ陞ｳ螢ｹ繝ｻ陷奇ｽｰ陋ｻ・ｷ陝・ｽｾ髮趣ｽ｡郢ｧ蝣､・｢・ｺ髫ｱ髦ｪ・邵ｺ・ｦ邵ｺ荳岩味邵ｺ霈費ｼ樒ｸｲ繝ｻ,
-        reason: "鬮ｯ・､陞滄摩・ｯ・ｾ髮趣ｽ｡郢ｧ蝣､・｢・ｺ陞ｳ螢ｹ・邵ｺ・ｦ陷奇ｽｰ陋ｻ・ｷ陞ｳ蠕｡・ｺ繝ｻ竏ｪ邵ｺ・ｧ鬨ｾ・ｲ郢ｧ竏夲ｽ狗ｸｺ・ｨ霑･・ｶ隲ｷ荵昶ｲ闖ｫ譎擾ｽｭ蛟･・・ｹｧ蠕娯穐邵ｺ蜷ｶﾂ繝ｻ,
-        linkLabel: "隶鯉ｽｽ陞滂ｽｩ 鬮ｯ・､陞滓じ繝ｻ陷奇ｽｰ陋ｻ・ｷ邵ｺ・ｸ",
+        message: "讌ｽ螟ｩ縺ｮ髯､螟冶ｨｭ螳壹・蜊ｰ蛻ｷ蟇ｾ雎｡繧堤｢ｺ隱阪＠縺ｦ縺上□縺輔＞縲・,
+        reason: "髯､螟門ｯｾ雎｡繧堤｢ｺ螳壹＠縺ｦ蜊ｰ蛻ｷ螳御ｺ・∪縺ｧ騾ｲ繧√ｋ縺ｨ迥ｶ諷九′菫晏ｭ倥＆繧後∪縺吶・,
+        linkLabel: "讌ｽ螟ｩ 髯､螟悶・蜊ｰ蛻ｷ縺ｸ",
       },
       mf_reconcile: {
-        message: "MF鬨ｾ・｣隰ｳ・ｺ邵ｺ・ｮ驕ｯ竏晉ｲ狗ｸｺ蟶幢ｽｮ貅ｯ・｡蠕娯・鬨ｾ・ｲ郢ｧ竏壺ｻ邵ｺ荳岩味邵ｺ霈費ｼ樒ｸｲ繝ｻ,
-        reason: "陷ｿ謔ｶ・企恷・ｼ邵ｺ・ｿ雋ょ現竏ｩ郢昴・繝ｻ郢ｧ・ｿ郢ｧ讓ｽF邵ｺ・ｮ闕ｳ蛹ｺ蠍檎ｸｺ蝣ｺ・ｽ諛医・邵ｺ・ｸ陷ｿ閧ｴ荳千ｸｺ蜉ｱ竏ｪ邵ｺ蜷ｶﾂ繝ｻ,
-        linkLabel: "MF 驕ｯ竏晉ｲ玖抄諛茨ｽ･・ｭ邵ｺ・ｸ",
+        message: "MF騾｣謳ｺ縺ｮ遯∝粋縺帛ｮ溯｡後∈騾ｲ繧√※縺上□縺輔＞縲・,
+        reason: "蜿悶ｊ霎ｼ縺ｿ貂医∩繝・・繧ｿ繧樽F縺ｮ荳区嶌縺堺ｽ懈・縺ｸ蜿肴丐縺励∪縺吶・,
+        linkLabel: "MF 遯∝粋菴懈･ｭ縺ｸ",
       },
       preflight_mf: {
-        message: "MF陷讎雁徐陟募干繝ｻ邵ｺ・ｿ邵ｺ・ｮ郢ｧ・ｹ郢昴・繝｣郢晏干・定楜蠕｡・ｺ繝ｻ・邵ｺ・ｦ邵ｺ荳岩味邵ｺ霈費ｼ樒ｸｲ繝ｻ,
-        reason: "MF陷讎雁徐陟墓懶ｽｾ蠕個竏壹Β郢昴・縺咏ｹ晢ｽ･郢晄㈱繝ｻ郢晏ｳｨ繝ｻ隴崢隴・ｽｰ霑･・ｶ隲ｷ荵晢ｽ帝￡・ｺ髫ｱ髦ｪ・邵ｺ・ｦ隹ｺ・｡邵ｺ・ｮ闖ｴ諛茨ｽ･・ｭ邵ｺ・ｫ鬨ｾ・ｲ郢ｧ阮吶堤ｸｺ荳岩味邵ｺ霈費ｼ樒ｸｲ繝ｻ,
-        linkLabel: "MF陷讎雁徐陟募干・帝￡・ｺ髫ｱ繝ｻ,
+        message: "MF蜀榊叙蠕励・縺ｿ縺ｮ繧ｹ繝・ャ繝励ｒ螳御ｺ・＠縺ｦ縺上□縺輔＞縲・,
+        reason: "MF蜀榊叙蠕怜ｾ後√ム繝・す繝･繝懊・繝峨・譛譁ｰ迥ｶ諷九ｒ遒ｺ隱阪＠縺ｦ谺｡縺ｮ菴懈･ｭ縺ｫ騾ｲ繧薙〒縺上□縺輔＞縲・,
+        linkLabel: "MF蜀榊叙蠕励ｒ遒ｺ隱・,
       },
       mf_bulk_upload_task: {
-        message: "Step 4: MF闕ｳﾂ隲｡・ｬ郢ｧ・｢郢昴・繝ｻ郢晢ｽｭ郢晢ｽｼ郢晉判辟秘ｬ・・窶ｲ邵ｺ繧・ｽ顔ｸｺ・ｾ邵ｺ蜷ｶﾂ繝ｻ,
-        reason: "MF陷ｷ莉｣・邵ｺ・ｮ隰・唱繝ｻ陷牙ｸ吶Ψ郢ｧ・｡郢ｧ・､郢晢ｽｫ邵ｺ讙守舞隲｢荳翫堤ｸｺ髦ｪ窶ｻ邵ｺ繝ｻ・玖撻・ｴ陷ｷ蛹ｻﾂ竏晏徐郢ｧ鬘假ｽｾ・ｼ邵ｺ・ｿ郢ｧ雋橸ｽｮ貅ｯ・｡蠕鯉ｼ邵ｺ・ｦ邵ｺ荳岩味邵ｺ霈費ｼ樒ｸｲ繝ｻ,
-        linkLabel: "MF闕ｳﾂ隲｡・ｬ郢ｧ・｢郢昴・繝ｻ郢晢ｽｭ郢晢ｽｼ郢晏ｳｨ・帝ｫ｢荵晢ｿ･",
+        message: "Step 4: MF荳諡ｬ繧｢繝・・繝ｭ繝ｼ繝画焔鬆・′縺ゅｊ縺ｾ縺吶・,
+        reason: "MF蜷代￠縺ｮ謇句・蜉帙ヵ繧｡繧､繝ｫ縺檎畑諢上〒縺阪※縺・ｋ蝣ｴ蜷医∝叙繧願ｾｼ縺ｿ繧貞ｮ溯｡後＠縺ｦ縺上□縺輔＞縲・,
+        linkLabel: "MF荳諡ｬ繧｢繝・・繝ｭ繝ｼ繝峨ｒ髢九￥",
       },
       import_provider_receipts: {
-        message: "Provider陷ｿ謔ｶ・企恷・ｼ邵ｺ・ｿ郢ｧ・ｹ郢昴・繝｣郢晏干・定楜貅ｯ・｡蠕鯉ｼ邵ｺ・ｦ邵ｺ荳岩味邵ｺ霈費ｼ樒ｸｲ繝ｻ,
-        reason: "陞溷､慚夂ｹ晏生ﾎｦ郢敖郢晢ｽｼ邵ｺ・ｮ隴幢ｽｪ陷・ｽｦ騾・・SV郢ｧ讓ｽF驕ｯ竏晉ｲ玖恆髦ｪ竊楢愾謔ｶ・企恷・ｼ郢ｧ阮吶定愾閧ｴ荳千ｸｺ蜉ｱ窶ｻ邵ｺ荳岩味邵ｺ霈費ｼ樒ｸｲ繝ｻ,
-        linkLabel: "Provider陷ｿ謔ｶ・企恷・ｼ邵ｺ・ｿ邵ｺ・ｸ鬨ｾ・ｲ郢ｧﾂ",
+        message: "Provider蜿悶ｊ霎ｼ縺ｿ繧ｹ繝・ャ繝励ｒ螳溯｡後＠縺ｦ縺上□縺輔＞縲・,
+        reason: "螟夜Κ繝吶Φ繝繝ｼ縺ｮ譛ｪ蜃ｦ逅・SV繧樽F遯∝粋蜑阪↓蜿悶ｊ霎ｼ繧薙〒蜿肴丐縺励※縺上□縺輔＞縲・,
+        linkLabel: "Provider蜿悶ｊ霎ｼ縺ｿ縺ｸ騾ｲ繧",
       },
       mf_bulk_upload: {
-        message: "MF闕ｳﾂ隲｡・ｬ郢ｧ・｢郢昴・繝ｻ郢晢ｽｭ郢晢ｽｼ郢晏ｳｨ・定楜貅ｯ・｡蠕鯉ｼ邵ｺ・ｦ邵ｺ荳岩味邵ｺ霈費ｼ樒ｸｲ繝ｻ,
-        reason: "MF邵ｺ・ｮ郢ｧ・､郢晢ｽｳ郢晄亢繝ｻ郢晁ご蛻､鬮ｱ・｢郢ｧ蟶晏ｹ慕ｸｺ繝ｻ窶ｻ邵ｲ竏晢ｽｯ・ｾ髮趣ｽ｡隴帛現繝ｻ闕ｳ蛹ｺ蠍檎ｸｺ讎奇ｽｯ・ｾ髮趣ｽ｡郢ｧ蝣､・｢・ｺ髫ｱ髦ｪ・邵ｺ・ｦ邵ｺ荳岩味邵ｺ霈費ｼ樒ｸｲ繝ｻ,
-        linkLabel: "MF闕ｳﾂ隲｡・ｬ郢ｧ・｢郢昴・繝ｻ郢晢ｽｭ郢晢ｽｼ郢晏ｳｨ・帝ｫ｢荵晢ｿ･",
+        message: "MF荳諡ｬ繧｢繝・・繝ｭ繝ｼ繝峨ｒ螳溯｡後＠縺ｦ縺上□縺輔＞縲・,
+        reason: "MF縺ｮ繧､繝ｳ繝昴・繝育判髱｢繧帝幕縺・※縲∝ｯｾ雎｡譛医・荳区嶌縺榊ｯｾ雎｡繧堤｢ｺ隱阪＠縺ｦ縺上□縺輔＞縲・,
+        linkLabel: "MF荳諡ｬ繧｢繝・・繝ｭ繝ｼ繝峨ｒ髢九￥",
       },
       mf_csv_import: {
-        message: "MF CSV郢ｧ・､郢晢ｽｳ郢晄亢繝ｻ郢晏現・定楜貅ｯ・｡蠕鯉ｼ邵ｺ・ｦ邵ｺ荳岩味邵ｺ霈費ｼ樒ｸｲ繝ｻ,
-        reason: "CSV郢ｧ讓ｽF陟厄ｽ｢陟台ｸ岩・隰繝ｻ竏ｴ邵ｺ貅倪鴬邵ｺ蛹ｻ縲定愾謔ｶ・企恷・ｼ邵ｺ・ｿ郢ｧ雋橸ｽｮ貅ｯ・｡蠕鯉ｼ邵ｺ・ｦ邵ｺ荳岩味邵ｺ霈費ｼ樒ｸｲ繝ｻ,
-        linkLabel: "MF CSV郢ｧ・､郢晢ｽｳ郢晄亢繝ｻ郢晏現・帝ｫ｢荵晢ｿ･",
+        message: "MF CSV繧､繝ｳ繝昴・繝医ｒ螳溯｡後＠縺ｦ縺上□縺輔＞縲・,
+        reason: "CSV繧樽F蠖｢蠑上∈謠・∴縺溘≧縺医〒蜿悶ｊ霎ｼ縺ｿ繧貞ｮ溯｡後＠縺ｦ縺上□縺輔＞縲・,
+        linkLabel: "MF CSV繧､繝ｳ繝昴・繝医ｒ髢九￥",
       },
       done: {
-        message: "邵ｺ蜷ｶ竏狗ｸｺ・ｦ陞ｳ蠕｡・ｺ繝ｻ・邵ｺ・ｾ邵ｺ蜉ｱ笳・ｸｲ繧域ｦ隹ｺ・｡郢ｧ・｢郢晢ｽｼ郢ｧ・ｫ郢ｧ・､郢晄じ・定楜貅ｯ・｡蠕後堤ｸｺ髦ｪ竏ｪ邵ｺ蜷ｶﾂ繝ｻ,
-        reason: "隴崢陟募ｾ娯・隴帛沺・ｬ・｡郢ｧ・ｯ郢晢ｽｭ郢晢ｽｼ郢ｧ・ｺ郢ｧ繝ｻ縺・ｹ晢ｽｼ郢ｧ・ｫ郢ｧ・､郢晄じ・定楜貅ｯ・｡蠕鯉ｼ邵ｺ・ｦ邵ｲ竏ｵ・ｬ・｡隴帷｣ｯﾂｰ騾包ｽｨ邵ｺ・ｫ陋ｯ蜷ｶ竏ｴ邵ｺ・ｾ邵ｺ蜷ｶﾂ繝ｻ,
-        linkLabel: "隴帛沺・ｬ・｡郢ｧ・ｯ郢晢ｽｭ郢晢ｽｼ郢ｧ・ｺ邵ｺ・ｸ",
+        message: "縺吶∋縺ｦ螳御ｺ・＠縺ｾ縺励◆縲よ怦谺｡繧｢繝ｼ繧ｫ繧､繝悶ｒ螳溯｡後〒縺阪∪縺吶・,
+        reason: "譛蠕後↓譛域ｬ｡繧ｯ繝ｭ繝ｼ繧ｺ繧・い繝ｼ繧ｫ繧､繝悶ｒ螳溯｡後＠縺ｦ縲∵ｬ｡譛磯°逕ｨ縺ｫ蛯吶∴縺ｾ縺吶・,
+        linkLabel: "譛域ｬ｡繧ｯ繝ｭ繝ｼ繧ｺ縺ｸ",
       },
       fallback: {
-        message: "陷・ｽｦ騾・・繝ｻ陷ｿ髢・ｾ蜉ｱ竊楢ｭ弱ｋ菫｣邵ｺ蠕個ｰ邵ｺ荵昶夢邵ｺ・ｦ邵ｺ繝ｻ竏ｪ邵ｺ蜷ｶﾂ繧亥ｳｩ隴・ｽｰ郢ｧ雋橸ｽｾ繝ｻ笆ｲ邵ｺ・ｦ邵ｺ荳岩味邵ｺ霈費ｼ樒ｸｲ繝ｻ,
-        reason: "郢晁・繝｣郢ｧ・ｯ郢ｧ・ｨ郢晢ｽｳ郢晏ｳｨﾂｰ郢ｧ逕ｻ諤呵ｭ・ｽｰ霑･・ｶ隲ｷ荵晢ｽ定愾閧ｴ荳千ｸｺ蜷ｶ・狗ｸｺ・ｾ邵ｺ・ｧ隰ｨ・ｰ驕倩ｲ橸ｽｾ繝ｻ笆ｲ邵ｺ・ｦ陷讎雁徐陟募干・邵ｺ・ｦ邵ｺ荳岩味邵ｺ霈費ｼ樒ｸｲ繝ｻ,
+        message: "蜃ｦ逅・・蜿門ｾ励↓譎る俣縺後°縺九▲縺ｦ縺・∪縺吶よ峩譁ｰ繧貞ｾ・▲縺ｦ縺上□縺輔＞縲・,
+        reason: "繝舌ャ繧ｯ繧ｨ繝ｳ繝峨°繧画怙譁ｰ迥ｶ諷九ｒ蜿肴丐縺吶ｋ縺ｾ縺ｧ謨ｰ遘貞ｾ・▲縺ｦ蜀榊叙蠕励＠縺ｦ縺上□縺輔＞縲・,
       },
     };
 
     const runningModeGuidance = {
       preflight: {
-        message: "雋・摩・呵怎・ｦ騾・・・定楜貅ｯ・｡蠕｡・ｸ・ｭ邵ｺ・ｧ邵ｺ蜷ｶﾂ繝ｻ,
-        reason: "陷・ｽｦ騾・・窶ｲ陞ｳ蠕｡・ｺ繝ｻ笘・ｹｧ荵昶穐邵ｺ・ｧ陟輔・・ｩ貅假ｼ邵ｺ・ｦ邵ｺ荳岩味邵ｺ霈費ｼ樒ｸｲ繧・ｽｮ蠕｡・ｺ繝ｻ・ｾ蠕娯・隹ｺ・｡邵ｺ・ｮ隰ｫ蝣ｺ・ｽ諛岩ｲ髢ｾ・ｪ陷崎ｼ斐定ｭ厄ｽｴ隴・ｽｰ邵ｺ霈費ｽ檎ｸｺ・ｾ邵ｺ蜷ｶﾂ繝ｻ,
-        linkLabel: "雋・摩・呵淦・･驕樔ｹ昶・",
+        message: "貅門ｙ蜃ｦ逅・ｒ螳溯｡御ｸｭ縺ｧ縺吶・,
+        reason: "蜃ｦ逅・′螳御ｺ・☆繧九∪縺ｧ蠕・ｩ溘＠縺ｦ縺上□縺輔＞縲ょｮ御ｺ・ｾ後↓谺｡縺ｮ謫堺ｽ懊′閾ｪ蜍輔〒譖ｴ譁ｰ縺輔ｌ縺ｾ縺吶・,
+        linkLabel: "貅門ｙ蟾･遞九∈",
       },
       preflight_mf: {
-        message: "MF陷讎雁徐陟募干・定楜貅ｯ・｡蠕｡・ｸ・ｭ邵ｺ・ｧ邵ｺ蜷ｶﾂ繝ｻ,
-        reason: "MF陷讎雁徐陟墓懊・騾・・・定楜蠕｡・ｺ繝ｻ笘・ｹｧ荵昶穐邵ｺ・ｧ邵ｲ繝ｻﾂ・ｲ髯ｦ謔滂ｽｮ蠕｡・ｺ繝ｻ・ｾ蠕後・霑･・ｶ隲ｷ蛹ｺ蟲ｩ隴・ｽｰ郢ｧ雋橸ｽｾ繝ｻ笆ｲ邵ｺ・ｦ邵ｺ荳岩味邵ｺ霈費ｼ樒ｸｲ繝ｻ,
-        linkLabel: "雋・摩・呵淦・･驕樔ｹ昶・",
+        message: "MF蜀榊叙蠕励ｒ螳溯｡御ｸｭ縺ｧ縺吶・,
+        reason: "MF蜀榊叙蠕怜・逅・ｒ螳御ｺ・☆繧九∪縺ｧ縲・ｲ陦悟ｮ御ｺ・ｾ後・迥ｶ諷区峩譁ｰ繧貞ｾ・▲縺ｦ縺上□縺輔＞縲・,
+        linkLabel: "貅門ｙ蟾･遞九∈",
       },
       amazon_download: {
-        message: "Amazon 鬯・ｼ懷ｺｶ隴厄ｽｸ陷ｿ髢・ｾ蜉ｱ・定楜貅ｯ・｡蠕｡・ｸ・ｭ邵ｺ・ｧ邵ｺ蜷ｶﾂ繝ｻ,
-        reason: "陷ｿ髢・ｾ蜉ｱ窶ｲ陞ｳ蠕｡・ｺ繝ｻ笘・ｹｧ荵昶・隹ｺ・｡邵ｺ・ｮ陝ｾ・･驕樔ｹ昶・鬨ｾ・ｲ郢ｧ竏夲ｽ玖ｿ･・ｶ隲ｷ荵昶・邵ｺ・ｪ郢ｧ鄙ｫ竏ｪ邵ｺ蜷ｶﾂ繧・ｽｮ蠕｡・ｺ繝ｻ竏ｪ邵ｺ・ｧ邵ｺ髮・ｽｾ繝ｻ笆邵ｺ荳岩味邵ｺ霈費ｼ樒ｸｲ繝ｻ,
-        linkLabel: "Amazon 陷ｿ髢・ｾ驤ｴﾂ・ｲ髯ｦ讙取・雎補・竏・,
+        message: "Amazon 鬆伜庶譖ｸ蜿門ｾ励ｒ螳溯｡御ｸｭ縺ｧ縺吶・,
+        reason: "蜿門ｾ励′螳御ｺ・☆繧九→谺｡縺ｮ蟾･遞九∈騾ｲ繧√ｋ迥ｶ諷九↓縺ｪ繧翫∪縺吶ょｮ御ｺ・∪縺ｧ縺雁ｾ・■縺上□縺輔＞縲・,
+        linkLabel: "Amazon 蜿門ｾ鈴ｲ陦檎憾豕√∈",
       },
       amazon_print: {
-        message: "Amazon 陷奇ｽｰ陋ｻ・ｷ陷・ｽｦ騾・・・定楜貅ｯ・｡蠕｡・ｸ・ｭ邵ｺ・ｧ邵ｺ蜷ｶﾂ繝ｻ,
-        reason: "鬮ｯ・､陞滓じ繝ｻ陷奇ｽｰ陋ｻ・ｷ邵ｺ・ｮ鬨ｾ・ｲ髯ｦ蠕｡・ｸ・ｭ邵ｺ・ｧ邵ｺ蜷ｶﾂ繧・ｽｮ蠕｡・ｺ繝ｻ・ｾ蠕娯・霑･・ｶ隲ｷ荵昶ｲ陷ｿ閧ｴ荳千ｸｺ霈費ｽ檎ｸｲ竏ｵ・ｬ・｡邵ｺ・ｮ隴ｯ莠･繝ｻ邵ｺ・ｸ鬨ｾ・ｲ邵ｺ・ｿ邵ｺ・ｾ邵ｺ蜷ｶﾂ繝ｻ,
-        linkLabel: "Amazon 陷奇ｽｰ陋ｻ・ｷ霑･・ｶ雎補・竏・,
+        message: "Amazon 蜊ｰ蛻ｷ蜃ｦ逅・ｒ螳溯｡御ｸｭ縺ｧ縺吶・,
+        reason: "髯､螟悶・蜊ｰ蛻ｷ縺ｮ騾ｲ陦御ｸｭ縺ｧ縺吶ょｮ御ｺ・ｾ後↓迥ｶ諷九′蜿肴丐縺輔ｌ縲∵ｬ｡縺ｮ譯亥・縺ｸ騾ｲ縺ｿ縺ｾ縺吶・,
+        linkLabel: "Amazon 蜊ｰ蛻ｷ迥ｶ豕√∈",
       },
       rakuten_download: {
-        message: "隶鯉ｽｽ陞滂ｽｩ鬯・ｼ懷ｺｶ隴厄ｽｸ陷ｿ髢・ｾ蜉ｱ・定楜貅ｯ・｡蠕｡・ｸ・ｭ邵ｺ・ｧ邵ｺ蜷ｶﾂ繝ｻ,
-        reason: "陷ｿ髢・ｾ蜉ｱ窶ｲ陞ｳ蠕｡・ｺ繝ｻ笘・ｹｧ荵昶・隹ｺ・｡邵ｺ・ｮ陝ｾ・･驕樔ｹ昶・鬨ｾ・ｲ郢ｧ竏夲ｽ玖ｿ･・ｶ隲ｷ荵昶・邵ｺ・ｪ郢ｧ鄙ｫ竏ｪ邵ｺ蜷ｶﾂ繧・ｽｮ蠕｡・ｺ繝ｻ竏ｪ邵ｺ・ｧ邵ｺ髮・ｽｾ繝ｻ笆邵ｺ荳岩味邵ｺ霈費ｼ樒ｸｲ繝ｻ,
-        linkLabel: "隶鯉ｽｽ陞滂ｽｩ 陷ｿ髢・ｾ驤ｴﾂ・ｲ髯ｦ讙取・雎補・竏・,
+        message: "讌ｽ螟ｩ鬆伜庶譖ｸ蜿門ｾ励ｒ螳溯｡御ｸｭ縺ｧ縺吶・,
+        reason: "蜿門ｾ励′螳御ｺ・☆繧九→谺｡縺ｮ蟾･遞九∈騾ｲ繧√ｋ迥ｶ諷九↓縺ｪ繧翫∪縺吶ょｮ御ｺ・∪縺ｧ縺雁ｾ・■縺上□縺輔＞縲・,
+        linkLabel: "讌ｽ螟ｩ 蜿門ｾ鈴ｲ陦檎憾豕√∈",
       },
       rakuten_print: {
-        message: "隶鯉ｽｽ陞滂ｽｩ 陷奇ｽｰ陋ｻ・ｷ陷・ｽｦ騾・・・定楜貅ｯ・｡蠕｡・ｸ・ｭ邵ｺ・ｧ邵ｺ蜷ｶﾂ繝ｻ,
-        reason: "鬮ｯ・､陞滓じ繝ｻ陷奇ｽｰ陋ｻ・ｷ邵ｺ・ｮ鬨ｾ・ｲ髯ｦ蠕｡・ｸ・ｭ邵ｺ・ｧ邵ｺ蜷ｶﾂ繧・ｽｮ蠕｡・ｺ繝ｻ・ｾ蠕娯・霑･・ｶ隲ｷ荵昶ｲ陷ｿ閧ｴ荳千ｸｺ霈費ｽ檎ｸｲ竏ｵ・ｬ・｡邵ｺ・ｮ隴ｯ莠･繝ｻ邵ｺ・ｸ鬨ｾ・ｲ邵ｺ・ｿ邵ｺ・ｾ邵ｺ蜷ｶﾂ繝ｻ,
-        linkLabel: "隶鯉ｽｽ陞滂ｽｩ 陷奇ｽｰ陋ｻ・ｷ霑･・ｶ雎補・竏・,
+        message: "讌ｽ螟ｩ 蜊ｰ蛻ｷ蜃ｦ逅・ｒ螳溯｡御ｸｭ縺ｧ縺吶・,
+        reason: "髯､螟悶・蜊ｰ蛻ｷ縺ｮ騾ｲ陦御ｸｭ縺ｧ縺吶ょｮ御ｺ・ｾ後↓迥ｶ諷九′蜿肴丐縺輔ｌ縲∵ｬ｡縺ｮ譯亥・縺ｸ騾ｲ縺ｿ縺ｾ縺吶・,
+        linkLabel: "讌ｽ螟ｩ 蜊ｰ蛻ｷ迥ｶ豕√∈",
       },
       mf_reconcile: {
-        message: "MF驕ｯ竏晉ｲ狗ｸｺ蟶呻ｽ定楜貅ｯ・｡蠕｡・ｸ・ｭ邵ｺ・ｧ邵ｺ蜷ｶﾂ繝ｻ,
-        reason: "驕ｯ竏晉ｲ狗ｸｺ蟶幢ｽｮ蠕｡・ｺ繝ｻ竏ｪ邵ｺ・ｧ隴会ｽｫ邵ｺ荳岩凰陟輔・笆邵ｺ荳岩味邵ｺ霈費ｼ樒ｸｲ繧・ｽｮ蠕｡・ｺ繝ｻ・ｾ蠕娯・闕ｳ蛹ｺ蠍檎ｸｺ髦ｪ繝ｻ闖ｴ諛医・霑･・ｶ雎補・窶ｲ隴厄ｽｴ隴・ｽｰ邵ｺ霈費ｽ檎ｸｺ・ｾ邵ｺ蜷ｶﾂ繝ｻ,
-        linkLabel: "MF驕ｯ竏晉ｲ玖ｿ･・ｶ雎補・竏・,
+        message: "MF遯∝粋縺帙ｒ螳溯｡御ｸｭ縺ｧ縺吶・,
+        reason: "遯∝粋縺帛ｮ御ｺ・∪縺ｧ證ｫ縺上♀蠕・■縺上□縺輔＞縲ょｮ御ｺ・ｾ後↓荳区嶌縺阪・菴懈・迥ｶ豕√′譖ｴ譁ｰ縺輔ｌ縺ｾ縺吶・,
+        linkLabel: "MF遯∝粋迥ｶ豕√∈",
       },
       provider_ingest: {
         message: "Provider receipt intake is running.",
@@ -1522,50 +1428,50 @@
         });
       }
       return {
-        message: runningGuidance?.message || `${runningMode} 郢ｧ雋橸ｽｮ貅ｯ・｡蠕｡・ｸ・ｭ邵ｺ・ｧ邵ｺ蜷ｶﾂ・｡,
+        message: runningGuidance?.message || `${runningMode} 繧貞ｮ溯｡御ｸｭ縺ｧ縺吶Ａ,
         reason:
           runningGuidance?.reason ||
-          "陋ｻ・･邵ｺ・ｮ陷・ｽｦ騾・・窶ｲ鬨ｾ・ｲ髯ｦ蠕｡・ｸ・ｭ邵ｺ・ｧ邵ｺ蜷ｶﾂ繧・ｽｮ蠕｡・ｺ繝ｻ笘・ｹｧ荵昶穐邵ｺ・ｧ陟輔・・ｩ貅假ｼ邵ｺ・ｦ邵ｺ荳岩味邵ｺ霈費ｼ樒ｸｲ繝ｻ,
+          "蛻･縺ｮ蜃ｦ逅・′騾ｲ陦御ｸｭ縺ｧ縺吶ょｮ御ｺ・☆繧九∪縺ｧ蠕・ｩ溘＠縺ｦ縺上□縺輔＞縲・,
         href: runningTargetHref,
-        linkLabel: runningGuidance?.linkLabel || (runningTargetHref === FALLBACK_WIZARD_HREF ? "隰・洸・ｰ繝ｻ・帝￡・ｺ髫ｱ繝ｻ : "鬨ｾ・ｲ隰仙干・帝￡・ｺ髫ｱ繝ｻ),
+        linkLabel: runningGuidance?.linkLabel || (runningTargetHref === FALLBACK_WIZARD_HREF ? "謇矩・ｒ遒ｺ隱・ : "騾ｲ謐励ｒ遒ｺ隱・),
       };
     }
 
     const reasonHint = {
       preflight_required: {
-        reason: "雋・摩・咏ｹ晁ｼ釆溽ｹ晢ｽｼ邵ｺ譴ｧ謔ｴ陞ｳ蠕｡・ｺ繝ｻ縲堤ｸｺ蜷ｶﾂ繧・穐邵ｺ螢ｼ辯戊ｬ蜊・ｨ・ｭ陞ｳ螢ｹ繝ｻ陞ｳ蠕｡・ｺ繝ｻ窶ｲ陟｢繝ｻ・ｦ竏壹堤ｸｺ蜷ｶﾂ繝ｻ,
+        reason: "貅門ｙ繝輔Ο繝ｼ縺梧悴螳御ｺ・〒縺吶ゅ∪縺壼燕謠占ｨｭ螳壹・螳御ｺ・′蠢・ｦ√〒縺吶・,
       },
       source_download_required: {
-        message: "Amazon 邵ｺ蛹ｺ・･・ｽ陞滂ｽｩ邵ｺ・ｮ邵ｺ・ｩ邵ｺ・｡郢ｧ蟲ｨﾂｰ邵ｺ・ｮ鬯・ｼ懷ｺｶ隴厄ｽｸ陷ｿ髢・ｾ蜉ｱ・定怦蛹ｻ竊楢楜貅ｯ・｡蠕鯉ｼ邵ｺ・ｦ邵ｺ荳岩味邵ｺ霈費ｼ樒ｸｲ繝ｻ,
-        reason: "陝・ｻ｣竊醍ｸｺ荳岩・郢ｧ繝ｻ驕会ｽｾ陋ｻ繝ｻ繝ｻ陝・ｽｾ髮趣ｽ｡隴帛現繝ｧ郢晢ｽｼ郢ｧ・ｿ郢ｧ雋槫徐陟募干・邵ｺ・ｦ邵ｺ荳岩味邵ｺ霈費ｼ樒ｸｲ繝ｻ,
+        message: "Amazon 縺区･ｽ螟ｩ縺ｮ縺ｩ縺｡繧峨°縺ｮ鬆伜庶譖ｸ蜿門ｾ励ｒ蜈医↓螳溯｡後＠縺ｦ縺上□縺輔＞縲・,
+        reason: "蟆代↑縺上→繧・遉ｾ蛻・・蟇ｾ雎｡譛医ョ繝ｼ繧ｿ繧貞叙蠕励＠縺ｦ縺上□縺輔＞縲・,
       },
       amazon_download_required: {
-        message: "Amazon 邵ｺ・ｮ鬯・ｼ懷ｺｶ隴厄ｽｸ郢ｧ雋槫徐陟募干・邵ｺ・ｦ邵ｺ荳岩味邵ｺ霈費ｼ樒ｸｲ繝ｻ,
-        reason: "陝・ｽｾ髮趣ｽ｡隴帑ｺ･繝ｻ郢ｧ雋槫徐陟募干笘・ｹｧ荵昶・隹ｺ・｡邵ｺ・ｮ鬮ｯ・､陞滓じ繝ｻ陷奇ｽｰ陋ｻ・ｷ陝ｾ・･驕樔ｹ昶・鬨ｾ・ｲ郢ｧ竏壺穐邵ｺ蜷ｶﾂ繝ｻ,
+        message: "Amazon 縺ｮ鬆伜庶譖ｸ繧貞叙蠕励＠縺ｦ縺上□縺輔＞縲・,
+        reason: "蟇ｾ雎｡譛亥・繧貞叙蠕励☆繧九→谺｡縺ｮ髯､螟悶・蜊ｰ蛻ｷ蟾･遞九∈騾ｲ繧√∪縺吶・,
       },
       rakuten_download_required: {
-        message: "隶鯉ｽｽ陞滂ｽｩ邵ｺ・ｮ鬯・ｼ懷ｺｶ隴厄ｽｸ郢ｧ雋槫徐陟募干・邵ｺ・ｦ邵ｺ荳岩味邵ｺ霈費ｼ樒ｸｲ繝ｻ,
-        reason: "陝・ｽｾ髮趣ｽ｡隴帑ｺ･繝ｻ郢ｧ雋槫徐陟募干笘・ｹｧ荵昶・隹ｺ・｡邵ｺ・ｮ鬮ｯ・､陞滓じ繝ｻ陷奇ｽｰ陋ｻ・ｷ陝ｾ・･驕樔ｹ昶・鬨ｾ・ｲ郢ｧ竏壺穐邵ｺ蜷ｶﾂ繝ｻ,
+        message: "讌ｽ螟ｩ縺ｮ鬆伜庶譖ｸ繧貞叙蠕励＠縺ｦ縺上□縺輔＞縲・,
+        reason: "蟇ｾ雎｡譛亥・繧貞叙蠕励☆繧九→谺｡縺ｮ髯､螟悶・蜊ｰ蛻ｷ蟾･遞九∈騾ｲ繧√∪縺吶・,
       },
       amazon_print_pending: {
-        message: "Amazon 邵ｺ・ｮ鬮ｯ・､陞溷・・ｨ・ｭ陞ｳ螢ｹ繝ｻ陷奇ｽｰ陋ｻ・ｷ陝・ｽｾ髮趣ｽ｡郢ｧ蝣､・｢・ｺ髫ｱ髦ｪ・邵ｺ・ｦ邵ｺ荳岩味邵ｺ霈費ｼ樒ｸｲ繝ｻ,
-        reason: "鬮ｯ・､陞滄摩・ｯ・ｾ髮趣ｽ｡邵ｺ・ｮ驕抵ｽｺ陞ｳ螢ｹ竊定怺・ｰ陋ｻ・ｷ陞ｳ蠕｡・ｺ繝ｻ・帝勗蠕娯鴬邵ｺ・ｨ隹ｺ・｡陝ｾ・･驕樔ｹ昶・鬨ｾ・ｲ邵ｺ・ｿ邵ｺ・ｾ邵ｺ蜷ｶﾂ繝ｻ,
+        message: "Amazon 縺ｮ髯､螟冶ｨｭ螳壹・蜊ｰ蛻ｷ蟇ｾ雎｡繧堤｢ｺ隱阪＠縺ｦ縺上□縺輔＞縲・,
+        reason: "髯､螟門ｯｾ雎｡縺ｮ遒ｺ螳壹→蜊ｰ蛻ｷ螳御ｺ・ｒ陦後≧縺ｨ谺｡蟾･遞九∈騾ｲ縺ｿ縺ｾ縺吶・,
       },
       rakuten_print_pending: {
-        message: "隶鯉ｽｽ陞滂ｽｩ邵ｺ・ｮ鬮ｯ・､陞溷・・ｨ・ｭ陞ｳ螢ｹ繝ｻ陷奇ｽｰ陋ｻ・ｷ陝・ｽｾ髮趣ｽ｡郢ｧ蝣､・｢・ｺ髫ｱ髦ｪ・邵ｺ・ｦ邵ｺ荳岩味邵ｺ霈費ｼ樒ｸｲ繝ｻ,
-        reason: "鬮ｯ・､陞滄摩・ｯ・ｾ髮趣ｽ｡邵ｺ・ｮ驕抵ｽｺ陞ｳ螢ｹ竊定怺・ｰ陋ｻ・ｷ陞ｳ蠕｡・ｺ繝ｻ・帝勗蠕娯鴬邵ｺ・ｨ隹ｺ・｡陝ｾ・･驕樔ｹ昶・鬨ｾ・ｲ邵ｺ・ｿ邵ｺ・ｾ邵ｺ蜷ｶﾂ繝ｻ,
+        message: "讌ｽ螟ｩ縺ｮ髯､螟冶ｨｭ螳壹・蜊ｰ蛻ｷ蟇ｾ雎｡繧堤｢ｺ隱阪＠縺ｦ縺上□縺輔＞縲・,
+        reason: "髯､螟門ｯｾ雎｡縺ｮ遒ｺ螳壹→蜊ｰ蛻ｷ螳御ｺ・ｒ陦後≧縺ｨ谺｡蟾･遞九∈騾ｲ縺ｿ縺ｾ縺吶・,
       },
       provider_ingest_pending: {
-        message: "陞溷､慚咾SV邵ｺ・ｮ陷ｿ謔ｶ・企恷・ｼ邵ｺ・ｿ郢ｧ雋橸ｽｮ貅ｯ・｡蠕鯉ｼ邵ｺ・ｦ邵ｺ荳岩味邵ｺ霈費ｼ樒ｸｲ繝ｻ,
-        reason: "Amazon/隶鯉ｽｽ陞滂ｽｩ邵ｺ・ｧ陷ｿ髢・ｾ蜉ｱ・邵ｺ髦ｪ・檎ｸｺ・ｪ邵ｺ繝ｻ繝ｻ郢ｧ雋槭・鬨ｾ螢ｹ繝ｵ郢ｧ・ｩ郢晢ｽｫ郢敖邵ｺ荵晢ｽ芽愾謔ｶ・企恷・ｼ郢ｧ阮吶堤ｸｺ荳岩味邵ｺ霈費ｼ樒ｸｲ繝ｻ,
+        message: "螟夜ΚCSV縺ｮ蜿悶ｊ霎ｼ縺ｿ繧貞ｮ溯｡後＠縺ｦ縺上□縺輔＞縲・,
+        reason: "Amazon/讌ｽ螟ｩ縺ｧ蜿門ｾ励＠縺阪ｌ縺ｪ縺・・繧貞・騾壹ヵ繧ｩ繝ｫ繝縺九ｉ蜿悶ｊ霎ｼ繧薙〒縺上□縺輔＞縲・,
       },
       mf_reconcile_ready: {
-        message: "MF鬨ｾ・｣隰ｳ・ｺ邵ｺ・ｮ驕ｯ竏晉ｲ狗ｸｺ蟶幢ｽｮ貅ｯ・｡蠕娯・鬨ｾ・ｲ郢ｧ竏壺ｻ邵ｺ荳岩味邵ｺ霈費ｼ樒ｸｲ繝ｻ,
-        reason: "陷ｿ謔ｶ・企恷・ｼ邵ｺ・ｿ雋ょ現竏ｩ郢昴・繝ｻ郢ｧ・ｿ郢ｧ讓ｽF邵ｺ・ｮ闕ｳ蛹ｺ蠍檎ｸｺ蝣ｺ・ｽ諛医・邵ｺ・ｸ陷ｿ閧ｴ荳千ｸｺ蜷ｶ・玖ｲ・摩・咏ｸｺ譴ｧ邏帷ｸｺ繝ｻ竏ｪ邵ｺ蜉ｱ笳・ｸｲ繝ｻ,
+        message: "MF騾｣謳ｺ縺ｮ遯∝粋縺帛ｮ溯｡後∈騾ｲ繧√※縺上□縺輔＞縲・,
+        reason: "蜿悶ｊ霎ｼ縺ｿ貂医∩繝・・繧ｿ繧樽F縺ｮ荳区嶌縺堺ｽ懈・縺ｸ蜿肴丐縺吶ｋ貅門ｙ縺梧紛縺・∪縺励◆縲・,
       },
       workflow_complete: {
-        message: "邵ｺ蜷ｶ竏狗ｸｺ・ｦ陞ｳ蠕｡・ｺ繝ｻ・邵ｺ・ｾ邵ｺ蜉ｱ笳・ｸｲ繧域ｦ隹ｺ・｡郢ｧ・｢郢晢ｽｼ郢ｧ・ｫ郢ｧ・､郢晄じ・定楜貅ｯ・｡蠕後堤ｸｺ髦ｪ竏ｪ邵ｺ蜷ｶﾂ繝ｻ,
-        reason: "隴崢驍ｨ繧会ｽ｢・ｺ髫ｱ髦ｪ竊堤ｸｺ蜉ｱ窶ｻ隴帛沺・ｬ・｡郢ｧ・ｯ郢晢ｽｭ郢晢ｽｼ郢ｧ・ｺ郢ｧ繝ｻ縺・ｹ晢ｽｼ郢ｧ・ｫ郢ｧ・､郢晄じ縲定ｰｺ・｡隴帛沺・ｺ髢・咏ｸｺ・ｫ鬨ｾ・ｲ郢ｧ阮吶堤ｸｺ荳岩味邵ｺ霈費ｼ樒ｸｲ繝ｻ,
+        message: "縺吶∋縺ｦ螳御ｺ・＠縺ｾ縺励◆縲よ怦谺｡繧｢繝ｼ繧ｫ繧､繝悶ｒ螳溯｡後〒縺阪∪縺吶・,
+        reason: "譛邨ら｢ｺ隱阪→縺励※譛域ｬ｡繧ｯ繝ｭ繝ｼ繧ｺ繧・い繝ｼ繧ｫ繧､繝悶〒谺｡譛域ｺ門ｙ縺ｫ騾ｲ繧薙〒縺上□縺輔＞縲・,
       },
     };
 
@@ -1608,7 +1514,7 @@
       message: guidance.message,
       reason: guidance.reason,
       href,
-      linkLabel: guidance.linkLabel || (href === FALLBACK_WIZARD_HREF ? "隰・洸・ｰ繝ｻ・帝￡・ｺ髫ｱ繝ｻ : ""),
+      linkLabel: guidance.linkLabel || (href === FALLBACK_WIZARD_HREF ? "謇矩・ｒ遒ｺ隱・ : ""),
     };
   }
 
@@ -1658,9 +1564,9 @@
       const blockedByOrder = !allowed;
       button.disabled = blockedByRunning || blockedByOrder;
       if (blockedByRunning) {
-        button.title = "闔画じ繝ｻ隰・洸・ｰ繝ｻ・定楜貅ｯ・｡蠕｡・ｸ・ｭ邵ｺ・ｮ邵ｺ貅假ｽ・ｫ｢蜿･・ｧ荵昴堤ｸｺ髦ｪ竏ｪ邵ｺ蟶呻ｽ鍋ｸｲ繝ｻ;
+        button.title = "莉悶・謇矩・ｒ螳溯｡御ｸｭ縺ｮ縺溘ａ髢句ｧ九〒縺阪∪縺帙ｓ縲・;
       } else if (blockedByOrder) {
-        button.title = "邵ｺ・ｾ邵ｺ・ｰ邵ｺ阮吶・隰・洸・ｰ繝ｻ繝ｻ陞ｳ貅ｯ・｡蠕後堤ｸｺ髦ｪ竏ｪ邵ｺ蟶呻ｽ鍋ｸｲ繝ｻ;
+        button.title = "縺ｾ縺縺薙・謇矩・・螳溯｡後〒縺阪∪縺帙ｓ縲・;
       } else {
         button.title = "";
       }
@@ -1694,13 +1600,13 @@
         const checklistComplete = isChecklistComplete();
         button.disabled = blockedByRunning || !allowed || !checklistComplete;
         if (blockedByRunning) {
-          button.title = "闔画じ繝ｻ隰・洸・ｰ繝ｻ・定楜貅ｯ・｡蠕｡・ｸ・ｭ邵ｺ・ｮ邵ｺ貅假ｽ∫ｹｧ・｢郢晢ｽｼ郢ｧ・ｫ郢ｧ・､郢晄じ縲堤ｸｺ髦ｪ竏ｪ邵ｺ蟶呻ｽ鍋ｸｲ繝ｻ;
+          button.title = "莉悶・謇矩・ｒ螳溯｡御ｸｭ縺ｮ縺溘ａ繧｢繝ｼ繧ｫ繧､繝悶〒縺阪∪縺帙ｓ縲・;
         } else if (!allowed && !checklistComplete) {
-          button.title = "Amazon邵ｺ・ｾ邵ｺ貅倥・隶鯉ｽｽ陞滂ｽｩ邵ｺ・ｧ邵ｲ遒∝求陞滓じ繝ｻ陷奇ｽｰ陋ｻ・ｷ繝ｻ莠･・ｮ蠕｡・ｺ繝ｻ・ｨ蛟ｬ鮖ｸ邵ｺ・ｾ邵ｺ・ｧ繝ｻ蟲ｨﾂ讎奇ｽｮ蠕｡・ｺ繝ｻ・ｾ蠕娯・陞ｳ貅ｯ・｡蠕後堤ｸｺ髦ｪ竏ｪ邵ｺ蜷ｶﾂ繧・穐邵ｺ貅伉竏ｵ諤ｦ隹ｺ・｡郢ｧ・ｯ郢晢ｽｭ郢晢ｽｼ郢ｧ・ｺ陷鷹亂繝ｻ驕抵ｽｺ髫ｱ蝓ｼ・ｰ繝ｻ蟯ｼ郢ｧ蛛ｵ笘・ｸｺ・ｹ邵ｺ・ｦ郢昶・縺臥ｹ昴・縺醍ｸｺ蜷ｶ・玖｢繝ｻ・ｦ竏壺ｲ邵ｺ繧・ｽ顔ｸｺ・ｾ邵ｺ蜷ｶﾂ繝ｻ;
+          button.title = "Amazon縺ｾ縺溘・讌ｽ螟ｩ縺ｧ縲碁勁螟悶・蜊ｰ蛻ｷ・亥ｮ御ｺ・ｨ倬鹸縺ｾ縺ｧ・峨榊ｮ御ｺ・ｾ後↓螳溯｡後〒縺阪∪縺吶ゅ∪縺溘∵怦谺｡繧ｯ繝ｭ繝ｼ繧ｺ蜑阪・遒ｺ隱埼・岼繧偵☆縺ｹ縺ｦ繝√ぉ繝・け縺吶ｋ蠢・ｦ√′縺ゅｊ縺ｾ縺吶・;
         } else if (!allowed) {
-          button.title = "Amazon邵ｺ・ｾ邵ｺ貅倥・隶鯉ｽｽ陞滂ｽｩ邵ｺ・ｧ邵ｲ遒∝求陞滓じ繝ｻ陷奇ｽｰ陋ｻ・ｷ繝ｻ莠･・ｮ蠕｡・ｺ繝ｻ・ｨ蛟ｬ鮖ｸ邵ｺ・ｾ邵ｺ・ｧ繝ｻ蟲ｨﾂ讎奇ｽｮ蠕｡・ｺ繝ｻ・ｾ蠕娯・陞ｳ貅ｯ・｡蠕後堤ｸｺ髦ｪ竏ｪ邵ｺ蜷ｶﾂ繝ｻ;
+          button.title = "Amazon縺ｾ縺溘・讌ｽ螟ｩ縺ｧ縲碁勁螟悶・蜊ｰ蛻ｷ・亥ｮ御ｺ・ｨ倬鹸縺ｾ縺ｧ・峨榊ｮ御ｺ・ｾ後↓螳溯｡後〒縺阪∪縺吶・;
         } else if (!checklistComplete) {
-          button.title = "隴帛沺・ｬ・｡郢ｧ・ｯ郢晢ｽｭ郢晢ｽｼ郢ｧ・ｺ陷鷹亂繝ｻ驕抵ｽｺ髫ｱ蝓ｼ・ｰ繝ｻ蟯ｼ郢ｧ蛛ｵ笘・ｸｺ・ｹ邵ｺ・ｦ郢昶・縺臥ｹ昴・縺醍ｸｺ蜉ｱ窶ｻ邵ｺ荳岩味邵ｺ霈費ｼ樒ｸｲ繝ｻ;
+          button.title = "譛域ｬ｡繧ｯ繝ｭ繝ｼ繧ｺ蜑阪・遒ｺ隱埼・岼繧偵☆縺ｹ縺ｦ繝√ぉ繝・け縺励※縺上□縺輔＞縲・;
         } else {
           button.title = "";
         }
@@ -1708,9 +1614,9 @@
         // For archive_outputs button, keep original logic
         button.disabled = blockedByRunning || !allowed;
         if (blockedByRunning) {
-          button.title = "闔画じ繝ｻ隰・洸・ｰ繝ｻ・定楜貅ｯ・｡蠕｡・ｸ・ｭ邵ｺ・ｮ邵ｺ貅假ｽ∫ｹｧ・｢郢晢ｽｼ郢ｧ・ｫ郢ｧ・､郢晄じ縲堤ｸｺ髦ｪ竏ｪ邵ｺ蟶呻ｽ鍋ｸｲ繝ｻ;
+          button.title = "莉悶・謇矩・ｒ螳溯｡御ｸｭ縺ｮ縺溘ａ繧｢繝ｼ繧ｫ繧､繝悶〒縺阪∪縺帙ｓ縲・;
         } else if (!allowed) {
-          button.title = "Amazon邵ｺ・ｾ邵ｺ貅倥・隶鯉ｽｽ陞滂ｽｩ邵ｺ・ｧ邵ｲ遒∝求陞滓じ繝ｻ陷奇ｽｰ陋ｻ・ｷ繝ｻ莠･・ｮ蠕｡・ｺ繝ｻ・ｨ蛟ｬ鮖ｸ邵ｺ・ｾ邵ｺ・ｧ繝ｻ蟲ｨﾂ讎奇ｽｮ蠕｡・ｺ繝ｻ・ｾ蠕娯・陞ｳ貅ｯ・｡蠕後堤ｸｺ髦ｪ竏ｪ邵ｺ蜷ｶﾂ繝ｻ;
+          button.title = "Amazon縺ｾ縺溘・讌ｽ螟ｩ縺ｧ縲碁勁螟悶・蜊ｰ蛻ｷ・亥ｮ御ｺ・ｨ倬鹸縺ｾ縺ｧ・峨榊ｮ御ｺ・ｾ後↓螳溯｡後〒縺阪∪縺吶・;
         } else {
           button.title = "";
         }
@@ -1732,9 +1638,9 @@
       const blockedByPreflight = needsPreflight && !preflightDone;
       button.disabled = blockedByRunning || blockedByPreflight;
       if (blockedByRunning) {
-        button.title = "闔画じ繝ｻ隰・洸・ｰ繝ｻ・定楜貅ｯ・｡蠕｡・ｸ・ｭ邵ｺ・ｮ邵ｺ貅假ｽ・ｫ｢蜿･・ｧ荵昴堤ｸｺ髦ｪ竏ｪ邵ｺ蟶呻ｽ鍋ｸｲ繝ｻ;
+        button.title = "莉悶・謇矩・ｒ螳溯｡御ｸｭ縺ｮ縺溘ａ髢句ｧ九〒縺阪∪縺帙ｓ縲・;
       } else if (blockedByPreflight) {
-        button.title = "陷亥現竊楢ｬ・洸・ｰ繝ｻ邵ｲ譴ｧ・ｺ髢・咏ｸｲ髦ｪ・定楜貅ｯ・｡蠕鯉ｼ邵ｺ・ｦ邵ｺ荳岩味邵ｺ霈費ｼ樒ｸｲ繝ｻ;
+        button.title = "蜈医↓謇矩・縲梧ｺ門ｙ縲阪ｒ螳溯｡後＠縺ｦ縺上□縺輔＞縲・;
       } else {
         button.title = "";
       }
@@ -1751,7 +1657,7 @@
       const blockedByRunning = Boolean(runningMode);
       button.disabled = blockedByRunning;
       if (blockedByRunning) {
-        button.title = "闔画じ繝ｻ隰・洸・ｰ繝ｻ・定楜貅ｯ・｡蠕｡・ｸ・ｭ邵ｺ・ｮ邵ｺ貅假ｽ・ｫ｢蜿･・ｧ荵昴堤ｸｺ髦ｪ竏ｪ邵ｺ蟶呻ｽ鍋ｸｲ繝ｻ;
+        button.title = "莉悶・謇矩・ｒ螳溯｡御ｸｭ縺ｮ縺溘ａ髢句ｧ九〒縺阪∪縺帙ｓ縲・;
       } else {
         button.title = "";
       }
@@ -1767,7 +1673,7 @@
   function buildMfSummaryText(data) {
     const runningMode = String(data?.running_mode || "");
     if (runningMode === "mf_reconcile") {
-      return "郢ｧ・ｵ郢晄ｧｭﾎ懃ｹ晢ｽｼ: 隰・洸・ｰ繝ｻ郢ｧ雋橸ｽｮ貅ｯ・｡蠕｡・ｸ・ｭ...";
+      return "繧ｵ繝槭Μ繝ｼ: 謇矩・繧貞ｮ溯｡御ｸｭ...";
     }
     const mf = data && typeof data === "object" ? data.mf : null;
     const summary = mf && typeof mf === "object" ? mf.summary : null;
@@ -1780,12 +1686,12 @@
     const reconciled = Boolean(mf?.reconciled);
 
     if (!reconciled && !hasDraftResult && missingCandidates === 0) {
-      return "郢ｧ・ｵ郢晄ｧｭﾎ懃ｹ晢ｽｼ: 隴幢ｽｪ陞ｳ貅ｯ・｡繝ｻ;
+      return "繧ｵ繝槭Μ繝ｼ: 譛ｪ螳溯｡・;
     }
     if (!hasDraftResult) {
-      return `郢ｧ・ｵ郢晄ｧｭﾎ懃ｹ晢ｽｼ: 隴幢ｽｪ雎ｺ・ｻ闔我ｼ慊蜻ｵ・｣繝ｻ${missingCandidates}闔会ｽｶ / 闕ｳ蛹ｺ蠍檎ｸｺ蝣ｺ・ｽ諛医・邵ｺ・ｯ隴幢ｽｪ陞ｳ貅ｯ・｡蠖｢;
+      return `繧ｵ繝槭Μ繝ｼ: 譛ｪ豺ｻ莉伜呵｣・${missingCandidates}莉ｶ / 荳区嶌縺堺ｽ懈・縺ｯ譛ｪ螳溯｡形;
     }
-    return `郢ｧ・ｵ郢晄ｧｭﾎ懃ｹ晢ｽｼ: 隴幢ｽｪ雎ｺ・ｻ闔我ｼ慊蜻ｵ・｣繝ｻ${missingCandidates}闔会ｽｶ / 闕ｳ蛹ｺ蠍檎ｸｺ蝣ｺ・ｽ諛医・ ${created}/${targetsTotal}闔会ｽｶ繝ｻ莠･・､・ｱ隰ｨ繝ｻ${failed}闔会ｽｶ繝ｻ闕・
+    return `繧ｵ繝槭Μ繝ｼ: 譛ｪ豺ｻ莉伜呵｣・${missingCandidates}莉ｶ / 荳区嶌縺堺ｽ懈・ ${created}/${targetsTotal}莉ｶ・亥､ｱ謨・${failed}莉ｶ・荏;
   }
 
   function renderMfSummary(data, fallbackMessage = "") {
@@ -1890,11 +1796,11 @@
     try {
       const raw = await apiGetJson(`/api/steps/${ym}`);
       if (!raw) {
-        renderNextStep("郢ｧ・ｹ郢昴・繝｣郢晉､ｼ諞ｾ隲ｷ荵昴・陷ｿ髢・ｾ蜉ｱ竊楢棔・ｱ隰ｨ蜉ｱ・邵ｺ・ｾ邵ｺ蜉ｱ笳・ｸｲ繧・・髫ｱ・ｭ邵ｺ・ｿ髴趣ｽｼ邵ｺ・ｿ邵ｺ蜉ｱ窶ｻ邵ｺ荳岩味邵ｺ霈費ｼ樒ｸｲ繝ｻ, null);
+        renderNextStep("繧ｹ繝・ャ繝礼憾諷九・蜿門ｾ励↓螟ｱ謨励＠縺ｾ縺励◆縲ょ・隱ｭ縺ｿ霎ｼ縺ｿ縺励※縺上□縺輔＞縲・, null);
         document.querySelectorAll("[data-step-link]").forEach((link) => setStepLinkState(link, false, "#"));
         applyArchiveAvailability({ running_mode: "", amazon: {}, rakuten: {} });
         applyManualAvailability({ running_mode: "" });
-        renderMfSummary(null, "郢ｧ・ｵ郢晄ｧｭﾎ懃ｹ晢ｽｼ: 郢ｧ・ｹ郢昴・繝｣郢晉､ｼ諞ｾ隲ｷ荵昴・陷ｿ髢・ｾ蜉ｱ竊楢棔・ｱ隰ｨ蜉ｱ・邵ｺ・ｾ邵ｺ蜉ｱ笳・ｸｲ繝ｻ);
+        renderMfSummary(null, "繧ｵ繝槭Μ繝ｼ: 繧ｹ繝・ャ繝礼憾諷九・蜿門ｾ励↓螟ｱ謨励＠縺ｾ縺励◆縲・);
         if (!stepRetryTimer) {
           stepRetryTimer = setTimeout(() => {
             stepRetryTimer = null;
@@ -1946,14 +1852,14 @@
       setTaskStatus("rakuten", taskStates.rakuten);
 
       const labels = {
-        preflight: "隰・洸・ｰ繝ｻ 雋・摩・・,
-        amazon_download: "隰・洸・ｰ繝ｻ Amazon 陷ｿ髢・ｾ繝ｻ,
-        amazon_decide_print: "隰・洸・ｰ繝ｻ Amazon 鬮ｯ・､陞滓じ繝ｻ陷奇ｽｰ陋ｻ・ｷ繝ｻ莠･・ｮ蠕｡・ｺ繝ｻ・ｨ蛟ｬ鮖ｸ邵ｺ・ｾ邵ｺ・ｧ繝ｻ繝ｻ,
-        rakuten_download: "隰・洸・ｰ繝ｻ 隶鯉ｽｽ陞滂ｽｩ 陷ｿ髢・ｾ繝ｻ,
-        rakuten_decide_print: "隰・洸・ｰ繝ｻ 隶鯉ｽｽ陞滂ｽｩ 鬮ｯ・､陞滓じ繝ｻ陷奇ｽｰ陋ｻ・ｷ繝ｻ莠･・ｮ蠕｡・ｺ繝ｻ・ｨ蛟ｬ鮖ｸ邵ｺ・ｾ邵ｺ・ｧ繝ｻ繝ｻ,
-        provider_ingest: "隰・洸・ｰ繝ｻ 陷茨ｽｱ鬨ｾ螢ｹ繝ｵ郢ｧ・ｩ郢晢ｽｫ郢敖陷ｿ謔ｶ・企恷・ｼ邵ｺ・ｿ",
-        mf_bulk_upload_task: "隰・洸・ｰ繝ｻ MF闕ｳﾂ隲｡・ｬ郢ｧ・｢郢昴・繝ｻ郢晢ｽｭ郢晢ｽｼ郢昴・,
-        mf_reconcile: "隰・洸・ｰ繝ｻ MF驕ｯ竏晉ｲ狗ｹ晢ｽｻ闕ｳ蛹ｺ蠍檎ｸｺ蝣ｺ・ｽ諛医・",
+        preflight: "謇矩・ 貅門ｙ",
+        amazon_download: "謇矩・ Amazon 蜿門ｾ・,
+        amazon_decide_print: "謇矩・ Amazon 髯､螟悶・蜊ｰ蛻ｷ・亥ｮ御ｺ・ｨ倬鹸縺ｾ縺ｧ・・,
+        rakuten_download: "謇矩・ 讌ｽ螟ｩ 蜿門ｾ・,
+        rakuten_decide_print: "謇矩・ 讌ｽ螟ｩ 髯､螟悶・蜊ｰ蛻ｷ・亥ｮ御ｺ・ｨ倬鹸縺ｾ縺ｧ・・,
+        provider_ingest: "謇矩・ 蜈ｱ騾壹ヵ繧ｩ繝ｫ繝蜿悶ｊ霎ｼ縺ｿ",
+        mf_bulk_upload_task: "謇矩・ MF荳諡ｬ繧｢繝・・繝ｭ繝ｼ繝・,
+        mf_reconcile: "謇矩・ MF遯∝粋繝ｻ荳区嶌縺堺ｽ懈・",
       };
       if (!window.__stepState) {
         window.__stepState = stepStates;
@@ -1961,7 +1867,7 @@
         Object.keys(stepStates).forEach((key) => {
           if (key === "mf_reconcile") return;
           if (window.__stepState[key] && window.__stepState[key] !== "done" && stepStates[key] === "done") {
-            showToast(`${labels[key]}邵ｺ謔滂ｽｮ蠕｡・ｺ繝ｻ・邵ｺ・ｾ邵ｺ蜉ｱ笳・ｸｲ・｡, "success");
+            showToast(`${labels[key]}縺悟ｮ御ｺ・＠縺ｾ縺励◆縲Ａ, "success");
           }
         });
       }
@@ -1976,12 +1882,12 @@
 
 
     } catch {
-      renderNextStep("郢ｧ・ｹ郢昴・繝｣郢晉､ｼ諞ｾ隲ｷ荵昴・陷ｿ髢・ｾ蜉ｱ竊楢棔・ｱ隰ｨ蜉ｱ・邵ｺ・ｾ邵ｺ蜉ｱ笳・ｸｲ繧・・髫ｱ・ｭ邵ｺ・ｿ髴趣ｽｼ邵ｺ・ｿ邵ｺ蜉ｱ窶ｻ邵ｺ荳岩味邵ｺ霈費ｼ樒ｸｲ繝ｻ, null);
+      renderNextStep("繧ｹ繝・ャ繝礼憾諷九・蜿門ｾ励↓螟ｱ謨励＠縺ｾ縺励◆縲ょ・隱ｭ縺ｿ霎ｼ縺ｿ縺励※縺上□縺輔＞縲・, null);
       document.querySelectorAll("[data-step-link]").forEach((link) => setStepLinkState(link, false, "#"));
       applyArchiveAvailability({ running_mode: "", amazon: {}, rakuten: {} });
       applyManualAvailability({ running_mode: "" });
       applyProviderAvailability({ running_mode: "", preflight: {} });
-      renderMfSummary(null, "郢ｧ・ｵ郢晄ｧｭﾎ懃ｹ晢ｽｼ: 郢ｧ・ｹ郢昴・繝｣郢晉､ｼ諞ｾ隲ｷ荵昴・陷ｿ髢・ｾ蜉ｱ竊楢棔・ｱ隰ｨ蜉ｱ・邵ｺ・ｾ邵ｺ蜉ｱ笳・ｸｲ繝ｻ);
+      renderMfSummary(null, "繧ｵ繝槭Μ繝ｼ: 繧ｹ繝・ャ繝礼憾諷九・蜿門ｾ励↓螟ｱ謨励＠縺ｾ縺励◆縲・);
       if (!stepRetryTimer) {
         stepRetryTimer = setTimeout(() => {
           stepRetryTimer = null;
@@ -2040,7 +1946,7 @@
       link.addEventListener("click", (event) => {
         if (link.getAttribute("aria-disabled") === "true") {
           event.preventDefault();
-          showToast("邵ｺ阮吶・隰・洸・ｰ繝ｻ繝ｻ邵ｺ・ｾ邵ｺ・ｰ陞ｳ貅ｯ・｡蠕後堤ｸｺ髦ｪ竏ｪ邵ｺ蟶呻ｽ鍋ｸｲ繧茨ｽｬ・｡邵ｺ・ｮ隰・洸・ｰ繝ｻ・｡莠･繝ｻ郢ｧ蝣､・｢・ｺ髫ｱ髦ｪ・邵ｺ・ｦ邵ｺ荳岩味邵ｺ霈費ｼ樒ｸｲ繝ｻ, "error");
+          showToast("縺薙・謇矩・・縺ｾ縺螳溯｡後〒縺阪∪縺帙ｓ縲よｬ｡縺ｮ謇矩・｡亥・繧堤｢ｺ隱阪＠縺ｦ縺上□縺輔＞縲・, "error");
         }
       });
     });
@@ -2078,12 +1984,12 @@
       if (!runId) return;
       const res = await fetch(`/api/runs/${runId}/stop`, { method: "POST" });
       if (!res.ok) {
-        const message = "陞ｳ貅ｯ・｡蠕後・陋帶㊧・ｭ・｢邵ｺ・ｫ陞滂ｽｱ隰ｨ蜉ｱ・邵ｺ・ｾ邵ｺ蜉ｱ笳・ｸｲ繝ｻ;
+        const message = "螳溯｡後・蛛懈ｭ｢縺ｫ螟ｱ謨励＠縺ｾ縺励◆縲・;
         showError(message);
         showToast(message, "error");
         return;
       }
-      const message = "陋帶㊧・ｭ・｢郢晢ｽｪ郢ｧ・ｯ郢ｧ・ｨ郢ｧ・ｹ郢晏現・帝ｨｾ竏ｽ・ｿ・｡邵ｺ蜉ｱ竏ｪ邵ｺ蜉ｱ笳・ｸｲ繧・溽ｹｧ・ｰ隴厄ｽｴ隴・ｽｰ郢ｧ蛛ｵ笙陟輔・笆邵ｺ荳岩味邵ｺ霈費ｼ樒ｸｲ繝ｻ;
+      const message = "蛛懈ｭ｢繝ｪ繧ｯ繧ｨ繧ｹ繝医ｒ騾∽ｿ｡縺励∪縺励◆縲ゅΟ繧ｰ譖ｴ譁ｰ繧偵♀蠕・■縺上□縺輔＞縲・;
       showError(message);
       showToast(message, "success");
     });
