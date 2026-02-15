@@ -215,6 +215,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "scripts\start_dashboard.ps1
 
 ## Official manual review (automated)
 - Run periodic checks: `npm run review:manual -- --review-type weekly`
+- You can run from repository root; script defaults to `skills/mfcloud-expense-receipt-reconcile/references/...` paths.
 - Monthly run: `npm run review:manual -- --review-type monthly --max-age-days 30`
 - Optional resilience: `npm run review:manual -- --review-type weekly --url-retries 2 --url-retry-delay-seconds 1.5`
 - Use PowerShell wrapper: `pwsh -File scripts\review_official_manual.ps1 -ReviewType weekly`
