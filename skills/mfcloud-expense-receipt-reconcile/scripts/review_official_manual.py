@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import json
+from collections import defaultdict
 import re
 from dataclasses import dataclass
 from datetime import date, datetime
@@ -19,14 +20,46 @@ from urllib.request import Request, urlopen
 
 
 CHECK_TARGETS = [
-    ("Amazon HelpNode (nodeId=201894740)", "https://www.amazon.co.jp/gp/help/customer/display.html?nodeId=201894740"),
-    ("Amazon order history", "https://www.amazon.co.jp/gp/your-account/order-history"),
-    ("Rakuten FAQ 000006734", "https://ichiba.faq.rakuten.net/detail/000006734"),
-    ("Rakuten Books delivery status", "https://books.rakuten.co.jp/mypage/delivery/status"),
-    ("Rakuten order home", "https://order.my.rakuten.co.jp/"),
-    ("MoneyForward AP guide (AP31)", "https://biz.moneyforward.com/support/expense/guide/ap/ap31.html"),
-    ("MoneyForward personal guide (PA34)", "https://biz.moneyforward.com/support/expense/guide/personal/pa34.html"),
-    ("MoneyForward FAQ r10", "https://biz.moneyforward.com/support/expense/faq/ap-faq/r10.html"),
+    (
+        "Amazon HelpNode (nodeId=201894740)",
+        "https://www.amazon.co.jp/gp/help/customer/display.html?nodeId=201894740",
+        "manual",
+    ),
+    (
+        "Amazon order history",
+        "https://www.amazon.co.jp/gp/your-account/order-history",
+        "internal_scraping_target",
+    ),
+    (
+        "Rakuten FAQ 000006734",
+        "https://ichiba.faq.rakuten.net/detail/000006734",
+        "manual",
+    ),
+    (
+        "Rakuten Books delivery status",
+        "https://books.rakuten.co.jp/mypage/delivery/status",
+        "manual",
+    ),
+    (
+        "Rakuten order home",
+        "https://order.my.rakuten.co.jp/",
+        "internal_scraping_target",
+    ),
+    (
+        "MoneyForward AP guide (AP31)",
+        "https://biz.moneyforward.com/support/expense/guide/ap/ap31.html",
+        "manual",
+    ),
+    (
+        "MoneyForward personal guide (PA34)",
+        "https://biz.moneyforward.com/support/expense/guide/personal/pa34.html",
+        "manual",
+    ),
+    (
+        "MoneyForward FAQ r10",
+        "https://biz.moneyforward.com/support/expense/faq/ap-faq/r10.html",
+        "manual",
+    ),
 ]
 
 
@@ -125,14 +158,62 @@ def check_last_reviewed(path: Path, max_age_days: int) -> DateCheck:
     return DateCheck(path.as_posix(), reviewed, days_since, days_since > max_age_days)
 
 
-def extract_knowledge_source_urls(path: Path) -> set[str]:
+def parse_knowledge_sources(path: Path) -> list[dict]:
     text = read_text(path)
-    urls: set[str] = set()
-    for match in re.finditer(r"^\s*url:\s*(\S+)\s*$", text, re.MULTILINE):
-        value = match.group(1)
-        if value.startswith(("http://", "https://")):
-            urls.add(value)
-    return urls
+    sources: list[dict] = []
+    current: dict = {}
+    in_official_sources = False
+
+    def flush_current() -> None:
+        nonlocal current
+        if current.get("url") and current.get("status_check"):
+            sources.append(current)
+        current = {}
+
+    for line in text.splitlines():
+        if re.match(r"^\s*official_sources:\s*$", line):
+            in_official_sources = True
+            continue
+
+        if not in_official_sources:
+            continue
+
+        if re.match(r"^\s*$", line):
+            continue
+
+        indent = len(re.match(r"^(\s*)", line).group(1))
+        if indent <= 4:
+            flush_current()
+            in_official_sources = False
+            continue
+
+        id_match = re.match(r"^\s{6}-\s*id:\s*(.+?)\s*$", line)
+        if id_match:
+            flush_current()
+            current = {"id": id_match.group(1), "status_check": "manual"}
+            continue
+
+        if not current:
+            continue
+
+        name_match = re.match(r"^\s{8}name:\s*(.+?)\s*$", line)
+        if name_match:
+            current["name"] = name_match.group(1)
+            continue
+
+        url_match = re.match(r"^\s{8}url:\s*(.+?)\s*$", line)
+        if url_match:
+            value = url_match.group(1)
+            if value.startswith(("http://", "https://")):
+                current["url"] = value
+            continue
+
+        status_match = re.match(r"^\s{8}status_check:\s*(.+?)\s*$", line)
+        if status_match:
+            current["status_check"] = status_match.group(1)
+
+    flush_current()
+    return sources
 
 
 def check_url_status(
@@ -170,9 +251,32 @@ def check_url_status(
 
 
 def build_knowledge_alignment(path: Path) -> dict:
-    target_urls = {url for _, url in CHECK_TARGETS}
-    knowledge_urls = extract_knowledge_source_urls(path)
+    target_urls_by_status: dict[str, set[str]] = defaultdict(set)
+    for _, url, status in CHECK_TARGETS:
+        target_urls_by_status[status].add(url)
+
+    knowledge_by_status: dict[str, set[str]] = defaultdict(set)
+    for source in parse_knowledge_sources(path):
+        status_check = source["status_check"]
+        knowledge_by_status[status_check].add(source["url"])
+
+    status_list = sorted(set(target_urls_by_status) | set(knowledge_by_status))
+    by_status: dict[str, dict] = {}
+    for status in status_list:
+        target_urls = target_urls_by_status.get(status, set())
+        knowledge_urls = knowledge_by_status.get(status, set())
+        by_status[status] = {
+            "target_urls": sorted(target_urls),
+            "knowledge_urls": sorted(knowledge_urls),
+            "missing_in_targets": sorted(knowledge_urls - target_urls),
+            "extra_in_targets": sorted(target_urls - knowledge_urls),
+            "in_sync": not (knowledge_urls - target_urls) and not (target_urls - knowledge_urls),
+        }
+
+    target_urls = set().union(*target_urls_by_status.values()) if target_urls_by_status else set()
+    knowledge_urls = set().union(*knowledge_by_status.values()) if knowledge_by_status else set()
     return {
+        "status": by_status,
         "target_urls": sorted(target_urls),
         "knowledge_urls": sorted(knowledge_urls),
         "missing_in_targets": sorted(knowledge_urls - target_urls),
@@ -185,12 +289,13 @@ def run_checks(args: argparse.Namespace) -> dict:
     status_checks = []
     alignment = build_knowledge_alignment(Path(args.knowledge))
 
-    for name, url in CHECK_TARGETS:
+    for name, url, status in CHECK_TARGETS:
         if args.skip_url_check:
             status_checks.append(
                 {
                     "name": name,
                     "url": url,
+                    "status_check": status,
                     "ok": True,
                     "status_code": None,
                     "error": "skipped",
@@ -210,6 +315,7 @@ def run_checks(args: argparse.Namespace) -> dict:
             {
                 "name": name,
                 "url": url,
+                "status_check": status,
                 "ok": status_code is not None and 200 <= status_code < 400,
                 "status_code": status_code,
                 "error": reason,
@@ -266,10 +372,19 @@ def render_log(report: dict, template_path: Path, out_dir: Path) -> Path:
 
     alignment_lines = []
     alignment = report["knowledge_alignment"]
+    alignment_lines.append(f"- in_sync: {alignment['in_sync']}")
     if alignment["missing_in_targets"]:
-        alignment_lines.append(f"- Missing target urls: {', '.join(alignment['missing_in_targets'])}")
+        alignment_lines.append(f"- Missing in review targets: {', '.join(alignment['missing_in_targets'])}")
     if alignment["extra_in_targets"]:
-        alignment_lines.append(f"- Extra target urls: {', '.join(alignment['extra_in_targets'])}")
+        alignment_lines.append(f"- Extra in review targets: {', '.join(alignment['extra_in_targets'])}")
+    for status, values in alignment["status"].items():
+        alignment_lines.append(f"- status_check={status}")
+        if values["missing_in_targets"]:
+            alignment_lines.append(f"  - Missing in review targets: {', '.join(values['missing_in_targets'])}")
+        if values["extra_in_targets"]:
+            alignment_lines.append(f"  - Extra in review targets: {', '.join(values['extra_in_targets'])}")
+        if not values["missing_in_targets"] and not values["extra_in_targets"]:
+            alignment_lines.append("  - No mismatch")
     if not alignment_lines:
         alignment_lines.append("- Knowledge URLs and review targets are aligned")
 
