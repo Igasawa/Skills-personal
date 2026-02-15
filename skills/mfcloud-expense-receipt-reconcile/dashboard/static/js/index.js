@@ -1039,12 +1039,12 @@
   }
 
   function inferNextStepFromFlags(data) {
+    if (!data || typeof data !== "object") return "done";
     if (!data.preflight?.done) return "preflight";
     const amazonDone = Boolean(data.amazon?.confirmed && data.amazon?.printed);
     const rakutenDone = Boolean(data.rakuten?.confirmed && data.rakuten?.printed);
     const amazonPending = Boolean(data.amazon?.downloaded && !amazonDone);
     const rakutenPending = Boolean(data.rakuten?.downloaded && !rakutenDone);
-    const bothDownloaded = Boolean(data.amazon?.downloaded && data.rakuten?.downloaded);
     const providerPending = (Number.parseInt(String(data.providers?.pending_total ?? 0), 10) || 0) > 0;
     if (amazonPending) return "amazon_decide_print";
     if (rakutenPending) return "rakuten_decide_print";
@@ -1053,12 +1053,29 @@
     if (!data.rakuten?.downloaded) return "rakuten_download";
     const mfDone = Boolean(data.mf?.step_done ?? data.mf?.reconciled);
     if (!mfDone && providerPending) return "provider_ingest";
-    if (!mfDone && bothDownloaded && (amazonDone || rakutenDone)) return "mf_reconcile";
+    const canReconcile =
+      "can_reconcile" in data ? Boolean(data.can_reconcile) : (Boolean(data.amazon?.downloaded || data.rakuten?.downloaded) && !(amazonPending || rakutenPending));
+    if (!mfDone && canReconcile) return "mf_reconcile";
     if (!mfDone) return "mf_reconcile";
     return "done";
   }
 
   function resolveNextStep(data) {
+    const apiNextStep = String(data?.next_step || "").trim();
+    const allowedNext = new Set([
+      "preflight",
+      "amazon_or_rakuten_download",
+      "amazon_download",
+      "amazon_decide_print",
+      "rakuten_download",
+      "rakuten_decide_print",
+      "provider_ingest",
+      "mf_reconcile",
+      "done",
+    ]);
+    if (apiNextStep && allowedNext.has(apiNextStep)) {
+      return apiNextStep;
+    }
     const inferred = inferNextStepFromFlags(data);
     // Keep UI guidance consistent with current flags even if API next_step lags.
     return inferred;
@@ -1125,6 +1142,18 @@
   }
 
   function inferAllowedModes(data) {
+    const apiModes = Array.isArray(data?.allowed_run_modes) ? data.allowed_run_modes : [];
+    if (apiModes.length > 0) {
+      const normalized = [];
+      const seen = new Set();
+      for (const mode of apiModes) {
+        const normalizedMode = String(mode || "").trim();
+        if (!normalizedMode || seen.has(normalizedMode)) continue;
+        seen.add(normalizedMode);
+        normalized.push(normalizedMode);
+      }
+      return normalized;
+    }
     const allowed = ["preflight", "preflight_mf"];
     if (!data.preflight?.done) return allowed;
     allowed.push("amazon_download");
@@ -1133,14 +1162,15 @@
     const rakutenDone = Boolean(data.rakuten?.confirmed && data.rakuten?.printed);
     const amazonPending = Boolean(data.amazon?.downloaded && !amazonDone);
     const rakutenPending = Boolean(data.rakuten?.downloaded && !rakutenDone);
-    const bothDownloaded = Boolean(data.amazon?.downloaded && data.rakuten?.downloaded);
     if (data.amazon?.downloaded) {
       allowed.push("amazon_print");
     }
     if (data.rakuten?.downloaded) {
       allowed.push("rakuten_print");
     }
-    if ((amazonDone || rakutenDone) && bothDownloaded && !(amazonPending || rakutenPending)) {
+    const canReconcile =
+      "can_reconcile" in data ? Boolean(data.can_reconcile) : Boolean(data.amazon?.downloaded || data.rakuten?.downloaded) && !(amazonPending || rakutenPending);
+    if (canReconcile) {
       allowed.push("mf_reconcile");
     }
     return allowed;
@@ -1179,7 +1209,11 @@
       const amazonPending = Boolean(amazonDownloaded && !amazonDone);
       const rakutenPending = Boolean(rakutenDownloaded && !rakutenDone);
       const hasDownloadedSource = amazonDownloaded || rakutenDownloaded;
-      const allowed = hasDownloadedSource && !(amazonPending || rakutenPending);
+      const canArchive =
+        "archive" in data && data.archive && typeof data.archive === "object"
+          ? Boolean(data.archive.can_archive)
+          : (hasDownloadedSource && !(amazonPending || rakutenPending));
+      const allowed = canArchive;
       const blockedByRunning = Boolean(runningMode);
       const action = button.dataset.archiveAction;
 

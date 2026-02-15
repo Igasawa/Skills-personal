@@ -521,32 +521,47 @@ def _workflow_state_for_ym(year: int, month: int) -> dict[str, Any]:
         isinstance(mf_draft_payload, dict) and str(mf_draft_payload.get("status") or "").strip().lower() in {"ok", "success"}
     )
     mf_step_done = bool(mf_reconciled and (mf_drafted or not mf_draft_result_path.exists()))
-    amazon_done = amazon_confirmed and amazon_printed
-    rakuten_done = rakuten_confirmed and rakuten_printed
+    amazon_done = amazon_downloaded and amazon_confirmed and amazon_printed
+    rakuten_done = rakuten_downloaded and rakuten_confirmed and rakuten_printed
     amazon_pending = amazon_downloaded and not amazon_done
     rakuten_pending = rakuten_downloaded and not rakuten_done
-    both_downloaded = amazon_downloaded and rakuten_downloaded
-    both_downloaded_completed = both_downloaded and amazon_done and rakuten_done
+    any_source_downloaded = amazon_downloaded or rakuten_downloaded
+    downloaded_sources = (1 if amazon_downloaded else 0) + (1 if rakuten_downloaded else 0)
+    completed_sources = (1 if amazon_done else 0) + (1 if rakuten_done else 0)
+    source_ready_for_reconcile = any_source_downloaded and completed_sources == downloaded_sources
+    can_reconcile = bool(source_ready_for_reconcile)
+
+    can_archive = bool(any_source_downloaded and source_ready_for_reconcile)
 
     next_step = "done"
+    next_step_reason = "workflow_complete"
     if not preflight_done:
         next_step = "preflight"
+        next_step_reason = "preflight_required"
     elif mf_step_done:
         next_step = "done"
+        next_step_reason = "workflow_complete"
     elif amazon_pending:
         next_step = "amazon_decide_print"
+        next_step_reason = "amazon_print_pending"
     elif rakuten_pending:
         next_step = "rakuten_decide_print"
-    elif not amazon_downloaded and not rakuten_downloaded:
-        next_step = "amazon_or_rakuten_download"
-    elif not amazon_downloaded:
-        next_step = "amazon_download"
-    elif not rakuten_downloaded:
-        next_step = "rakuten_download"
+        next_step_reason = "rakuten_print_pending"
     elif providers_pending > 0:
         next_step = "provider_ingest"
-    elif both_downloaded_completed:
+        next_step_reason = "provider_ingest_pending"
+    elif can_reconcile:
         next_step = "mf_reconcile"
+        next_step_reason = "mf_reconcile_ready"
+    elif not amazon_downloaded and not rakuten_downloaded:
+        next_step = "amazon_or_rakuten_download"
+        next_step_reason = "source_download_required"
+    elif not amazon_downloaded:
+        next_step = "amazon_download"
+        next_step_reason = "amazon_download_required"
+    elif not rakuten_downloaded:
+        next_step = "rakuten_download"
+        next_step_reason = "rakuten_download_required"
 
     allowed_run_modes: list[str] = ["preflight"]
     if preflight_done:
@@ -555,9 +570,12 @@ def _workflow_state_for_ym(year: int, month: int) -> dict[str, Any]:
             allowed_run_modes.append("amazon_print")
         if rakuten_downloaded:
             allowed_run_modes.append("rakuten_print")
-        if both_downloaded_completed:
+        if can_reconcile:
             allowed_run_modes.append("mf_reconcile")
     allowed_run_modes = list(dict.fromkeys(allowed_run_modes))
+
+    archive_state = dict(archive_state)
+    archive_state["can_archive"] = can_archive
 
     return {
         "ym": ym,
@@ -570,6 +588,10 @@ def _workflow_state_for_ym(year: int, month: int) -> dict[str, Any]:
         "archive": archive_state,
         "mf": {"reconciled": mf_reconciled, "drafted": mf_drafted, "step_done": mf_step_done, "summary": mf_summary},
         "next_step": next_step,
+        "next_step_reason": next_step_reason,
+        "can_reconcile": can_reconcile,
+        "ready_for_reconcile": can_reconcile,
+        "any_source_downloaded": any_source_downloaded,
         "allowed_run_modes": allowed_run_modes,
         "running_mode": _running_mode_for_ym(year, month),
     }
@@ -590,6 +612,7 @@ def _reset_workflow_for_redownload(year: int, month: int, source: str) -> None:
         if "rakuten" in workflow:
             workflow.pop("rakuten", None)
             changed = True
+    _remove_reconcile_outputs_only(reports_dir)
     if changed:
         _write_json(reports_dir / "workflow.json", workflow)
 
@@ -641,15 +664,15 @@ def _assert_source_action_allowed(year: int, month: int, source: str, action: st
 
 def _assert_archive_allowed(year: int, month: int) -> None:
     state = _workflow_state_for_ym(year, month)
+    archive_state = state.get("archive") if isinstance(state.get("archive"), dict) else {}
+    if bool(archive_state.get("can_archive")):
+        return
+
     amazon_done = bool(state.get("amazon", {}).get("confirmed") and state.get("amazon", {}).get("printed"))
     rakuten_done = bool(state.get("rakuten", {}).get("confirmed") and state.get("rakuten", {}).get("printed"))
     amazon_downloaded = bool(state.get("amazon", {}).get("downloaded"))
     rakuten_downloaded = bool(state.get("rakuten", {}).get("downloaded"))
     has_source = amazon_downloaded or rakuten_downloaded
-    # 完了判定は「実行対象の請求系統」で一律に行う。
-    # 未取得系統（未DL）を条件に含める場合は許可しない（対象なしのまま先へ進めない）。
-    if has_source and ((not amazon_downloaded or amazon_done) and (not rakuten_downloaded or rakuten_done)):
-        return
     if not has_source:
         raise HTTPException(
             status_code=409,
@@ -660,6 +683,8 @@ def _assert_archive_allowed(year: int, month: int) -> None:
         detail=(
             "Workflow order violation: archive requires all downloaded sources "
             "to complete confirmation and print before archive."
+            f" current_sources={int(amazon_downloaded)}/{int(rakuten_downloaded)},"
+            f" completed={int(amazon_done)}/{int(rakuten_done)}"
         ),
     )
 
@@ -1136,6 +1161,7 @@ def _remove_reconcile_outputs_only(reports_dir: Path) -> list[str]:
     for name in (
         "missing_evidence_candidates.json",
         "missing_evidence_candidates.csv",
+        "mf_draft_actions.jsonl",
         "quality_gate.json",
         "monthly_thread.md",
         "mf_draft_create_result.json",
