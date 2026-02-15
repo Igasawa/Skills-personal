@@ -241,3 +241,16 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "scripts\start_dashboard.ps1
 - 5. 成果物保存:
   - 当日分ログの有無を確認し、必要ならチケット/月次ノートへサマリ連携
   - コード変更があれば通常運用の更新手順に従い PR 対応
+
+## Official manual review（knowledge_alignment差分対応フロー：3ステップ）
+- 1) 検知
+  - `npm run review:manual -- --review-type weekly --json` 実行時に `knowledge_alignment.in_sync=false` を起点に抽出。
+  - 先に `status_check` 単位 (`manual` / `internal_scraping_target`) の差分を確認する。
+- 2) 対応先確定
+  - `missing_in_targets` が出たURLは `references/official_manual_knowledge.yaml` に `official_sources` 追加漏れか運用対象追加漏れとして扱う。
+  - `extra_in_targets` が出たURLは `references/official_manual_alignment_notes.md` の運用記録（対象範囲）か `CHECK_TARGETS` 側の不要URL混入かを判定する。
+  - いずれも対象URLの現況を確認して、更新方針を1文で決定し保存する。
+- 3) 通知・再検証
+  - 更新先（`official_manual_knowledge.yaml` or `official_manual_alignment_notes.md`）を1件ずつ反映。
+  - `last_reviewed` を更新し、同じコマンドを再実行して `knowledge_alignment.in_sync=true` を確認。
+  - 差分解消結果と最終確認日時を運用ノートへ通知。
