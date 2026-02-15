@@ -643,13 +643,23 @@ def _assert_archive_allowed(year: int, month: int) -> None:
     state = _workflow_state_for_ym(year, month)
     amazon_done = bool(state.get("amazon", {}).get("confirmed") and state.get("amazon", {}).get("printed"))
     rakuten_done = bool(state.get("rakuten", {}).get("confirmed") and state.get("rakuten", {}).get("printed"))
-    if amazon_done or rakuten_done:
+    amazon_downloaded = bool(state.get("amazon", {}).get("downloaded"))
+    rakuten_downloaded = bool(state.get("rakuten", {}).get("downloaded"))
+    has_source = amazon_downloaded or rakuten_downloaded
+    # 完了判定は「実行対象の請求系統」で一律に行う。
+    # 未取得系統（未DL）を条件に含める場合は許可しない（対象なしのまま先へ進めない）。
+    if has_source and ((not amazon_downloaded or amazon_done) and (not rakuten_downloaded or rakuten_done)):
         return
+    if not has_source:
+        raise HTTPException(
+            status_code=409,
+            detail="Workflow order violation: archive requires at least one source download to be completed first.",
+        )
     raise HTTPException(
         status_code=409,
         detail=(
-            "Workflow order violation: archive requires Amazon or Rakuten "
-            "confirmation and print completion."
+            "Workflow order violation: archive requires all downloaded sources "
+            "to complete confirmation and print before archive."
         ),
     )
 

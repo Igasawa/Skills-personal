@@ -1172,9 +1172,14 @@
         return;
       }
       const runningMode = String(data.running_mode || "");
+      const amazonDownloaded = Boolean(data.amazon?.downloaded);
+      const rakutenDownloaded = Boolean(data.rakuten?.downloaded);
       const amazonDone = Boolean(data.amazon?.confirmed && data.amazon?.printed);
       const rakutenDone = Boolean(data.rakuten?.confirmed && data.rakuten?.printed);
-      const allowed = amazonDone || rakutenDone;
+      const amazonPending = Boolean(amazonDownloaded && !amazonDone);
+      const rakutenPending = Boolean(rakutenDownloaded && !rakutenDone);
+      const hasDownloadedSource = amazonDownloaded || rakutenDownloaded;
+      const allowed = hasDownloadedSource && !(amazonPending || rakutenPending);
       const blockedByRunning = Boolean(runningMode);
       const action = button.dataset.archiveAction;
 
