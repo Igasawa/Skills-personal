@@ -431,8 +431,48 @@ async function extractOrderFromCard(card, pageUrl, year) {
     total_yen: totalYen,
     detail_url: detailUrl,
     item_name: itemName,
+    payment_method: extractAmazonPaymentMethodFromText(cardText),
     card_text: cardText,
   };
+}
+
+function normalizeAmazonPaymentMethodText(rawText) {
+  return normalizeTextForMatch(rawText).replace(/\s+/g, "");
+}
+
+function extractAmazonPaymentMethodFromText(textRaw) {
+  const raw = String(textRaw || "").replace(/\r/g, "\n");
+  const patterns = [
+    /お支払い方法\s*[:：]?\s*([^\n\r]+)/i,
+    /お支払方法\s*[:：]?\s*([^\n\r]+)/i,
+    /支払い方法\s*[:：]?\s*([^\n\r]+)/i,
+    /決済方法\s*[:：]?\s*([^\n\r]+)/i,
+    /payment\s*method\s*[:：]?\s*([^\n\r]+)/i,
+  ];
+
+  for (const pattern of patterns) {
+    const match = raw.match(pattern);
+    if (match && match[1]) {
+      const captured = String(match[1]).trim();
+      if (captured) return captured;
+    }
+  }
+  return null;
+}
+
+function isAmazonNoReceiptPaymentMethod(paymentMethodRaw) {
+  const normalized = normalizeAmazonPaymentMethodText(paymentMethodRaw);
+  if (!normalized) return false;
+  const noReceiptSignals = [
+    "代金引換",
+    "代引き",
+    "cod",
+    "cashondelivery",
+    "cash-on-delivery",
+    "collectondelivery",
+    "代金決済",
+  ];
+  return noReceiptSignals.some((signal) => normalized.includes(signal));
 }
 
 function isGiftCardOrder(textRaw) {
@@ -488,6 +528,7 @@ async function parseOrderDetail(page, fallbackYear) {
   const totalYen =
     summaryTotals.billingTotalYen ?? summaryTotals.orderTotalYen ?? summaryTotals.totalAmountYen ?? extractTotalFromText(text);
   const itemName = await extractItemNamesFromDom(page);
+  const paymentMethod = extractAmazonPaymentMethodFromText(textRaw);
 
   const isGiftCard = isGiftCardOrder(textRaw);
 
@@ -498,6 +539,7 @@ async function parseOrderDetail(page, fallbackYear) {
     billingTotalYen: summaryTotals.billingTotalYen,
     summaryTotalYen: summaryTotals.orderTotalYen ?? summaryTotals.totalAmountYen,
     itemName,
+    paymentMethod,
     isGiftCard,
   };
 }
@@ -1152,6 +1194,9 @@ function mergeReceiptMetaIntoOrder(order, parsed) {
   if (parsed.itemName) {
     order.item_name = parsed.itemName;
   }
+  if (parsed.paymentMethod) {
+    order.payment_method = parsed.paymentMethod;
+  }
 }
 
 function normalizeAmazonOrderErrorReason(rawError) {
@@ -1377,6 +1422,14 @@ async function main() {
         try {
           if (isGiftCardOrder(order.card_text || "")) {
             status = "gift_card";
+          } else if (isAmazonNoReceiptPaymentMethod(order.payment_method)) {
+            status = "no_receipt";
+            noReceipt += 1;
+            errorReason = "no_receipt_payment_method";
+            errorDetail = `payment_method=${normalizeAmazonPaymentMethodText(order.payment_method)}`;
+            console.error(
+              `[amazon] order ${order.order_id || "unknown"} no receipt by payment method: ${String(order.payment_method || "")}`
+            );
           } else {
             current.stage = "find_receipt_link";
             const receiptLink = await findReceiptLinkInCard(card);
@@ -1699,6 +1752,7 @@ async function main() {
           total_yen: order.total_yen,
           order_total_yen: order.total_yen,
           item_name: order.item_name || null,
+          payment_method: order.payment_method || null,
           receipt_name: order.receipt_name || receiptName || null,
           receipt_name_applied: Boolean(order.receipt_name_applied),
           source: "amazon",
@@ -1723,6 +1777,9 @@ async function main() {
         if (status === "gift_card") {
           row.include = false;
           row.gift_card = true;
+        }
+        if (status === "no_receipt") {
+          row.include = false;
         }
         outStream.write(JSON.stringify(row) + "\n");
 
@@ -1791,8 +1848,11 @@ export {
   assertCoverageThreshold,
   buildAmazonDocumentPlan,
   clearAmazonHeadOnlyMask,
+  extractAmazonPaymentMethodFromText,
   classifyAmazonDocumentCandidate,
   chooseAmazonOrderTotal,
+  isAmazonNoReceiptPaymentMethod,
+  normalizeAmazonPaymentMethodText,
   computeCoverageSummary,
   detectAmazonReceiptCutoff,
   detectAmazonReceiptCutoffFromBlocks,

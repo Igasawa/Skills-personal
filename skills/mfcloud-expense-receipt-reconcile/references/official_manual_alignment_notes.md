@@ -40,5 +40,16 @@
   - 支払方法が対象外のとき、`findReceiptAction` 前に `status=no_receipt` に短絡
   - `error_reason=no_receipt_payment_method` と `error_detail` に `payment_method` を保存
 - テスト追加:
-  - `skills/mfcloud-expense-receipt-reconcile/tests/test_rakuten_download_logic.py`
+- `skills/mfcloud-expense-receipt-reconcile/tests/test_rakuten_download_logic.py`
   - `test_is_rakuten_no_receipt_payment_method`
+- `skills/mfcloud-expense-receipt-reconcile/scripts/amazon_download.mjs`
+  - `isAmazonNoReceiptPaymentMethod()` 追加（代金引換/COD 系を除外）
+  - `extractAmazonPaymentMethodFromText()` 追加（注文行テキストから支払方法を抽出）
+  - `status=no_receipt` かつ `error_reason=no_receipt_payment_method` を短絡
+  - `payment_method` を明細レコードに保持（`row.payment_method`）
+  - `status=no_receipt` 時に `include=false` を明示
+- `skills/mfcloud-expense-receipt-reconcile/tests/test_amazon_download_logic.py`
+  - `test_extract_amazon_payment_method_from_text`
+  - `test_is_amazon_no_receipt_payment_method`
+- 追加要注意:
+  - Amazon公式の領収書取得要件（特定支払方法での不発行）が動的に変化するため、運用監視時に `payment_method` を蓄積して除外閾値を調整

@@ -68,6 +68,34 @@ def test_extract_order_date_from_text_supports_subscription_billing_date_label()
     assert data["date"] == "2026-01-27"
 
 
+def test_extract_amazon_payment_method_from_text() -> None:
+    data = _node_json(
+        """({
+  jp: mod.extractAmazonPaymentMethodFromText("お支払い方法: 代金引換（コンビニ）\\n注文情報"),
+  en: mod.extractAmazonPaymentMethodFromText("Payment method: Cash on Delivery"),
+  none: mod.extractAmazonPaymentMethodFromText("注文ID: 123")
+})"""
+    )
+    assert data["jp"] == "代金引換（コンビニ）"
+    assert data["en"] == "Cash on Delivery"
+    assert data["none"] is None
+
+
+def test_is_amazon_no_receipt_payment_method() -> None:
+    data = _node_json(
+        """({
+  cod_jp: mod.isAmazonNoReceiptPaymentMethod("代金引換"),
+  cod_en: mod.isAmazonNoReceiptPaymentMethod("Cash on Delivery"),
+  normal: mod.isAmazonNoReceiptPaymentMethod("クレジットカード"),
+  blank: mod.isAmazonNoReceiptPaymentMethod("")
+})"""
+    )
+    assert data["cod_jp"] is True
+    assert data["cod_en"] is True
+    assert data["normal"] is False
+    assert data["blank"] is False
+
+
 def test_classify_amazon_document_candidate_ignores_invoice_popover_url() -> None:
     data = _node_json(
         """({
