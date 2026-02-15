@@ -1,0 +1,137 @@
+version: 1
+project: mfcloud-expense-receipt-reconcile
+last_reviewed: 2026-02-15
+scope:
+  - id: amazon
+    name: Amazon 注文履歴・領収書取得
+    official_sources:
+      - id: amazon_help_hub
+        name: Amazon help center (nodeId=201894740)
+        url: https://www.amazon.co.jp/gp/help/customer/display.html?nodeId=201894740
+        status_check: manual
+        notes: |
+          受取状況/領収書機能の案内。403/503アクセスが発生しうるため手元での定期取得は前提条件。
+      - id: amazon_order_detail_hint
+        name: Amazon order detail UI keywords
+        url: https://www.amazon.co.jp/gp/your-account/order-history
+        status_check: internal_scraping_target
+        notes: |
+          決済方法のテキストにCOD/代引き系がある場合は領収書が発行不可扱いにする。
+    key_rules:
+      - id: amazon_no_receipt_payment
+        title: 決済方法による領収書なし
+        signals:
+          - 代引き
+          - 代金引換
+          - cash on delivery
+          - cashondelivery
+          - c.o.d.
+          - collect on delivery
+        exclude_signals:
+          - 代金決済
+        automation_map:
+          - rule_used_in_code: isAmazonNoReceiptPaymentMethod
+          - row_output: status=no_receipt, include=false
+          - error_reason: no_receipt_payment_method
+          - error_detail: payment_method=<normalized>
+          - document_type: no_receipt
+      - id: amazon_receipt_flow
+        title: 領収書種別の優先
+        signals:
+          - order_summary
+          - tax invoice
+        automation_map:
+          - rule_used_in_code: classifyAmazonDocumentCandidate + buildAmazonDocumentPlan
+          - order_summary prioritized over tax_invoice for first save
+  - id: rakuten
+    name: 楽天マイページ領収書
+    official_sources:
+      - id: rakuten_book_payment_guide
+        name: 楽天 FAQ 決済タイプ
+        url: https://ichiba.faq.rakuten.net/detail/000006734
+        status_check: manual
+        notes: |
+          代引き、デジタル、koboカードは領収書の種別と発行状況が異なるため分類運用を併用。
+      - id: rakuten_books_help
+        name: 楽天ブックス領収書画面
+        url: https://books.rakuten.co.jp/mypage/delivery/status
+        status_check: manual
+        notes: |
+          receiptInput/receiptPrint の遷移を追い、印刷/保存フローを分岐。
+      - id: rakuten_rakuten_home
+        name: 楽天注文履歴
+        url: https://order.my.rakuten.co.jp/
+        status_check: internal_scraping_target
+        notes: |
+          決済方法抽出とダウンロードURL取得の2系統で運用。
+    key_rules:
+      - id: rakuten_no_receipt_payment
+        title: 決済方法で invoice-first
+        signals:
+          - 代引き
+          - cod
+          - cash on delivery
+          - デジタル
+          - デジタル署名
+          - kobo
+          - お客様が指定した代金引換
+        exclude_signals:
+          - 代金決済
+          - クレジットカード
+          - 銀行振込
+        automation_map:
+          - rule_used_in_code: isRakutenNoReceiptPaymentMethod + classifyRakutenReceiptDocumentType
+          - row_output: status=no_receipt / document_type=invoice for no_receipt candidates
+          - error_reason: no_receipt_payment_method
+      - id: rakuten_books_flow
+        title: 楽天ブックス印刷フロー
+        signals:
+          - books
+          - receiptInput
+          - receiptPrint
+        automation_map:
+          - rule_used_in_code: isRakutenBooksReceiptInputUrl / isRakutenBooksReceiptPrintUrl
+          - requireBooksPrintで receiptInput をスキップし print 画面到達を優先
+  - id: moneyforward
+    name: マネーフォワード領収書取込
+    official_sources:
+      - id: mf_ap31
+        name: AP連携インポート手順
+        url: https://biz.moneyforward.com/support/expense/guide/ap/ap31.html
+        status_check: manual
+        notes: |
+          APIキー・帳票連携でなく、CSV/自動連携時の受け渡し形式を確認。
+      - id: mf_pa34
+        name: 個人口座インポート/手動入力
+        url: https://biz.moneyforward.com/support/expense/guide/personal/pa34.html
+        status_check: manual
+      - id: mf_faq_r10
+        name: 領収書取込FAQ
+        url: https://biz.moneyforward.com/support/expense/faq/ap-faq/r10.html
+        status_check: manual
+        notes: |
+          仕訳時の証憑ルール/検証エラー時の手戻り方針が重要。
+    key_rules:
+      - id: mf_workflow
+        title: Step0/Step5 連携導線
+        signals:
+          - outgo_input
+          - 銀行明細
+          - validation
+        automation_map:
+          - rule_used_in_code: dashboard API / reconcile summary
+          - no_receiptは手入力経由の検知対象ではなく、差分監査で扱う
+review_rhythm:
+  cadence:
+    - type: weekly_precheck
+      action: official_source_availability
+    - type: monthly_full_review
+      action: compare official pages for wording changes and payment rule exceptions
+  owners:
+    primary: 業務運用担当
+    backup: 開発担当
+notes:
+  changed_on: 2026-02-15
+  summary: |
+    no_receipt と invoice ルールは Amazon / 楽天共通で実装済み。
+    今回は決済別ルールを公式ソース準拠として知識化し、今後の差分比較を短時間で行える状態にする。
