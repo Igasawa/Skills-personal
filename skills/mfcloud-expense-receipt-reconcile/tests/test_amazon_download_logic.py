@@ -409,3 +409,25 @@ def test_choose_amazon_order_total_priority_order() -> None:
     )
     assert fallback["totalYen"] == 5681
     assert fallback["totalSource"] == "card_fallback"
+
+
+def test_is_amazon_no_receipt_payment_method_accepts_cod_abbr() -> None:
+    data = _node_json(
+        """({
+  cod_abbr: mod.isAmazonNoReceiptPaymentMethod("C.O.D."),
+  cod_space: mod.isAmazonNoReceiptPaymentMethod("C O D"),
+  non_cod: mod.isAmazonNoReceiptPaymentMethod("Credit card")
+})"""
+    )
+    assert data["cod_abbr"] is True
+    assert data["cod_space"] is True
+    assert data["non_cod"] is False
+
+
+def test_is_amazon_no_receipt_payment_method_rejects_non_cod_jp() -> None:
+    data = _node_json(
+        """({
+  non_cod_jp: mod.isAmazonNoReceiptPaymentMethod("\u4ee3\u91d1\u6c7a\u6e08")
+})"""
+    )
+    assert data["non_cod_jp"] is False

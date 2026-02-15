@@ -469,6 +469,7 @@ function isAmazonNoReceiptPaymentMethod(paymentMethodRaw) {
     "cod",
     "cashondelivery",
     "cash-on-delivery",
+    "c.o.d",
     "collectondelivery",
   ];
   return noReceiptSignals.some((signal) => normalized.includes(signal));
