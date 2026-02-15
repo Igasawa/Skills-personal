@@ -1523,11 +1523,11 @@ async function main() {
                         noReceipt += 1;
                         errorReason = "link_not_resolved";
                       }
-                    } else {
-                      const usePopup = Boolean(popupPage && !popupPage.isClosed());
-                      const targetPage = usePopup ? popupPage : await pdfContext.newPage();
-                      targetPage.setDefaultTimeout(navTimeoutMs);
-                      targetPage.setDefaultNavigationTimeout(navTimeoutMs);
+                          } else {
+                            const usePopup = Boolean(popupPage && !popupPage.isClosed());
+                            const targetPage = usePopup ? popupPage : await pdfContext.newPage();
+                            targetPage.setDefaultTimeout(navTimeoutMs);
+                            targetPage.setDefaultNavigationTimeout(navTimeoutMs);
 
                       try {
                         if (!usePopup || targetPage.url() !== receiptUrl) {
@@ -1544,10 +1544,10 @@ async function main() {
                           documentPlan.push({ kind: "receipt_like", score: 0, url: receiptUrl });
                         }
 
-                        for (let planIndex = 0; planIndex < documentPlan.length; planIndex++) {
-                          const doc = documentPlan[planIndex];
-                          const docUrl = doc && doc.url ? doc.url : receiptUrl;
-                          if (!docUrl) continue;
+                            for (let planIndex = 0; planIndex < documentPlan.length; planIndex++) {
+                              const doc = documentPlan[planIndex];
+                              const docUrl = doc && doc.url ? doc.url : receiptUrl;
+                              if (!docUrl) continue;
 
                           let outPdfPath = plannedPdfPath;
                           if (planIndex > 0) {
@@ -1577,6 +1577,20 @@ async function main() {
                             const parsedReceipt = await parseOrderDetail(targetPage, year);
                             mergeReceiptMetaIntoOrder(order, parsedReceipt);
                             currentDocTotal = parsedReceipt.totalYen;
+                            const paymentMethodForSkip =
+                              parsedReceipt.paymentMethod || order.payment_method;
+                            if (isAmazonNoReceiptPaymentMethod(paymentMethodForSkip)) {
+                              status = "no_receipt";
+                              noReceipt += 1;
+                              errorReason = "no_receipt_payment_method";
+                              errorDetail = `payment_method=${normalizeAmazonPaymentMethodText(paymentMethodForSkip)}`;
+                              console.error(
+                                `[amazon] order ${
+                                  order.order_id || "unknown"
+                                } no receipt by payment method at detail: ${String(paymentMethodForSkip || "")}`
+                              );
+                              break;
+                            }
                             if (doc.kind === "order_summary") {
                               if (parsedReceipt.billingTotalYen != null) {
                                 billingTotalYen = parsedReceipt.billingTotalYen;
@@ -1652,9 +1666,11 @@ async function main() {
                         }
 
                         if (!documents.length) {
-                          status = "no_receipt";
-                          noReceipt += 1;
-                          errorReason = "link_not_resolved";
+                          if (status !== "no_receipt") {
+                            status = "no_receipt";
+                            noReceipt += 1;
+                            errorReason = "link_not_resolved";
+                          }
                         } else {
                           const summaryDoc = documents.find((d) => d.doc_type === "order_summary") || null;
                           const primaryDoc = summaryDoc || documents[0];

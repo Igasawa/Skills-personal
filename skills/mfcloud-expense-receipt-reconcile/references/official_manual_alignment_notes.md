@@ -48,6 +48,7 @@
   - `status=no_receipt` かつ `error_reason=no_receipt_payment_method` を短絡
   - `payment_method` を明細レコードに保持（`row.payment_method`）
   - `status=no_receipt` 時に `include=false` を明示
+  - 領収書詳細画面を開いた時点でも支払方法を再判定し、`no_receipt` に短絡（カード一覧のみだと取得できないケース対応）
 - `skills/mfcloud-expense-receipt-reconcile/tests/test_amazon_download_logic.py`
   - `test_extract_amazon_payment_method_from_text`
   - `test_is_amazon_no_receipt_payment_method`
