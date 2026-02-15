@@ -66,7 +66,7 @@
           </form>
         </div>
         <div class="wizard-steps">
-          <div class="wizard-step" data-step-id="preflight">
+          <div id="step-preflight" class="wizard-step" data-step-id="preflight">
             <div class="step-head">
               <span class="step-num">0</span>
               <span class="step-title">手順0 準備（ログイン確認・MF連携更新）</span>
@@ -78,13 +78,13 @@
               <span class="muted">各サイトのログインとMF連携の再取得をまとめて実行します。</span>
             </div>
           </div>
-          <div class="wizard-step wizard-task" data-task-id="amazon">
+          <div id="step-amazon-task" class="wizard-step wizard-task" data-task-id="amazon">
             <div class="task-head">
               <span class="step-num">1</span>
               <span class="step-title">手順1 Amazon（取得→除外判断→印刷完了）</span>
               <span class="task-status" data-task-status="amazon">未実行</span>
             </div>
-            <div class="task-process-row" data-process-id="amazon_download">
+            <div id="step-amazon-download" class="task-process-row" data-process-id="amazon_download">
               <div class="task-process-label">
                 <span class="process-title">取得</span>
                 <span class="process-desc">Amazon領収書を取得</span>
@@ -95,7 +95,7 @@
               </div>
               <span class="step-status process-status" data-step-status="amazon_download">未実行</span>
             </div>
-            <div class="task-process-row" data-process-id="amazon_decide_print">
+            <div id="step-amazon-decide-print" class="task-process-row" data-process-id="amazon_decide_print">
               <div class="task-process-label">
                 <span class="process-title">除外判断・印刷（完了記録まで）</span>
                 <span class="process-desc">除外対象を決めて印刷し、完了を記録</span>
@@ -107,13 +107,13 @@
               <span class="step-status process-status" data-step-status="amazon_decide_print">未実行</span>
             </div>
           </div>
-          <div class="wizard-step wizard-task" data-task-id="rakuten">
+          <div id="step-rakuten-task" class="wizard-step wizard-task" data-task-id="rakuten">
             <div class="task-head">
               <span class="step-num">2</span>
               <span class="step-title">手順2 楽天（取得→除外判断→印刷完了）</span>
               <span class="task-status" data-task-status="rakuten">未実行</span>
             </div>
-            <div class="task-process-row" data-process-id="rakuten_download">
+            <div id="step-rakuten-download" class="task-process-row" data-process-id="rakuten_download">
               <div class="task-process-label">
                 <span class="process-title">取得</span>
                 <span class="process-desc">楽天領収書を取得</span>
@@ -124,7 +124,7 @@
               </div>
               <span class="step-status process-status" data-step-status="rakuten_download">未実行</span>
             </div>
-            <div class="task-process-row" data-process-id="rakuten_decide_print">
+            <div id="step-rakuten-decide-print" class="task-process-row" data-process-id="rakuten_decide_print">
               <div class="task-process-label">
                 <span class="process-title">除外判断・印刷（完了記録まで）</span>
                 <span class="process-desc">除外対象を決めて印刷し、完了を記録</span>
@@ -136,7 +136,7 @@
               <span class="step-status process-status" data-step-status="rakuten_decide_print">未実行</span>
             </div>
           </div>
-          <div class="wizard-step" data-step-id="provider_ingest">
+          <div id="step-provider-ingest" class="wizard-step" data-step-id="provider_ingest">
             <div class="step-head">
               <span class="step-num">3</span>
               <span class="step-title">手順3 共通フォルダ取り込み（手動取得分）</span>
@@ -155,7 +155,7 @@
               <span class="muted">自動取得されない領収書（Aqua Voice / Claude / ChatGPT / Gamma など）を共通フォルダの直下に入れて取り込みます。<a href="/workspace" target="_blank" rel="noopener noreferrer">ワークスペースを開く</a></span>
             </div>
           </div>
-          <div class="wizard-step" data-step-id="mf_bulk_upload_task">
+          <div id="step-mf-bulk-upload-task" class="wizard-step" data-step-id="mf_bulk_upload_task">
             <div class="step-head">
               <span class="step-num">4</span>
               <span class="step-title">手順4 MF一括アップロード（必要な場合のみ）</span>
@@ -170,7 +170,7 @@
               <span class="muted">mf_csv_import/inbox のCSVを交通費インポートへ送信します。送信済みファイルは _imported に移動します。</span>
             </div>
           </div>
-          <div class="wizard-step" data-step-id="mf_reconcile">
+          <div id="step-mf-reconcile" class="wizard-step" data-step-id="mf_reconcile">
             <div class="step-head">
               <span class="step-num">5</span>
               <span class="step-title">手順5 MF突合・下書き作成</span>
@@ -182,7 +182,7 @@
               <span class="muted">手順3/4を更新した後は、手順5を再実行してください（何回でも実行できます）。</span>
             </div>
           </div>
-          <div class="wizard-step" data-step-id="month_close">
+          <div id="step-month-close" class="wizard-step" data-step-id="month_close">
             <div class="step-head">
               <span class="step-num">6</span>
               <span class="step-title">手順6 月次クローズ（完了時のみ）</span>

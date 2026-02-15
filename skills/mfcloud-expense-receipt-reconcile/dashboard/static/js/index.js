@@ -1125,21 +1125,34 @@
 
   function computeNextStep(data, ym) {
     const nextStep = resolveNextStep(data);
-    if (nextStep === "preflight") return { message: "次の手順: 手順0「準備」を実行してください。", href: null };
+    const nextStepAnchors = {
+      preflight: "#step-preflight",
+      amazon_or_rakuten_download: "#step-amazon-download",
+      amazon_download: "#step-amazon-download",
+      amazon_decide_print: "#step-amazon-decide-print",
+      rakuten_download: "#step-rakuten-download",
+      rakuten_decide_print: "#step-rakuten-decide-print",
+      provider_ingest: "#step-provider-ingest",
+      mf_reconcile: "#step-mf-reconcile",
+      done: "#step-month-close",
+    };
+    const href = nextStepAnchors[String(nextStep || "")] || null;
+    if (nextStep === "preflight") return { message: "まずは前提条件の確認から進めてください。", href };
     if (nextStep === "amazon_or_rakuten_download") {
-      return { message: "次の手順: 手順1または手順2で「取得」を実行してください。", href: null };
+      return { message: "まずは Amazon か楽天のいずれかの領収書取得を先に実行してください。", href };
     }
-    if (nextStep === "amazon_download") return { message: "次の手順: 手順1 Amazonで「取得」を実行してください。", href: null };
-    if (nextStep === "amazon_decide_print") return { message: "次の手順: 手順1 Amazonで「除外・印刷（完了記録まで）」を実行してください。", href: `/runs/${ym}#exclude-section` };
-    if (nextStep === "rakuten_download") return { message: "次の手順: 手順2 楽天で「取得」を実行してください。", href: null };
-    if (nextStep === "rakuten_decide_print") return { message: "次の手順: 手順2 楽天で「除外・印刷（完了記録まで）」を実行してください。", href: `/runs/${ym}#exclude-section` };
-    if (nextStep === "provider_ingest") return { message: "次の手順: 手順3 共通フォルダ取り込みを実行してください。", href: null };
-    if (nextStep === "mf_reconcile") return { message: "次の手順: 手順5 MF突合・下書き作成を実行してください。", href: null };
+    if (nextStep === "amazon_download") return { message: "Amazon の領収書を取得してください。", href };
+    if (nextStep === "amazon_decide_print") return { message: "Amazon の除外設定・印刷対象を確認してください。", href };
+    if (nextStep === "rakuten_download") return { message: "楽天の領収書を取得してください。", href };
+    if (nextStep === "rakuten_decide_print") return { message: "楽天の除外設定・印刷対象を確認してください。", href };
+    if (nextStep === "provider_ingest") return { message: "外部CSVの取り込みを実行してください。", href };
+    if (nextStep === "mf_reconcile") return { message: "MF連携の突合せ実行へ進めてください。", href };
     if (nextStep === "done") {
-      return { message: "必要に応じて手順5を再実行してください。月次完了時は手順6「月次クローズ」を実行します。", href: null };
+      return { message: "すべて完了しました。月次アーカイブを実行できます。", href };
     }
-    return { message: "ステップ状態を判定できませんでした。再読み込みしてください。", href: null };
+    return { message: "処理の取得に時間がかかっています。更新を待ってください。", href };
   }
+
 
   function inferAllowedModes(data) {
     const apiModes = Array.isArray(data?.allowed_run_modes) ? data.allowed_run_modes : [];
