@@ -1183,6 +1183,7 @@
   function computeNextStep(data, ym) {
     const nextStep = resolveNextStep(data);
     const runningMode = String(data?.running_mode || "").trim();
+    const nextStepReasonCode = String(data?.next_step_reason || "").trim();
     const nextStepGuidance = {
       preflight: {
         message: "まずは前提条件の確認から進めてください。",
@@ -1305,8 +1306,54 @@
       };
     }
 
+    const reasonHint = {
+      preflight_required: {
+        reason: "準備フローが未完了です。まず前提設定の完了が必要です。",
+      },
+      source_download_required: {
+        message: "Amazon か楽天のどちらかの領収書取得を先に実行してください。",
+        reason: "少なくとも1社分の対象月データを取得してください。",
+      },
+      amazon_download_required: {
+        message: "Amazon の領収書を取得してください。",
+        reason: "対象月分を取得すると次の除外・印刷工程へ進めます。",
+      },
+      rakuten_download_required: {
+        message: "楽天の領収書を取得してください。",
+        reason: "対象月分を取得すると次の除外・印刷工程へ進めます。",
+      },
+      amazon_print_pending: {
+        message: "Amazon の除外設定・印刷対象を確認してください。",
+        reason: "除外対象の確定と印刷完了を行うと次工程へ進みます。",
+      },
+      rakuten_print_pending: {
+        message: "楽天の除外設定・印刷対象を確認してください。",
+        reason: "除外対象の確定と印刷完了を行うと次工程へ進みます。",
+      },
+      provider_ingest_pending: {
+        message: "外部CSVの取り込みを実行してください。",
+        reason: "Amazon/楽天で取得しきれない分を共通フォルダから取り込んでください。",
+      },
+      mf_reconcile_ready: {
+        message: "MF連携の突合せ実行へ進めてください。",
+        reason: "取り込み済みデータをMFの下書き作成へ反映する準備が整いました。",
+      },
+      workflow_complete: {
+        message: "すべて完了しました。月次アーカイブを実行できます。",
+        reason: "最終確認として月次クローズやアーカイブで次月準備に進んでください。",
+      },
+    };
+
     const href = nextStepAnchors[String(nextStep || "")] || null;
-    const guidance = nextStepGuidance[String(nextStep || "")] || nextStepGuidance.fallback;
+    const baseGuidance = nextStepGuidance[String(nextStep || "")] || nextStepGuidance.fallback;
+    const reasonGuidance = reasonHint[nextStepReasonCode];
+    const guidance = reasonGuidance
+      ? {
+          ...baseGuidance,
+          message: reasonGuidance.message || baseGuidance.message,
+          reason: reasonGuidance.reason || baseGuidance.reason,
+        }
+      : baseGuidance;
     return {
       message: guidance.message,
       reason: guidance.reason,
