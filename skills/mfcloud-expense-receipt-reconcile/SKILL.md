@@ -279,3 +279,12 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "scripts\start_dashboard.ps1
 最終確認者: <氏名>
 最終確認日時: <YYYY-MM-DD HH:mm>
 ```
+
+## Official manual review（最終更新日ルール）
+- `official_manual_knowledge.yaml` と `official_manual_alignment_notes.md` の `last_reviewed` は下記の形式を受け付ける。
+  - `last_reviewed: YYYY-MM-DD`（基本形）
+  - `last_reviewed = YYYY/MM/DD`（区切り文字の揺れを許容）
+  - `最終更新: YYYY-MM-DD`
+  - `最終更新日= YYYY-MM-DD`
+  - `最終検証日: YYYY-MM-DD`
+- 手動更新時は、2ファイルとも上記いずれかで更新し、`weekly/monthly/change_response` の実行後に `stale=false` を確認すること。
