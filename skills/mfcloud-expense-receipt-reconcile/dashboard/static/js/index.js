@@ -1182,6 +1182,7 @@
 
   function computeNextStep(data, ym) {
     const nextStep = resolveNextStep(data);
+    const runningMode = String(data?.running_mode || "").trim();
     const nextStepGuidance = {
       preflight: {
         message: "まずは前提条件の確認から進めてください。",
@@ -1233,17 +1234,77 @@
         reason: "バックエンドから最新状態を反映するまで数秒待って再取得してください。",
       },
     };
+
+    const runningModeGuidance = {
+      preflight: {
+        message: "準備処理を実行中です。",
+        reason: "処理が完了するまで待機してください。完了後に次の操作が自動で更新されます。",
+        linkLabel: "準備工程へ",
+      },
+      preflight_mf: {
+        message: "MF再取得を実行中です。",
+        reason: "MF再取得処理を完了するまで、進行完了後の状態更新を待ってください。",
+        linkLabel: "準備工程へ",
+      },
+      amazon_download: {
+        message: "Amazon 領収書取得を実行中です。",
+        reason: "取得が完了すると次の工程へ進める状態になります。完了までお待ちください。",
+        linkLabel: "Amazon 取得進行状況へ",
+      },
+      amazon_print: {
+        message: "Amazon 印刷処理を実行中です。",
+        reason: "除外・印刷の進行中です。完了後に状態が反映され、次の案内へ進みます。",
+        linkLabel: "Amazon 印刷状況へ",
+      },
+      rakuten_download: {
+        message: "楽天領収書取得を実行中です。",
+        reason: "取得が完了すると次の工程へ進める状態になります。完了までお待ちください。",
+        linkLabel: "楽天 取得進行状況へ",
+      },
+      rakuten_print: {
+        message: "楽天 印刷処理を実行中です。",
+        reason: "除外・印刷の進行中です。完了後に状態が反映され、次の案内へ進みます。",
+        linkLabel: "楽天 印刷状況へ",
+      },
+      provider_ingest: {
+        message: "共通フォルダ取り込みを実行中です。",
+        reason: "取り込み処理完了後に突合せ可能かどうかを再評価します。",
+        linkLabel: "共通フォルダ取込へ",
+      },
+      mf_reconcile: {
+        message: "MF突合せを実行中です。",
+        reason: "突合せ完了まで暫くお待ちください。完了後に下書きの作成状況が更新されます。",
+        linkLabel: "MF突合状況へ",
+      },
+    };
+
     const nextStepAnchors = {
       preflight: "#step-preflight",
+      preflight_mf: "#step-preflight",
       amazon_or_rakuten_download: "#step-amazon-download",
       amazon_download: "#step-amazon-download",
       amazon_decide_print: "#step-amazon-decide-print",
       rakuten_download: "#step-rakuten-download",
       rakuten_decide_print: "#step-rakuten-decide-print",
+      rakuten_print: "#step-rakuten-decide-print",
+      amazon_print: "#step-amazon-decide-print",
       provider_ingest: "#step-provider-ingest",
       mf_reconcile: "#step-mf-reconcile",
       done: "#step-month-close",
     };
+
+    if (runningMode) {
+      const runningGuidance = runningModeGuidance[runningMode];
+      return {
+        message: runningGuidance?.message || `${runningMode} を実行中です。`,
+        reason:
+          runningGuidance?.reason ||
+          "別の処理が進行中です。完了するまで待機してください。",
+        href: nextStepAnchors[runningMode] || nextStepAnchors[String(nextStep || "")] || null,
+        linkLabel: runningGuidance?.linkLabel || "進捗を確認",
+      };
+    }
+
     const href = nextStepAnchors[String(nextStep || "")] || null;
     const guidance = nextStepGuidance[String(nextStep || "")] || nextStepGuidance.fallback;
     return {
