@@ -1294,6 +1294,9 @@
       done: "#step-month-close",
     };
 
+    const fallbackHref = "#wizard";
+    const runningTargetHref = nextStepAnchors[runningMode] || nextStepAnchors[String(nextStep || "")] || fallbackHref;
+    const nextTargetHref = nextStepAnchors[String(nextStep || "")] || fallbackHref;
     if (runningMode) {
       const runningGuidance = runningModeGuidance[runningMode];
       return {
@@ -1301,8 +1304,8 @@
         reason:
           runningGuidance?.reason ||
           "別の処理が進行中です。完了するまで待機してください。",
-        href: nextStepAnchors[runningMode] || nextStepAnchors[String(nextStep || "")] || null,
-        linkLabel: runningGuidance?.linkLabel || "進捗を確認",
+        href: runningTargetHref,
+        linkLabel: runningGuidance?.linkLabel || (runningTargetHref === "#wizard" ? "手順を確認" : "進捗を確認"),
       };
     }
 
@@ -1344,7 +1347,7 @@
       },
     };
 
-    const href = nextStepAnchors[String(nextStep || "")] || null;
+    const href = nextTargetHref;
     const baseGuidance = nextStepGuidance[String(nextStep || "")] || nextStepGuidance.fallback;
     const reasonGuidance = reasonHint[nextStepReasonCode];
     const guidance = reasonGuidance
