@@ -1,0 +1,37 @@
+name: Official Manual Review Check
+
+on:
+  schedule:
+    - cron: "0 3 * * 1"
+  workflow_dispatch:
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: skills/mfcloud-expense-receipt-reconcile
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-dev.txt
+
+      - name: Run manual reference freshness check
+        run: |
+          python scripts/review_official_manual.py --review-type weekly --skip-url-check --out-dir references/review_logs_ci
+
+      - name: Upload review log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: official-manual-review-logs
+          path: skills/mfcloud-expense-receipt-reconcile/references/review_logs_ci/*

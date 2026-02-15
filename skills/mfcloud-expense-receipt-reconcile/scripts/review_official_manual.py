@@ -75,6 +75,11 @@ def parse_args() -> argparse.Namespace:
         default=14,
         help="Stale threshold in days for reference dates",
     )
+    parser.add_argument(
+        "--skip-url-check",
+        action="store_true",
+        help="Skip URL availability checks and only verify reference review dates",
+    )
     parser.add_argument("--json", action="store_true", help="Print JSON report only")
     return parser.parse_args()
 
@@ -124,6 +129,19 @@ def check_url_status(url: str, timeout_seconds: int) -> tuple[str | None, int | 
 def run_checks(args: argparse.Namespace) -> dict:
     status_checks = []
     for name, url in CHECK_TARGETS:
+        if args.skip_url_check:
+            status_checks.append(
+                {
+                    "name": name,
+                    "url": url,
+                    "ok": True,
+                    "status_code": None,
+                    "error": "skipped",
+                    "checked": False,
+                }
+            )
+            continue
+
         reason, status_code, _ = check_url_status(url, args.timeout_seconds)
         status_checks.append(
             {
@@ -132,6 +150,7 @@ def run_checks(args: argparse.Namespace) -> dict:
                 "ok": status_code is not None and 200 <= status_code < 400,
                 "status_code": status_code,
                 "error": reason,
+                "checked": True,
             }
         )
 
@@ -155,6 +174,7 @@ def run_checks(args: argparse.Namespace) -> dict:
             "stale": alignment_check.is_stale,
         },
         "max_age_days": args.max_age_days,
+        "skip_url_check": args.skip_url_check,
     }
 
 
@@ -166,9 +186,13 @@ def render_log(report: dict, template_path: Path, out_dir: Path) -> Path:
     template = template_path.read_text(encoding="utf-8") if template_path.exists() else ""
     url_lines = []
     for source in report["sources"]:
-        status = source["status_code"] if source["status_code"] is not None else "error"
+        status = (
+            source["status_code"]
+            if source["status_code"] is not None
+            else (source["error"] or "not_checked")
+        )
         suffix = f"{status}"
-        if source["error"]:
+        if source["error"] and source["status_code"] is not None:
             suffix += f" ({source['error']})"
         url_lines.append(f"- {source['name']}: {suffix}")
 
@@ -200,7 +224,7 @@ def render_log(report: dict, template_path: Path, out_dir: Path) -> Path:
 
 
 def all_ok(report: dict) -> bool:
-    source_ok = all(source["ok"] for source in report["sources"])
+    source_ok = all(source["ok"] for source in report["sources"] if source.get("checked", True))
     return source_ok and not report["knowledge"]["stale"] and not report["alignment_notes"]["stale"]
 
 
@@ -218,6 +242,8 @@ def main() -> int:
     else:
         failed = [s for s in report["sources"] if not s["ok"]]
         print(f"Review type: {report['review_type']}")
+        if report["skip_url_check"]:
+            print("URL checks: skipped")
         print(f"Log: {out_path}")
         if failed:
             print("Unhealthy source(s):")

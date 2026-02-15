@@ -18,6 +18,7 @@ test-results/
 # Outputs / artifacts
 output/
 artifacts/
+skills/mfcloud-expense-receipt-reconcile/references/review_logs/
 
 # Secrets (keep out of repo)
 *.env

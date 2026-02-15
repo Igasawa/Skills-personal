@@ -8,6 +8,7 @@
     "check:encoding": "python -m pytest -q tests/test_text_encoding_policy.py",
     "check:design-contract": "python scripts/check_dashboard_design_contract.py",
     "review:manual": "python scripts/review_official_manual.py",
+    "review:manual:ci": "python scripts/review_official_manual.py --review-type weekly --skip-url-check --max-age-days 14",
     "ci:local": "npm run test && npm run check:encoding && npm run check:design-contract"
   },
   "keywords": [],
