@@ -537,6 +537,10 @@ function assessRakutenReceiptPageText(textRaw) {
   return { ok: true, reason: null };
 }
 
+function normalizedPaymentMethodText(value) {
+  return normalizeTextLines(String(value || "")).replace(/\s+/g, " ").trim();
+}
+
 function shouldDowngradeRakutenReceiptError(reasonRaw, detailUrlRaw) {
   const reason = String(reasonRaw || "");
   if (!reason) return false;
@@ -549,6 +553,20 @@ function shouldDowngradeRakutenReceiptError(reasonRaw, detailUrlRaw) {
   if (reason === "rakuten_receipt_page_missing_signal") return true;
   if (reason === "books_receipt_print_not_ready") return true;
   if (reason === "books_receipt_print_timeout") return true;
+  return false;
+}
+
+function isRakutenNoReceiptPaymentMethod(paymentMethodRaw) {
+  const normalized = normalizeTextLines(String(paymentMethodRaw || "")).trim();
+  if (!normalized) return false;
+  const compact = normalized.replace(/\s+/g, "").toLowerCase();
+
+  // Support-specific non-receipt cases
+  if (compact.includes("代引") || compact.includes("代金引換")) return true;
+  if (compact.includes("cashondelivery") || /\bcod\b/.test(compact)) return true;
+  if (normalized.includes("デジタル版") || normalized.includes("電子版")) return true;
+  if (compact.includes("download") || compact.includes("digital") || compact.includes("kobo")) return true;
+
   return false;
 }
 
@@ -1892,15 +1910,29 @@ async function main() {
             console.error(`[rakuten] order ${orderId || "unknown"} direct receipt url prepared`);
           }
 
-          const receiptAction = await findReceiptAction(page);
+          const noReceiptByPaymentMethod = isRakutenNoReceiptPaymentMethod(paymentMethod);
+          if (noReceiptByPaymentMethod) {
+            status = "no_receipt";
+            include = false;
+            noReceipt += 1;
+            errorReason = "no_receipt_payment_method";
+            errorDetail = `payment_method=${normalizedPaymentMethodText(paymentMethod)}`;
+            console.error(
+              `[rakuten] order ${orderId || "unknown"} no receipt by payment method: ${String(paymentMethod || "")}`
+            );
+          }
+
+          const receiptAction = include ? await findReceiptAction(page) : null;
           if (!receiptAction) {
-            if (directReceiptUrl) {
+            if (include && directReceiptUrl) {
               receiptUrl = directReceiptUrl;
               console.error(`[rakuten] order ${orderId || "unknown"} no receipt action, fallback to direct receipt url`);
             } else {
-              status = "no_receipt";
-              noReceipt += 1;
-              console.error(`[rakuten] order ${orderId || "unknown"} no receipt action`);
+              if (include) {
+                status = "no_receipt";
+                noReceipt += 1;
+                console.error(`[rakuten] order ${orderId || "unknown"} no receipt action`);
+              }
             }
           } else {
             const isBooksDetail = /books\.rakuten\.co\.jp/i.test(String(detailUrl || ""));
@@ -2336,6 +2368,7 @@ export {
   assessRakutenReceiptPageText,
   assessRakutenBooksReceiptPrintTransition,
   extractRakutenBooksItemNameFromText,
+  isRakutenNoReceiptPaymentMethod,
   isRakutenBooksReceiptInputUrl,
   isRakutenBooksReceiptPrintUrl,
   isDirectRakutenDownloadUrl,
