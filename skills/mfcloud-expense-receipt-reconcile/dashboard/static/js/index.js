@@ -1020,7 +1020,7 @@
     el.classList.add("pending");
   }
 
-  function renderNextStep(message, href, reason = "") {
+  function renderNextStep(message, href, reason = "", linkLabel = "") {
     if (!wizardNext) return;
     wizardNext.innerHTML = "";
     if (!message) {
@@ -1041,7 +1041,7 @@
     const link = document.createElement("a");
     link.href = href;
     link.className = "secondary";
-    link.textContent = "開く";
+    link.textContent = String(linkLabel || "開く").trim() || "開く";
     if (String(href || "").trim().startsWith("#")) {
       link.href = href;
       link.addEventListener("click", (event) => {
@@ -1186,38 +1186,47 @@
       preflight: {
         message: "まずは前提条件の確認から進めてください。",
         reason: "ログイン状態と月次情報を確認して、実行可能条件をそろえます。",
+        linkLabel: "準備工程へ",
       },
       amazon_or_rakuten_download: {
         message: "まずは Amazon か楽天のいずれかの領収書取得を先に実行してください。",
         reason: "少なくとも1社分の領収書取得が必要です。未取得があると次の処理に進めません。",
+        linkLabel: "Amazon／楽天 取得へ",
       },
       amazon_download: {
         message: "Amazon の領収書を取得してください。",
         reason: "Amazon 側の対象月データを取得して、次の除外判断・印刷へ進みます。",
+        linkLabel: "Amazon 取得へ",
       },
       amazon_decide_print: {
         message: "Amazon の除外設定・印刷対象を確認してください。",
         reason: "除外対象を確定して印刷完了まで進めると状態が保存されます。",
+        linkLabel: "Amazon 除外・印刷へ",
       },
       rakuten_download: {
         message: "楽天の領収書を取得してください。",
         reason: "楽天側の対象月データを取得して、次の除外判断・印刷へ進みます。",
+        linkLabel: "楽天 取得へ",
       },
       rakuten_decide_print: {
         message: "楽天の除外設定・印刷対象を確認してください。",
         reason: "除外対象を確定して印刷完了まで進めると状態が保存されます。",
+        linkLabel: "楽天 除外・印刷へ",
       },
       provider_ingest: {
         message: "外部CSVの取り込みを実行してください。",
         reason: "Amazon/楽天で取得しきれない分を、共通フォルダ経由で取り込むフェーズです。",
+        linkLabel: "共通フォルダ取込へ",
       },
       mf_reconcile: {
         message: "MF連携の突合せ実行へ進めてください。",
         reason: "取り込み済みデータをMFの下書き作成へ反映します。",
+        linkLabel: "MF 突合作業へ",
       },
       done: {
         message: "すべて完了しました。月次アーカイブを実行できます。",
         reason: "最後に月次クローズやアーカイブを実行して、次月運用に備えます。",
+        linkLabel: "月次クローズへ",
       },
       fallback: {
         message: "処理の取得に時間がかかっています。更新を待ってください。",
@@ -1241,6 +1250,7 @@
       message: guidance.message,
       reason: guidance.reason,
       href,
+      linkLabel: guidance.linkLabel,
     };
   }
 
@@ -1599,7 +1609,7 @@
       }
       window.__stepState = stepStates;
       const next = computeNextStep(data, ym);
-      renderNextStep(next.message, next.href, next.reason);
+      renderNextStep(next.message, next.href, next.reason, next.linkLabel);
       if (stepRetryTimer) {
         clearTimeout(stepRetryTimer);
         stepRetryTimer = null;
