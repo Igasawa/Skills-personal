@@ -37,6 +37,11 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
@@ -48,7 +53,7 @@ jobs:
           MAX_AGE="${{ github.event.inputs.max_age_days || 14 }}"
           SKIP_URL="${{ github.event.inputs.skip_url_check || 'true' }}"
 
-          CMD=(python scripts/review_official_manual.py --review-type "${REVIEW_TYPE}" --max-age-days "${MAX_AGE}" --out-dir references/review_logs_ci)
+          CMD=(npm run review:manual:ci -- --review-type "${REVIEW_TYPE}" --max-age-days "${MAX_AGE}" --out-dir references/review_logs_ci)
 
           if [[ "${SKIP_URL}" == "true" ]]; then
             CMD+=(--skip-url-check)

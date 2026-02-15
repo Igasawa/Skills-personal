@@ -214,8 +214,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "scripts\start_dashboard.ps1
 - UI文言を追加・変更する際は、日本語表示になっていることを確認してから反映する。
 
 ## Official manual review (automated)
-- Run periodic checks: `python scripts/review_official_manual.py --review-type weekly`
-- Monthly run: `python scripts/review_official_manual.py --review-type monthly --max-age-days 30`
+- Run periodic checks: `npm run review:manual -- --review-type weekly`
+- Monthly run: `npm run review:manual -- --review-type monthly --max-age-days 30`
 - Use PowerShell wrapper: `pwsh -File scripts\review_official_manual.ps1 -ReviewType weekly`
 - Output log: `references/review_logs/official_manual_review_<review_type>_YYYY-MM-DD_HHMMSS.md`
 - Always align findings into `references/official_manual_alignment_notes.md` and `references/official_manual_knowledge.yaml`.
