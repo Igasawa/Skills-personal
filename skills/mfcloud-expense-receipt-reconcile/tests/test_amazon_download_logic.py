@@ -90,6 +90,7 @@ def test_is_amazon_no_receipt_payment_method() -> None:
   cod_symbol: mod.isAmazonNoReceiptPaymentMethod("C.O.D."),
   cod_dash: mod.isAmazonNoReceiptPaymentMethod("collect-on-delivery"),
   cod_collect: mod.isAmazonNoReceiptPaymentMethod("collect on delivery"),
+  cod_wrapped: mod.isAmazonNoReceiptPaymentMethod("Collect On\\nDelivery"),
   non_cod: mod.isAmazonNoReceiptPaymentMethod("代金決済"),
   normal: mod.isAmazonNoReceiptPaymentMethod("クレジットカード"),
   blank: mod.isAmazonNoReceiptPaymentMethod("")
@@ -101,6 +102,7 @@ def test_is_amazon_no_receipt_payment_method() -> None:
     assert data["cod_symbol"] is True
     assert data["cod_dash"] is True
     assert data["cod_collect"] is True
+    assert data["cod_wrapped"] is True
     assert data["non_cod"] is False
     assert data["normal"] is False
     assert data["blank"] is False

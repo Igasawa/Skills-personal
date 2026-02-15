@@ -440,6 +440,19 @@ function normalizeAmazonPaymentMethodText(rawText) {
   return normalizeTextForMatch(rawText).replace(/[\s._()\-\/]/g, "");
 }
 
+const AMAZON_NO_RECEIPT_PAYMENT_EXCLUDE = ["代金決済"].map((text) => normalizeAmazonPaymentMethodText(text));
+
+const AMAZON_NO_RECEIPT_PAYMENT_SIGNALS = [
+  "代金引換",
+  "代引き",
+  "cod",
+  "cashondelivery",
+  "cash-on-delivery",
+  "c.o.d",
+  "collectondelivery",
+  "collect-on-delivery",
+].map((text) => normalizeAmazonPaymentMethodText(text));
+
 function extractAmazonPaymentMethodFromText(textRaw) {
   const raw = String(textRaw || "").replace(/\r/g, "\n");
   const patterns = [
@@ -463,16 +476,8 @@ function extractAmazonPaymentMethodFromText(textRaw) {
 function isAmazonNoReceiptPaymentMethod(paymentMethodRaw) {
   const normalized = normalizeAmazonPaymentMethodText(paymentMethodRaw);
   if (!normalized) return false;
-  const noReceiptSignals = [
-    "代金引換",
-    "代引き",
-    "cod",
-    "cashondelivery",
-    "cash-on-delivery",
-    "c.o.d",
-    "collectondelivery",
-  ];
-  return noReceiptSignals.some((signal) => normalized.includes(signal));
+  if (AMAZON_NO_RECEIPT_PAYMENT_EXCLUDE.some((signal) => normalized.includes(signal))) return false;
+  return AMAZON_NO_RECEIPT_PAYMENT_SIGNALS.some((signal) => normalized.includes(signal));
 }
 
 function isGiftCardOrder(textRaw) {
@@ -1605,6 +1610,11 @@ async function main() {
                               noReceipt += 1;
                               errorReason = "no_receipt_payment_method";
                               errorDetail = `payment_method=${normalizeAmazonPaymentMethodText(paymentMethodForSkip)}`;
+                              documents = [];
+                              docType = null;
+                              docTotalYen = null;
+                              pdfHeadOnlyApplied = false;
+                              pdfPath = null;
                               console.error(
                                 `[amazon] order ${
                                   order.order_id || "unknown"

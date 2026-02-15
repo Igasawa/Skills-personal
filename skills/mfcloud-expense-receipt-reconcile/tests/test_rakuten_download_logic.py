@@ -129,11 +129,13 @@ def test_is_rakuten_no_receipt_payment_method_accepts_cod_abbr() -> None:
         """({
   cod_abbr: mod.isRakutenNoReceiptPaymentMethod("C.O.D."),
   cod_space: mod.isRakutenNoReceiptPaymentMethod("C O D"),
+  cod_dash: mod.isRakutenNoReceiptPaymentMethod("Cash-on-Delivery"),
   non_cod: mod.isRakutenNoReceiptPaymentMethod("代金決済")
 })"""
     )
     assert data["cod_abbr"] is True
     assert data["cod_space"] is True
+    assert data["cod_dash"] is True
     assert data["non_cod"] is False
 
 

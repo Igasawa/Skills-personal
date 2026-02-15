@@ -169,3 +169,22 @@
 - 変更検知時の扱い:
   - 公式差分は official_manual_alignment_notes.md に最終確認日＋差分を追記
   - 判定ロジックへ影響がある場合は先に test_amazon_download_logic.py を更新してから実装へ反映
+
+## 11. 公式ソース監査（2026-02-15）
+- Amazon: `https://www.amazon.co.jp/gp/help/customer/display.html?nodeId=201894740` は当環境では自動取得時に 403/503 になりやすいため、現在は**定例は実画面で補完**し、リンク到達不能ログを記録している。
+- 楽天: `https://ichiba.faq.rakuten.net/detail/000006734`
+  - 決済種別により領収書発行か請求書発行かが固定化。
+  - `代金引換` / `請求書払い` / `ショッピングクレジット` / `リース` / `ローン` / `オートローン` / `Alipay` は請求書寄りと明記。
+  - 発行条件は「お支払い確定」または `kobo` / 楽天ブックスの「注文処理済み」。
+  - 領収書・請求書は購入履歴から再発行可能（回数制限なし）。
+- MFクラウド経費:
+  - 連携サービスから登録: `https://biz.moneyforward.com/support/expense/guide/ap/ap31.html`
+    - 連携済みの未登録明細を編集登録する導線が前提。
+  - 入力フォーム: `https://biz.moneyforward.com/support/expense/guide/personal/pa34.html`
+  - OCR入力: `https://biz.moneyforward.com/support/expense/faq/ap-faq/r10.html`
+    - 日付・支払先内容・金額・適格請求書発行事業者登録番号を自動読取対象として想定。
+
+## 12. 今回の修正で固定した運用前提（再宣言）
+- `payment_method` 判定は、画面文言変化を前提に「文字列を厳密一致」「除外語」両方で監査している。
+- 当該文字列は `error_detail=payment_method=...` に保存し、再取得ロジックや監査の再現性を担保する。
+- `no_receipt` は「除外で取得不能にする」扱いとして固定し、`include=false` で運用監査ログに残す。

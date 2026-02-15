@@ -556,6 +556,10 @@ function shouldDowngradeRakutenReceiptError(reasonRaw, detailUrlRaw) {
   return false;
 }
 
+const RAKUTEN_NO_RECEIPT_PAYMENT_EXCLUDE = ["代金決済"].map((text) =>
+  normalizeTextLines(text).replace(/[\s._()\-\/]/g, "").toLowerCase()
+);
+
 function isRakutenNoReceiptPaymentMethod(paymentMethodRaw) {
   const documentType = classifyRakutenReceiptDocumentType(paymentMethodRaw);
   return documentType === "invoice" || documentType === "unsupported";
@@ -565,6 +569,7 @@ function classifyRakutenReceiptDocumentType(paymentMethodRaw) {
   const normalized = normalizeTextLines(String(paymentMethodRaw || "")).trim();
   if (!normalized) return "receipt";
   const compact = normalized.replace(/[\s._()\-\/]/g, "").toLowerCase();
+  if (RAKUTEN_NO_RECEIPT_PAYMENT_EXCLUDE.some((signal) => compact.includes(signal))) return "receipt";
 
   // Rakuten payment types that are documented as invoice-first:
   // - 代引き/代金引換
