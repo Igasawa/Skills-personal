@@ -127,6 +127,18 @@ def create_api_router() -> APIRouter:
             return run_dirs[0]
         return None
 
+    def _provider_source_status_for_ym(year: int, month: int) -> dict[str, Any]:
+        source_status = core._manual_source_dir_status(year=year, month=month)
+        path = str(source_status.get("path") or "").strip()
+        configured = bool(source_status.get("configured"))
+        exists = bool(source_status.get("exists"))
+        return {
+            "path": path,
+            "configured": configured,
+            "exists": exists,
+            "pending_files": int(source_status.get("pending_files") or 0),
+        }
+
     def _workspace_state_path() -> Path:
         return core._artifact_root() / "_workspace" / "workspace_state.json"
 
@@ -1068,6 +1080,86 @@ def create_api_router() -> APIRouter:
             details={"provider": normalized_provider, "path": str(target)},
         )
         return JSONResponse({"status": "ok", "ym": ym, "provider": normalized_provider, "path": str(target)})
+
+    @router.post("/api/folders/{ym}/provider-source")
+    def api_open_provider_source(ym: str, request: Request) -> JSONResponse:
+        ym = core._safe_ym(ym)
+        year, month = core._split_ym(ym)
+        actor = _actor_from_request(request)
+
+        source_status = _provider_source_status_for_ym(year, month)
+        source_path = source_status.get("path") or ""
+        if not source_status.get("configured"):
+            detail = "Provider source directory is not configured."
+            core._append_audit_event(
+                year=year,
+                month=month,
+                event_type="provider_ingest",
+                action="open_source",
+                status="rejected",
+                actor=actor,
+                details={"reason": detail},
+            )
+            raise HTTPException(status_code=409, detail=detail)
+
+        source_target = Path(source_path)
+        if not source_status.get("exists"):
+            detail = f"Provider source directory does not exist: {source_target}"
+            core._append_audit_event(
+                year=year,
+                month=month,
+                event_type="provider_ingest",
+                action="open_source",
+                status="rejected",
+                actor=actor,
+                details={"reason": detail, "path": source_path},
+            )
+            raise HTTPException(status_code=409, detail=detail)
+
+        shortcut_path: Path | None = None
+        try:
+            shortcut_path = _write_folder_shortcut(source_target, f"AX_{ym}_ProviderSource")
+        except Exception:
+            shortcut_path = None
+
+        res = _open_directory(source_target)
+        if res.returncode != 0:
+            detail = (
+                "Open folder failed:\n"
+                f"path: {source_target}\n"
+                f"exit: {res.returncode}\n"
+                f"stdout:\n{res.stdout}\n"
+                f"stderr:\n{res.stderr}\n"
+            )
+            core._append_audit_event(
+                year=year,
+                month=month,
+                event_type="provider_ingest",
+                action="open_source",
+                status="failed",
+                actor=actor,
+                details={"reason": detail, "path": source_path, "shortcut_path": str(shortcut_path) if shortcut_path else ""},
+            )
+            raise HTTPException(status_code=500, detail=detail)
+
+        core._append_audit_event(
+            year=year,
+            month=month,
+            event_type="provider_ingest",
+            action="open_source",
+            status="success",
+            actor=actor,
+            details={"path": source_path, "shortcut_path": str(shortcut_path) if shortcut_path else ""},
+        )
+        return JSONResponse(
+            {
+                "status": "ok",
+                "ym": ym,
+                "path": source_path,
+                "shortcut_path": str(shortcut_path) if shortcut_path else "",
+                "source_status": source_status,
+            }
+        )
 
     @router.post("/api/folders/{ym}/provider-skipped/latest")
     def api_open_provider_skipped_latest(ym: str, request: Request) -> JSONResponse:

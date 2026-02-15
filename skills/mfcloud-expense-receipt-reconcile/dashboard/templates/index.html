@@ -3,23 +3,22 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>経費精算ダッシュボード</title>
+    <title>驍ｨ迹夲ｽｲ・ｻ驍奇ｽｾ驍ょ干繝郢昴・縺咏ｹ晢ｽ･郢晄㈱繝ｻ郢昴・/title>
     <link rel="stylesheet" href="/static/styles.css" />
   </head>
   <body>
     <div class="page">
       <header class="hero">
         <div>
-          <p class="eyebrow">MF経費精算 / Amazon / 楽天</p>
-          <h1>経費精算ダッシュボード</h1>
+          <p class="eyebrow">MF驍ｨ迹夲ｽｲ・ｻ驍奇ｽｾ驍ゅ・/ Amazon / 隶鯉ｽｽ陞滂ｽｩ</p>
+          <h1>驍ｨ迹夲ｽｲ・ｻ驍奇ｽｾ驍ょ干繝郢昴・縺咏ｹ晢ｽ･郢晄㈱繝ｻ郢昴・/h1>
           <p class="subtitle">
-            成果物の確認と実行をまとめて管理します。ローカル専用（127.0.0.1）。
-          </p>
+            隰悟・譽｡霑夲ｽｩ邵ｺ・ｮ驕抵ｽｺ髫ｱ髦ｪ竊定楜貅ｯ・｡蠕鯉ｽ堤ｸｺ・ｾ邵ｺ・ｨ郢ｧ竏壺ｻ驍ゑｽ｡騾・・・邵ｺ・ｾ邵ｺ蜷ｶﾂ繧・溽ｹ晢ｽｼ郢ｧ・ｫ郢晢ｽｫ陝・ｉ逡代・繝ｻ27.0.0.1繝ｻ蟲ｨﾂ繝ｻ          </p>
         </div>
         <div class="hero-meta">
           <div class="hero-tabs">
-            <a class="pill is-active" href="/">ウィザード</a>
-            <a class="pill" href="/status">実行状況</a>
+            <a class="pill is-active" href="/">郢ｧ・ｦ郢ｧ・｣郢ｧ・ｶ郢晢ｽｼ郢昴・/a>
+            <a class="pill" href="/status">陞ｳ貅ｯ・｡讙取・雎輔・/a>
             <a class="pill" href="/workspace" data-workspace-link>Workspace</a>
           </div>
         </div>
@@ -31,37 +30,35 @@
         data-ym=""
         data-archive-href-template="/runs/__YM__/archived-receipts"
       >
-        <h2>経費精算ステップウィザード</h2>
+        <h2>驍ｨ迹夲ｽｲ・ｻ驍奇ｽｾ驍ょ干縺帷ｹ昴・繝｣郢晏干縺育ｹｧ・｣郢ｧ・ｶ郢晢ｽｼ郢昴・/h2>
         <div id="wizard-next" class="next-step hidden" aria-live="polite"></div>
         <div class="wizard-step">
           <div class="step-head">
             <span class="step-num">-</span>
-            <span class="step-title">対象設定（実行依頼）</span>
-            <span class="step-status pending">入力</span>
+            <span class="step-title">陝・ｽｾ髮趣ｽ｡髫ｪ・ｭ陞ｳ螟ｲ・ｼ莠･・ｮ貅ｯ・｡蠕｡・ｾ譎橸｣ｰ・ｼ繝ｻ繝ｻ/span>
+            <span class="step-status pending">陷茨ｽ･陷峨・/span>
           </div>
           <div id="error-box" class="error-box hidden"></div>
           <form id="run-form" class="form">
             <div class="form-row">
               <label>
-                年
+                陝ｷ・ｴ
                 <input type="number" name="year" value="{{ defaults.year }}" min="2000" max="2100" required />
               </label>
               <label>
-                月
-                <input type="number" name="month" value="{{ defaults.month }}" min="1" max="12" required />
+                隴帙・                <input type="number" name="month" value="{{ defaults.month }}" min="1" max="12" required />
               </label>
             </div>
             <label>
-              MFクラウド経費一覧URL
+              MF郢ｧ・ｯ郢晢ｽｩ郢ｧ・ｦ郢晁・・ｵ迹夲ｽｲ・ｻ闕ｳﾂ髫包ｽｧURL
               <input type="url" name="mfcloud_url" value="{{ defaults.mfcloud_url }}" required />
             </label>
             <label>
-              メモ（任意）
-              <input type="text" name="notes" value="{{ defaults.notes }}" placeholder="税理士提出用の補足や例外対応など" />
+              郢晢ｽ｡郢晢ｽ｢繝ｻ莠包ｽｻ・ｻ隲｢謫ｾ・ｼ繝ｻ              <input type="text" name="notes" value="{{ defaults.notes }}" placeholder="驕槫ｮ育ｊ陞｢・ｫ隰莉吶・騾包ｽｨ邵ｺ・ｮ髯ｬ諛・ｽｶ・ｳ郢ｧ繝ｻ・ｾ蜿･・､髢・ｯ・ｾ陟｢諛岩・邵ｺ・ｩ" />
             </label>
             <input type="hidden" name="rakuten_orders_url" value="{{ defaults.rakuten_orders_url }}" />
             <div class="form-row">
-              <div class="muted">このフォームの年月・URLがウィザード実行に使われます。</div>
+              <div class="muted">邵ｺ阮吶・郢晁ｼ斐°郢晢ｽｼ郢晢｣ｰ邵ｺ・ｮ陝ｷ・ｴ隴帛現繝ｻURL邵ｺ蠕後∴郢ｧ・｣郢ｧ・ｶ郢晢ｽｼ郢晉甥・ｮ貅ｯ・｡蠕娯・闖ｴ・ｿ郢ｧ荳奇ｽ檎ｸｺ・ｾ邵ｺ蜷ｶﾂ繝ｻ/div>
             </div>
           </form>
         </div>
@@ -69,151 +66,151 @@
           <div id="step-preflight" class="wizard-step" data-step-id="preflight">
             <div class="step-head">
               <span class="step-num">0</span>
-              <span class="step-title">手順0 準備（ログイン確認・MF連携更新）</span>
-              <span class="step-status" data-step-status="preflight">未実行</span>
+              <span class="step-title">隰・洸・ｰ繝ｻ 雋・摩・吶・蛹ｻﾎ溽ｹｧ・ｰ郢ｧ・､郢晢ｽｳ驕抵ｽｺ髫ｱ髦ｪ繝ｻMF鬨ｾ・｣隰ｳ・ｺ隴厄ｽｴ隴・ｽｰ繝ｻ繝ｻ/span>
+              <span class="step-status" data-step-status="preflight">隴幢ｽｪ陞ｳ貅ｯ・｡繝ｻ/span>
             </div>
             <div class="step-actions">
-              <button type="button" class="primary" data-step-action="preflight">準備を実行</button>
-              <button type="button" class="secondary" data-step-action="preflight_mf">MF再取得のみ</button>
-              <span class="muted">各サイトのログインとMF連携の再取得をまとめて実行します。</span>
+              <button type="button" class="primary" data-step-action="preflight">雋・摩・咏ｹｧ雋橸ｽｮ貅ｯ・｡繝ｻ/button>
+              <button type="button" class="secondary" data-step-action="preflight_mf">MF陷讎雁徐陟募干繝ｻ邵ｺ・ｿ</button>
+              <span class="muted">陷ｷ繝ｻ縺礼ｹｧ・､郢晏現繝ｻ郢晢ｽｭ郢ｧ・ｰ郢ｧ・､郢晢ｽｳ邵ｺ・ｨMF鬨ｾ・｣隰ｳ・ｺ邵ｺ・ｮ陷讎雁徐陟募干・堤ｸｺ・ｾ邵ｺ・ｨ郢ｧ竏壺ｻ陞ｳ貅ｯ・｡蠕鯉ｼ邵ｺ・ｾ邵ｺ蜷ｶﾂ繝ｻ/span>
             </div>
           </div>
           <div id="step-amazon-task" class="wizard-step wizard-task" data-task-id="amazon">
             <div class="task-head">
               <span class="step-num">1</span>
-              <span class="step-title">手順1 Amazon（取得→除外判断→印刷完了）</span>
-              <span class="task-status" data-task-status="amazon">未実行</span>
+              <span class="step-title">隰・洸・ｰ繝ｻ Amazon繝ｻ莠･蜿呵募・繝ｻ鬮ｯ・､陞滄摩諢幄ｭ・ｽｭ遶願ｲ樣ｭり崕・ｷ陞ｳ蠕｡・ｺ繝ｻ・ｼ繝ｻ/span>
+              <span class="task-status" data-task-status="amazon">隴幢ｽｪ陞ｳ貅ｯ・｡繝ｻ/span>
             </div>
             <div id="step-amazon-download" class="task-process-row" data-process-id="amazon_download">
               <div class="task-process-label">
-                <span class="process-title">取得</span>
-                <span class="process-desc">Amazon領収書を取得</span>
+                <span class="process-title">陷ｿ髢・ｾ繝ｻ/span>
+                <span class="process-desc">Amazon鬯・ｼ懷ｺｶ隴厄ｽｸ郢ｧ雋槫徐陟輔・/span>
               </div>
               <div class="step-actions">
-                <button type="button" class="primary" data-step-action="amazon_download">Amazon領収書を取得</button>
-                <button type="button" class="step-reset" data-step-reset="amazon_download">リセット</button>
+                <button type="button" class="primary" data-step-action="amazon_download">Amazon鬯・ｼ懷ｺｶ隴厄ｽｸ郢ｧ雋槫徐陟輔・/button>
+                <button type="button" class="step-reset" data-step-reset="amazon_download">郢晢ｽｪ郢ｧ・ｻ郢昴・繝ｨ</button>
               </div>
-              <span class="step-status process-status" data-step-status="amazon_download">未実行</span>
+              <span class="step-status process-status" data-step-status="amazon_download">隴幢ｽｪ陞ｳ貅ｯ・｡繝ｻ/span>
             </div>
             <div id="step-amazon-decide-print" class="task-process-row" data-process-id="amazon_decide_print">
               <div class="task-process-label">
-                <span class="process-title">除外判断・印刷（完了記録まで）</span>
-                <span class="process-desc">除外対象を決めて印刷し、完了を記録</span>
+                <span class="process-title">鬮ｯ・､陞滄摩諢幄ｭ・ｽｭ郢晢ｽｻ陷奇ｽｰ陋ｻ・ｷ繝ｻ莠･・ｮ蠕｡・ｺ繝ｻ・ｨ蛟ｬ鮖ｸ邵ｺ・ｾ邵ｺ・ｧ繝ｻ繝ｻ/span>
+                <span class="process-desc">鬮ｯ・､陞滄摩・ｯ・ｾ髮趣ｽ｡郢ｧ蜻茨ｽｱ・ｺ郢ｧ竏壺ｻ陷奇ｽｰ陋ｻ・ｷ邵ｺ蜉ｱﾂ竏晢ｽｮ蠕｡・ｺ繝ｻ・帝坎蛟ｬ鮖ｸ</span>
               </div>
               <div class="step-actions">
-                <a class="secondary" data-step-link="amazon_exclude" href="#">除外・印刷（完了記録まで）を開く</a>
-                <button type="button" class="step-reset" data-step-reset="amazon_decide_print">リセット</button>
+                <a class="secondary" data-step-link="amazon_exclude" href="#">鬮ｯ・､陞滓じ繝ｻ陷奇ｽｰ陋ｻ・ｷ繝ｻ莠･・ｮ蠕｡・ｺ繝ｻ・ｨ蛟ｬ鮖ｸ邵ｺ・ｾ邵ｺ・ｧ繝ｻ蟲ｨ・帝ｫ｢荵晢ｿ･</a>
+                <button type="button" class="step-reset" data-step-reset="amazon_decide_print">郢晢ｽｪ郢ｧ・ｻ郢昴・繝ｨ</button>
               </div>
-              <span class="step-status process-status" data-step-status="amazon_decide_print">未実行</span>
+              <span class="step-status process-status" data-step-status="amazon_decide_print">隴幢ｽｪ陞ｳ貅ｯ・｡繝ｻ/span>
             </div>
           </div>
           <div id="step-rakuten-task" class="wizard-step wizard-task" data-task-id="rakuten">
             <div class="task-head">
               <span class="step-num">2</span>
-              <span class="step-title">手順2 楽天（取得→除外判断→印刷完了）</span>
-              <span class="task-status" data-task-status="rakuten">未実行</span>
+              <span class="step-title">隰・洸・ｰ繝ｻ 隶鯉ｽｽ陞滂ｽｩ繝ｻ莠･蜿呵募・繝ｻ鬮ｯ・､陞滄摩諢幄ｭ・ｽｭ遶願ｲ樣ｭり崕・ｷ陞ｳ蠕｡・ｺ繝ｻ・ｼ繝ｻ/span>
+              <span class="task-status" data-task-status="rakuten">隴幢ｽｪ陞ｳ貅ｯ・｡繝ｻ/span>
             </div>
             <div id="step-rakuten-download" class="task-process-row" data-process-id="rakuten_download">
               <div class="task-process-label">
-                <span class="process-title">取得</span>
-                <span class="process-desc">楽天領収書を取得</span>
+                <span class="process-title">陷ｿ髢・ｾ繝ｻ/span>
+                <span class="process-desc">隶鯉ｽｽ陞滂ｽｩ鬯・ｼ懷ｺｶ隴厄ｽｸ郢ｧ雋槫徐陟輔・/span>
               </div>
               <div class="step-actions">
-                <button type="button" class="primary" data-step-action="rakuten_download">楽天領収書を取得</button>
-                <button type="button" class="step-reset" data-step-reset="rakuten_download">リセット</button>
+                <button type="button" class="primary" data-step-action="rakuten_download">隶鯉ｽｽ陞滂ｽｩ鬯・ｼ懷ｺｶ隴厄ｽｸ郢ｧ雋槫徐陟輔・/button>
+                <button type="button" class="step-reset" data-step-reset="rakuten_download">郢晢ｽｪ郢ｧ・ｻ郢昴・繝ｨ</button>
               </div>
-              <span class="step-status process-status" data-step-status="rakuten_download">未実行</span>
+              <span class="step-status process-status" data-step-status="rakuten_download">隴幢ｽｪ陞ｳ貅ｯ・｡繝ｻ/span>
             </div>
             <div id="step-rakuten-decide-print" class="task-process-row" data-process-id="rakuten_decide_print">
               <div class="task-process-label">
-                <span class="process-title">除外判断・印刷（完了記録まで）</span>
-                <span class="process-desc">除外対象を決めて印刷し、完了を記録</span>
+                <span class="process-title">鬮ｯ・､陞滄摩諢幄ｭ・ｽｭ郢晢ｽｻ陷奇ｽｰ陋ｻ・ｷ繝ｻ莠･・ｮ蠕｡・ｺ繝ｻ・ｨ蛟ｬ鮖ｸ邵ｺ・ｾ邵ｺ・ｧ繝ｻ繝ｻ/span>
+                <span class="process-desc">鬮ｯ・､陞滄摩・ｯ・ｾ髮趣ｽ｡郢ｧ蜻茨ｽｱ・ｺ郢ｧ竏壺ｻ陷奇ｽｰ陋ｻ・ｷ邵ｺ蜉ｱﾂ竏晢ｽｮ蠕｡・ｺ繝ｻ・帝坎蛟ｬ鮖ｸ</span>
               </div>
               <div class="step-actions">
-                <a class="secondary" data-step-link="rakuten_exclude" href="#">除外・印刷（完了記録まで）を開く</a>
-                <button type="button" class="step-reset" data-step-reset="rakuten_decide_print">リセット</button>
+                <a class="secondary" data-step-link="rakuten_exclude" href="#">鬮ｯ・､陞滓じ繝ｻ陷奇ｽｰ陋ｻ・ｷ繝ｻ莠･・ｮ蠕｡・ｺ繝ｻ・ｨ蛟ｬ鮖ｸ邵ｺ・ｾ邵ｺ・ｧ繝ｻ蟲ｨ・帝ｫ｢荵晢ｿ･</a>
+                <button type="button" class="step-reset" data-step-reset="rakuten_decide_print">郢晢ｽｪ郢ｧ・ｻ郢昴・繝ｨ</button>
               </div>
-              <span class="step-status process-status" data-step-status="rakuten_decide_print">未実行</span>
+              <span class="step-status process-status" data-step-status="rakuten_decide_print">隴幢ｽｪ陞ｳ貅ｯ・｡繝ｻ/span>
             </div>
           </div>
           <div id="step-provider-ingest" class="wizard-step" data-step-id="provider_ingest">
             <div class="step-head">
               <span class="step-num">3</span>
-              <span class="step-title">手順3 共通フォルダ取り込み（手動取得分）</span>
-              <span class="step-status" data-step-status="provider_ingest">未実行</span>
+              <span class="step-title">隰・洸・ｰ繝ｻ 陷茨ｽｱ鬨ｾ螢ｹ繝ｵ郢ｧ・ｩ郢晢ｽｫ郢敖陷ｿ謔ｶ・企恷・ｼ邵ｺ・ｿ繝ｻ蝓溽・陷榊供蜿呵墓懊・繝ｻ繝ｻ/span>
+              <span class="step-status" data-step-status="provider_ingest">隴幢ｽｪ陞ｳ貅ｯ・｡繝ｻ/span>
             </div>
             <div class="step-actions">
               <button type="button" class="secondary" data-provider-action="open_shared_inbox">
-                共通フォルダを開く
+                陷茨ｽｱ鬨ｾ螢ｹ繝ｵ郢ｧ・ｩ郢晢ｽｫ郢敖郢ｧ蟶晏ｹ慕ｸｺ繝ｻ              </button>
+              <button type="button" class="secondary" data-provider-action="open_provider_source">
+                Open Provider Source Folder
               </button>
               <button type="button" class="primary" data-provider-action="import_provider_receipts">
-                共通フォルダから取り込み
+                陷茨ｽｱ鬨ｾ螢ｹ繝ｵ郢ｧ・ｩ郢晢ｽｫ郢敖邵ｺ荵晢ｽ芽愾謔ｶ・企恷・ｼ邵ｺ・ｿ
               </button>
               <button type="button" class="secondary" data-provider-action="print_provider_receipts">
-                一括印刷（結合PDFを開く）
-              </button>
-              <span class="muted">自動取得されない領収書（Aqua Voice / Claude / ChatGPT / Gamma など）を共通フォルダの直下に入れて取り込みます。<a href="/workspace" target="_blank" rel="noopener noreferrer">ワークスペースを開く</a></span>
+                闕ｳﾂ隲｡・ｬ陷奇ｽｰ陋ｻ・ｷ繝ｻ閧ｲ・ｵ莉咏ｲ輝DF郢ｧ蟶晏ｹ慕ｸｺ謫ｾ・ｼ繝ｻ              </button>
+              <span class="muted" data-provider-source-summary>Provider source folder is not configured.</span>
+              <span class="muted">髢ｾ・ｪ陷榊供蜿呵募干・・ｹｧ蠕娯・邵ｺ繝ｻ・ｰ莨懷ｺｶ隴厄ｽｸ繝ｻ繝ｻqua Voice / Claude / ChatGPT / Gamma 邵ｺ・ｪ邵ｺ・ｩ繝ｻ蟲ｨ・定怦・ｱ鬨ｾ螢ｹ繝ｵ郢ｧ・ｩ郢晢ｽｫ郢敖邵ｺ・ｮ騾ｶ・ｴ闕ｳ荵昶・陷茨ｽ･郢ｧ蠕娯ｻ陷ｿ謔ｶ・企恷・ｼ邵ｺ・ｿ邵ｺ・ｾ邵ｺ蜷ｶﾂ繝ｻa href="/workspace" target="_blank" rel="noopener noreferrer">郢晢ｽｯ郢晢ｽｼ郢ｧ・ｯ郢ｧ・ｹ郢晏｣ｹ繝ｻ郢ｧ・ｹ郢ｧ蟶晏ｹ慕ｸｺ繝ｻ/a></span>
             </div>
           </div>
           <div id="step-mf-bulk-upload-task" class="wizard-step" data-step-id="mf_bulk_upload_task">
             <div class="step-head">
               <span class="step-num">4</span>
-              <span class="step-title">手順4 MF一括アップロード（必要な場合のみ）</span>
-              <span class="step-status" data-step-status="mf_bulk_upload_task">未実行</span>
+              <span class="step-title">隰・洸・ｰ繝ｻ MF闕ｳﾂ隲｡・ｬ郢ｧ・｢郢昴・繝ｻ郢晢ｽｭ郢晢ｽｼ郢昜ｼ夲ｽｼ莠･・ｿ繝ｻ・ｦ竏壺・陜｣・ｴ陷ｷ蛹ｻ繝ｻ邵ｺ・ｿ繝ｻ繝ｻ/span>
+              <span class="step-status" data-step-status="mf_bulk_upload_task">隴幢ｽｪ陞ｳ貅ｯ・｡繝ｻ/span>
             </div>
             <div class="step-actions">
-              <button type="button" class="secondary" data-manual-action="open_mf_bulk_inbox">MF一括アップロード用フォルダを開く</button>
-              <button type="button" class="primary" data-manual-action="run_mf_bulk_upload">MF一括アップロードを実行</button>
-              <span class="muted">mf_bulk_upload/inbox の領収書をMFへ送信します。送信済みファイルは _uploaded に移動します。</span>
-              <button type="button" class="secondary" data-manual-action="open_mf_csv_inbox">交通費CSVインポート用フォルダを開く</button>
-              <button type="button" class="primary" data-manual-action="run_mf_csv_import">交通費CSVインポートを実行</button>
-              <span class="muted">mf_csv_import/inbox のCSVを交通費インポートへ送信します。送信済みファイルは _imported に移動します。</span>
+              <button type="button" class="secondary" data-manual-action="open_mf_bulk_inbox">MF闕ｳﾂ隲｡・ｬ郢ｧ・｢郢昴・繝ｻ郢晢ｽｭ郢晢ｽｼ郢晁・逡醍ｹ晁ｼ斐°郢晢ｽｫ郢敖郢ｧ蟶晏ｹ慕ｸｺ繝ｻ/button>
+              <button type="button" class="primary" data-manual-action="run_mf_bulk_upload">MF闕ｳﾂ隲｡・ｬ郢ｧ・｢郢昴・繝ｻ郢晢ｽｭ郢晢ｽｼ郢晏ｳｨ・定楜貅ｯ・｡繝ｻ/button>
+              <span class="muted">mf_bulk_upload/inbox 邵ｺ・ｮ鬯・ｼ懷ｺｶ隴厄ｽｸ郢ｧ讓ｽF邵ｺ・ｸ鬨ｾ竏ｽ・ｿ・｡邵ｺ蜉ｱ竏ｪ邵ｺ蜷ｶﾂ繧仰竏ｽ・ｿ・｡雋ょ現竏ｩ郢晁ｼ斐＜郢ｧ・､郢晢ｽｫ邵ｺ・ｯ _uploaded 邵ｺ・ｫ驕假ｽｻ陷崎ｼ費ｼ邵ｺ・ｾ邵ｺ蜷ｶﾂ繝ｻ/span>
+              <button type="button" class="secondary" data-manual-action="open_mf_csv_inbox">闔・､鬨ｾ螟奇ｽｲ・ｻCSV郢ｧ・､郢晢ｽｳ郢晄亢繝ｻ郢晁ご逡醍ｹ晁ｼ斐°郢晢ｽｫ郢敖郢ｧ蟶晏ｹ慕ｸｺ繝ｻ/button>
+              <button type="button" class="primary" data-manual-action="run_mf_csv_import">闔・､鬨ｾ螟奇ｽｲ・ｻCSV郢ｧ・､郢晢ｽｳ郢晄亢繝ｻ郢晏現・定楜貅ｯ・｡繝ｻ/button>
+              <span class="muted">mf_csv_import/inbox 邵ｺ・ｮCSV郢ｧ蜑・ｽｺ・､鬨ｾ螟奇ｽｲ・ｻ郢ｧ・､郢晢ｽｳ郢晄亢繝ｻ郢晏現竏磯ｨｾ竏ｽ・ｿ・｡邵ｺ蜉ｱ竏ｪ邵ｺ蜷ｶﾂ繧仰竏ｽ・ｿ・｡雋ょ現竏ｩ郢晁ｼ斐＜郢ｧ・､郢晢ｽｫ邵ｺ・ｯ _imported 邵ｺ・ｫ驕假ｽｻ陷崎ｼ費ｼ邵ｺ・ｾ邵ｺ蜷ｶﾂ繝ｻ/span>
             </div>
           </div>
           <div id="step-mf-reconcile" class="wizard-step" data-step-id="mf_reconcile">
             <div class="step-head">
               <span class="step-num">5</span>
-              <span class="step-title">手順5 MF突合・下書き作成</span>
-              <span class="step-status" data-step-status="mf_reconcile">未実行</span>
+              <span class="step-title">隰・洸・ｰ繝ｻ MF驕ｯ竏晉ｲ狗ｹ晢ｽｻ闕ｳ蛹ｺ蠍檎ｸｺ蝣ｺ・ｽ諛医・</span>
+              <span class="step-status" data-step-status="mf_reconcile">隴幢ｽｪ陞ｳ貅ｯ・｡繝ｻ/span>
             </div>
             <div class="step-actions">
-              <button type="button" class="primary" data-step-action="mf_reconcile">MF抽出 + 突合 + 下書き作成を実行</button>
-              <span class="muted">手順1〜4の結果を反映して、突合と下書き作成を実行します。</span>
-              <span class="muted">手順3/4を更新した後は、手順5を再実行してください（何回でも実行できます）。</span>
+              <button type="button" class="primary" data-step-action="mf_reconcile">MF隰夲ｽｽ陷・ｽｺ + 驕ｯ竏晉ｲ・+ 闕ｳ蛹ｺ蠍檎ｸｺ蝣ｺ・ｽ諛医・郢ｧ雋橸ｽｮ貅ｯ・｡繝ｻ/button>
+              <span class="muted">隰・洸・ｰ繝ｻ邵ｲ繝ｻ邵ｺ・ｮ驍ｨ蜈域｣｡郢ｧ雋樊ｸ夊ｭ擾｣ｰ邵ｺ蜉ｱ窶ｻ邵ｲ竏ｫ・ｪ竏晉ｲ狗ｸｺ・ｨ闕ｳ蛹ｺ蠍檎ｸｺ蝣ｺ・ｽ諛医・郢ｧ雋橸ｽｮ貅ｯ・｡蠕鯉ｼ邵ｺ・ｾ邵ｺ蜷ｶﾂ繝ｻ/span>
+              <span class="muted">隰・洸・ｰ繝ｻ/4郢ｧ蜻亥ｳｩ隴・ｽｰ邵ｺ蜉ｱ笳・募ｾ後・邵ｲ竏ｵ辟秘ｬ・・郢ｧ雋槭・陞ｳ貅ｯ・｡蠕鯉ｼ邵ｺ・ｦ邵ｺ荳岩味邵ｺ霈費ｼ槭・莠包ｽｽ蜍溷ｱ鍋ｸｺ・ｧ郢ｧ繧・ｽｮ貅ｯ・｡蠕後堤ｸｺ髦ｪ竏ｪ邵ｺ蜻ｻ・ｼ蟲ｨﾂ繝ｻ/span>
             </div>
           </div>
           <div id="step-month-close" class="wizard-step" data-step-id="month_close">
             <div class="step-head">
               <span class="step-num">6</span>
-              <span class="step-title">手順6 月次クローズ（完了時のみ）</span>
-              <span class="step-status pending">未実行</span>
+              <span class="step-title">隰・洸・ｰ繝ｻ 隴帛沺・ｬ・｡郢ｧ・ｯ郢晢ｽｭ郢晢ｽｼ郢ｧ・ｺ繝ｻ莠･・ｮ蠕｡・ｺ繝ｻ蜃ｾ邵ｺ・ｮ邵ｺ・ｿ繝ｻ繝ｻ/span>
+              <span class="step-status pending">隴幢ｽｪ陞ｳ貅ｯ・｡繝ｻ/span>
             </div>
             <div class="step-actions">
               <button type="button" class="secondary" data-archive-action="archive_outputs">
-                アーカイブ作成（保存のみ）
-              </button>
+                郢ｧ・｢郢晢ｽｼ郢ｧ・ｫ郢ｧ・､郢晉ｴ具ｽｽ諛医・繝ｻ莠包ｽｿ譎擾ｽｭ蛟･繝ｻ邵ｺ・ｿ繝ｻ繝ｻ              </button>
               <button type="button" class="secondary" data-archive-action="month_close">
-                月次クローズ（アーカイブ+クリーンアップ）
-              </button>
+                隴帛沺・ｬ・｡郢ｧ・ｯ郢晢ｽｭ郢晢ｽｼ郢ｧ・ｺ繝ｻ蛹ｻ縺・ｹ晢ｽｼ郢ｧ・ｫ郢ｧ・､郢昴・郢ｧ・ｯ郢晢ｽｪ郢晢ｽｼ郢晢ｽｳ郢ｧ・｢郢昴・繝ｻ繝ｻ繝ｻ              </button>
               <div class="month-close-checklist" data-month-close-checklist>
-                <div class="checklist-header">月次クローズ前の確認項目</div>
+                <div class="checklist-header">隴帛沺・ｬ・｡郢ｧ・ｯ郢晢ｽｭ郢晢ｽｼ郢ｧ・ｺ陷鷹亂繝ｻ驕抵ｽｺ髫ｱ蝓ｼ・ｰ繝ｻ蟯ｼ</div>
                 <div class="checklist-items">
                   <label class="checklist-item">
                     <input type="checkbox" data-checklist-item="expense_submission">
-                    <span>①申請</span>
+                    <span>遶ｭ・ｰ騾包ｽｳ髫ｲ繝ｻ/span>
                   </label>
                   <label class="checklist-item">
                     <input type="checkbox" data-checklist-item="document_printout">
-                    <span>②申請画面プリントアウト</span>
+                    <span>遶ｭ・｡騾包ｽｳ髫ｲ迢怜愛鬮ｱ・｢郢晏干ﾎ懃ｹ晢ｽｳ郢晏現縺・ｹｧ・ｦ郢昴・/span>
                   </label>
                   <label class="checklist-item">
                     <input type="checkbox" data-checklist-item="mf_accounting_link">
-                    <span>③ＭＦ会計と連携</span>
+                    <span>遶ｭ・｢繝ｻ・ｭ繝ｻ・ｦ闔ｨ螟奇ｽｨ蛹ｻ竊帝ｨｾ・｣隰ｳ・ｺ</span>
                   </label>
                 </div>
               </div>
-              <span class="muted">月次処理完了後、成果物をアーカイブし、翌月へ移行します。</span>
-              <span class="muted">「月次クローズ」実行後、フォームの年月が自動的に翌月に切り替わります。</span>
+              <span class="muted">隴帛沺・ｬ・｡陷・ｽｦ騾・・・ｮ蠕｡・ｺ繝ｻ・ｾ蠕個竏ｵ繝ｻ隴ｫ諛・ｻ・ｹｧ蛛ｵ縺・ｹ晢ｽｼ郢ｧ・ｫ郢ｧ・､郢晄じ・邵ｲ竏ｫ・ｿ譴ｧ諤ｦ邵ｺ・ｸ驕假ｽｻ髯ｦ蠕鯉ｼ邵ｺ・ｾ邵ｺ蜷ｶﾂ繝ｻ/span>
+              <span class="muted">邵ｲ譴ｧ諤ｦ隹ｺ・｡郢ｧ・ｯ郢晢ｽｭ郢晢ｽｼ郢ｧ・ｺ邵ｲ讎奇ｽｮ貅ｯ・｡謔滂ｽｾ蠕個竏壹Ψ郢ｧ・ｩ郢晢ｽｼ郢晢｣ｰ邵ｺ・ｮ陝ｷ・ｴ隴帛現窶ｲ髢ｾ・ｪ陷肴・蝎ｪ邵ｺ・ｫ驗呎｢ｧ諤ｦ邵ｺ・ｫ陋ｻ繝ｻ・願ｭ厄ｽｿ郢ｧ荳奇ｽ顔ｸｺ・ｾ邵ｺ蜷ｶﾂ繝ｻ/span>
             </div>
           </div>
         </div>

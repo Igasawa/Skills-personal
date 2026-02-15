@@ -126,8 +126,10 @@ def test_index_page_shows_manual_archive_button(monkeypatch: pytest.MonkeyPatch,
     assert 'data-manual-action="open_mf_csv_inbox"' in res.text
     assert 'data-manual-action="run_mf_csv_import"' in res.text
     assert 'data-provider-action="open_shared_inbox"' in res.text
+    assert 'data-provider-action="open_provider_source"' in res.text
     assert 'data-provider-action="import_provider_receipts"' in res.text
     assert 'data-provider-action="print_provider_receipts"' in res.text
+    assert 'data-provider-source-summary' in res.text
     assert 'data-provider-action="download_provider_receipts"' not in res.text
     assert "/workspace" in res.text
     assert "data-mf-summary" not in res.text

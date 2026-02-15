@@ -1429,6 +1429,105 @@ def test_api_open_provider_inbox_creates_and_opens_folder(
     assert events[-1].get("status") == "success"
 
 
+def test_api_open_provider_source_opens_configured_folder(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    client = _create_client(monkeypatch, tmp_path)
+    ym = "2026-01"
+    source_dir = _artifact_root(tmp_path) / "gaspdf"
+    source_dir.mkdir(parents=True, exist_ok=True)
+    (source_dir / "sample.txt").write_text("placeholder", encoding="utf-8")
+    calls: list[list[str]] = []
+
+    def _fake_run(cmd: Any, *args: Any, **kwargs: Any) -> subprocess.CompletedProcess[str]:
+        calls.append([str(c) for c in cmd])
+        return subprocess.CompletedProcess(args=cmd, returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(api_routes, "_provider_source_status_for_ym", lambda year, month: {
+        "path": str(source_dir),
+        "configured": True,
+        "exists": True,
+        "pending_files": 3,
+    })
+    monkeypatch.setattr(api_routes.subprocess, "run", _fake_run)
+
+    res = client.post("/api/folders/2026-01/provider-source")
+    assert res.status_code == 200
+    body = res.json()
+    assert body["status"] == "ok"
+    assert body["ym"] == ym
+    assert body["path"] == str(source_dir)
+    source_status = body["source_status"]
+    assert source_status["configured"] is True
+    assert source_status["exists"] is True
+    assert source_status["pending_files"] == 3
+    assert calls
+
+    entries = _read_audit_entries(tmp_path, ym)
+    events = [e for e in entries if e.get("event_type") == "provider_ingest" and e.get("action") == "open_source"]
+    assert events
+    assert events[-1].get("status") == "success"
+
+
+def test_api_open_provider_source_rejects_when_not_configured(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    client = _create_client(monkeypatch, tmp_path)
+    ym = "2026-01"
+    calls: list[list[str]] = []
+
+    monkeypatch.setattr(api_routes, "_provider_source_status_for_ym", lambda year, month: {
+        "path": "",
+        "configured": False,
+        "exists": False,
+        "pending_files": 0,
+    })
+
+    def _fake_run(cmd: Any, *args: Any, **kwargs: Any) -> subprocess.CompletedProcess[str]:
+        calls.append([str(c) for c in cmd])
+        return subprocess.CompletedProcess(args=cmd, returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(api_routes.subprocess, "run", _fake_run)
+    res = client.post("/api/folders/2026-01/provider-source")
+    assert res.status_code == 409
+    assert "not configured" in str(res.json().get("detail") or "").lower()
+    assert not calls
+
+    entries = _read_audit_entries(tmp_path, ym)
+    events = [e for e in entries if e.get("event_type") == "provider_ingest" and e.get("action") == "open_source"]
+    assert events
+    assert events[-1].get("status") == "rejected"
+
+
+def test_api_open_provider_source_rejects_when_folder_missing(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    client = _create_client(monkeypatch, tmp_path)
+    ym = "2026-01"
+    source_dir = _artifact_root(tmp_path) / "gaspdf_missing"
+    calls: list[list[str]] = []
+
+    monkeypatch.setattr(api_routes, "_provider_source_status_for_ym", lambda year, month: {
+        "path": str(source_dir),
+        "configured": True,
+        "exists": False,
+        "pending_files": 0,
+    })
+
+    def _fake_run(cmd: Any, *args: Any, **kwargs: Any) -> subprocess.CompletedProcess[str]:
+        calls.append([str(c) for c in cmd])
+        return subprocess.CompletedProcess(args=cmd, returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(api_routes.subprocess, "run", _fake_run)
+    res = client.post("/api/folders/2026-01/provider-source")
+    assert res.status_code == 409
+    assert "does not exist" in str(res.json().get("detail") or "").lower()
+    assert not calls
+
+    entries = _read_audit_entries(tmp_path, ym)
+    events = [e for e in entries if e.get("event_type") == "provider_ingest" and e.get("action") == "open_source"]
+    assert events
+    assert events[-1].get("status") == "rejected"
+
+
 def test_api_open_provider_skipped_latest_creates_and_opens_folder(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

@@ -148,6 +148,34 @@ def _manual_source_dir(raw: str | Path | None = None) -> Path | None:
     return None
 
 
+def _manual_source_dir_status(
+    raw: str | Path | None = None,
+    *,
+    year: int | None = None,
+    month: int | None = None,
+) -> dict[str, Any]:
+    source_dir = _manual_source_dir(raw)
+    source_path = str(source_dir) if source_dir is not None else ""
+    pending_files = 0
+    if source_dir is not None and source_dir.exists():
+        if year is not None and month is not None:
+            try:
+                from scripts import manual_receipt_import as _manual_receipt_import  # type: ignore[import]
+
+                _, scan = _manual_receipt_import._scan_source_receipts(source_dir, int(year), int(month))
+                pending_files = int(scan.get("matched") or 0)
+            except Exception:
+                pending_files = len(_iter_receipt_files(source_dir))
+        else:
+            pending_files = len(_iter_receipt_files(source_dir))
+    return {
+        "path": source_path,
+        "configured": bool(source_path),
+        "exists": bool(source_dir is not None and source_dir.exists()),
+        "pending_files": pending_files,
+    }
+
+
 def _manual_source_mode(raw: str | None = None) -> str:
     if raw is None:
         raw = str(os.environ.get(MANUAL_SOURCE_MODE_ENV, MANUAL_SOURCE_DEFAULT_MODE))
@@ -183,6 +211,7 @@ def _provider_step_attempted_for_ym(year: int, month: int) -> bool:
 
 def _provider_inbox_status_for_ym(year: int, month: int) -> dict[str, Any]:
     statuses: dict[str, dict[str, Any]] = {}
+    source_status = _manual_source_dir_status(year=year, month=month)
     attempted = _provider_step_attempted_for_ym(year, month)
     shared_inbox_dir = _manual_inbox_dir_for_ym(year, month, create=True)
     pending_total = len(_iter_receipt_files(shared_inbox_dir))
@@ -206,6 +235,7 @@ def _provider_inbox_status_for_ym(year: int, month: int) -> dict[str, Any]:
         "step_done": attempted and pending_total == 0,
         "attempted": attempted,
         "pending_total": pending_total,
+        "source": source_status,
         "providers": statuses,
     }
 
