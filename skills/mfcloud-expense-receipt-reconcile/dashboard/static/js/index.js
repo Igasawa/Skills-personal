@@ -1141,14 +1141,16 @@
     const rakutenDone = Boolean(data.rakuten?.confirmed && data.rakuten?.printed);
     const amazonPending = Boolean(data.amazon?.downloaded && !amazonDone);
     const rakutenPending = Boolean(data.rakuten?.downloaded && !rakutenDone);
-    const providerPending = (Number.parseInt(String(data.providers?.pending_total ?? 0), 10) || 0) > 0;
+    const providerPendingCount = Number.parseInt(String(data.providers?.pending_total ?? 0), 10);
+    const providerPending = Number.isFinite(providerPendingCount) ? providerPendingCount > 0 : false;
     if (amazonPending) return "amazon_decide_print";
     if (rakutenPending) return "rakuten_decide_print";
     if (!data.amazon?.downloaded && !data.rakuten?.downloaded) return "amazon_or_rakuten_download";
     if (!data.amazon?.downloaded) return "amazon_download";
     if (!data.rakuten?.downloaded) return "rakuten_download";
+    if (providerPending) return "provider_ingest";
     const mfDone = Boolean(data.mf?.step_done ?? data.mf?.reconciled);
-    if (!mfDone && providerPending) return "provider_ingest";
+    if (!mfDone && (Boolean(data.mf_bulk_upload?.done || data.mf_csv_import?.done))) return "mf_bulk_upload_task";
     const canReconcile =
       "can_reconcile" in data ? Boolean(data.can_reconcile) : (Boolean(data.amazon?.downloaded || data.rakuten?.downloaded) && !(amazonPending || rakutenPending));
     if (!mfDone && canReconcile) return "mf_reconcile";
@@ -1156,24 +1158,48 @@
     return "done";
   }
 
-  function resolveNextStep(data) {
-    const apiNextStep = String(data?.next_step || "").trim();
-    const allowedNext = new Set([
+  const KNOWN_NEXT_STEP_VALUES = new Set([
+      "preflight_mf",
       "preflight",
       "amazon_or_rakuten_download",
       "amazon_download",
       "amazon_decide_print",
       "rakuten_download",
       "rakuten_decide_print",
+      "amazon_print",
+      "rakuten_print",
       "provider_ingest",
+      "import_provider_receipts",
+      "mf_bulk_upload_task",
+      "mf_bulk_upload",
+      "mf_csv_import",
       "mf_reconcile",
       "done",
-    ]);
-    if (apiNextStep && allowedNext.has(apiNextStep)) {
+  ]);
+
+  function normalizeNextStepValue(rawValue) {
+    return String(rawValue || "").trim().toLowerCase();
+  }
+
+  function isKnownNextStep(rawValue) {
+    return KNOWN_NEXT_STEP_VALUES.has(normalizeNextStepValue(rawValue));
+  }
+
+  function resolveNextStep(data) {
+    const apiNextStep = normalizeNextStepValue(data?.next_step);
+    if (isKnownNextStep(apiNextStep)) {
       return apiNextStep;
     }
     const inferred = inferNextStepFromFlags(data);
-    // Keep UI guidance consistent with current flags even if API next_step lags.
+    if (apiNextStep) {
+      recordWizardFallback({
+        type: "next_step_unknown",
+        runningMode: String(data?.running_mode || ""),
+        nextStep: apiNextStep,
+        nextStepReason: String(data?.next_step_reason || "").trim(),
+        href: FALLBACK_WIZARD_HREF,
+      });
+    }
     return inferred;
   }
 
@@ -1221,6 +1247,8 @@
 
   function computeNextStep(data, ym) {
     const nextStep = resolveNextStep(data);
+    const apiNextStep = normalizeNextStepValue(data?.next_step);
+    const apiNextStepWasUnknown = apiNextStep && !isKnownNextStep(apiNextStep);
     const nextStepKey = String(nextStep || "").trim();
     const runningMode = String(data?.running_mode || "").trim();
     const nextStepReasonCode = String(data?.next_step_reason || "").trim();
@@ -1245,10 +1273,20 @@
         reason: "除外対象を確定して印刷完了まで進めると状態が保存されます。",
         linkLabel: "Amazon 除外・印刷へ",
       },
+      amazon_print: {
+        message: "Amazonの印刷完了待ちステータスを確認してください。",
+        reason: "Amazonの印刷処理が完了し、必要に応じて確認・反映を行ってください。",
+        linkLabel: "Amazonの印刷ステータスへ",
+      },
       rakuten_download: {
         message: "楽天の領収書を取得してください。",
         reason: "楽天側の対象月データを取得して、次の除外判断・印刷へ進みます。",
         linkLabel: "楽天 取得へ",
+      },
+      rakuten_print: {
+        message: "楽天の印刷完了待ちステータスを確認してください。",
+        reason: "楽天の印刷処理が完了し、必要に応じて確認・反映を行ってください。",
+        linkLabel: "楽天の印刷ステータスへ",
       },
       rakuten_decide_print: {
         message: "楽天の除外設定・印刷対象を確認してください。",
@@ -1264,6 +1302,31 @@
         message: "MF連携の突合せ実行へ進めてください。",
         reason: "取り込み済みデータをMFの下書き作成へ反映します。",
         linkLabel: "MF 突合作業へ",
+      },
+      preflight_mf: {
+        message: "MF再取得のみのステップを完了してください。",
+        reason: "MF再取得後、ダッシュボードの最新状態を確認して次の作業に進んでください。",
+        linkLabel: "MF再取得を確認",
+      },
+      mf_bulk_upload_task: {
+        message: "Step 4: MF一括アップロード手順があります。",
+        reason: "MF向けの手入力ファイルが用意できている場合、取り込みを実行してください。",
+        linkLabel: "MF一括アップロードを開く",
+      },
+      import_provider_receipts: {
+        message: "Provider取り込みステップを実行してください。",
+        reason: "外部ベンダーの未処理CSVをMF突合前に取り込んで反映してください。",
+        linkLabel: "Provider取り込みへ進む",
+      },
+      mf_bulk_upload: {
+        message: "MF一括アップロードを実行してください。",
+        reason: "MFのインポート画面を開いて、対象月の下書き対象を確認してください。",
+        linkLabel: "MF一括アップロードを開く",
+      },
+      mf_csv_import: {
+        message: "MF CSVインポートを実行してください。",
+        reason: "CSVをMF形式へ揃えたうえで取り込みを実行してください。",
+        linkLabel: "MF CSVインポートを開く",
       },
       done: {
         message: "すべて完了しました。月次アーカイブを実行できます。",
@@ -1317,6 +1380,21 @@
         reason: "突合せ完了まで暫くお待ちください。完了後に下書きの作成状況が更新されます。",
         linkLabel: "MF突合状況へ",
       },
+      import_provider_receipts: {
+        message: "Provider receipt import is running.",
+        reason: "After import, verify files are reflected in MF draft workflow.",
+        linkLabel: "Open provider import step",
+      },
+      mf_bulk_upload: {
+        message: "MF bulk upload is running.",
+        reason: "Check MF login state and selected bulk import target.",
+        linkLabel: "Open MF bulk upload step",
+      },
+      mf_csv_import: {
+        message: "MF CSV import is running.",
+        reason: "If CSV import is pending, confirm file encoding and dedupe rules.",
+        linkLabel: "Open MF CSV import step",
+      },
     };
 
     const nextStepAnchors = {
@@ -1330,6 +1408,10 @@
       rakuten_print: "#step-rakuten-decide-print",
       amazon_print: "#step-amazon-decide-print",
       provider_ingest: "#step-provider-ingest",
+      import_provider_receipts: "#step-provider-ingest",
+      mf_bulk_upload_task: "#step-mf-bulk-upload-task",
+      mf_bulk_upload: "#step-mf-bulk-upload-task",
+      mf_csv_import: "#step-mf-bulk-upload-task",
       mf_reconcile: "#step-mf-reconcile",
       done: "#step-month-close",
     };
@@ -1409,6 +1491,9 @@
     const baseGuidance = nextStepGuidance[nextStepKey] || nextStepGuidance.fallback;
     const reasonGuidance = reasonHint[nextStepReasonCode];
     const reasonKnown = Object.prototype.hasOwnProperty.call(reasonHint, nextStepReasonCode);
+    const apiFallbackReason = apiNextStepWasUnknown
+      ? ` [fallback: next_step "${apiNextStep}" was unknown and inferred from current flags]`
+      : "";
     if (nextStepReasonCode && !reasonKnown) {
       recordWizardFallback({
         type: "next_step_reason_unknown",
@@ -1422,9 +1507,12 @@
       ? {
           ...baseGuidance,
           message: reasonGuidance.message || baseGuidance.message,
-          reason: reasonGuidance.reason || baseGuidance.reason,
+          reason: `${reasonGuidance.reason || baseGuidance.reason}${apiFallbackReason}`,
         }
-      : baseGuidance;
+      : {
+          ...baseGuidance,
+          reason: `${baseGuidance.reason || ""}${apiFallbackReason}`,
+        };
     return {
       message: guidance.message,
       reason: guidance.reason,
