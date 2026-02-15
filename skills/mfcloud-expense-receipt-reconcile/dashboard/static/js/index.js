@@ -1780,33 +1780,29 @@
     const parts = [];
     const effectivePending = Math.max(0, pendingFiles);
     if (checked > 0) {
-      parts.push(`確認済み: ${checked}件`);
+      parts.push(`${checked} file(s) checked`);
     }
     if (pdfFiles > 0) {
-      parts.push(`PDF: ${pdfFiles}件`);
+      parts.push(`${pdfFiles} PDF file(s)`);
     }
     if (effectivePending > 0) {
-      parts.push(`対象月一致: ${effectivePending}件`);
+      parts.push(`${effectivePending} matched file(s)`);
     }
     if (matched > 0 && pendingFiles === 0) {
-      parts.push(`一致候補: ${matched}件`);
+      parts.push(`${matched} matched in scan`);
     }
     if (ignoredOutOfMonth > 0) {
-      parts.push(`年月非一致: ${ignoredOutOfMonth}件`);
+      parts.push(`${ignoredOutOfMonth} outside target month`);
     }
     if (ignoredNonPdf > 0) {
-      parts.push(`PDF以外: ${ignoredNonPdf}件`);
+      parts.push(`${ignoredNonPdf} non-PDF ignored`);
     }
     if (ignoredHidden > 0) {
-      parts.push(`隠しファイル: ${ignoredHidden}件`);
+      parts.push(`${ignoredHidden} hidden file(s) ignored`);
     }
     const scanError = String(summary.scan_error || "").trim();
     if (scanError) {
-      const friendlyScanError = scanError
-        .replace("failed_to_scan_metadata", "メタ情報の走査に失敗")
-        .replace("scan_metadata_skipped_for_missing_ym", "年月指定がありません")
-        .replace("source_is_not_a_directory", "ディレクトリではありません");
-      parts.push(`状態: ${friendlyScanError}`);
+      parts.push(`scan status: ${scanError}`);
     }
     return parts.length > 0 ? ` (${parts.join(", ")})` : "";
   }
@@ -1825,22 +1821,22 @@
     const sampleText = sampleMatched.length > 0 ? ` e.g. ${sampleMatched.join(", ")}` : "";
 
     if (!configured) {
-      return "受信元フォルダが未設定です。";
+      return "Provider source folder is not configured.";
     }
     if (!exists) {
-      return `受信元フォルダが見つかりません: ${path || "(未設定)"}`;
+      return `Configured provider source folder not found: ${path || "(not set)"}`;
     }
     const checked = toCount(scanSummary.checked);
     if (pending === 0 && checked > 0) {
       const scanHint = String(scanSummary.scan_error || "").trim();
-      const status = scanHint ? `（${scanHint}）` : "";
-      return `${path}: 選択月に一致するファイルは見つかりませんでした${status}。確認済み: ${checked}件。${sampleText ? `例: ${sampleText}` : ""}${detailsSuffix}`;
+      const status = scanHint ? `${scanHint}; ` : "";
+      return `${path}: no files matched the selected year-month. ${status}Checked ${checked} file(s).${sampleText ? ` (sample: ${sampleText})` : ""}${detailsSuffix}`;
     }
     if (!path) {
-      return `受信元フォルダ準備完了${detailsSuffix}`;
+      return `Provider source folder is ready${detailsSuffix}`;
     }
     if (sampleText) {
-      return `${path}: 例: ${sampleText}${detailsSuffix}`;
+      return `${path}: ${sampleText}${detailsSuffix}`;
     }
     return `${path}${detailsSuffix}`;
   }
