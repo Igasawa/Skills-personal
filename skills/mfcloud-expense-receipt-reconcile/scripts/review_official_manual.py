@@ -63,6 +63,10 @@ CHECK_TARGETS = [
 ]
 
 
+SCRIPT_DIR = Path(__file__).resolve().parent
+REFERENCE_DIR = SCRIPT_DIR.parent / "references"
+
+
 @dataclass
 class DateCheck:
     source: str
@@ -81,22 +85,22 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--knowledge",
-        default="references/official_manual_knowledge.yaml",
+        default=str(REFERENCE_DIR / "official_manual_knowledge.yaml"),
         help="Path to official_manual_knowledge.yaml",
     )
     parser.add_argument(
         "--alignment-notes",
-        default="references/official_manual_alignment_notes.md",
+        default=str(REFERENCE_DIR / "official_manual_alignment_notes.md"),
         help="Path to official_manual_alignment_notes.md",
     )
     parser.add_argument(
         "--log-template",
-        default="references/official_manual_review_log_template.md",
+        default=str(REFERENCE_DIR / "official_manual_review_log_template.md"),
         help="Path to review log template",
     )
     parser.add_argument(
         "--out-dir",
-        default="references/review_logs",
+        default=str(REFERENCE_DIR / "review_logs"),
         help="Directory to store review logs",
     )
     parser.add_argument(
