@@ -437,7 +437,7 @@ async function extractOrderFromCard(card, pageUrl, year) {
 }
 
 function normalizeAmazonPaymentMethodText(rawText) {
-  return normalizeTextForMatch(rawText).replace(/\s+/g, "");
+  return normalizeTextForMatch(rawText).replace(/[\s._()\-\/]/g, "");
 }
 
 function extractAmazonPaymentMethodFromText(textRaw) {
