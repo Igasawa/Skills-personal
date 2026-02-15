@@ -45,3 +45,11 @@
 - `official_manual_knowledge.yaml` 更新日:
 - `official_manual_alignment_notes.md` 更新日:
 - 監査ログ保存先（`reports/...`）:
+## 8. 最終更新日ルール
+- `official_manual_knowledge.yaml` と `official_manual_alignment_notes.md` の `last_reviewed` は以下を許容する。
+  - `last_reviewed: YYYY-MM-DD`
+  - `last_reviewed = YYYY/MM/DD`
+  - `最終更新: YYYY-MM-DD`
+  - `最終更新日= YYYY-MM-DD`
+  - `最終検証日: YYYY-MM-DD`
+- テンプレートの `YYYY-MM-DD` は記入しやすさ優先の標準表記。必要に応じて `/` も許容対象に含まれる。
