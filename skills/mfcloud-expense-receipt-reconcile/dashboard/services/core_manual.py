@@ -157,22 +157,58 @@ def _manual_source_dir_status(
     source_dir = _manual_source_dir(raw)
     source_path = str(source_dir) if source_dir is not None else ""
     pending_files = 0
-    if source_dir is not None and source_dir.exists():
+    scan_summary: dict[str, Any] = {}
+    source_is_dir = bool(source_dir is not None and source_dir.exists() and source_dir.is_dir())
+    if source_is_dir:
         if year is not None and month is not None:
             try:
                 from scripts import manual_receipt_import as _manual_receipt_import  # type: ignore[import]
 
                 _, scan = _manual_receipt_import._scan_source_receipts(source_dir, int(year), int(month))
                 pending_files = int(scan.get("matched") or 0)
+                scan_summary = {
+                    "checked": int(scan.get("checked") or 0),
+                    "pdf_files": int(scan.get("pdf_files") or 0),
+                    "matched": pending_files,
+                    "ignored_hidden": int(scan.get("ignored_hidden") or 0),
+                    "ignored_non_pdf": int(scan.get("ignored_non_pdf") or 0),
+                    "ignored_out_of_month": int(scan.get("ignored_out_of_month") or 0),
+                    "ignored_unmatched_name": int(scan.get("ignored_unmatched_name") or 0),
+                    "sample_matched": [
+                        str(item).replace("\\", "/")
+                        for item in (scan.get("sample_matched") or [])
+                        if str(item).strip()
+                    ][:10],
+                }
             except Exception:
                 pending_files = len(_iter_receipt_files(source_dir))
+                scan_summary = {
+                    "checked": 0,
+                    "pdf_files": 0,
+                    "matched": pending_files,
+                    "scan_error": "failed_to_scan_metadata",
+                }
         else:
             pending_files = len(_iter_receipt_files(source_dir))
+            scan_summary = {
+                "checked": 0,
+                "pdf_files": pending_files,
+                "matched": pending_files,
+                "scan_error": "scan_metadata_skipped_for_missing_ym",
+            }
+    elif source_dir is not None and source_dir.exists():
+        scan_summary = {
+            "checked": 0,
+            "pdf_files": 0,
+            "matched": 0,
+            "scan_error": "source_is_not_a_directory",
+        }
     return {
         "path": source_path,
         "configured": bool(source_path),
-        "exists": bool(source_dir is not None and source_dir.exists()),
+        "exists": source_is_dir,
         "pending_files": pending_files,
+        "scan_summary": scan_summary,
     }
 
 

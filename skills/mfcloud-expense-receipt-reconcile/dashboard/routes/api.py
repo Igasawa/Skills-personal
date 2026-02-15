@@ -132,11 +132,13 @@ def create_api_router() -> APIRouter:
         path = str(source_status.get("path") or "").strip()
         configured = bool(source_status.get("configured"))
         exists = bool(source_status.get("exists"))
+        scan_summary = source_status.get("scan_summary") if isinstance(source_status.get("scan_summary"), dict) else {}
         return {
             "path": path,
             "configured": configured,
             "exists": exists,
             "pending_files": int(source_status.get("pending_files") or 0),
+            "scan_summary": scan_summary,
         }
 
     def _workspace_state_path() -> Path:

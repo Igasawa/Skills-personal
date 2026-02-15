@@ -1759,13 +1759,69 @@
     }
     summaryEl.textContent = buildMfSummaryText(data);
   }
+
+  function fileNameFromPath(rawPath) {
+    const path = String(rawPath || "").trim();
+    if (!path) return "";
+    const normalized = path.replace(/\\/g, "/");
+    const parts = normalized.split("/");
+    return parts.length > 0 ? parts[parts.length - 1] : normalized;
+  }
+
+  function buildProviderSourceSummarySuffix(scanSummary, pendingFiles) {
+    const summary = scanSummary && typeof scanSummary === "object" ? scanSummary : {};
+    const matched = toCount(summary.matched);
+    const checked = toCount(summary.checked);
+    const pdfFiles = toCount(summary.pdf_files);
+    const ignoredOutOfMonth = toCount(summary.ignored_out_of_month);
+    const ignoredUnmatchedName = toCount(summary.ignored_unmatched_name);
+    const ignoredNonPdf = toCount(summary.ignored_non_pdf);
+    const ignoredHidden = toCount(summary.ignored_hidden);
+    const parts = [];
+    const effectivePending = Math.max(0, pendingFiles);
+    if (effectivePending > 0) {
+      parts.push(`${effectivePending} matched file(s)`);
+    }
+    if (matched > 0 && pendingFiles === 0) {
+      parts.push(`${matched} matched in scan`);
+    }
+    if (checked > 0) {
+      parts.push(`${checked} file(s) checked`);
+    }
+    if (pdfFiles > 0) {
+      parts.push(`${pdfFiles} PDF file(s)`);
+    }
+    if (ignoredOutOfMonth > 0) {
+      parts.push(`${ignoredOutOfMonth} outside target month`);
+    }
+    if (ignoredUnmatchedName > 0) {
+      parts.push(`${ignoredUnmatchedName} unmatched name`);
+    }
+    if (ignoredNonPdf > 0) {
+      parts.push(`${ignoredNonPdf} non-PDF ignored`);
+    }
+    if (ignoredHidden > 0) {
+      parts.push(`${ignoredHidden} hidden file(s) ignored`);
+    }
+    const scanError = summary.scan_error;
+    if (scanError) {
+      parts.push(`scan status: ${scanError}`);
+    }
+    return parts.length > 0 ? ` (${parts.join(", ")})` : "";
+  }
+
   function buildProviderSourceSummaryText(rawSource) {
     const source = rawSource && typeof rawSource === "object" ? rawSource : {};
     const configured = Boolean(source.configured);
     const exists = Boolean(source.exists);
     const pending = toCount(source.pending_files);
     const path = String(source.path || "").trim();
-    const pendingText = ` (${pending} matched file(s))`;
+    const scanSummary = source.scan_summary && typeof source.scan_summary === "object" ? source.scan_summary : {};
+    const sampleMatched = Array.isArray(scanSummary.sample_matched)
+      ? scanSummary.sample_matched.map(fileNameFromPath).filter(Boolean).slice(0, 3)
+      : [];
+    const detailsSuffix = buildProviderSourceSummarySuffix(scanSummary, pending);
+    const sampleText = sampleMatched.length > 0 ? ` e.g. ${sampleMatched.join(", ")}` : "";
 
     if (!configured) {
       return "Provider source folder is not configured.";
@@ -1773,11 +1829,18 @@
     if (!exists) {
       return `Configured provider source folder not found: ${path || "(not set)"}`;
     }
-    const suffix = pendingText;
-    if (!path) {
-      return `Provider source folder is ready${suffix}`;
+    if (pending === 0 && toCount(scanSummary.checked) > 0) {
+      const scanHint = String(scanSummary.scan_error || "").trim();
+      const status = scanHint ? `${scanHint}; ` : "";
+      return `${path}: no files matched the selected year-month. ${status}Checked ${toCount(scanSummary.checked)} file(s).${sampleText ? ` (sample: ${sampleText})` : ""}${detailsSuffix}`;
     }
-    return `${path}${suffix}`;
+    if (!path) {
+      return `Provider source folder is ready${detailsSuffix}`;
+    }
+    if (sampleText) {
+      return `${path}: ${sampleText}${detailsSuffix}`;
+    }
+    return `${path}${detailsSuffix}`;
   }
 
   function renderProviderSourceSummary(rawSource, fallbackMessage = "") {
