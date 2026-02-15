@@ -11,11 +11,20 @@ param(
 $ErrorActionPreference = "Stop"
 
 function Get-AxHome {
-  if ($env:AX_HOME -and $env:AX_HOME.Trim().Length -gt 0) {
-    return $env:AX_HOME
+  $candidates = @(
+    [string]$env:AX_HOME,
+    [string]([Environment]::GetEnvironmentVariable("AX_HOME", "User")),
+    [string]([Environment]::GetEnvironmentVariable("AX_HOME", "Machine"))
+  )
+  foreach ($candidate in $candidates) {
+    if ($candidate -and $candidate.Trim().Length -gt 0) {
+      return [Environment]::ExpandEnvironmentVariables($candidate.Trim())
+    }
   }
   return Join-Path $env:USERPROFILE ".ax"
 }
+
+$env:AX_HOME = Get-AxHome
 
 function Resolve-OutputRoot([int]$Year, [int]$Month, [string]$OutputRoot) {
   if ($OutputRoot -and $OutputRoot.Trim().Length -gt 0) {

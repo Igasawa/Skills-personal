@@ -5,8 +5,15 @@ $skillRoot = (Resolve-Path (Join-Path $scriptDir "..")).Path
 $mfUrl = "https://expense.moneyforward.com/outgo_input"
 
 function Resolve-AxHome {
-  if ($env:AX_HOME -and $env:AX_HOME.Trim().Length -gt 0) {
-    return $env:AX_HOME
+  $candidates = @(
+    [string]$env:AX_HOME,
+    [string]([Environment]::GetEnvironmentVariable("AX_HOME", "User")),
+    [string]([Environment]::GetEnvironmentVariable("AX_HOME", "Machine"))
+  )
+  foreach ($candidate in $candidates) {
+    if ($candidate -and $candidate.Trim().Length -gt 0) {
+      return [Environment]::ExpandEnvironmentVariables($candidate.Trim())
+    }
   }
   return Join-Path $env:USERPROFILE ".ax"
 }
@@ -33,6 +40,8 @@ function Resolve-PythonRuntime {
 
 Set-Location $skillRoot
 $python = Resolve-PythonRuntime
+$axHome = Resolve-AxHome
+$env:AX_HOME = $axHome
 
 Write-Host "Running monthly fetch + reconcile..."
 & $python.Command @(
@@ -51,7 +60,6 @@ Write-Host "Building print list (Amazon/Rakuten PDFs only)..."
   )
 )
 
-$axHome = Resolve-AxHome
 $outputRoot = Join-Path $axHome "artifacts\mfcloud-expense-receipt-reconcile\$(Get-Date -Format 'yyyy-MM')"
 $reportsDir = Join-Path $outputRoot "reports"
 

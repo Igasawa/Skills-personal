@@ -14,13 +14,21 @@ $root = (Resolve-Path (Join-Path $scriptDir "..")).Path
 Set-Location $root
 
 function Resolve-AxHome {
-  if ($env:AX_HOME -and $env:AX_HOME.Trim().Length -gt 0) {
-    return $env:AX_HOME
+  $candidates = @(
+    [string]$env:AX_HOME,
+    [string]([Environment]::GetEnvironmentVariable("AX_HOME", "User")),
+    [string]([Environment]::GetEnvironmentVariable("AX_HOME", "Machine"))
+  )
+  foreach ($candidate in $candidates) {
+    if ($candidate -and $candidate.Trim().Length -gt 0) {
+      return [Environment]::ExpandEnvironmentVariables($candidate.Trim())
+    }
   }
   return Join-Path $env:USERPROFILE ".ax"
 }
 
 $axHome = Resolve-AxHome
+$env:AX_HOME = $axHome
 
 if ($Port -lt 1 -or $Port -gt 65535) {
   throw "Invalid -Port: $Port (expected 1-65535)."
