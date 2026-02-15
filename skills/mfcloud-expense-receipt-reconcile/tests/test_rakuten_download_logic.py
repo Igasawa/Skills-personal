@@ -112,14 +112,27 @@ def test_is_rakuten_no_receipt_payment_method() -> None:
   bank: mod.isRakutenNoReceiptPaymentMethod("銀行振込")
 })"""
     )
-    assert data["cod1"] is False
-    assert data["cod2"] is False
-    assert data["cod3"] is False
-    assert data["digital1"] is False
-    assert data["digital2"] is False
-    assert data["kobo1"] is False
+    assert data["cod1"] is True
+    assert data["cod2"] is True
+    assert data["cod3"] is True
+    assert data["digital1"] is True
+    assert data["digital2"] is True
+    assert data["kobo1"] is True
     assert data["card"] is False
     assert data["bank"] is False
+
+
+def test_is_rakuten_no_receipt_payment_method_accepts_cod_abbr() -> None:
+    data = _node_json(
+        """({
+  cod_abbr: mod.isRakutenNoReceiptPaymentMethod("C.O.D."),
+  cod_space: mod.isRakutenNoReceiptPaymentMethod("C O D"),
+  non_cod: mod.isRakutenNoReceiptPaymentMethod("代金決済")
+})"""
+    )
+    assert data["cod_abbr"] is True
+    assert data["cod_space"] is True
+    assert data["non_cod"] is False
 
 
 def test_classify_rakuten_receipt_document_type() -> None:
