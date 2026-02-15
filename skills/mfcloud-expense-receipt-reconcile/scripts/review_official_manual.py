@@ -142,13 +142,24 @@ def read_text(path: Path) -> str:
 
 def extract_iso_date(text: str) -> str | None:
     patterns = [
-        re.compile(r"^last_reviewed:\s*(\d{4}-\d{2}-\d{2})", re.MULTILINE),
-        re.compile(r"^更新日[:：]\s*(\d{4}-\d{2}-\d{2})", re.MULTILINE),
+        re.compile(r"(?im)^[-\s]*?last_reviewed\s*[:=：]\s*(\d{4}[-/]\d{2}[-/]\d{2})"),
+        re.compile(
+            r"(?im)^[-\s]*(?:"
+            + "\u6700\u7d42\u66f4\u65b0"
+            + r"|"
+            + "\u6700\u7d42\u66f4\u65b0\u65e5"
+            + r"|"
+            + "\u6700\u7d42\u691c\u8a3c\u65e5"
+            + r")\s*[:=：]\s*(\d{4}[-/]\d{2}[-/]\d{2})"
+        ),
     ]
     for pattern in patterns:
         m = pattern.search(text)
         if m:
-            return m.group(1)
+            try:
+                return date.fromisoformat(m.group(1).replace("/", "-")).isoformat()
+            except ValueError:
+                continue
     return None
 
 
