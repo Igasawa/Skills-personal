@@ -224,3 +224,20 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "scripts\start_dashboard.ps1
 - CI workflow: `.github/workflows/official-manual-review.yml`
   - defaults to `review_type=weekly`, `max_age_days=14`, `skip_url_check=true`
   - manual run can override these fields from workflow_dispatch inputs
+
+## Official manual review（月次運用テンプレ）
+- 1. 月初1営業日: `Set-Location C:\Users\...\Skillpersonal` で実行環境に移動
+- 2. 月次実行（参照日更新チェックを30日上限で確認）:
+  - `npm run review:manual -- --review-type monthly --max-age-days 30`
+  - オプションでURL疎通も確認する場合: `npm run review:manual -- --review-type monthly --max-age-days 30 --url-retries 3 --url-retry-delay-seconds 2`
+- 3. レポート確認:
+  - `knowledge_alignment.in_sync` が `true` か
+  - `knowledge.stale` / `alignment_notes.stale` が `false` か
+  - `missing_in_targets` / `extra_in_targets` が空か
+- 4. 差分がある場合:
+  - `official_manual_knowledge.yaml` と `official_manual_alignment_notes.md` のURL一覧・最終レビュー日を更新
+  - `--json` 付きで再実行して再チェック
+  - `last_reviewed` を更新（2ファイルとも）
+- 5. 成果物保存:
+  - 当日分ログの有無を確認し、必要ならチケット/月次ノートへサマリ連携
+  - コード変更があれば通常運用の更新手順に従い PR 対応
