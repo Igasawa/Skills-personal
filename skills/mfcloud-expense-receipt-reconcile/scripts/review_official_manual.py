@@ -13,17 +13,20 @@ import re
 from dataclasses import dataclass
 from datetime import date, datetime
 from pathlib import Path
+from time import sleep
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 
 CHECK_TARGETS = [
     ("Amazon HelpNode (nodeId=201894740)", "https://www.amazon.co.jp/gp/help/customer/display.html?nodeId=201894740"),
-    ("Amazon 注文履歴", "https://www.amazon.co.jp/gp/your-account/order-history"),
-    ("楽天FAQ 000006734", "https://ichiba.faq.rakuten.net/detail/000006734"),
-    ("楽天Books", "https://books.rakuten.co.jp/mypage/delivery/status"),
-    ("MF AP ガイド", "https://biz.moneyforward.com/support/expense/guide/ap/ap31.html"),
-    ("MF Personal ガイド", "https://biz.moneyforward.com/support/expense/guide/personal/pa34.html"),
+    ("Amazon order history", "https://www.amazon.co.jp/gp/your-account/order-history"),
+    ("Rakuten FAQ 000006734", "https://ichiba.faq.rakuten.net/detail/000006734"),
+    ("Rakuten Books delivery status", "https://books.rakuten.co.jp/mypage/delivery/status"),
+    ("Rakuten order home", "https://order.my.rakuten.co.jp/"),
+    ("MoneyForward AP guide (AP31)", "https://biz.moneyforward.com/support/expense/guide/ap/ap31.html"),
+    ("MoneyForward personal guide (PA34)", "https://biz.moneyforward.com/support/expense/guide/personal/pa34.html"),
+    ("MoneyForward FAQ r10", "https://biz.moneyforward.com/support/expense/faq/ap-faq/r10.html"),
 ]
 
 
@@ -76,6 +79,18 @@ def parse_args() -> argparse.Namespace:
         help="Stale threshold in days for reference dates",
     )
     parser.add_argument(
+        "--url-retries",
+        type=int,
+        default=2,
+        help="Retry count for URL checks on transient errors",
+    )
+    parser.add_argument(
+        "--url-retry-delay-seconds",
+        type=float,
+        default=1.5,
+        help="Delay in seconds before retrying URL checks",
+    )
+    parser.add_argument(
         "--skip-url-check",
         action="store_true",
         help="Skip URL availability checks and only verify reference review dates",
@@ -110,24 +125,66 @@ def check_last_reviewed(path: Path, max_age_days: int) -> DateCheck:
     return DateCheck(path.as_posix(), reviewed, days_since, days_since > max_age_days)
 
 
-def check_url_status(url: str, timeout_seconds: int) -> tuple[str | None, int | None, str | None]:
-    req = Request(
-        url,
-        headers={"User-Agent": "Mozilla/5.0 (compatible; ManualReviewBot/1.0)"},
-    )
-    try:
-        with urlopen(req, timeout=timeout_seconds) as response:
-            return None, response.status, None
-    except HTTPError as exc:
-        return exc.reason, exc.code, None
-    except URLError as exc:
-        return str(exc.reason), None, None
-    except Exception as exc:  # pragma: no cover - defensive path
-        return str(exc), None, None
+def extract_knowledge_source_urls(path: Path) -> set[str]:
+    text = read_text(path)
+    urls: set[str] = set()
+    for match in re.finditer(r"^\s*url:\s*(\S+)\s*$", text, re.MULTILINE):
+        value = match.group(1)
+        if value.startswith(("http://", "https://")):
+            urls.add(value)
+    return urls
+
+
+def check_url_status(
+    url: str,
+    timeout_seconds: int,
+    retries: int,
+    retry_delay_seconds: float,
+) -> tuple[str | None, int | None, str | None, int]:
+    total_attempts = retries + 1
+    for attempt in range(1, total_attempts + 1):
+        req = Request(
+            url,
+            headers={"User-Agent": "Mozilla/5.0 (compatible; ManualReviewBot/1.0)"},
+        )
+        try:
+            with urlopen(req, timeout=timeout_seconds) as response:
+                return None, response.status, None, attempt
+        except HTTPError as exc:
+            if exc.code is not None and 500 <= exc.code < 600 and attempt < total_attempts:
+                sleep(retry_delay_seconds)
+                continue
+            return exc.reason, exc.code, None, attempt
+        except URLError as exc:
+            if attempt < total_attempts:
+                sleep(retry_delay_seconds)
+                continue
+            return str(exc.reason), None, None, attempt
+        except Exception as exc:  # pragma: no cover - defensive path
+            if attempt < total_attempts:
+                sleep(retry_delay_seconds)
+                continue
+            return str(exc), None, None, attempt
+
+    return "unreachable", None, None, 0
+
+
+def build_knowledge_alignment(path: Path) -> dict:
+    target_urls = {url for _, url in CHECK_TARGETS}
+    knowledge_urls = extract_knowledge_source_urls(path)
+    return {
+        "target_urls": sorted(target_urls),
+        "knowledge_urls": sorted(knowledge_urls),
+        "missing_in_targets": sorted(knowledge_urls - target_urls),
+        "extra_in_targets": sorted(target_urls - knowledge_urls),
+        "in_sync": not (knowledge_urls - target_urls) and not (target_urls - knowledge_urls),
+    }
 
 
 def run_checks(args: argparse.Namespace) -> dict:
     status_checks = []
+    alignment = build_knowledge_alignment(Path(args.knowledge))
+
     for name, url in CHECK_TARGETS:
         if args.skip_url_check:
             status_checks.append(
@@ -138,11 +195,17 @@ def run_checks(args: argparse.Namespace) -> dict:
                     "status_code": None,
                     "error": "skipped",
                     "checked": False,
+                    "attempts": 0,
                 }
             )
             continue
 
-        reason, status_code, _ = check_url_status(url, args.timeout_seconds)
+        reason, status_code, _, attempts = check_url_status(
+            url,
+            args.timeout_seconds,
+            args.url_retries,
+            args.url_retry_delay_seconds,
+        )
         status_checks.append(
             {
                 "name": name,
@@ -151,6 +214,7 @@ def run_checks(args: argparse.Namespace) -> dict:
                 "status_code": status_code,
                 "error": reason,
                 "checked": True,
+                "attempts": attempts,
             }
         )
 
@@ -175,6 +239,7 @@ def run_checks(args: argparse.Namespace) -> dict:
         },
         "max_age_days": args.max_age_days,
         "skip_url_check": args.skip_url_check,
+        "knowledge_alignment": alignment,
     }
 
 
@@ -184,6 +249,7 @@ def render_log(report: dict, template_path: Path, out_dir: Path) -> Path:
     out_path = out_dir / f"official_manual_review_{report['review_type']}_{timestamp}.md"
 
     template = template_path.read_text(encoding="utf-8") if template_path.exists() else ""
+
     url_lines = []
     for source in report["sources"]:
         status = (
@@ -192,29 +258,43 @@ def render_log(report: dict, template_path: Path, out_dir: Path) -> Path:
             else (source["error"] or "not_checked")
         )
         suffix = f"{status}"
+        if source["attempts"]:
+            suffix += f" (attempts={source['attempts']})"
         if source["error"] and source["status_code"] is not None:
             suffix += f" ({source['error']})"
         url_lines.append(f"- {source['name']}: {suffix}")
 
+    alignment_lines = []
+    alignment = report["knowledge_alignment"]
+    if alignment["missing_in_targets"]:
+        alignment_lines.append(f"- Missing target urls: {', '.join(alignment['missing_in_targets'])}")
+    if alignment["extra_in_targets"]:
+        alignment_lines.append(f"- Extra target urls: {', '.join(alignment['extra_in_targets'])}")
+    if not alignment_lines:
+        alignment_lines.append("- Knowledge URLs and review targets are aligned")
+
     log_body = []
-    log_body.append("# 公式マニュアル監査結果（自動記録）")
+    log_body.append("# 正式ドキュメント連携レビュー")
     log_body.append("")
     log_body.append(f"実施日: {report['date']}")
     log_body.append(f"レビュー種別: {report['review_type']}")
-    log_body.append(f"チェック基準: {report['max_age_days']}日以上は要更新")
+    log_body.append(f"許容経過日数: {report['max_age_days']}")
     log_body.append("")
-    log_body.append("## 1. URL 到達確認")
+    log_body.append("## 1. URLチェック")
     log_body.extend(url_lines)
     log_body.append("")
-    log_body.append("## 2. ルール基準日チェック")
+    log_body.append("## 2. 知識ファイル更新")
     log_body.append(f"- `{report['knowledge']['path']}`: {report['knowledge']['last_reviewed']} (stale={report['knowledge']['stale']})")
     log_body.append(f"- `{report['alignment_notes']['path']}`: {report['alignment_notes']['last_reviewed']} (stale={report['alignment_notes']['stale']})")
     log_body.append("")
-    log_body.append("## 3. 監査ログ（テンプレート）")
-    if template:
-        log_body.append(template.strip())
+    log_body.append("## 3. 照合")
+    log_body.extend(alignment_lines)
     log_body.append("")
-    log_body.append("## 4. 生データ")
+    if template:
+        log_body.append("## 4. 運用メモ")
+        log_body.append(template.strip())
+        log_body.append("")
+    log_body.append("## 5. JSON")
     log_body.append("```json")
     log_body.append(json.dumps(report, ensure_ascii=False, indent=2))
     log_body.append("```")
@@ -225,7 +305,12 @@ def render_log(report: dict, template_path: Path, out_dir: Path) -> Path:
 
 def all_ok(report: dict) -> bool:
     source_ok = all(source["ok"] for source in report["sources"] if source.get("checked", True))
-    return source_ok and not report["knowledge"]["stale"] and not report["alignment_notes"]["stale"]
+    return (
+        source_ok
+        and not report["knowledge"]["stale"]
+        and not report["alignment_notes"]["stale"]
+        and report["knowledge_alignment"]["in_sync"]
+    )
 
 
 def main() -> int:
@@ -242,13 +327,19 @@ def main() -> int:
     else:
         failed = [s for s in report["sources"] if not s["ok"]]
         print(f"Review type: {report['review_type']}")
+        print(f"Log: {out_path}")
         if report["skip_url_check"]:
             print("URL checks: skipped")
-        print(f"Log: {out_path}")
         if failed:
             print("Unhealthy source(s):")
             for item in failed:
                 print(f" - {item['name']}: {item['status_code'] or item['error']}")
+        if not report["knowledge_alignment"]["in_sync"]:
+            print("Knowledge/targets are not aligned:")
+            if report["knowledge_alignment"]["missing_in_targets"]:
+                print(f" - Missing in review targets: {report['knowledge_alignment']['missing_in_targets']}")
+            if report["knowledge_alignment"]["extra_in_targets"]:
+                print(f" - Extra in review targets: {report['knowledge_alignment']['extra_in_targets']}")
         print(f"knowledge_stale: {report['knowledge']['stale']}")
         print(f"alignment_notes_stale: {report['alignment_notes']['stale']}")
 

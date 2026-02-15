@@ -216,6 +216,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "scripts\start_dashboard.ps1
 ## Official manual review (automated)
 - Run periodic checks: `npm run review:manual -- --review-type weekly`
 - Monthly run: `npm run review:manual -- --review-type monthly --max-age-days 30`
+- Optional resilience: `npm run review:manual -- --review-type weekly --url-retries 2 --url-retry-delay-seconds 1.5`
 - Use PowerShell wrapper: `pwsh -File scripts\review_official_manual.ps1 -ReviewType weekly`
 - Output log: `references/review_logs/official_manual_review_<review_type>_YYYY-MM-DD_HHMMSS.md`
 - Always align findings into `references/official_manual_alignment_notes.md` and `references/official_manual_knowledge.yaml`.
