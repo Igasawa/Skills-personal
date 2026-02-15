@@ -25,6 +25,7 @@
   let activeLogRunId = "";
   let stepRefreshInFlight = false;
   let stepRefreshStartedAt = 0;
+  let stepFocusTimer = null;
   let autoReloadScheduled = false;
   const REQUEST_TIMEOUT_MS = 12000;
   const STEP_REFRESH_STALE_MS = 15000;
@@ -1056,22 +1057,41 @@
     const id = href.trim();
     if (!id.startsWith("#")) return;
     const target = document.querySelector(id);
-    if (!target) return;
+    if (!target) {
+      showToast("対象セクションが見つかりません。", "warning");
+      return;
+    }
+
+    if (stepFocusTimer) {
+      clearTimeout(stepFocusTimer);
+      stepFocusTimer = null;
+    }
+
     target.scrollIntoView({
       behavior: "smooth",
       block: "start",
     });
     const hadTabIndex = target.hasAttribute("tabindex");
     target.setAttribute("tabindex", "-1");
-    if (typeof target.focus === "function") {
-      target.focus({ preventScroll: true });
+    const focusTarget =
+      target.matches("button, a, input, select, textarea, [tabindex]")
+      ? target
+      : target.querySelector("button, a, input, select, textarea, [tabindex]");
+    const focusable = focusTarget || target;
+    if (typeof focusable.focus === "function") {
+      try {
+        focusable.focus({ preventScroll: true });
+      } catch {
+        focusable.focus();
+      }
     }
     target.classList.add("step-focus");
-    setTimeout(() => {
+    stepFocusTimer = setTimeout(() => {
       target.classList.remove("step-focus");
       if (!hadTabIndex) {
         target.removeAttribute("tabindex");
       }
+      stepFocusTimer = null;
     }, 1400);
   }
 
