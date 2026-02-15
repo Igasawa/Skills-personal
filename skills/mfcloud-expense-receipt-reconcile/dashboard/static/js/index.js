@@ -30,6 +30,8 @@
   const REQUEST_TIMEOUT_MS = 12000;
   const STEP_REFRESH_STALE_MS = 15000;
   const archiveStateOverrides = Object.create(null);
+  const PROVIDER_SOURCE_SETUP_GUIDE_URL =
+    "https://github.com/Igasawa/Skills-personal/blob/main/skills/mfcloud-expense-receipt-reconcile/SKILL.md";
 
   const monthCloseChecklistKeys = ["expense_submission", "document_printout", "mf_accounting_link"];
   const YM_STORAGE_KEY = "mfcloud.dashboard.selectedYm";
@@ -1763,6 +1765,7 @@
     const exists = Boolean(source.exists);
     const pending = toCount(source.pending_files);
     const path = String(source.path || "").trim();
+    const pendingText = ` (${pending} matched file(s))`;
 
     if (!configured) {
       return "Provider source folder is not configured.";
@@ -1770,7 +1773,7 @@
     if (!exists) {
       return `Configured provider source folder not found: ${path || "(not set)"}`;
     }
-    const suffix = pending > 0 ? ` (${pending} matched file(s))` : "";
+    const suffix = pendingText;
     if (!path) {
       return `Provider source folder is ready${suffix}`;
     }
@@ -1778,13 +1781,25 @@
   }
 
   function renderProviderSourceSummary(rawSource, fallbackMessage = "") {
+    const source = rawSource && typeof rawSource === "object" ? rawSource : {};
     const summaryEl = document.querySelector("[data-provider-source-summary]");
     if (!summaryEl) return;
-    if (fallbackMessage) {
-      summaryEl.textContent = fallbackMessage;
-      return;
+    const text = fallbackMessage || buildProviderSourceSummaryText(rawSource);
+    summaryEl.textContent = text;
+    const guideEl = document.querySelector("[data-provider-source-setup-guide]");
+    if (guideEl) {
+      const needsGuide =
+        Boolean(fallbackMessage) ||
+        !Boolean(source.configured) ||
+        !Boolean(source.exists) ||
+        text.toLowerCase().includes("not configured") ||
+        text.toLowerCase().includes("not found");
+      guideEl.hidden = !needsGuide;
+      const guideLinkEl = guideEl.querySelector("a");
+      if (guideLinkEl) {
+        guideLinkEl.href = PROVIDER_SOURCE_SETUP_GUIDE_URL;
+      }
     }
-    summaryEl.textContent = buildProviderSourceSummaryText(rawSource);
   }
 
 

@@ -130,6 +130,8 @@ def test_index_page_shows_manual_archive_button(monkeypatch: pytest.MonkeyPatch,
     assert 'data-provider-action="import_provider_receipts"' in res.text
     assert 'data-provider-action="print_provider_receipts"' in res.text
     assert 'data-provider-source-summary' in res.text
+    assert 'data-provider-source-setup-guide' in res.text
+    assert 'AX_MANUAL_RECEIPT_SOURCE_DIR' in res.text
     assert 'data-provider-action="download_provider_receipts"' not in res.text
     assert "/workspace" in res.text
     assert "data-mf-summary" not in res.text
