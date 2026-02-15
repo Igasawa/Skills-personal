@@ -180,8 +180,8 @@ def run_checks(args: argparse.Namespace) -> dict:
 
 def render_log(report: dict, template_path: Path, out_dir: Path) -> Path:
     out_dir.mkdir(parents=True, exist_ok=True)
-    timestamp = datetime.now().astimezone().replace(microsecond=0).isoformat()
-    out_path = out_dir / f"official_manual_review_{report['review_type']}_{timestamp[:10]}.md"
+    timestamp = datetime.now().astimezone().replace(microsecond=0).strftime("%Y-%m-%d_%H%M%S")
+    out_path = out_dir / f"official_manual_review_{report['review_type']}_{timestamp}.md"
 
     template = template_path.read_text(encoding="utf-8") if template_path.exists() else ""
     url_lines = []

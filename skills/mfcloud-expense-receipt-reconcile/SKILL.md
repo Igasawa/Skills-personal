@@ -217,7 +217,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "scripts\start_dashboard.ps1
 - Run periodic checks: `python scripts/review_official_manual.py --review-type weekly`
 - Monthly run: `python scripts/review_official_manual.py --review-type monthly --max-age-days 30`
 - Use PowerShell wrapper: `pwsh -File scripts\review_official_manual.ps1 -ReviewType weekly`
-- Output log: `references/review_logs/official_manual_review_<review_type>_YYYY-MM-DD.md`
+- Output log: `references/review_logs/official_manual_review_<review_type>_YYYY-MM-DD_HHMMSS.md`
 - Always align findings into `references/official_manual_alignment_notes.md` and `references/official_manual_knowledge.yaml`.
 - CI workflow: `.github/workflows/official-manual-review.yml`
   - defaults to `review_type=weekly`, `max_age_days=14`, `skip_url_check=true`
