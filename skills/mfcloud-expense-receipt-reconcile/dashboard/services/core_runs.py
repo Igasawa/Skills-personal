@@ -563,7 +563,7 @@ def _workflow_state_for_ym(year: int, month: int) -> dict[str, Any]:
         next_step = "rakuten_download"
         next_step_reason = "rakuten_download_required"
 
-    allowed_run_modes: list[str] = ["preflight"]
+    allowed_run_modes: list[str] = ["preflight", "preflight_mf"]
     if preflight_done:
         allowed_run_modes.extend(["amazon_download", "rakuten_download"])
         if amazon_downloaded:
