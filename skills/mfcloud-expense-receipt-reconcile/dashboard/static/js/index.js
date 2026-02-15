@@ -264,7 +264,7 @@
       latestRunLinkEl.removeAttribute("tabindex");
     }
 
-    // セクション全体のステータスクラスを更新
+    // 繧ｻ繧ｯ繧ｷ繝ｧ繝ｳ蜈ｨ菴薙・繧ｹ繝・・繧ｿ繧ｹ繧ｯ繝ｩ繧ｹ繧呈峩譁ｰ
     const section = document.querySelector("[data-latest-run-section]");
     if (section) {
       section.classList.remove("success", "failed", "running");
@@ -294,9 +294,9 @@
     const previousStatus = runStatusById[runId];
     if (status && previousStatus && previousStatus !== status) {
       if (status === "failed") {
-        showToast("実行に失敗しました。ログを確認してください。", "error");
+        showToast("螳溯｡後↓螟ｱ謨励＠縺ｾ縺励◆縲ゅΟ繧ｰ繧堤｢ｺ隱阪＠縺ｦ縺上□縺輔＞縲・, "error");
       } else if (status === "success") {
-        showToast("実行が完了しました。", "success");
+        showToast("螳溯｡後′螳御ｺ・＠縺ｾ縺励◆縲・, "success");
       }
     }
     if (status) {
@@ -304,7 +304,7 @@
     }
 
     if (status === "failed") {
-      showError("実行に失敗しました。ログを確認してください。");
+      showError("螳溯｡後↓螟ｱ謨励＠縺ｾ縺励◆縲ゅΟ繧ｰ繧堤｢ｺ隱阪＠縺ｦ縺上□縺輔＞縲・);
     }
 
     if (status && status !== "running") {
@@ -349,7 +349,7 @@
     if (!payload) return;
 
     clearError();
-    showToast("実行を開始しています...", "success");
+    showToast("螳溯｡後ｒ髢句ｧ九＠縺ｦ縺・∪縺・..", "success");
 
     try {
       const res = await fetch("/api/runs", {
@@ -369,7 +369,7 @@
       const data = await res.json();
       if (logEl) {
         logEl.dataset.runId = data.run_id;
-        logEl.textContent = "実行を開始しました。ログを更新中...";
+        logEl.textContent = "螳溯｡後ｒ髢句ｧ九＠縺ｾ縺励◆縲ゅΟ繧ｰ繧呈峩譁ｰ荳ｭ...";
       }
 
       awaitingRunFinalization = true;
@@ -380,14 +380,14 @@
         params: { year: payload.year, month: payload.month },
       });
       runStatusById[data.run_id] = "running";
-      showToast("実行を開始しました。", "success");
+      showToast("螳溯｡後ｒ髢句ｧ九＠縺ｾ縺励◆縲・, "success");
 
       startLogPolling(data.run_id);
       refreshLog(data.run_id);
       scheduleStepSync();
     } catch {
       awaitingRunFinalization = false;
-      const message = "実行開始に失敗しました。再試行してください。";
+      const message = "螳溯｡碁幕蟋九↓螟ｱ謨励＠縺ｾ縺励◆縲ょ・隧ｦ陦後＠縺ｦ縺上□縺輔＞縲・;
       showError(message);
       showToast(message, "error");
     }
@@ -421,7 +421,7 @@
 
     const ym = String(entry.ym || "").trim();
     const ts = String(entry.ts || "").trim();
-    const actionLabel = String(entry.action_label || "").trim() || "アーカイブ";
+    const actionLabel = String(entry.action_label || "").trim() || "繧｢繝ｼ繧ｫ繧､繝・;
     const href = String(entry.archive_url || "").trim() || (ym ? `/runs/${ym}/archived-receipts` : "#");
 
     const item = document.createElement("li");
@@ -432,7 +432,7 @@
     const link = document.createElement("a");
     link.className = "secondary";
     link.href = href;
-    link.textContent = "アーカイブを開く";
+    link.textContent = "繧｢繝ｼ繧ｫ繧､繝悶ｒ髢九￥";
     item.appendChild(text);
     item.appendChild(link);
     list.prepend(item);
@@ -441,7 +441,7 @@
   async function runArchiveAction(action, buttonEl) {
     const ym = getYmFromForm();
     if (!ym) {
-      showToast("年月を入力してください。", "error");
+      showToast("蟷ｴ譛医ｒ蜈･蜉帙＠縺ｦ縺上□縺輔＞縲・, "error");
       return;
     }
     const normalizedAction = String(action || "").trim();
@@ -453,14 +453,14 @@
       buttonEl.dataset.busy = "1";
     }
     const isMonthClose = normalizedAction === "month_close";
-    showToast(isMonthClose ? "月次クローズを実行しています..." : "アーカイブを作成しています...", "success");
+    showToast(isMonthClose ? "譛域ｬ｡繧ｯ繝ｭ繝ｼ繧ｺ繧貞ｮ溯｡後＠縺ｦ縺・∪縺・.." : "繧｢繝ｼ繧ｫ繧､繝悶ｒ菴懈・縺励※縺・∪縺・..", "success");
 
     try {
       const endpoint = isMonthClose ? `/api/month-close/${ym}` : `/api/archive/${ym}`;
       const res = await fetch(endpoint, { method: "POST" });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        const message = toFriendlyMessage(data.detail || (isMonthClose ? "月次クローズに失敗しました。" : "アーカイブ作成に失敗しました。"));
+        const message = toFriendlyMessage(data.detail || (isMonthClose ? "譛域ｬ｡繧ｯ繝ｭ繝ｼ繧ｺ縺ｫ螟ｱ謨励＠縺ｾ縺励◆縲・ : "繧｢繝ｼ繧ｫ繧､繝紋ｽ懈・縺ｫ螟ｱ謨励＠縺ｾ縺励◆縲・));
         showError(message);
         showToast(message, "error");
         return;
@@ -475,21 +475,21 @@
         cleanup: Boolean(data.cleanup),
       };
       const cleanupRemoved = Number(data.cleanup_removed || 0);
-      const cleanupSuffix = Number.isFinite(cleanupRemoved) ? ` / クリーンアップ ${cleanupRemoved}件` : "";
-      const baseMessage = isMonthClose ? "月次クローズが完了しました" : "アーカイブを作成しました";
-      let message = archivedTo ? `${baseMessage}: ${archivedTo}${cleanupSuffix}` : `${baseMessage}。${cleanupSuffix}`;
+      const cleanupSuffix = Number.isFinite(cleanupRemoved) ? ` / 繧ｯ繝ｪ繝ｼ繝ｳ繧｢繝・・ ${cleanupRemoved}莉ｶ` : "";
+      const baseMessage = isMonthClose ? "譛域ｬ｡繧ｯ繝ｭ繝ｼ繧ｺ縺悟ｮ御ｺ・＠縺ｾ縺励◆" : "繧｢繝ｼ繧ｫ繧､繝悶ｒ菴懈・縺励∪縺励◆";
+      let message = archivedTo ? `${baseMessage}: ${archivedTo}${cleanupSuffix}` : `${baseMessage}縲・{cleanupSuffix}`;
       if (isMonthClose) {
         const next = nextYm(ym);
         if (next) {
           setYmToForm(next);
           if (window.__stepState) window.__stepState = null;
-          message += ` / ウィザードを ${next} に切り替えました。`;
+          message += ` / 繧ｦ繧｣繧ｶ繝ｼ繝峨ｒ ${next} 縺ｫ蛻・ｊ譖ｿ縺医∪縺励◆縲Ａ;
         }
       }
       prependArchiveHistoryRow(data.history_entry || null);
       showToast(message, "success");
     } catch {
-      const message = normalizedAction === "month_close" ? "月次クローズに失敗しました。" : "アーカイブ作成に失敗しました。";
+      const message = normalizedAction === "month_close" ? "譛域ｬ｡繧ｯ繝ｭ繝ｼ繧ｺ縺ｫ螟ｱ謨励＠縺ｾ縺励◆縲・ : "繧｢繝ｼ繧ｫ繧､繝紋ｽ懈・縺ｫ螟ｱ謨励＠縺ｾ縺励◆縲・;
       showError(message);
       showToast(message, "error");
     } finally {
@@ -511,7 +511,7 @@
   async function openManualInbox(buttonEl) {
     const ym = getYmFromForm();
     if (!ym) {
-      showToast("年月を入力してください。", "error");
+      showToast("蟷ｴ譛医ｒ蜈･蜉帙＠縺ｦ縺上□縺輔＞縲・, "error");
       return;
     }
 
@@ -524,16 +524,16 @@
       const res = await fetch(`/api/folders/${ym}/manual-inbox`, { method: "POST" });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        const message = toFriendlyMessage(data.detail || "共通フォルダを開けませんでした。");
+        const message = toFriendlyMessage(data.detail || "蜈ｱ騾壹ヵ繧ｩ繝ｫ繝繧帝幕縺代∪縺帙ｓ縺ｧ縺励◆縲・);
         showError(message);
         showToast(message, "error");
         return;
       }
       const openedPath = String(data.path || "").trim();
-      const message = openedPath ? `共通フォルダを開きました: ${openedPath}` : "共通フォルダを開きました。";
+      const message = openedPath ? `蜈ｱ騾壹ヵ繧ｩ繝ｫ繝繧帝幕縺阪∪縺励◆: ${openedPath}` : "蜈ｱ騾壹ヵ繧ｩ繝ｫ繝繧帝幕縺阪∪縺励◆縲・;
       showToast(message, "success");
     } catch {
-      const message = "共通フォルダを開けませんでした。";
+      const message = "蜈ｱ騾壹ヵ繧ｩ繝ｫ繝繧帝幕縺代∪縺帙ｓ縺ｧ縺励◆縲・;
       showError(message);
       showToast(message, "error");
     } finally {
@@ -545,7 +545,7 @@
   async function importManualReceipts(buttonEl) {
     const ym = getYmFromForm();
     if (!ym) {
-      showToast("年月を入力してください。", "error");
+      showToast("蟷ｴ譛医ｒ蜈･蜉帙＠縺ｦ縺上□縺輔＞縲・, "error");
       return;
     }
 
@@ -554,12 +554,12 @@
       buttonEl.dataset.busy = "1";
     }
     clearError();
-    showToast("手動領収書の取り込みを開始します...", "success");
+    showToast("謇句虚鬆伜庶譖ｸ縺ｮ蜿悶ｊ霎ｼ縺ｿ繧帝幕蟋九＠縺ｾ縺・..", "success");
     try {
       const res = await fetch(`/api/manual/${ym}/import`, { method: "POST" });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        const message = toFriendlyMessage(data.detail || "領収書取り込みに失敗しました。");
+        const message = toFriendlyMessage(data.detail || "鬆伜庶譖ｸ蜿悶ｊ霎ｼ縺ｿ縺ｫ螟ｱ謨励＠縺ｾ縺励◆縲・);
         showError(message);
         showToast(message, "error");
         return;
@@ -568,13 +568,13 @@
       const imported = Number.parseInt(String(data.imported ?? 0), 10) || 0;
       const skipped = Number.parseInt(String(data.skipped_duplicates ?? 0), 10) || 0;
       const failed = Number.parseInt(String(data.failed ?? 0), 10) || 0;
-      const message = `手動領収書取り込み: 発見 ${found}件 / 取込 ${imported}件 / 重複 ${skipped}件 / 失敗 ${failed}件`;
+      const message = `謇句虚鬆伜庶譖ｸ蜿悶ｊ霎ｼ縺ｿ: 逋ｺ隕・${found}莉ｶ / 蜿冶ｾｼ ${imported}莉ｶ / 驥崎､・${skipped}莉ｶ / 螟ｱ謨・${failed}莉ｶ`;
       showToast(message, failed > 0 ? "error" : "success");
       if (failed > 0) {
         showError(message);
       }
     } catch {
-      const message = "領収書取り込みに失敗しました。";
+      const message = "鬆伜庶譖ｸ蜿悶ｊ霎ｼ縺ｿ縺ｫ螟ｱ謨励＠縺ｾ縺励◆縲・;
       showError(message);
       showToast(message, "error");
     } finally {
@@ -586,7 +586,7 @@
   async function openMfBulkInbox(buttonEl) {
     const ym = getYmFromForm();
     if (!ym) {
-      showToast("年月を入力してください。", "error");
+      showToast("蟷ｴ譛医ｒ蜈･蜉帙＠縺ｦ縺上□縺輔＞縲・, "error");
       return;
     }
 
@@ -599,18 +599,18 @@
       const res = await fetch(`/api/folders/${ym}/mf-bulk-inbox`, { method: "POST" });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        const message = toFriendlyMessage(data.detail || "MF一括アップロード用フォルダを開けませんでした。");
+        const message = toFriendlyMessage(data.detail || "MF荳諡ｬ繧｢繝・・繝ｭ繝ｼ繝臥畑繝輔か繝ｫ繝繧帝幕縺代∪縺帙ｓ縺ｧ縺励◆縲・);
         showError(message);
         showToast(message, "error");
         return;
       }
       const openedPath = String(data.path || "").trim();
       const message = openedPath
-        ? `MF一括アップロード用フォルダを開きました: ${openedPath}`
-        : "MF一括アップロード用フォルダを開きました。";
+        ? `MF荳諡ｬ繧｢繝・・繝ｭ繝ｼ繝臥畑繝輔か繝ｫ繝繧帝幕縺阪∪縺励◆: ${openedPath}`
+        : "MF荳諡ｬ繧｢繝・・繝ｭ繝ｼ繝臥畑繝輔か繝ｫ繝繧帝幕縺阪∪縺励◆縲・;
       showToast(message, "success");
     } catch {
-      const message = "MF一括アップロード用フォルダを開けませんでした。";
+      const message = "MF荳諡ｬ繧｢繝・・繝ｭ繝ｼ繝臥畑繝輔か繝ｫ繝繧帝幕縺代∪縺帙ｓ縺ｧ縺励◆縲・;
       showError(message);
       showToast(message, "error");
     } finally {
@@ -622,7 +622,7 @@
   async function runMfBulkUpload(buttonEl) {
     const ym = getYmFromForm();
     if (!ym) {
-      showToast("年月を入力してください。", "error");
+      showToast("蟷ｴ譛医ｒ蜈･蜉帙＠縺ｦ縺上□縺輔＞縲・, "error");
       return;
     }
 
@@ -631,12 +631,12 @@
       buttonEl.dataset.busy = "1";
     }
     clearError();
-    showToast("MF一括アップロードを開始します...", "success");
+    showToast("MF荳諡ｬ繧｢繝・・繝ｭ繝ｼ繝峨ｒ髢句ｧ九＠縺ｾ縺・..", "success");
     try {
       const res = await fetch(`/api/mf-bulk-upload/${ym}`, { method: "POST" });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        const message = toFriendlyMessage(data.detail || "MF一括アップロードに失敗しました。");
+        const message = toFriendlyMessage(data.detail || "MF荳諡ｬ繧｢繝・・繝ｭ繝ｼ繝峨↓螟ｱ謨励＠縺ｾ縺励◆縲・);
         showError(message);
         showToast(message, "error");
         return;
@@ -646,11 +646,11 @@
       const queued = Number.parseInt(String(data.queued_count ?? 0), 10) || 0;
       const readCount = Number.parseInt(String(data.read_count ?? 0), 10) || 0;
       const archivedDir = String(data.archived_dir || "").trim();
-      const details = archivedDir ? ` / 保管: ${archivedDir}` : "";
-      const message = `MF一括アップロード: 発見 ${found}件 / 読込 ${readCount}件 / キュー ${queued}件 / 送信 ${submitted}件${details}`;
+      const details = archivedDir ? ` / 菫晉ｮ｡: ${archivedDir}` : "";
+      const message = `MF荳諡ｬ繧｢繝・・繝ｭ繝ｼ繝・ 逋ｺ隕・${found}莉ｶ / 隱ｭ霎ｼ ${readCount}莉ｶ / 繧ｭ繝･繝ｼ ${queued}莉ｶ / 騾∽ｿ｡ ${submitted}莉ｶ${details}`;
       showToast(message, "success");
     } catch {
-      const message = "MF一括アップロードに失敗しました。";
+      const message = "MF荳諡ｬ繧｢繝・・繝ｭ繝ｼ繝峨↓螟ｱ謨励＠縺ｾ縺励◆縲・;
       showError(message);
       showToast(message, "error");
     } finally {
@@ -662,7 +662,7 @@
   async function openMfCsvInbox(buttonEl) {
     const ym = getYmFromForm();
     if (!ym) {
-      showToast("年月を入力してください。", "error");
+      showToast("蟷ｴ譛医ｒ蜈･蜉帙＠縺ｦ縺上□縺輔＞縲・, "error");
       return;
     }
 
@@ -675,18 +675,18 @@
       const res = await fetch(`/api/folders/${ym}/mf-csv-inbox`, { method: "POST" });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        const message = toFriendlyMessage(data.detail || "交通費CSVインポート用フォルダを開けませんでした。");
+        const message = toFriendlyMessage(data.detail || "莠､騾夊ｲｻCSV繧､繝ｳ繝昴・繝育畑繝輔か繝ｫ繝繧帝幕縺代∪縺帙ｓ縺ｧ縺励◆縲・);
         showError(message);
         showToast(message, "error");
         return;
       }
       const openedPath = String(data.path || "").trim();
       const message = openedPath
-        ? `交通費CSVインポート用フォルダを開きました: ${openedPath}`
-        : "交通費CSVインポート用フォルダを開きました。";
+        ? `莠､騾夊ｲｻCSV繧､繝ｳ繝昴・繝育畑繝輔か繝ｫ繝繧帝幕縺阪∪縺励◆: ${openedPath}`
+        : "莠､騾夊ｲｻCSV繧､繝ｳ繝昴・繝育畑繝輔か繝ｫ繝繧帝幕縺阪∪縺励◆縲・;
       showToast(message, "success");
     } catch {
-      const message = "交通費CSVインポート用フォルダを開けませんでした。";
+      const message = "莠､騾夊ｲｻCSV繧､繝ｳ繝昴・繝育畑繝輔か繝ｫ繝繧帝幕縺代∪縺帙ｓ縺ｧ縺励◆縲・;
       showError(message);
       showToast(message, "error");
     } finally {
@@ -698,7 +698,7 @@
   async function runMfCsvImport(buttonEl) {
     const ym = getYmFromForm();
     if (!ym) {
-      showToast("年月を入力してください。", "error");
+      showToast("蟷ｴ譛医ｒ蜈･蜉帙＠縺ｦ縺上□縺輔＞縲・, "error");
       return;
     }
 
@@ -707,12 +707,12 @@
       buttonEl.dataset.busy = "1";
     }
     clearError();
-    showToast("交通費CSVインポートを開始します...", "success");
+    showToast("莠､騾夊ｲｻCSV繧､繝ｳ繝昴・繝医ｒ髢句ｧ九＠縺ｾ縺・..", "success");
     try {
       const res = await fetch(`/api/mf-csv-import/${ym}`, { method: "POST" });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        const message = toFriendlyMessage(data.detail || "交通費CSVインポートに失敗しました。");
+        const message = toFriendlyMessage(data.detail || "莠､騾夊ｲｻCSV繧､繝ｳ繝昴・繝医↓螟ｱ謨励＠縺ｾ縺励◆縲・);
         showError(message);
         showToast(message, "error");
         return;
@@ -721,11 +721,11 @@
       const submitted = Number.parseInt(String(data.submitted_count ?? 0), 10) || 0;
       const queued = Number.parseInt(String(data.queued_count ?? 0), 10) || 0;
       const archivedDir = String(data.archived_dir || "").trim();
-      const details = archivedDir ? ` / 保管: ${archivedDir}` : "";
-      const message = `交通費CSVインポート: 発見 ${found}件 / キュー ${queued}件 / 送信 ${submitted}件${details}`;
+      const details = archivedDir ? ` / 菫晉ｮ｡: ${archivedDir}` : "";
+      const message = `莠､騾夊ｲｻCSV繧､繝ｳ繝昴・繝・ 逋ｺ隕・${found}莉ｶ / 繧ｭ繝･繝ｼ ${queued}莉ｶ / 騾∽ｿ｡ ${submitted}莉ｶ${details}`;
       showToast(message, "success");
     } catch {
-      const message = "交通費CSVインポートに失敗しました。";
+      const message = "莠､騾夊ｲｻCSV繧､繝ｳ繝昴・繝医↓螟ｱ謨励＠縺ｾ縺励◆縲・;
       showError(message);
       showToast(message, "error");
     } finally {
@@ -773,11 +773,11 @@
     const ym = getYmFromForm();
     const normalizedProvider = String(provider || "").trim().toLowerCase();
     if (!ym) {
-      showToast("年月を入力してください。", "error");
+      showToast("蟷ｴ譛医ｒ蜈･蜉帙＠縺ｦ縺上□縺輔＞縲・, "error");
       return;
     }
     if (!normalizedProvider) {
-      showToast("対象サービスが指定されていません。", "error");
+      showToast("蟇ｾ雎｡繧ｵ繝ｼ繝薙せ縺梧欠螳壹＆繧後※縺・∪縺帙ｓ縲・, "error");
       return;
     }
 
@@ -790,17 +790,17 @@
       const res = await fetch(`/api/folders/${ym}/provider-inbox/${encodeURIComponent(normalizedProvider)}`, { method: "POST" });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        const message = toFriendlyMessage(data.detail || "サービス別フォルダを開けませんでした。");
+        const message = toFriendlyMessage(data.detail || "繧ｵ繝ｼ繝薙せ蛻･繝輔か繝ｫ繝繧帝幕縺代∪縺帙ｓ縺ｧ縺励◆縲・);
         showError(message);
         showToast(message, "error");
         return;
       }
       const openedPath = String(data.path || "").trim();
       const label = providerLabel(normalizedProvider);
-      const message = openedPath ? `${label}フォルダを開きました: ${openedPath}` : `${label}フォルダを開きました。`;
+      const message = openedPath ? `${label}繝輔か繝ｫ繝繧帝幕縺阪∪縺励◆: ${openedPath}` : `${label}繝輔か繝ｫ繝繧帝幕縺阪∪縺励◆縲Ａ;
       showToast(message, "success");
     } catch {
-      const message = "サービス別フォルダを開けませんでした。";
+      const message = "繧ｵ繝ｼ繝薙せ蛻･繝輔か繝ｫ繝繧帝幕縺代∪縺帙ｓ縺ｧ縺励◆縲・;
       showError(message);
       showToast(message, "error");
     } finally {
@@ -812,7 +812,7 @@
   async function importProviderReceipts(buttonEl) {
     const ym = getYmFromForm();
     if (!ym) {
-      showToast("年月を入力してください。", "error");
+      showToast("蟷ｴ譛医ｒ蜈･蜉帙＠縺ｦ縺上□縺輔＞縲・, "error");
       return;
     }
 
@@ -821,12 +821,12 @@
       buttonEl.dataset.busy = "1";
     }
     clearError();
-    showToast("共通フォルダの領収書を取り込み中...", "success");
+    showToast("蜈ｱ騾壹ヵ繧ｩ繝ｫ繝縺ｮ鬆伜庶譖ｸ繧貞叙繧願ｾｼ縺ｿ荳ｭ...", "success");
     try {
       const res = await fetch(`/api/providers/${ym}/import`, { method: "POST" });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        const message = toFriendlyMessage(data.detail || "共通フォルダ取り込みに失敗しました。");
+        const message = toFriendlyMessage(data.detail || "蜈ｱ騾壹ヵ繧ｩ繝ｫ繝蜿悶ｊ霎ｼ縺ｿ縺ｫ螟ｱ謨励＠縺ｾ縺励◆縲・);
         showError(message);
         showToast(message, "error");
         return;
@@ -835,14 +835,14 @@
       const imported = Number.parseInt(String(data.imported ?? 0), 10) || 0;
       const skipped = Number.parseInt(String(data.skipped_duplicates ?? 0), 10) || 0;
       const failed = Number.parseInt(String(data.failed ?? 0), 10) || 0;
-      const message = `共通フォルダ取り込み: 検出 ${found}件 / 取込 ${imported}件 / 重複 ${skipped}件 / 失敗 ${failed}件`;
+      const message = `蜈ｱ騾壹ヵ繧ｩ繝ｫ繝蜿悶ｊ霎ｼ縺ｿ: 讀懷・ ${found}莉ｶ / 蜿冶ｾｼ ${imported}莉ｶ / 驥崎､・${skipped}莉ｶ / 螟ｱ謨・${failed}莉ｶ`;
       const manualActionRequired = Boolean(data.manual_action_required) || skipped > 0 || failed > 0;
       if (!manualActionRequired) {
         showToast(message, "success");
         return;
       }
 
-      const details = [message, "スキップ/失敗分はMFへ自動添付されていません。手動添付してください。"];
+      const details = [message, "繧ｹ繧ｭ繝・・/螟ｱ謨怜・縺ｯMF縺ｸ閾ｪ蜍墓ｷｻ莉倥＆繧後※縺・∪縺帙ｓ縲よ焔蜍墓ｷｻ莉倥＠縺ｦ縺上□縺輔＞縲・];
       let skippedFolderPath = String(data.skipped_dir || "").trim();
       if (skipped > 0) {
         const openSkippedRes = await fetch(`/api/folders/${ym}/provider-skipped/latest`, { method: "POST" });
@@ -853,21 +853,21 @@
         }
       }
       if (skippedFolderPath) {
-        details.push(`未添付一覧フォルダ: ${skippedFolderPath}`);
+        details.push(`譛ｪ豺ｻ莉倅ｸ隕ｧ繝輔か繝ｫ繝: ${skippedFolderPath}`);
       }
       const skippedFiles = Array.isArray(data.skipped_files)
         ? data.skipped_files.map((value) => String(value || "").trim()).filter((value) => value)
         : [];
       if (skippedFiles.length > 0) {
         const preview = skippedFiles.slice(0, 8);
-        const suffix = skippedFiles.length > preview.length ? ` ほか${skippedFiles.length - preview.length}件` : "";
-        details.push(`未添付ファイル: ${preview.join(", ")}${suffix}`);
+        const suffix = skippedFiles.length > preview.length ? ` 縺ｻ縺・{skippedFiles.length - preview.length}莉ｶ` : "";
+        details.push(`譛ｪ豺ｻ莉倥ヵ繧｡繧､繝ｫ: ${preview.join(", ")}${suffix}`);
       }
       const errorMessage = details.join("\n");
       showError(errorMessage);
-      showToast("共通フォルダ取り込みでスキップ/失敗が発生しました。手動添付が必要です。", "error");
+      showToast("蜈ｱ騾壹ヵ繧ｩ繝ｫ繝蜿悶ｊ霎ｼ縺ｿ縺ｧ繧ｹ繧ｭ繝・・/螟ｱ謨励′逋ｺ逕溘＠縺ｾ縺励◆縲よ焔蜍墓ｷｻ莉倥′蠢・ｦ√〒縺吶・, "error");
     } catch {
-      const message = "共通フォルダ取り込みに失敗しました。";
+      const message = "蜈ｱ騾壹ヵ繧ｩ繝ｫ繝蜿悶ｊ霎ｼ縺ｿ縺ｫ螟ｱ謨励＠縺ｾ縺励◆縲・;
       showError(message);
       showToast(message, "error");
     } finally {
@@ -879,7 +879,7 @@
   async function printProviderReceipts(buttonEl) {
     const ym = getYmFromForm();
     if (!ym) {
-      showToast("年月を入力してください。", "error");
+      showToast("蟷ｴ譛医ｒ蜈･蜉帙＠縺ｦ縺上□縺輔＞縲・, "error");
       return;
     }
 
@@ -888,21 +888,21 @@
       buttonEl.dataset.busy = "1";
     }
     clearError();
-    showToast("共通フォルダ取込済みのPDFを結合しています...", "success");
+    showToast("蜈ｱ騾壹ヵ繧ｩ繝ｫ繝蜿冶ｾｼ貂医∩縺ｮPDF繧堤ｵ仙粋縺励※縺・∪縺・..", "success");
     try {
       const res = await fetch(`/api/providers/${ym}/print-run`, { method: "POST" });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        const message = toFriendlyMessage(data.detail || "共通フォルダ一括印刷の開始に失敗しました。");
+        const message = toFriendlyMessage(data.detail || "蜈ｱ騾壹ヵ繧ｩ繝ｫ繝荳諡ｬ蜊ｰ蛻ｷ縺ｮ髢句ｧ九↓螟ｱ謨励＠縺ｾ縺励◆縲・);
         showError(message);
         showToast(message, "error");
         return;
       }
       const count = Number.parseInt(String(data.count ?? 0), 10) || 0;
-      const message = `共通フォルダ取込分の結合PDFを開きました（対象 ${Math.max(0, count)} 件）。`;
+      const message = `蜈ｱ騾壹ヵ繧ｩ繝ｫ繝蜿冶ｾｼ蛻・・邨仙粋PDF繧帝幕縺阪∪縺励◆・亥ｯｾ雎｡ ${Math.max(0, count)} 莉ｶ・峨Ａ;
       showToast(message, "success");
     } catch {
-      const message = "共通フォルダ一括印刷の開始に失敗しました。";
+      const message = "蜈ｱ騾壹ヵ繧ｩ繝ｫ繝荳諡ｬ蜊ｰ蛻ｷ縺ｮ髢句ｧ九↓螟ｱ謨励＠縺ｾ縺励◆縲・;
       showError(message);
       showToast(message, "error");
     } finally {
@@ -933,17 +933,17 @@
   async function resetStep(stepId, buttonEl) {
     const ym = getYmFromForm();
     if (!ym) {
-      showToast("年月を入力してください。", "error");
+      showToast("蟷ｴ譛医ｒ蜈･蜉帙＠縺ｦ縺上□縺輔＞縲・, "error");
       return;
     }
     const labelByStep = {
-      amazon_download: "Amazonカード / 取得",
-      amazon_decide_print: "Amazonカード / 除外判断・印刷（完了記録まで）",
-      rakuten_download: "楽天カード / 取得",
-      rakuten_decide_print: "楽天カード / 除外判断・印刷（完了記録まで）",
+      amazon_download: "Amazon繧ｫ繝ｼ繝・/ 蜿門ｾ・,
+      amazon_decide_print: "Amazon繧ｫ繝ｼ繝・/ 髯､螟門愛譁ｭ繝ｻ蜊ｰ蛻ｷ・亥ｮ御ｺ・ｨ倬鹸縺ｾ縺ｧ・・,
+      rakuten_download: "讌ｽ螟ｩ繧ｫ繝ｼ繝・/ 蜿門ｾ・,
+      rakuten_decide_print: "讌ｽ螟ｩ繧ｫ繝ｼ繝・/ 髯､螟門愛譁ｭ繝ｻ蜊ｰ蛻ｷ・亥ｮ御ｺ・ｨ倬鹸縺ｾ縺ｧ・・,
     };
     const label = labelByStep[String(stepId || "")] || String(stepId || "");
-    const confirmed = window.confirm(`「${label}」をリセットします。必要なら実行中ジョブを停止します。続行しますか？`);
+    const confirmed = window.confirm(`縲・{label}縲阪ｒ繝ｪ繧ｻ繝・ヨ縺励∪縺吶ょｿ・ｦ√↑繧牙ｮ溯｡御ｸｭ繧ｸ繝ｧ繝悶ｒ蛛懈ｭ｢縺励∪縺吶らｶ夊｡後＠縺ｾ縺吶°・歔);
     if (!confirmed) return;
 
     if (buttonEl) buttonEl.disabled = true;
@@ -958,13 +958,13 @@
         return;
       }
       const cancelledCount = Array.isArray(data.cancelled_runs) ? data.cancelled_runs.length : 0;
-      showToast(cancelledCount > 0 ? `リセット完了: 実行中ジョブ ${cancelledCount} 件を停止しました。` : "リセットが完了しました。", "success");
+      showToast(cancelledCount > 0 ? `繝ｪ繧ｻ繝・ヨ螳御ｺ・ 螳溯｡御ｸｭ繧ｸ繝ｧ繝・${cancelledCount} 莉ｶ繧貞●豁｢縺励∪縺励◆縲Ａ : "繝ｪ繧ｻ繝・ヨ縺悟ｮ御ｺ・＠縺ｾ縺励◆縲・, "success");
       scheduleStepSync();
       if (activeLogRunId) {
         refreshLog(activeLogRunId);
       }
     } catch {
-      const message = "リセットに失敗しました。";
+      const message = "繝ｪ繧ｻ繝・ヨ縺ｫ螟ｱ謨励＠縺ｾ縺励◆縲・;
       showError(message);
       showToast(message, "error");
     } finally {
@@ -984,21 +984,21 @@
     if (!el) return;
     el.classList.remove("done", "running", "pending");
     if (id === "mf_reconcile" && state !== "running") {
-      el.textContent = "実行可";
+      el.textContent = "螳溯｡悟庄";
       el.classList.add("pending");
       return;
     }
     if (state === "done") {
-      el.textContent = "完了";
+      el.textContent = "螳御ｺ・;
       el.classList.add("done");
       return;
     }
     if (state === "running") {
-      el.textContent = "実行中";
+      el.textContent = "螳溯｡御ｸｭ";
       el.classList.add("running");
       return;
     }
-    el.textContent = "未実行";
+    el.textContent = "譛ｪ螳溯｡・;
     el.classList.add("pending");
   }
 
@@ -1007,16 +1007,16 @@
     if (!el) return;
     el.classList.remove("done", "running", "pending");
     if (state === "done") {
-      el.textContent = "完了";
+      el.textContent = "螳御ｺ・;
       el.classList.add("done");
       return;
     }
     if (state === "running") {
-      el.textContent = "実行中";
+      el.textContent = "螳溯｡御ｸｭ";
       el.classList.add("running");
       return;
     }
-    el.textContent = "未実行";
+    el.textContent = "譛ｪ螳溯｡・;
     el.classList.add("pending");
   }
 
@@ -1041,7 +1041,7 @@
     const link = document.createElement("a");
     link.href = href;
     link.className = "secondary";
-    link.textContent = String(linkLabel || "開く").trim() || "開く";
+    link.textContent = String(linkLabel || "髢九￥").trim() || "髢九￥";
     if (String(href || "").trim().startsWith("#")) {
       link.href = href;
       link.addEventListener("click", (event) => {
@@ -1097,7 +1097,7 @@
     if (!id.startsWith("#")) return;
     const target = document.querySelector(id);
     if (!target) {
-      showToast("対象セクションが見つかりません。", "warning");
+      showToast("蟇ｾ雎｡繧ｻ繧ｯ繧ｷ繝ｧ繝ｳ縺瑚ｦ九▽縺九ｊ縺ｾ縺帙ｓ縲・, "warning");
       return;
     }
 
@@ -1254,145 +1254,142 @@
     const nextStepReasonCode = String(data?.next_step_reason || "").trim();
     const nextStepGuidance = {
       preflight: {
-        message: "まずは前提条件の確認から進めてください。",
-        reason: "ログイン状態と月次情報を確認して、実行可能条件をそろえます。",
-        linkLabel: "準備工程へ",
+        message: "縺ｾ縺壹・蜑肴署譚｡莉ｶ縺ｮ遒ｺ隱阪°繧蛾ｲ繧√※縺上□縺輔＞縲・,
+        reason: "繝ｭ繧ｰ繧､繝ｳ迥ｶ諷九→譛域ｬ｡諠・ｱ繧堤｢ｺ隱阪＠縺ｦ縲∝ｮ溯｡悟庄閭ｽ譚｡莉ｶ繧偵◎繧阪∴縺ｾ縺吶・,
+        linkLabel: "貅門ｙ蟾･遞九∈",
       },
       amazon_or_rakuten_download: {
-        message: "まずは Amazon か楽天のいずれかの領収書取得を先に実行してください。",
-        reason: "少なくとも1社分の領収書取得が必要です。未取得があると次の処理に進めません。",
-        linkLabel: "Amazon／楽天 取得へ",
+        message: "縺ｾ縺壹・ Amazon 縺区･ｽ螟ｩ縺ｮ縺・★繧後°縺ｮ鬆伜庶譖ｸ蜿門ｾ励ｒ蜈医↓螳溯｡後＠縺ｦ縺上□縺輔＞縲・,
+        reason: "蟆代↑縺上→繧・遉ｾ蛻・・鬆伜庶譖ｸ蜿門ｾ励′蠢・ｦ√〒縺吶よ悴蜿門ｾ励′縺ゅｋ縺ｨ谺｡縺ｮ蜃ｦ逅・↓騾ｲ繧√∪縺帙ｓ縲・,
+        linkLabel: "Amazon・乗･ｽ螟ｩ 蜿門ｾ励∈",
       },
       amazon_download: {
-        message: "Amazon の領収書を取得してください。",
-        reason: "Amazon 側の対象月データを取得して、次の除外判断・印刷へ進みます。",
-        linkLabel: "Amazon 取得へ",
+        message: "Amazon 縺ｮ鬆伜庶譖ｸ繧貞叙蠕励＠縺ｦ縺上□縺輔＞縲・,
+        reason: "Amazon 蛛ｴ縺ｮ蟇ｾ雎｡譛医ョ繝ｼ繧ｿ繧貞叙蠕励＠縺ｦ縲∵ｬ｡縺ｮ髯､螟門愛譁ｭ繝ｻ蜊ｰ蛻ｷ縺ｸ騾ｲ縺ｿ縺ｾ縺吶・,
+        linkLabel: "Amazon 蜿門ｾ励∈",
       },
       amazon_decide_print: {
-        message: "Amazon の除外設定・印刷対象を確認してください。",
-        reason: "除外対象を確定して印刷完了まで進めると状態が保存されます。",
-        linkLabel: "Amazon 除外・印刷へ",
+        message: "Amazon 縺ｮ髯､螟冶ｨｭ螳壹・蜊ｰ蛻ｷ蟇ｾ雎｡繧堤｢ｺ隱阪＠縺ｦ縺上□縺輔＞縲・,
+        reason: "髯､螟門ｯｾ雎｡繧堤｢ｺ螳壹＠縺ｦ蜊ｰ蛻ｷ螳御ｺ・∪縺ｧ騾ｲ繧√ｋ縺ｨ迥ｶ諷九′菫晏ｭ倥＆繧後∪縺吶・,
+        linkLabel: "Amazon 髯､螟悶・蜊ｰ蛻ｷ縺ｸ",
       },
       amazon_print: {
-        message: "Amazonの印刷完了待ちステータスを確認してください。",
-        reason: "Amazonの印刷処理が完了し、必要に応じて確認・反映を行ってください。",
-        linkLabel: "Amazonの印刷ステータスへ",
+        message: "Amazon縺ｮ蜊ｰ蛻ｷ螳御ｺ・ｾ・■繧ｹ繝・・繧ｿ繧ｹ繧堤｢ｺ隱阪＠縺ｦ縺上□縺輔＞縲・,
+        reason: "Amazon縺ｮ蜊ｰ蛻ｷ蜃ｦ逅・′螳御ｺ・＠縲∝ｿ・ｦ√↓蠢懊§縺ｦ遒ｺ隱阪・蜿肴丐繧定｡後▲縺ｦ縺上□縺輔＞縲・,
+        linkLabel: "Amazon縺ｮ蜊ｰ蛻ｷ繧ｹ繝・・繧ｿ繧ｹ縺ｸ",
       },
       rakuten_download: {
-        message: "楽天の領収書を取得してください。",
-        reason: "楽天側の対象月データを取得して、次の除外判断・印刷へ進みます。",
-        linkLabel: "楽天 取得へ",
+        message: "讌ｽ螟ｩ縺ｮ鬆伜庶譖ｸ繧貞叙蠕励＠縺ｦ縺上□縺輔＞縲・,
+        reason: "讌ｽ螟ｩ蛛ｴ縺ｮ蟇ｾ雎｡譛医ョ繝ｼ繧ｿ繧貞叙蠕励＠縺ｦ縲∵ｬ｡縺ｮ髯､螟門愛譁ｭ繝ｻ蜊ｰ蛻ｷ縺ｸ騾ｲ縺ｿ縺ｾ縺吶・,
+        linkLabel: "讌ｽ螟ｩ 蜿門ｾ励∈",
       },
       rakuten_print: {
-        message: "楽天の印刷完了待ちステータスを確認してください。",
-        reason: "楽天の印刷処理が完了し、必要に応じて確認・反映を行ってください。",
-        linkLabel: "楽天の印刷ステータスへ",
+        message: "讌ｽ螟ｩ縺ｮ蜊ｰ蛻ｷ螳御ｺ・ｾ・■繧ｹ繝・・繧ｿ繧ｹ繧堤｢ｺ隱阪＠縺ｦ縺上□縺輔＞縲・,
+        reason: "讌ｽ螟ｩ縺ｮ蜊ｰ蛻ｷ蜃ｦ逅・′螳御ｺ・＠縲∝ｿ・ｦ√↓蠢懊§縺ｦ遒ｺ隱阪・蜿肴丐繧定｡後▲縺ｦ縺上□縺輔＞縲・,
+        linkLabel: "讌ｽ螟ｩ縺ｮ蜊ｰ蛻ｷ繧ｹ繝・・繧ｿ繧ｹ縺ｸ",
       },
       rakuten_decide_print: {
-        message: "楽天の除外設定・印刷対象を確認してください。",
-        reason: "除外対象を確定して印刷完了まで進めると状態が保存されます。",
-        linkLabel: "楽天 除外・印刷へ",
-      },
-      provider_ingest: {
-        message: "外部CSVの取り込みを実行してください。",
-        reason: "Amazon/楽天で取得しきれない分を、共通フォルダ経由で取り込むフェーズです。",
-        linkLabel: "共通フォルダ取込へ",
+        message: "讌ｽ螟ｩ縺ｮ髯､螟冶ｨｭ螳壹・蜊ｰ蛻ｷ蟇ｾ雎｡繧堤｢ｺ隱阪＠縺ｦ縺上□縺輔＞縲・,
+        reason: "髯､螟門ｯｾ雎｡繧堤｢ｺ螳壹＠縺ｦ蜊ｰ蛻ｷ螳御ｺ・∪縺ｧ騾ｲ繧√ｋ縺ｨ迥ｶ諷九′菫晏ｭ倥＆繧後∪縺吶・,
+        linkLabel: "讌ｽ螟ｩ 髯､螟悶・蜊ｰ蛻ｷ縺ｸ",
       },
       mf_reconcile: {
-        message: "MF連携の突合せ実行へ進めてください。",
-        reason: "取り込み済みデータをMFの下書き作成へ反映します。",
-        linkLabel: "MF 突合作業へ",
+        message: "MF騾｣謳ｺ縺ｮ遯∝粋縺帛ｮ溯｡後∈騾ｲ繧√※縺上□縺輔＞縲・,
+        reason: "蜿悶ｊ霎ｼ縺ｿ貂医∩繝・・繧ｿ繧樽F縺ｮ荳区嶌縺堺ｽ懈・縺ｸ蜿肴丐縺励∪縺吶・,
+        linkLabel: "MF 遯∝粋菴懈･ｭ縺ｸ",
       },
       preflight_mf: {
-        message: "MF再取得のみのステップを完了してください。",
-        reason: "MF再取得後、ダッシュボードの最新状態を確認して次の作業に進んでください。",
-        linkLabel: "MF再取得を確認",
+        message: "MF蜀榊叙蠕励・縺ｿ縺ｮ繧ｹ繝・ャ繝励ｒ螳御ｺ・＠縺ｦ縺上□縺輔＞縲・,
+        reason: "MF蜀榊叙蠕怜ｾ後√ム繝・す繝･繝懊・繝峨・譛譁ｰ迥ｶ諷九ｒ遒ｺ隱阪＠縺ｦ谺｡縺ｮ菴懈･ｭ縺ｫ騾ｲ繧薙〒縺上□縺輔＞縲・,
+        linkLabel: "MF蜀榊叙蠕励ｒ遒ｺ隱・,
       },
       mf_bulk_upload_task: {
-        message: "Step 4: MF一括アップロード手順があります。",
-        reason: "MF向けの手入力ファイルが用意できている場合、取り込みを実行してください。",
-        linkLabel: "MF一括アップロードを開く",
+        message: "Step 4: MF荳諡ｬ繧｢繝・・繝ｭ繝ｼ繝画焔鬆・′縺ゅｊ縺ｾ縺吶・,
+        reason: "MF蜷代￠縺ｮ謇句・蜉帙ヵ繧｡繧､繝ｫ縺檎畑諢上〒縺阪※縺・ｋ蝣ｴ蜷医∝叙繧願ｾｼ縺ｿ繧貞ｮ溯｡後＠縺ｦ縺上□縺輔＞縲・,
+        linkLabel: "MF荳諡ｬ繧｢繝・・繝ｭ繝ｼ繝峨ｒ髢九￥",
       },
       import_provider_receipts: {
-        message: "Provider取り込みステップを実行してください。",
-        reason: "外部ベンダーの未処理CSVをMF突合前に取り込んで反映してください。",
-        linkLabel: "Provider取り込みへ進む",
+        message: "Provider蜿悶ｊ霎ｼ縺ｿ繧ｹ繝・ャ繝励ｒ螳溯｡後＠縺ｦ縺上□縺輔＞縲・,
+        reason: "螟夜Κ繝吶Φ繝繝ｼ縺ｮ譛ｪ蜃ｦ逅・SV繧樽F遯∝粋蜑阪↓蜿悶ｊ霎ｼ繧薙〒蜿肴丐縺励※縺上□縺輔＞縲・,
+        linkLabel: "Provider蜿悶ｊ霎ｼ縺ｿ縺ｸ騾ｲ繧",
       },
       mf_bulk_upload: {
-        message: "MF一括アップロードを実行してください。",
-        reason: "MFのインポート画面を開いて、対象月の下書き対象を確認してください。",
-        linkLabel: "MF一括アップロードを開く",
+        message: "MF荳諡ｬ繧｢繝・・繝ｭ繝ｼ繝峨ｒ螳溯｡後＠縺ｦ縺上□縺輔＞縲・,
+        reason: "MF縺ｮ繧､繝ｳ繝昴・繝育判髱｢繧帝幕縺・※縲∝ｯｾ雎｡譛医・荳区嶌縺榊ｯｾ雎｡繧堤｢ｺ隱阪＠縺ｦ縺上□縺輔＞縲・,
+        linkLabel: "MF荳諡ｬ繧｢繝・・繝ｭ繝ｼ繝峨ｒ髢九￥",
       },
       mf_csv_import: {
-        message: "MF CSVインポートを実行してください。",
-        reason: "CSVをMF形式へ揃えたうえで取り込みを実行してください。",
-        linkLabel: "MF CSVインポートを開く",
+        message: "MF CSV繧､繝ｳ繝昴・繝医ｒ螳溯｡後＠縺ｦ縺上□縺輔＞縲・,
+        reason: "CSV繧樽F蠖｢蠑上∈謠・∴縺溘≧縺医〒蜿悶ｊ霎ｼ縺ｿ繧貞ｮ溯｡後＠縺ｦ縺上□縺輔＞縲・,
+        linkLabel: "MF CSV繧､繝ｳ繝昴・繝医ｒ髢九￥",
       },
       done: {
-        message: "すべて完了しました。月次アーカイブを実行できます。",
-        reason: "最後に月次クローズやアーカイブを実行して、次月運用に備えます。",
-        linkLabel: "月次クローズへ",
+        message: "縺吶∋縺ｦ螳御ｺ・＠縺ｾ縺励◆縲よ怦谺｡繧｢繝ｼ繧ｫ繧､繝悶ｒ螳溯｡後〒縺阪∪縺吶・,
+        reason: "譛蠕後↓譛域ｬ｡繧ｯ繝ｭ繝ｼ繧ｺ繧・い繝ｼ繧ｫ繧､繝悶ｒ螳溯｡後＠縺ｦ縲∵ｬ｡譛磯°逕ｨ縺ｫ蛯吶∴縺ｾ縺吶・,
+        linkLabel: "譛域ｬ｡繧ｯ繝ｭ繝ｼ繧ｺ縺ｸ",
       },
       fallback: {
-        message: "処理の取得に時間がかかっています。更新を待ってください。",
-        reason: "バックエンドから最新状態を反映するまで数秒待って再取得してください。",
+        message: "蜃ｦ逅・・蜿門ｾ励↓譎る俣縺後°縺九▲縺ｦ縺・∪縺吶よ峩譁ｰ繧貞ｾ・▲縺ｦ縺上□縺輔＞縲・,
+        reason: "繝舌ャ繧ｯ繧ｨ繝ｳ繝峨°繧画怙譁ｰ迥ｶ諷九ｒ蜿肴丐縺吶ｋ縺ｾ縺ｧ謨ｰ遘貞ｾ・▲縺ｦ蜀榊叙蠕励＠縺ｦ縺上□縺輔＞縲・,
       },
     };
 
     const runningModeGuidance = {
       preflight: {
-        message: "準備処理を実行中です。",
-        reason: "処理が完了するまで待機してください。完了後に次の操作が自動で更新されます。",
-        linkLabel: "準備工程へ",
+        message: "貅門ｙ蜃ｦ逅・ｒ螳溯｡御ｸｭ縺ｧ縺吶・,
+        reason: "蜃ｦ逅・′螳御ｺ・☆繧九∪縺ｧ蠕・ｩ溘＠縺ｦ縺上□縺輔＞縲ょｮ御ｺ・ｾ後↓谺｡縺ｮ謫堺ｽ懊′閾ｪ蜍輔〒譖ｴ譁ｰ縺輔ｌ縺ｾ縺吶・,
+        linkLabel: "貅門ｙ蟾･遞九∈",
       },
       preflight_mf: {
-        message: "MF再取得を実行中です。",
-        reason: "MF再取得処理を完了するまで、進行完了後の状態更新を待ってください。",
-        linkLabel: "準備工程へ",
+        message: "MF蜀榊叙蠕励ｒ螳溯｡御ｸｭ縺ｧ縺吶・,
+        reason: "MF蜀榊叙蠕怜・逅・ｒ螳御ｺ・☆繧九∪縺ｧ縲・ｲ陦悟ｮ御ｺ・ｾ後・迥ｶ諷区峩譁ｰ繧貞ｾ・▲縺ｦ縺上□縺輔＞縲・,
+        linkLabel: "貅門ｙ蟾･遞九∈",
       },
       amazon_download: {
-        message: "Amazon 領収書取得を実行中です。",
-        reason: "取得が完了すると次の工程へ進める状態になります。完了までお待ちください。",
-        linkLabel: "Amazon 取得進行状況へ",
+        message: "Amazon 鬆伜庶譖ｸ蜿門ｾ励ｒ螳溯｡御ｸｭ縺ｧ縺吶・,
+        reason: "蜿門ｾ励′螳御ｺ・☆繧九→谺｡縺ｮ蟾･遞九∈騾ｲ繧√ｋ迥ｶ諷九↓縺ｪ繧翫∪縺吶ょｮ御ｺ・∪縺ｧ縺雁ｾ・■縺上□縺輔＞縲・,
+        linkLabel: "Amazon 蜿門ｾ鈴ｲ陦檎憾豕√∈",
       },
       amazon_print: {
-        message: "Amazon 印刷処理を実行中です。",
-        reason: "除外・印刷の進行中です。完了後に状態が反映され、次の案内へ進みます。",
-        linkLabel: "Amazon 印刷状況へ",
+        message: "Amazon 蜊ｰ蛻ｷ蜃ｦ逅・ｒ螳溯｡御ｸｭ縺ｧ縺吶・,
+        reason: "髯､螟悶・蜊ｰ蛻ｷ縺ｮ騾ｲ陦御ｸｭ縺ｧ縺吶ょｮ御ｺ・ｾ後↓迥ｶ諷九′蜿肴丐縺輔ｌ縲∵ｬ｡縺ｮ譯亥・縺ｸ騾ｲ縺ｿ縺ｾ縺吶・,
+        linkLabel: "Amazon 蜊ｰ蛻ｷ迥ｶ豕√∈",
       },
       rakuten_download: {
-        message: "楽天領収書取得を実行中です。",
-        reason: "取得が完了すると次の工程へ進める状態になります。完了までお待ちください。",
-        linkLabel: "楽天 取得進行状況へ",
+        message: "讌ｽ螟ｩ鬆伜庶譖ｸ蜿門ｾ励ｒ螳溯｡御ｸｭ縺ｧ縺吶・,
+        reason: "蜿門ｾ励′螳御ｺ・☆繧九→谺｡縺ｮ蟾･遞九∈騾ｲ繧√ｋ迥ｶ諷九↓縺ｪ繧翫∪縺吶ょｮ御ｺ・∪縺ｧ縺雁ｾ・■縺上□縺輔＞縲・,
+        linkLabel: "讌ｽ螟ｩ 蜿門ｾ鈴ｲ陦檎憾豕√∈",
       },
       rakuten_print: {
-        message: "楽天 印刷処理を実行中です。",
-        reason: "除外・印刷の進行中です。完了後に状態が反映され、次の案内へ進みます。",
-        linkLabel: "楽天 印刷状況へ",
-      },
-      provider_ingest: {
-        message: "共通フォルダ取り込みを実行中です。",
-        reason: "取り込み処理完了後に突合せ可能かどうかを再評価します。",
-        linkLabel: "共通フォルダ取込へ",
+        message: "讌ｽ螟ｩ 蜊ｰ蛻ｷ蜃ｦ逅・ｒ螳溯｡御ｸｭ縺ｧ縺吶・,
+        reason: "髯､螟悶・蜊ｰ蛻ｷ縺ｮ騾ｲ陦御ｸｭ縺ｧ縺吶ょｮ御ｺ・ｾ後↓迥ｶ諷九′蜿肴丐縺輔ｌ縲∵ｬ｡縺ｮ譯亥・縺ｸ騾ｲ縺ｿ縺ｾ縺吶・,
+        linkLabel: "讌ｽ螟ｩ 蜊ｰ蛻ｷ迥ｶ豕√∈",
       },
       mf_reconcile: {
-        message: "MF突合せを実行中です。",
-        reason: "突合せ完了まで暫くお待ちください。完了後に下書きの作成状況が更新されます。",
-        linkLabel: "MF突合状況へ",
+        message: "MF遯∝粋縺帙ｒ螳溯｡御ｸｭ縺ｧ縺吶・,
+        reason: "遯∝粋縺帛ｮ御ｺ・∪縺ｧ證ｫ縺上♀蠕・■縺上□縺輔＞縲ょｮ御ｺ・ｾ後↓荳区嶌縺阪・菴懈・迥ｶ豕√′譖ｴ譁ｰ縺輔ｌ縺ｾ縺吶・,
+        linkLabel: "MF遯∝粋迥ｶ豕√∈",
+      },
+      provider_ingest: {
+        message: "Provider receipt intake is running.",
+        reason: "Provider files are being inspected and applied to the workflow. Please wait for completion before continuing.",
+        linkLabel: "Open provider receipt step",
       },
       import_provider_receipts: {
         message: "Provider receipt import is running.",
-        reason: "After import, verify files are reflected in MF draft workflow.",
-        linkLabel: "Open provider import step",
+        reason:
+          "The provider import is in progress. If there are issues, review provider folders and retry after completion.",
+        linkLabel: "Open provider ingest step",
       },
       mf_bulk_upload: {
         message: "MF bulk upload is running.",
-        reason: "Check MF login state and selected bulk import target.",
+        reason:
+          "The MF bulk upload job is running. Verify uploaded files and wait for completion before reconciliation.",
         linkLabel: "Open MF bulk upload step",
       },
       mf_csv_import: {
         message: "MF CSV import is running.",
-        reason: "If CSV import is pending, confirm file encoding and dedupe rules.",
+        reason: "The MF CSV import is running. If needed, check file format and dedupe rules after completion.",
         linkLabel: "Open MF CSV import step",
       },
     };
@@ -1431,50 +1428,50 @@
         });
       }
       return {
-        message: runningGuidance?.message || `${runningMode} を実行中です。`,
+        message: runningGuidance?.message || `${runningMode} 繧貞ｮ溯｡御ｸｭ縺ｧ縺吶Ａ,
         reason:
           runningGuidance?.reason ||
-          "別の処理が進行中です。完了するまで待機してください。",
+          "蛻･縺ｮ蜃ｦ逅・′騾ｲ陦御ｸｭ縺ｧ縺吶ょｮ御ｺ・☆繧九∪縺ｧ蠕・ｩ溘＠縺ｦ縺上□縺輔＞縲・,
         href: runningTargetHref,
-        linkLabel: runningGuidance?.linkLabel || (runningTargetHref === FALLBACK_WIZARD_HREF ? "手順を確認" : "進捗を確認"),
+        linkLabel: runningGuidance?.linkLabel || (runningTargetHref === FALLBACK_WIZARD_HREF ? "謇矩・ｒ遒ｺ隱・ : "騾ｲ謐励ｒ遒ｺ隱・),
       };
     }
 
     const reasonHint = {
       preflight_required: {
-        reason: "準備フローが未完了です。まず前提設定の完了が必要です。",
+        reason: "貅門ｙ繝輔Ο繝ｼ縺梧悴螳御ｺ・〒縺吶ゅ∪縺壼燕謠占ｨｭ螳壹・螳御ｺ・′蠢・ｦ√〒縺吶・,
       },
       source_download_required: {
-        message: "Amazon か楽天のどちらかの領収書取得を先に実行してください。",
-        reason: "少なくとも1社分の対象月データを取得してください。",
+        message: "Amazon 縺区･ｽ螟ｩ縺ｮ縺ｩ縺｡繧峨°縺ｮ鬆伜庶譖ｸ蜿門ｾ励ｒ蜈医↓螳溯｡後＠縺ｦ縺上□縺輔＞縲・,
+        reason: "蟆代↑縺上→繧・遉ｾ蛻・・蟇ｾ雎｡譛医ョ繝ｼ繧ｿ繧貞叙蠕励＠縺ｦ縺上□縺輔＞縲・,
       },
       amazon_download_required: {
-        message: "Amazon の領収書を取得してください。",
-        reason: "対象月分を取得すると次の除外・印刷工程へ進めます。",
+        message: "Amazon 縺ｮ鬆伜庶譖ｸ繧貞叙蠕励＠縺ｦ縺上□縺輔＞縲・,
+        reason: "蟇ｾ雎｡譛亥・繧貞叙蠕励☆繧九→谺｡縺ｮ髯､螟悶・蜊ｰ蛻ｷ蟾･遞九∈騾ｲ繧√∪縺吶・,
       },
       rakuten_download_required: {
-        message: "楽天の領収書を取得してください。",
-        reason: "対象月分を取得すると次の除外・印刷工程へ進めます。",
+        message: "讌ｽ螟ｩ縺ｮ鬆伜庶譖ｸ繧貞叙蠕励＠縺ｦ縺上□縺輔＞縲・,
+        reason: "蟇ｾ雎｡譛亥・繧貞叙蠕励☆繧九→谺｡縺ｮ髯､螟悶・蜊ｰ蛻ｷ蟾･遞九∈騾ｲ繧√∪縺吶・,
       },
       amazon_print_pending: {
-        message: "Amazon の除外設定・印刷対象を確認してください。",
-        reason: "除外対象の確定と印刷完了を行うと次工程へ進みます。",
+        message: "Amazon 縺ｮ髯､螟冶ｨｭ螳壹・蜊ｰ蛻ｷ蟇ｾ雎｡繧堤｢ｺ隱阪＠縺ｦ縺上□縺輔＞縲・,
+        reason: "髯､螟門ｯｾ雎｡縺ｮ遒ｺ螳壹→蜊ｰ蛻ｷ螳御ｺ・ｒ陦後≧縺ｨ谺｡蟾･遞九∈騾ｲ縺ｿ縺ｾ縺吶・,
       },
       rakuten_print_pending: {
-        message: "楽天の除外設定・印刷対象を確認してください。",
-        reason: "除外対象の確定と印刷完了を行うと次工程へ進みます。",
+        message: "讌ｽ螟ｩ縺ｮ髯､螟冶ｨｭ螳壹・蜊ｰ蛻ｷ蟇ｾ雎｡繧堤｢ｺ隱阪＠縺ｦ縺上□縺輔＞縲・,
+        reason: "髯､螟門ｯｾ雎｡縺ｮ遒ｺ螳壹→蜊ｰ蛻ｷ螳御ｺ・ｒ陦後≧縺ｨ谺｡蟾･遞九∈騾ｲ縺ｿ縺ｾ縺吶・,
       },
       provider_ingest_pending: {
-        message: "外部CSVの取り込みを実行してください。",
-        reason: "Amazon/楽天で取得しきれない分を共通フォルダから取り込んでください。",
+        message: "螟夜ΚCSV縺ｮ蜿悶ｊ霎ｼ縺ｿ繧貞ｮ溯｡後＠縺ｦ縺上□縺輔＞縲・,
+        reason: "Amazon/讌ｽ螟ｩ縺ｧ蜿門ｾ励＠縺阪ｌ縺ｪ縺・・繧貞・騾壹ヵ繧ｩ繝ｫ繝縺九ｉ蜿悶ｊ霎ｼ繧薙〒縺上□縺輔＞縲・,
       },
       mf_reconcile_ready: {
-        message: "MF連携の突合せ実行へ進めてください。",
-        reason: "取り込み済みデータをMFの下書き作成へ反映する準備が整いました。",
+        message: "MF騾｣謳ｺ縺ｮ遯∝粋縺帛ｮ溯｡後∈騾ｲ繧√※縺上□縺輔＞縲・,
+        reason: "蜿悶ｊ霎ｼ縺ｿ貂医∩繝・・繧ｿ繧樽F縺ｮ荳区嶌縺堺ｽ懈・縺ｸ蜿肴丐縺吶ｋ貅門ｙ縺梧紛縺・∪縺励◆縲・,
       },
       workflow_complete: {
-        message: "すべて完了しました。月次アーカイブを実行できます。",
-        reason: "最終確認として月次クローズやアーカイブで次月準備に進んでください。",
+        message: "縺吶∋縺ｦ螳御ｺ・＠縺ｾ縺励◆縲よ怦谺｡繧｢繝ｼ繧ｫ繧､繝悶ｒ螳溯｡後〒縺阪∪縺吶・,
+        reason: "譛邨ら｢ｺ隱阪→縺励※譛域ｬ｡繧ｯ繝ｭ繝ｼ繧ｺ繧・い繝ｼ繧ｫ繧､繝悶〒谺｡譛域ｺ門ｙ縺ｫ騾ｲ繧薙〒縺上□縺輔＞縲・,
       },
     };
 
@@ -1517,7 +1514,7 @@
       message: guidance.message,
       reason: guidance.reason,
       href,
-      linkLabel: guidance.linkLabel || (href === FALLBACK_WIZARD_HREF ? "手順を確認" : ""),
+      linkLabel: guidance.linkLabel || (href === FALLBACK_WIZARD_HREF ? "謇矩・ｒ遒ｺ隱・ : ""),
     };
   }
 
@@ -1567,9 +1564,9 @@
       const blockedByOrder = !allowed;
       button.disabled = blockedByRunning || blockedByOrder;
       if (blockedByRunning) {
-        button.title = "他の手順を実行中のため開始できません。";
+        button.title = "莉悶・謇矩・ｒ螳溯｡御ｸｭ縺ｮ縺溘ａ髢句ｧ九〒縺阪∪縺帙ｓ縲・;
       } else if (blockedByOrder) {
-        button.title = "まだこの手順は実行できません。";
+        button.title = "縺ｾ縺縺薙・謇矩・・螳溯｡後〒縺阪∪縺帙ｓ縲・;
       } else {
         button.title = "";
       }
@@ -1603,13 +1600,13 @@
         const checklistComplete = isChecklistComplete();
         button.disabled = blockedByRunning || !allowed || !checklistComplete;
         if (blockedByRunning) {
-          button.title = "他の手順を実行中のためアーカイブできません。";
+          button.title = "莉悶・謇矩・ｒ螳溯｡御ｸｭ縺ｮ縺溘ａ繧｢繝ｼ繧ｫ繧､繝悶〒縺阪∪縺帙ｓ縲・;
         } else if (!allowed && !checklistComplete) {
-          button.title = "Amazonまたは楽天で「除外・印刷（完了記録まで）」完了後に実行できます。また、月次クローズ前の確認項目をすべてチェックする必要があります。";
+          button.title = "Amazon縺ｾ縺溘・讌ｽ螟ｩ縺ｧ縲碁勁螟悶・蜊ｰ蛻ｷ・亥ｮ御ｺ・ｨ倬鹸縺ｾ縺ｧ・峨榊ｮ御ｺ・ｾ後↓螳溯｡後〒縺阪∪縺吶ゅ∪縺溘∵怦谺｡繧ｯ繝ｭ繝ｼ繧ｺ蜑阪・遒ｺ隱埼・岼繧偵☆縺ｹ縺ｦ繝√ぉ繝・け縺吶ｋ蠢・ｦ√′縺ゅｊ縺ｾ縺吶・;
         } else if (!allowed) {
-          button.title = "Amazonまたは楽天で「除外・印刷（完了記録まで）」完了後に実行できます。";
+          button.title = "Amazon縺ｾ縺溘・讌ｽ螟ｩ縺ｧ縲碁勁螟悶・蜊ｰ蛻ｷ・亥ｮ御ｺ・ｨ倬鹸縺ｾ縺ｧ・峨榊ｮ御ｺ・ｾ後↓螳溯｡後〒縺阪∪縺吶・;
         } else if (!checklistComplete) {
-          button.title = "月次クローズ前の確認項目をすべてチェックしてください。";
+          button.title = "譛域ｬ｡繧ｯ繝ｭ繝ｼ繧ｺ蜑阪・遒ｺ隱埼・岼繧偵☆縺ｹ縺ｦ繝√ぉ繝・け縺励※縺上□縺輔＞縲・;
         } else {
           button.title = "";
         }
@@ -1617,9 +1614,9 @@
         // For archive_outputs button, keep original logic
         button.disabled = blockedByRunning || !allowed;
         if (blockedByRunning) {
-          button.title = "他の手順を実行中のためアーカイブできません。";
+          button.title = "莉悶・謇矩・ｒ螳溯｡御ｸｭ縺ｮ縺溘ａ繧｢繝ｼ繧ｫ繧､繝悶〒縺阪∪縺帙ｓ縲・;
         } else if (!allowed) {
-          button.title = "Amazonまたは楽天で「除外・印刷（完了記録まで）」完了後に実行できます。";
+          button.title = "Amazon縺ｾ縺溘・讌ｽ螟ｩ縺ｧ縲碁勁螟悶・蜊ｰ蛻ｷ・亥ｮ御ｺ・ｨ倬鹸縺ｾ縺ｧ・峨榊ｮ御ｺ・ｾ後↓螳溯｡後〒縺阪∪縺吶・;
         } else {
           button.title = "";
         }
@@ -1641,9 +1638,9 @@
       const blockedByPreflight = needsPreflight && !preflightDone;
       button.disabled = blockedByRunning || blockedByPreflight;
       if (blockedByRunning) {
-        button.title = "他の手順を実行中のため開始できません。";
+        button.title = "莉悶・謇矩・ｒ螳溯｡御ｸｭ縺ｮ縺溘ａ髢句ｧ九〒縺阪∪縺帙ｓ縲・;
       } else if (blockedByPreflight) {
-        button.title = "先に手順0「準備」を実行してください。";
+        button.title = "蜈医↓謇矩・縲梧ｺ門ｙ縲阪ｒ螳溯｡後＠縺ｦ縺上□縺輔＞縲・;
       } else {
         button.title = "";
       }
@@ -1660,7 +1657,7 @@
       const blockedByRunning = Boolean(runningMode);
       button.disabled = blockedByRunning;
       if (blockedByRunning) {
-        button.title = "他の手順を実行中のため開始できません。";
+        button.title = "莉悶・謇矩・ｒ螳溯｡御ｸｭ縺ｮ縺溘ａ髢句ｧ九〒縺阪∪縺帙ｓ縲・;
       } else {
         button.title = "";
       }
@@ -1676,7 +1673,7 @@
   function buildMfSummaryText(data) {
     const runningMode = String(data?.running_mode || "");
     if (runningMode === "mf_reconcile") {
-      return "サマリー: 手順5を実行中...";
+      return "繧ｵ繝槭Μ繝ｼ: 謇矩・繧貞ｮ溯｡御ｸｭ...";
     }
     const mf = data && typeof data === "object" ? data.mf : null;
     const summary = mf && typeof mf === "object" ? mf.summary : null;
@@ -1689,12 +1686,12 @@
     const reconciled = Boolean(mf?.reconciled);
 
     if (!reconciled && !hasDraftResult && missingCandidates === 0) {
-      return "サマリー: 未実行";
+      return "繧ｵ繝槭Μ繝ｼ: 譛ｪ螳溯｡・;
     }
     if (!hasDraftResult) {
-      return `サマリー: 未添付候補 ${missingCandidates}件 / 下書き作成は未実行`;
+      return `繧ｵ繝槭Μ繝ｼ: 譛ｪ豺ｻ莉伜呵｣・${missingCandidates}莉ｶ / 荳区嶌縺堺ｽ懈・縺ｯ譛ｪ螳溯｡形;
     }
-    return `サマリー: 未添付候補 ${missingCandidates}件 / 下書き作成 ${created}/${targetsTotal}件（失敗 ${failed}件）`;
+    return `繧ｵ繝槭Μ繝ｼ: 譛ｪ豺ｻ莉伜呵｣・${missingCandidates}莉ｶ / 荳区嶌縺堺ｽ懈・ ${created}/${targetsTotal}莉ｶ・亥､ｱ謨・${failed}莉ｶ・荏;
   }
 
   function renderMfSummary(data, fallbackMessage = "") {
@@ -1799,11 +1796,11 @@
     try {
       const raw = await apiGetJson(`/api/steps/${ym}`);
       if (!raw) {
-        renderNextStep("ステップ状態の取得に失敗しました。再読み込みしてください。", null);
+        renderNextStep("繧ｹ繝・ャ繝礼憾諷九・蜿門ｾ励↓螟ｱ謨励＠縺ｾ縺励◆縲ょ・隱ｭ縺ｿ霎ｼ縺ｿ縺励※縺上□縺輔＞縲・, null);
         document.querySelectorAll("[data-step-link]").forEach((link) => setStepLinkState(link, false, "#"));
         applyArchiveAvailability({ running_mode: "", amazon: {}, rakuten: {} });
         applyManualAvailability({ running_mode: "" });
-        renderMfSummary(null, "サマリー: ステップ状態の取得に失敗しました。");
+        renderMfSummary(null, "繧ｵ繝槭Μ繝ｼ: 繧ｹ繝・ャ繝礼憾諷九・蜿門ｾ励↓螟ｱ謨励＠縺ｾ縺励◆縲・);
         if (!stepRetryTimer) {
           stepRetryTimer = setTimeout(() => {
             stepRetryTimer = null;
@@ -1855,14 +1852,14 @@
       setTaskStatus("rakuten", taskStates.rakuten);
 
       const labels = {
-        preflight: "手順0 準備",
-        amazon_download: "手順1 Amazon 取得",
-        amazon_decide_print: "手順1 Amazon 除外・印刷（完了記録まで）",
-        rakuten_download: "手順2 楽天 取得",
-        rakuten_decide_print: "手順2 楽天 除外・印刷（完了記録まで）",
-        provider_ingest: "手順3 共通フォルダ取り込み",
-        mf_bulk_upload_task: "手順4 MF一括アップロード",
-        mf_reconcile: "手順5 MF突合・下書き作成",
+        preflight: "謇矩・ 貅門ｙ",
+        amazon_download: "謇矩・ Amazon 蜿門ｾ・,
+        amazon_decide_print: "謇矩・ Amazon 髯､螟悶・蜊ｰ蛻ｷ・亥ｮ御ｺ・ｨ倬鹸縺ｾ縺ｧ・・,
+        rakuten_download: "謇矩・ 讌ｽ螟ｩ 蜿門ｾ・,
+        rakuten_decide_print: "謇矩・ 讌ｽ螟ｩ 髯､螟悶・蜊ｰ蛻ｷ・亥ｮ御ｺ・ｨ倬鹸縺ｾ縺ｧ・・,
+        provider_ingest: "謇矩・ 蜈ｱ騾壹ヵ繧ｩ繝ｫ繝蜿悶ｊ霎ｼ縺ｿ",
+        mf_bulk_upload_task: "謇矩・ MF荳諡ｬ繧｢繝・・繝ｭ繝ｼ繝・,
+        mf_reconcile: "謇矩・ MF遯∝粋繝ｻ荳区嶌縺堺ｽ懈・",
       };
       if (!window.__stepState) {
         window.__stepState = stepStates;
@@ -1870,7 +1867,7 @@
         Object.keys(stepStates).forEach((key) => {
           if (key === "mf_reconcile") return;
           if (window.__stepState[key] && window.__stepState[key] !== "done" && stepStates[key] === "done") {
-            showToast(`${labels[key]}が完了しました。`, "success");
+            showToast(`${labels[key]}縺悟ｮ御ｺ・＠縺ｾ縺励◆縲Ａ, "success");
           }
         });
       }
@@ -1885,12 +1882,12 @@
 
 
     } catch {
-      renderNextStep("ステップ状態の取得に失敗しました。再読み込みしてください。", null);
+      renderNextStep("繧ｹ繝・ャ繝礼憾諷九・蜿門ｾ励↓螟ｱ謨励＠縺ｾ縺励◆縲ょ・隱ｭ縺ｿ霎ｼ縺ｿ縺励※縺上□縺輔＞縲・, null);
       document.querySelectorAll("[data-step-link]").forEach((link) => setStepLinkState(link, false, "#"));
       applyArchiveAvailability({ running_mode: "", amazon: {}, rakuten: {} });
       applyManualAvailability({ running_mode: "" });
       applyProviderAvailability({ running_mode: "", preflight: {} });
-      renderMfSummary(null, "サマリー: ステップ状態の取得に失敗しました。");
+      renderMfSummary(null, "繧ｵ繝槭Μ繝ｼ: 繧ｹ繝・ャ繝礼憾諷九・蜿門ｾ励↓螟ｱ謨励＠縺ｾ縺励◆縲・);
       if (!stepRetryTimer) {
         stepRetryTimer = setTimeout(() => {
           stepRetryTimer = null;
@@ -1949,7 +1946,7 @@
       link.addEventListener("click", (event) => {
         if (link.getAttribute("aria-disabled") === "true") {
           event.preventDefault();
-          showToast("この手順はまだ実行できません。次の手順案内を確認してください。", "error");
+          showToast("縺薙・謇矩・・縺ｾ縺螳溯｡後〒縺阪∪縺帙ｓ縲よｬ｡縺ｮ謇矩・｡亥・繧堤｢ｺ隱阪＠縺ｦ縺上□縺輔＞縲・, "error");
         }
       });
     });
@@ -1987,12 +1984,12 @@
       if (!runId) return;
       const res = await fetch(`/api/runs/${runId}/stop`, { method: "POST" });
       if (!res.ok) {
-        const message = "実行の停止に失敗しました。";
+        const message = "螳溯｡後・蛛懈ｭ｢縺ｫ螟ｱ謨励＠縺ｾ縺励◆縲・;
         showError(message);
         showToast(message, "error");
         return;
       }
-      const message = "停止リクエストを送信しました。ログ更新をお待ちください。";
+      const message = "蛛懈ｭ｢繝ｪ繧ｯ繧ｨ繧ｹ繝医ｒ騾∽ｿ｡縺励∪縺励◆縲ゅΟ繧ｰ譖ｴ譁ｰ繧偵♀蠕・■縺上□縺輔＞縲・;
       showError(message);
       showToast(message, "success");
     });
