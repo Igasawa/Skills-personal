@@ -148,7 +148,7 @@
   - `お支払い確定`以前は保留し、決済確定後に再実行する判断フローを優先
 - Amazon公式: 当該環境でヘルプページの自動取得不能のため、現行仕様検証は実画面テストで補完（手順・文言は定期的に実画面で再確認）
 - 実装反映:
-  - 楽天: `no_receipt_payment_method` による即時除外を縮小し、決済種別は `document_type`（`receipt` / `invoice`）として記録する方向へ変更。
+  - 楽天: `no_receipt_payment_method` は `classifyRakutenReceiptDocumentType()` に依存した即時除外の運用を確認し、`invoice` 判定時の挙動は実装実績で追跡。
 
 ## 9. 補足反映（2026-02-15 追加）
 - Amazon側の手当（実装補正）:
