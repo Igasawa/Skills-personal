@@ -105,6 +105,7 @@ def test_is_rakuten_no_receipt_payment_method() -> None:
   cod1: mod.isRakutenNoReceiptPaymentMethod("代引き"),
   cod2: mod.isRakutenNoReceiptPaymentMethod("代金引換（現金）"),
   cod3: mod.isRakutenNoReceiptPaymentMethod("Cash on Delivery"),
+  cod4: mod.isRakutenNoReceiptPaymentMethod("collect on delivery"),
   digital1: mod.isRakutenNoReceiptPaymentMethod("デジタル版"),
   digital2: mod.isRakutenNoReceiptPaymentMethod("電子版"),
   kobo1: mod.isRakutenNoReceiptPaymentMethod("楽天kobo デジタル版"),
@@ -115,6 +116,7 @@ def test_is_rakuten_no_receipt_payment_method() -> None:
     assert data["cod1"] is True
     assert data["cod2"] is True
     assert data["cod3"] is True
+    assert data["cod4"] is True
     assert data["digital1"] is True
     assert data["digital2"] is True
     assert data["kobo1"] is True

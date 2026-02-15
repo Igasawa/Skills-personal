@@ -575,6 +575,7 @@ function classifyRakutenReceiptDocumentType(paymentMethodRaw) {
     "代金引換",
     "cashondelivery",
     "cod",
+    "collectondelivery",
     "請求書払い",
     "請求書",
     "ショッピングクレジット",
