@@ -1052,6 +1052,45 @@
     wizardNext.appendChild(link);
   }
 
+  const FALLBACK_WIZARD_HREF = "#wizard";
+  const FALLBACK_GUIDANCE_LIMIT = 8;
+
+  function recordWizardFallback({ type, runningMode = "", nextStep = "", nextStepReason = "", href = "" }) {
+    const entry = {
+      ts: Date.now(),
+      type: String(type || "").trim() || "unknown",
+      runningMode: String(runningMode || "").trim(),
+      nextStep: String(nextStep || "").trim(),
+      nextStepReason: String(nextStepReason || "").trim(),
+      href: String(href || FALLBACK_WIZARD_HREF).trim() || FALLBACK_WIZARD_HREF,
+    };
+    const log = Array.isArray(window.__wizardFallbackLog) ? window.__wizardFallbackLog : [];
+    const last = log.length ? log[log.length - 1] : null;
+    const shouldAppend =
+      !last ||
+      last.type !== entry.type ||
+      last.runningMode !== entry.runningMode ||
+      last.nextStep !== entry.nextStep ||
+      last.nextStepReason !== entry.nextStepReason ||
+      last.href !== entry.href;
+    if (shouldAppend) {
+      log.push(entry);
+      if (log.length > FALLBACK_GUIDANCE_LIMIT) {
+        log.shift();
+      }
+      window.__wizardFallbackLog = log;
+    }
+    const wizard = document.getElementById("wizard");
+    if (!wizard) return;
+    wizard.dataset.nextStepFallbackType = entry.type;
+    wizard.dataset.nextStepFallbackStep = entry.nextStep;
+    wizard.dataset.nextStepFallbackMode = entry.runningMode;
+    wizard.dataset.nextStepFallbackReason = entry.nextStepReason;
+    wizard.dataset.nextStepFallbackHref = entry.href;
+    wizard.dataset.nextStepFallbackAt = String(entry.ts);
+    wizard.dataset.nextStepFallbackCount = String(log.length);
+  }
+
   function navigateToStep(href) {
     if (!href || typeof href !== "string") return;
     const id = href.trim();
@@ -1182,6 +1221,7 @@
 
   function computeNextStep(data, ym) {
     const nextStep = resolveNextStep(data);
+    const nextStepKey = String(nextStep || "").trim();
     const runningMode = String(data?.running_mode || "").trim();
     const nextStepReasonCode = String(data?.next_step_reason || "").trim();
     const nextStepGuidance = {
@@ -1294,18 +1334,27 @@
       done: "#step-month-close",
     };
 
-    const fallbackHref = "#wizard";
-    const runningTargetHref = nextStepAnchors[runningMode] || nextStepAnchors[String(nextStep || "")] || fallbackHref;
-    const nextTargetHref = nextStepAnchors[String(nextStep || "")] || fallbackHref;
+    const fallbackHref = FALLBACK_WIZARD_HREF;
+    const nextTargetHref = nextStepAnchors[nextStepKey] || fallbackHref;
+    const runningTargetHref = nextStepAnchors[runningMode] || nextTargetHref || FALLBACK_WIZARD_HREF;
     if (runningMode) {
       const runningGuidance = runningModeGuidance[runningMode];
+      if (runningTargetHref === fallbackHref) {
+        recordWizardFallback({
+          type: "running_mode_anchor",
+          runningMode,
+          nextStep: nextStepKey,
+          nextStepReason: nextStepReasonCode,
+          href: runningTargetHref,
+        });
+      }
       return {
         message: runningGuidance?.message || `${runningMode} を実行中です。`,
         reason:
           runningGuidance?.reason ||
           "別の処理が進行中です。完了するまで待機してください。",
         href: runningTargetHref,
-        linkLabel: runningGuidance?.linkLabel || (runningTargetHref === "#wizard" ? "手順を確認" : "進捗を確認"),
+        linkLabel: runningGuidance?.linkLabel || (runningTargetHref === FALLBACK_WIZARD_HREF ? "手順を確認" : "進捗を確認"),
       };
     }
 
@@ -1348,8 +1397,27 @@
     };
 
     const href = nextTargetHref;
-    const baseGuidance = nextStepGuidance[String(nextStep || "")] || nextStepGuidance.fallback;
+    if (href === fallbackHref) {
+      recordWizardFallback({
+        type: "next_step_anchor",
+        runningMode,
+        nextStep: nextStepKey,
+        nextStepReason: nextStepReasonCode,
+        href,
+      });
+    }
+    const baseGuidance = nextStepGuidance[nextStepKey] || nextStepGuidance.fallback;
     const reasonGuidance = reasonHint[nextStepReasonCode];
+    const reasonKnown = Object.prototype.hasOwnProperty.call(reasonHint, nextStepReasonCode);
+    if (nextStepReasonCode && !reasonKnown) {
+      recordWizardFallback({
+        type: "next_step_reason_unknown",
+        runningMode,
+        nextStep: nextStepKey,
+        nextStepReason: nextStepReasonCode,
+        href,
+      });
+    }
     const guidance = reasonGuidance
       ? {
           ...baseGuidance,
@@ -1361,7 +1429,7 @@
       message: guidance.message,
       reason: guidance.reason,
       href,
-      linkLabel: guidance.linkLabel,
+      linkLabel: guidance.linkLabel || (href === FALLBACK_WIZARD_HREF ? "手順を確認" : ""),
     };
   }
 
