@@ -34,6 +34,7 @@
 3. `references/official_manual_alignment_notes.md` に更新履歴を追記
 4. テストの該当シナリオ（`test_amazon_download_logic.py`, `test_rakuten_download_logic.py`）を更新
 5. 影響範囲に応じて実行: `python -m pytest <target tests>`
+6. 実施結果は `references/official_manual_review_log_template.md` をベースにログ化する
 
 ## 5. トラブル時の切り分け順
 - `status=no_receipt` が急増
