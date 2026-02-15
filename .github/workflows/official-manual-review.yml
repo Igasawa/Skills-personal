@@ -1,9 +1,26 @@
 name: Official Manual Review Check
 
 on:
+  workflow_dispatch:
+    inputs:
+      review_type:
+        description: "manual review type"
+        type: choice
+        default: weekly
+        options:
+          - weekly
+          - monthly
+          - change_response
+      max_age_days:
+        description: "stale threshold in days"
+        type: number
+        default: 14
+      skip_url_check:
+        description: "skip URL availability checks"
+        type: boolean
+        default: true
   schedule:
     - cron: "0 3 * * 1"
-  workflow_dispatch:
 
 jobs:
   review:
@@ -27,7 +44,17 @@ jobs:
 
       - name: Run manual reference freshness check
         run: |
-          python scripts/review_official_manual.py --review-type weekly --skip-url-check --out-dir references/review_logs_ci
+          REVIEW_TYPE="${{ github.event.inputs.review_type || 'weekly' }}"
+          MAX_AGE="${{ github.event.inputs.max_age_days || 14 }}"
+          SKIP_URL="${{ github.event.inputs.skip_url_check || 'true' }}"
+
+          CMD=(python scripts/review_official_manual.py --review-type "${REVIEW_TYPE}" --max-age-days "${MAX_AGE}" --out-dir references/review_logs_ci)
+
+          if [[ "${SKIP_URL}" == "true" ]]; then
+            CMD+=(--skip-url-check)
+          fi
+
+          "${CMD[@]}"
 
       - name: Upload review log
         if: always()

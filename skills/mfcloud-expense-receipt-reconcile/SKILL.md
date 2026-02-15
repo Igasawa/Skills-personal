@@ -219,3 +219,6 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "scripts\start_dashboard.ps1
 - Use PowerShell wrapper: `pwsh -File scripts\review_official_manual.ps1 -ReviewType weekly`
 - Output log: `references/review_logs/official_manual_review_<review_type>_YYYY-MM-DD.md`
 - Always align findings into `references/official_manual_alignment_notes.md` and `references/official_manual_knowledge.yaml`.
+- CI workflow: `.github/workflows/official-manual-review.yml`
+  - defaults to `review_type=weekly`, `max_age_days=14`, `skip_url_check=true`
+  - manual run can override these fields from workflow_dispatch inputs
