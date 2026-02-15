@@ -254,3 +254,28 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "scripts\start_dashboard.ps1
   - 更新先（`official_manual_knowledge.yaml` or `official_manual_alignment_notes.md`）を1件ずつ反映。
   - `last_reviewed` を更新し、同じコマンドを再実行して `knowledge_alignment.in_sync=true` を確認。
   - 差分解消結果と最終確認日時を運用ノートへ通知。
+
+## Official manual review（差分通知テンプレ）
+- 月次・週次で差分検知が発生した場合の報告用テンプレを運用ノート/チケットにそのまま貼れるように使う。
+
+```text
+[公式マニュアル整合チェック結果]
+日付: <YYYY-MM-DD>
+実行コマンド: npm run review:manual -- --review-type <weekly|monthly> [--max-age-days N]
+結果:
+- knowledge_alignment.in_sync: <true/false>
+- stale: knowledge=<true/false>, alignment_notes=<true/false>
+- status_check別差分:
+  - manual: missing_in_targets=<...>, extra_in_targets=<...>
+  - internal_scraping_target: missing_in_targets=<...>, extra_in_targets=<...>
+
+対応:
+- 対象URL/原因: <要約>
+- 更新ファイル:
+  - official_manual_knowledge.yaml: <更新有無 + 追加/削除URL>
+  - official_manual_alignment_notes.md: <更新有無 + 追加/削除URL>
+- 再実行結果: <in_sync=true / false>
+
+最終確認者: <氏名>
+最終確認日時: <YYYY-MM-DD HH:mm>
+```
