@@ -8,6 +8,7 @@ from typing import Any
 from .core_shared import (
     DEFAULT_AMAZON_URL,
     DEFAULT_RAKUTEN_URL,
+    _archive_action_label,
     YM_RE,
     _artifact_root,
     _ax_home,
@@ -158,7 +159,7 @@ def _scan_archive_history(*, limit: int = 30) -> list[dict[str, Any]]:
                 continue
             details = obj.get("details") if isinstance(obj.get("details"), dict) else {}
             ts = str(obj.get("ts") or "").strip()
-            action_label = "月次クローズ" if action == "month_close" else "アーカイブ"
+            action_label = _archive_action_label(action)
             rows.append(
                 {
                     "ym": p.name,

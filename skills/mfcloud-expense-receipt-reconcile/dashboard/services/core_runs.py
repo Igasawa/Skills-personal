@@ -526,6 +526,7 @@ def _workflow_state_for_ym(year: int, month: int) -> dict[str, Any]:
     amazon_pending = amazon_downloaded and not amazon_done
     rakuten_pending = rakuten_downloaded and not rakuten_done
     both_downloaded = amazon_downloaded and rakuten_downloaded
+    both_downloaded_completed = both_downloaded and amazon_done and rakuten_done
 
     next_step = "done"
     if not preflight_done:
@@ -544,7 +545,7 @@ def _workflow_state_for_ym(year: int, month: int) -> dict[str, Any]:
         next_step = "rakuten_download"
     elif providers_pending > 0:
         next_step = "provider_ingest"
-    elif both_downloaded and (amazon_done or rakuten_done):
+    elif both_downloaded_completed:
         next_step = "mf_reconcile"
 
     allowed_run_modes: list[str] = ["preflight"]
@@ -554,7 +555,7 @@ def _workflow_state_for_ym(year: int, month: int) -> dict[str, Any]:
             allowed_run_modes.append("amazon_print")
         if rakuten_downloaded:
             allowed_run_modes.append("rakuten_print")
-        if both_downloaded and (amazon_done or rakuten_done) and not (amazon_pending or rakuten_pending):
+        if both_downloaded_completed:
             allowed_run_modes.append("mf_reconcile")
     allowed_run_modes = list(dict.fromkeys(allowed_run_modes))
 
@@ -831,6 +832,17 @@ def _infer_run_exit_code_from_log(log_path: Path) -> tuple[int | None, str | Non
     text = _tail_text(log_path, max_bytes=200_000)
     if not text:
         return None, None
+    decoder = json.JSONDecoder()
+
+    def _status_from_payload(payload: Any) -> int | None:
+        if not isinstance(payload, dict):
+            return None
+        status = str(payload.get("status") or "").strip().lower()
+        if status == "success":
+            return 0
+        if status in {"failed", "error", "cancelled", "canceled"}:
+            return 1
+        return None
 
     # scripts/run.py prints a final pretty JSON object; prefer it when present.
     for marker in ('{\n  "status"', '{\r\n  "status"'):
@@ -842,12 +854,9 @@ def _infer_run_exit_code_from_log(log_path: Path) -> tuple[int | None, str | Non
             payload = json.loads(candidate)
         except Exception:
             continue
-        if isinstance(payload, dict):
-            status = str(payload.get("status") or "").strip().lower()
-            if status == "success":
-                return 0, "final_json"
-            if status in {"failed", "error"}:
-                return 1, "final_json"
+        status_code = _status_from_payload(payload)
+        if status_code is not None:
+            return status_code, "final_json"
 
     # Fallback: inspect trailing single-line JSON emitted by child scripts.
     for line in reversed(text.splitlines()):
@@ -858,13 +867,27 @@ def _infer_run_exit_code_from_log(log_path: Path) -> tuple[int | None, str | Non
             payload = json.loads(item)
         except Exception:
             continue
-        if not isinstance(payload, dict):
+        status_code = _status_from_payload(payload)
+        if status_code is not None:
+            return status_code, "line_json"
+
+    # Fallback: parse JSON objects embedded in the log tail to tolerate
+    # log format variants (prefix text, mixed lines, spacing differences).
+    scan_pos = len(text)
+    while scan_pos > 0:
+        idx = text.rfind("{", 0, scan_pos)
+        if idx < 0:
+            break
+        try:
+            payload, _ = decoder.raw_decode(text, idx)
+        except Exception:
+            scan_pos = idx
             continue
-        status = str(payload.get("status") or "").strip().lower()
-        if status == "success":
-            return 0, "line_json"
-        if status in {"failed", "error"}:
-            return 1, "line_json"
+        status_code = _status_from_payload(payload)
+        if status_code is not None:
+            return status_code, "json_scan"
+        scan_pos = idx
+
     return None, None
 
 

@@ -13,6 +13,7 @@ from fastapi.responses import JSONResponse
 from pypdf import PdfReader, PdfWriter
 
 from services import core
+from services import core_shared
 
 
 def create_api_router() -> APIRouter:
@@ -1667,7 +1668,7 @@ def create_api_router() -> APIRouter:
             "ts": datetime.now().isoformat(timespec="seconds"),
             "ym": ym,
             "action": action,
-            "action_label": "月次クローズ" if action == "month_close" else "アーカイブ",
+            "action_label": core_shared._archive_action_label(action),
             "archived_to": result.get("archived_to"),
             "archive_url": f"/runs/{ym}/archived-receipts",
         }
