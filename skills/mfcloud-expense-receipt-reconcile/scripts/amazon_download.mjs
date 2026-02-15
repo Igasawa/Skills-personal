@@ -518,6 +518,27 @@ function isGiftCardOrder(textRaw) {
   return false;
 }
 
+function deriveAmazonDocumentType({ documents = [], docType = null, status = null } = {}) {
+  if (status === "no_receipt") return "no_receipt";
+  if (status === "gift_card") return null;
+
+  const kinds = Array.isArray(documents)
+    ? documents.map((d) => (d && typeof d.doc_type === "string" ? d.doc_type : null)).filter(Boolean)
+    : [];
+
+  if (kinds.includes("tax_invoice")) return "invoice";
+  if (
+    kinds.includes("order_summary") ||
+    kinds.includes("receipt_like") ||
+    docType === "order_summary" ||
+    docType === "receipt_like"
+  ) {
+    return "receipt";
+  }
+  if (docType === "tax_invoice") return "invoice";
+  return null;
+}
+
 async function parseOrderDetail(page, fallbackYear) {
   const textRaw = await page.innerText("body").catch(() => "");
   const text = normalizeOrderText(textRaw);
@@ -1784,6 +1805,11 @@ async function main() {
           doc_count: documents.length,
           documents,
           pdf_head_only_applied: Boolean(pdfHeadOnlyApplied),
+          document_type: deriveAmazonDocumentType({
+            documents,
+            docType,
+            status,
+          }),
           split_invoice: splitInvoice,
           status,
           error_reason: errorReason,
@@ -1869,6 +1895,7 @@ export {
   chooseAmazonOrderTotal,
   isAmazonNoReceiptPaymentMethod,
   normalizeAmazonPaymentMethodText,
+  deriveAmazonDocumentType,
   computeCoverageSummary,
   detectAmazonReceiptCutoff,
   detectAmazonReceiptCutoffFromBlocks,

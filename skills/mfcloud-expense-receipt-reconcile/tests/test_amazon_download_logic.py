@@ -96,6 +96,41 @@ def test_is_amazon_no_receipt_payment_method() -> None:
     assert data["blank"] is False
 
 
+def test_derive_amazon_document_type() -> None:
+    data = _node_json(
+        """(() => {
+  const withInvoice = mod.deriveAmazonDocumentType({
+    documents: [{ doc_type: "receipt_like" }, { doc_type: "tax_invoice" }],
+    docType: "receipt_like",
+    status: "ok",
+  });
+  const withSummary = mod.deriveAmazonDocumentType({
+    documents: [{ doc_type: "order_summary" }],
+    status: "ok",
+  });
+  const noReceipt = mod.deriveAmazonDocumentType({
+    documents: [],
+    status: "no_receipt",
+  });
+  const giftCard = mod.deriveAmazonDocumentType({
+    documents: [{ doc_type: "receipt_like" }],
+    status: "gift_card",
+  });
+  const fallbackFromDocType = mod.deriveAmazonDocumentType({
+    documents: [],
+    docType: "tax_invoice",
+    status: "ok",
+  });
+  return { withInvoice, withSummary, noReceipt, giftCard, fallbackFromDocType };
+})()"""
+    )
+    assert data["withInvoice"] == "invoice"
+    assert data["withSummary"] == "receipt"
+    assert data["noReceipt"] == "no_receipt"
+    assert data["giftCard"] is None
+    assert data["fallbackFromDocType"] == "invoice"
+
+
 def test_classify_amazon_document_candidate_ignores_invoice_popover_url() -> None:
     data = _node_json(
         """({
