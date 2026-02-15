@@ -557,17 +557,40 @@ function shouldDowngradeRakutenReceiptError(reasonRaw, detailUrlRaw) {
 }
 
 function isRakutenNoReceiptPaymentMethod(paymentMethodRaw) {
+  return classifyRakutenReceiptDocumentType(paymentMethodRaw) === "unsupported";
+}
+
+function classifyRakutenReceiptDocumentType(paymentMethodRaw) {
   const normalized = normalizeTextLines(String(paymentMethodRaw || "")).trim();
-  if (!normalized) return false;
+  if (!normalized) return "receipt";
   const compact = normalized.replace(/\s+/g, "").toLowerCase();
 
-  // Support-specific non-receipt cases
-  if (compact.includes("代引") || compact.includes("代金引換")) return true;
-  if (compact.includes("cashondelivery") || /\bcod\b/.test(compact)) return true;
-  if (normalized.includes("デジタル版") || normalized.includes("電子版")) return true;
-  if (compact.includes("download") || compact.includes("digital") || compact.includes("kobo")) return true;
+  // Rakuten payment types that are documented as invoice-first:
+  // - 代引き/代金引換
+  // - 請求書払い / ショッピングクレジット / ローン系
+  // - kobo/ダウンロード商品
+  const invoiceSignals = [
+    "代引",
+    "代金引換",
+    "cashondelivery",
+    "cod",
+    "請求書払い",
+    "請求書",
+    "ショッピングクレジット",
+    "オートローン",
+    "ローン",
+    "リース",
+    "alipay",
+    "kobo",
+    "デジタル版",
+    "電子版",
+    "download",
+    "digital",
+  ];
+  const invoiceSignalsNormalized = invoiceSignals.map((s) => normalizeTextLines(s).replace(/\s+/g, "").toLowerCase());
+  if (invoiceSignalsNormalized.some((signal) => compact.includes(signal))) return "invoice";
 
-  return false;
+  return "receipt";
 }
 
 function isRakutenBooksReceiptInputUrl(rawUrl) {
@@ -1839,6 +1862,7 @@ async function main() {
       let appliedName = null;
       let errorReason = null;
       let errorDetail = null;
+      let paymentDocumentType = "receipt";
 
       try {
         current.stage = "open_detail";
@@ -1855,6 +1879,7 @@ async function main() {
             order_date: orderDate,
             total_yen: totalYen,
             payment_method: paymentMethod,
+            document_type: paymentDocumentType,
             include,
             filtered_reason: "out_of_month",
             receipt_name: appliedName || receiptName || null,
@@ -1879,6 +1904,7 @@ async function main() {
         totalYen = parsed.totalYen;
         paymentMethod = parsed.paymentMethod;
         itemName = parsed.itemName;
+        paymentDocumentType = classifyRakutenReceiptDocumentType(paymentMethod);
         current.orderId = orderId || "unknown";
         current.stage = "detail_parsed";
 
@@ -1921,7 +1947,6 @@ async function main() {
               `[rakuten] order ${orderId || "unknown"} no receipt by payment method: ${String(paymentMethod || "")}`
             );
           }
-
           const receiptAction = include ? await findReceiptAction(page) : null;
           if (!receiptAction) {
             if (include && directReceiptUrl) {
@@ -2085,8 +2110,8 @@ async function main() {
                       throw new Error("rakuten_direct_download_not_saved");
                     }
                   } else {
-                  const usingPopup = Boolean(receiptPopup && !receiptPopup.isClosed());
-                  // Rakuten Books receiptInput/receiptPrint intermittently fails in headless context
+                    const usingPopup = Boolean(receiptPopup && !receiptPopup.isClosed());
+                    // Rakuten Books receiptInput/receiptPrint intermittently fails in headless context
                   // ("注文・配送状況の確認エラー"), so keep that flow on the visible context page.
                   const booksDetailFlow = /books\.rakuten\.co\.jp/i.test(String(detailUrl || ""));
                   if (booksDetailFlow && !usingPopup) {
@@ -2307,6 +2332,7 @@ async function main() {
         total_yen: totalYen,
         item_name: itemName || null,
         payment_method: paymentMethod,
+        document_type: paymentDocumentType,
         include,
         filtered_reason: filteredReason,
         receipt_name: appliedName || receiptName || null,
@@ -2369,6 +2395,7 @@ export {
   assessRakutenBooksReceiptPrintTransition,
   extractRakutenBooksItemNameFromText,
   isRakutenNoReceiptPaymentMethod,
+  classifyRakutenReceiptDocumentType,
   isRakutenBooksReceiptInputUrl,
   isRakutenBooksReceiptPrintUrl,
   isDirectRakutenDownloadUrl,

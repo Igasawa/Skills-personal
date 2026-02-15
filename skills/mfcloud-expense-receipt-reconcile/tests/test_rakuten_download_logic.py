@@ -112,14 +112,33 @@ def test_is_rakuten_no_receipt_payment_method() -> None:
   bank: mod.isRakutenNoReceiptPaymentMethod("銀行振込")
 })"""
     )
-    assert data["cod1"] is True
-    assert data["cod2"] is True
-    assert data["cod3"] is True
-    assert data["digital1"] is True
-    assert data["digital2"] is True
-    assert data["kobo1"] is True
+    assert data["cod1"] is False
+    assert data["cod2"] is False
+    assert data["cod3"] is False
+    assert data["digital1"] is False
+    assert data["digital2"] is False
+    assert data["kobo1"] is False
     assert data["card"] is False
     assert data["bank"] is False
+
+
+def test_classify_rakuten_receipt_document_type() -> None:
+    data = _node_json(
+        """({
+  cod: mod.classifyRakutenReceiptDocumentType("代引き"),
+  invoice: mod.classifyRakutenReceiptDocumentType("請求書払い"),
+  kobo: mod.classifyRakutenReceiptDocumentType("楽天kobo デジタル版"),
+  card: mod.classifyRakutenReceiptDocumentType("クレジットカード決済"),
+  bank: mod.classifyRakutenReceiptDocumentType("銀行振込"),
+  unknown: mod.classifyRakutenReceiptDocumentType("")
+})"""
+    )
+    assert data["cod"] == "invoice"
+    assert data["invoice"] == "invoice"
+    assert data["kobo"] == "invoice"
+    assert data["card"] == "receipt"
+    assert data["bank"] == "receipt"
+    assert data["unknown"] == "receipt"
 
 
 def test_assess_rakuten_receipt_page_text_handles_books_receipt_with_faq_footer() -> None:
