@@ -49,10 +49,10 @@
   - `isRakutenNoReceiptPaymentMethod()` を追加
   - 支払方法が対象外のとき、`findReceiptAction` 前に `status=no_receipt` に短絡
   - `error_reason=no_receipt_payment_method` と `error_detail` に `payment_method` を保存
-- テスト追加:
-- `skills/mfcloud-expense-receipt-reconcile/tests/test_rakuten_download_logic.py`
+ - テスト追加:
+ - `skills/mfcloud-expense-receipt-reconcile/tests/test_rakuten_download_logic.py`
   - `test_is_rakuten_no_receipt_payment_method`
-- `skills/mfcloud-expense-receipt-reconcile/scripts/amazon_download.mjs`
+  - `skills/mfcloud-expense-receipt-reconcile/scripts/amazon_download.mjs`
   - `isAmazonNoReceiptPaymentMethod()` 追加（代金引換/COD 系を除外）
   - `extractAmazonPaymentMethodFromText()` 追加（注文行テキストから支払方法を抽出）
   - `status=no_receipt` かつ `error_reason=no_receipt_payment_method` を短絡
@@ -64,6 +64,7 @@
   - `test_is_amazon_no_receipt_payment_method`
 - 追加要注意:
   - Amazon公式の領収書取得要件（特定支払方法での不発行）が動的に変化するため、運用監視時に `payment_method` を蓄積して除外閾値を調整
+  - 楽天側の `no_receipt_payment_method` は `document_type` 分類（`receipt` / `invoice`）と整合させ、`invoice` を受ける対象として扱うことで除外漏れを抑制
 
 ## 6. 運用ナレッジ（実運用向け）
 - 目的:
@@ -154,6 +155,11 @@
   - `isAmazonNoReceiptPaymentMethod` は「代金引換系」表記のみに限定。
   - 「代金決済」など曖昧語は `no_receipt` 判定対象から除外し、誤判定を減らす。
   - 対応テストに `代金引換（コンビニ）` = true、`代金決済` = false を追加。
+ - 楽天側の手当（実装補正）:
+  - `isRakutenNoReceiptPaymentMethod` は `classifyRakutenReceiptDocumentType()` の結果と整合させ、`invoice` 時も `no_receipt` として扱う。
+  - `cash on delivery` 系の表記ゆれ（`C.O.D.`, `C O D`）を吸収する正規化を追加。
+  - `test_is_rakuten_no_receipt_payment_method` で `代引き`, `代金引換（現金）`, `Cash on Delivery`, `デジタル版`, `電子版`, `楽天kobo デジタル版` を `true` 扱いへ更新。
+  - `test_is_rakuten_no_receipt_payment_method_accepts_cod_abbr` を追加し、`C.O.D.`, `C O D` を `true`、`代金決済` を `false` に固定。
 ## 10. 公式確認運用（2026-02-15 追加）
 - Amazon 公式ヘルプ（nodeId=201894740 系）は、HTTP 自動取得で 403/503 が継続しやすく、実装上の一次根拠は実画面確認で運用。
 - 定例再確認（週次）手順を固定:
