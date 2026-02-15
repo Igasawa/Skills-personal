@@ -143,6 +143,7 @@ def test_classify_rakuten_receipt_document_type() -> None:
   kobo: mod.classifyRakutenReceiptDocumentType("楽天kobo デジタル版"),
   card: mod.classifyRakutenReceiptDocumentType("クレジットカード決済"),
   bank: mod.classifyRakutenReceiptDocumentType("銀行振込"),
+  non_invoice: mod.classifyRakutenReceiptDocumentType("代金決済"),
   unknown: mod.classifyRakutenReceiptDocumentType("")
 })"""
     )
@@ -151,6 +152,7 @@ def test_classify_rakuten_receipt_document_type() -> None:
     assert data["kobo"] == "invoice"
     assert data["card"] == "receipt"
     assert data["bank"] == "receipt"
+    assert data["non_invoice"] == "receipt"
     assert data["unknown"] == "receipt"
 
 
