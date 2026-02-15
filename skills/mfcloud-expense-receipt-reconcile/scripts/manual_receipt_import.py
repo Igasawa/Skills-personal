@@ -33,6 +33,15 @@ RAKUTEN_ORDER_ID_RE = re.compile(r"\b\d{6}-\d{8}-\d{10}\b")
 
 PROVIDER_KEYS: tuple[str, ...] = ("aquavoice", "claude", "chatgpt", "gamma")
 ALLOWED_RECEIPT_SUFFIXES = {".pdf", ".jpg", ".jpeg", ".png"}
+GASPDF_SOURCE_PREFIXES: tuple[str, ...] = ("copy", "move")
+GASPDF_DEFAULT_SOURCE_MODE = "copy"
+SOURCE_RECEIPT_SUFFIXES = {".pdf"}
+SOURCE_FOLDER_NAME_PATTERNS: tuple[re.Pattern[str], ...] = (
+    re.compile(r"\b(20\d{2})[-_/](0?[1-9]|1[0-2])\b"),
+    re.compile(r"\b(20\d{2})(0[1-9]|1[0-2])(0[1-9]|[12]\d|3[01])\b"),
+    re.compile(r"\b(20\d{2})\s*年\s*(0?[1-9]|1[0-2])月\b"),
+    re.compile(r"\b(20\d{2})(0[1-9]|1[0-2])\b"),
+)
 
 AMOUNT_LABELS: list[str] = [
     "ご請求額",
@@ -123,6 +132,123 @@ def _safe_token(value: str, *, fallback: str, max_len: int = 40) -> str:
     if not text:
         text = fallback
     return text[:max_len]
+
+
+def _normalize_source_mode(raw: str) -> str:
+    value = str(raw or "").strip().lower()
+    return value if value in GASPDF_SOURCE_PREFIXES else GASPDF_DEFAULT_SOURCE_MODE
+
+
+def _extract_ym_from_filename(name: str) -> tuple[int, int] | None:
+    stem = Path(name).stem
+    for pattern in SOURCE_FOLDER_NAME_PATTERNS:
+        match = pattern.search(stem)
+        if not match:
+            continue
+        try:
+            year = int(match.group(1))
+            month = int(match.group(2))
+            if 1 <= month <= 12:
+                return year, month
+        except Exception:
+            continue
+    return None
+
+
+def _scan_source_receipts(source_dir: Path, year: int, month: int) -> tuple[list[Path], dict[str, Any]]:
+    files: list[Path] = []
+    summary: dict[str, Any] = {
+        "source_dir": str(source_dir),
+        "exists": source_dir.exists(),
+        "accessible": False,
+        "checked": 0,
+        "pdf_files": 0,
+        "matched": 0,
+        "ignored_hidden": 0,
+        "ignored_non_pdf": 0,
+        "ignored_out_of_month": 0,
+        "ignored_unmatched_name": 0,
+        "sample_matched": [],
+    }
+    if not source_dir.exists():
+        return files, summary
+    if not source_dir.is_dir():
+        summary["accessible"] = False
+        return files, summary
+    summary["accessible"] = True
+
+    for path in sorted(source_dir.rglob("*")):
+        if not path.is_file():
+            continue
+        rel_parts = tuple(path.relative_to(source_dir).parts)
+        if any(part.startswith("_") for part in rel_parts):
+            summary["ignored_hidden"] += 1
+            continue
+        summary["checked"] += 1
+        if path.suffix.lower() not in SOURCE_RECEIPT_SUFFIXES:
+            summary["ignored_non_pdf"] += 1
+            continue
+        summary["pdf_files"] += 1
+        parsed = _extract_ym_from_filename(path.name)
+        if parsed is None:
+            summary["ignored_unmatched_name"] += 1
+            continue
+        parsed_year, parsed_month = parsed
+        if parsed_year != year or parsed_month != month:
+            summary["ignored_out_of_month"] += 1
+            continue
+        files.append(path)
+        summary["matched"] += 1
+        if len(summary["sample_matched"]) < 30:
+            try:
+                summary["sample_matched"].append(str(path))
+            except Exception:
+                summary["sample_matched"].append("unable-to-read-path")
+
+    return files, summary
+
+
+def _import_source_receipts(
+    *,
+    source_files: list[Path],
+    source_root: Path,
+    inbox_dir: Path,
+    source_mode: str = GASPDF_DEFAULT_SOURCE_MODE,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    staged: list[dict[str, Any]] = []
+    failed: list[dict[str, Any]] = []
+    for src in source_files:
+        rel = src.relative_to(source_root)
+        provider = ""
+        if rel.parts and rel.parts[0] in PROVIDER_KEYS:
+            provider = rel.parts[0]
+        target_dir = inbox_dir / provider if provider else inbox_dir
+        target_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            dest = _unique_path(target_dir / src.name)
+            if source_mode == "move":
+                shutil.move(str(src), str(dest))
+            else:
+                shutil.copy2(str(src), str(dest))
+            staged.append(
+                {
+                    "source": str(src),
+                    "moved_to": str(dest),
+                    "mode": source_mode,
+                    "provider": provider,
+                    "size": src.stat().st_size if src.exists() else None,
+                }
+            )
+        except Exception as exc:
+            failed.append(
+                {
+                    "source": str(src),
+                    "mode": source_mode,
+                    "provider": provider,
+                    "reason": str(exc),
+                }
+            )
+    return staged, failed
 
 
 def _read_pdf_text(path: Path) -> str:
@@ -712,6 +838,9 @@ def import_manual_receipts_for_month(
     *,
     provider_filter: set[str] | list[str] | tuple[str, ...] | None = None,
     ingestion_channel: str = "manual_inbox",
+    source_dir: Path | str | None = None,
+    source_mode: str = GASPDF_DEFAULT_SOURCE_MODE,
+    source_dry_run: bool = False,
 ) -> dict[str, Any]:
     ym = f"{year:04d}-{month:02d}"
     output_root = output_root.resolve()
@@ -741,6 +870,11 @@ def import_manual_receipts_for_month(
     imported_rows: list[dict[str, Any]] = []
     skipped_rows: list[dict[str, Any]] = []
     failed_rows: list[dict[str, Any]] = []
+    source_import: dict[str, Any] = {
+        "enabled": False,
+        "mode": "",
+        "dry_run": bool(source_dry_run),
+    }
     new_orders: list[dict[str, Any]] = []
     imported = 0
     updated_duplicates = 0
@@ -750,6 +884,91 @@ def import_manual_receipts_for_month(
 
     provider_counts: dict[str, dict[str, int]] = {provider: _new_provider_stat() for provider in PROVIDER_KEYS}
     provider_counts["manual"] = _new_provider_stat()
+
+    source_root: Path | None = None
+    if source_dir is not None:
+        try:
+            source_root = Path(source_dir).expanduser()
+        except Exception:
+            source_root = None
+    source_mode = _normalize_source_mode(source_mode)
+    if source_root is not None:
+        source_import["enabled"] = True
+        source_import["mode"] = source_mode
+        source_import["source_dir"] = str(source_root)
+        if not source_root.exists() or not source_root.is_dir():
+            source_import["error"] = "Source directory is not found or is not a directory."
+            return {
+                "status": "error",
+                "ym": ym,
+                "ingestion_channel": str(ingestion_channel or "manual_inbox"),
+                "provider_filter": sorted(normalized_provider_filter) if normalized_provider_filter is not None else [],
+                "found_files": 0,
+                "found_pdfs": 0,
+                "imported": 0,
+                "updated_duplicates": 0,
+                "imported_missing_amount": 0,
+                "skipped_duplicates": 0,
+                "failed": 0,
+                "provider_counts": provider_counts,
+                "output_root": str(output_root),
+                "inbox_dir": str(inbox_dir),
+                "pdfs_dir": str(pdfs_dir),
+                "orders_jsonl": str(orders_jsonl),
+                "errors_jsonl": str(errors_jsonl),
+                "report_json": str(report_json),
+                "provider_report_json": str(provider_report_json),
+                "imported_rows": [],
+                "skipped_rows": [],
+                "failed_rows": [],
+                "processed_dir": "",
+                "source_import": source_import,
+            }
+        matched_sources, source_scan = _scan_source_receipts(source_root, year, month)
+        source_import["scan"] = source_scan
+        if source_scan.get("matched", 0) > 0 and not source_dry_run:
+            staged_rows, failed_rows_from_source = _import_source_receipts(
+                source_files=matched_sources,
+                source_root=source_root,
+                inbox_dir=inbox_dir,
+                source_mode=source_mode,
+            )
+            source_import["staged"] = staged_rows
+            source_import["source_failed_rows"] = failed_rows_from_source
+        elif source_scan.get("matched", 0) > 0 and source_dry_run:
+            source_import["staged"] = []
+            source_import["source_failed_rows"] = []
+            source_import["note"] = "source_dry_run enabled; source files were not moved."
+        else:
+            source_import["staged"] = []
+            source_import["source_failed_rows"] = []
+        if source_dry_run:
+            return {
+                "status": "ok",
+                "ym": ym,
+                "ingestion_channel": str(ingestion_channel or "manual_inbox"),
+                "provider_filter": sorted(normalized_provider_filter) if normalized_provider_filter is not None else [],
+                "found_files": 0,
+                "found_pdfs": 0,
+                "imported": 0,
+                "updated_duplicates": 0,
+                "imported_missing_amount": 0,
+                "skipped_duplicates": 0,
+                "failed": 0,
+                "provider_counts": provider_counts,
+                "output_root": str(output_root),
+                "inbox_dir": str(inbox_dir),
+                "pdfs_dir": str(pdfs_dir),
+                "orders_jsonl": str(orders_jsonl),
+                "errors_jsonl": str(errors_jsonl),
+                "report_json": str(report_json),
+                "provider_report_json": str(provider_report_json),
+                "imported_rows": [],
+                "skipped_rows": [],
+                "failed_rows": [],
+                "processed_dir": "",
+                "source_import": source_import,
+            }
 
     for src in receipt_files:
         rel = src.relative_to(inbox_dir)
@@ -960,6 +1179,7 @@ def import_manual_receipts_for_month(
         "errors_jsonl": str(errors_jsonl),
         "report_json": str(report_json),
         "provider_report_json": str(provider_report_json),
+        "source_import": source_import,
         "imported_rows": imported_rows,
         "skipped_rows": skipped_rows,
         "failed_rows": failed_rows,
@@ -979,6 +1199,18 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--year", type=int, required=True)
     ap.add_argument("--month", type=int, required=True)
     ap.add_argument("--output-root", help="Path to artifacts root for target month")
+    ap.add_argument("--source-dir", help="Optional source directory to scan and stage PDFs by year-month.")
+    ap.add_argument(
+        "--source-mode",
+        choices=GASPDF_SOURCE_PREFIXES,
+        default=GASPDF_DEFAULT_SOURCE_MODE,
+        help="Source import mode for matched files (copy or move).",
+    )
+    ap.add_argument(
+        "--source-dry-run",
+        action="store_true",
+        help="Scan source folder only. Do not move/copy files.",
+    )
     args = ap.parse_args(argv)
 
     year = int(args.year)
@@ -987,7 +1219,14 @@ def main(argv: list[str] | None = None) -> int:
         raise ValueError("month must be between 1 and 12.")
 
     output_root = Path(args.output_root).expanduser() if args.output_root else _default_output_root(year, month)
-    result = import_manual_receipts_for_month(output_root, year, month)
+    result = import_manual_receipts_for_month(
+        output_root,
+        year,
+        month,
+        source_dir=str(args.source_dir).strip() if args.source_dir else None,
+        source_mode=str(args.source_mode or GASPDF_DEFAULT_SOURCE_MODE),
+        source_dry_run=bool(args.source_dry_run),
+    )
     print(json.dumps({"status": "success", "data": result}, ensure_ascii=False))
     return 0
 

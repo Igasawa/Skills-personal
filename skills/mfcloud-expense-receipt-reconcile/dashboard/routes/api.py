@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
 from pypdf import PdfReader, PdfWriter
 
@@ -1120,7 +1120,13 @@ def create_api_router() -> APIRouter:
         return JSONResponse({"status": "ok", "ym": ym, "path": str(target)})
 
     @router.post("/api/manual/{ym}/import")
-    def api_manual_import(ym: str, request: Request) -> JSONResponse:
+    def api_manual_import(
+        ym: str,
+        request: Request,
+        source_dir: str | None = Query(default=None),
+        source_mode: str = Query(default="copy"),
+        source_dry_run: bool = Query(default=False),
+    ) -> JSONResponse:
         ym = core._safe_ym(ym)
         year, month = core._split_ym(ym)
         actor = _actor_from_request(request)
@@ -1138,7 +1144,13 @@ def create_api_router() -> APIRouter:
             )
             raise HTTPException(status_code=409, detail=detail)
         try:
-            result = core._import_manual_receipts_for_ym(year, month)
+            result = core._import_manual_receipts_for_ym(
+                year,
+                month,
+                source_dir=source_dir,
+                source_mode=source_mode,
+                source_dry_run=source_dry_run,
+            )
         except HTTPException as exc:
             core._append_audit_event(
                 year=year,
@@ -1158,14 +1170,17 @@ def create_api_router() -> APIRouter:
             action="import",
             status="success",
             actor=actor,
-            details={
-                "found_pdfs": result.get("found_pdfs"),
-                "imported": result.get("imported"),
-                "skipped_duplicates": result.get("skipped_duplicates"),
-                "failed": result.get("failed"),
-                "orders_jsonl": result.get("orders_jsonl"),
-            },
-        )
+                details={
+                    "found_pdfs": result.get("found_pdfs"),
+                    "imported": result.get("imported"),
+                    "skipped_duplicates": result.get("skipped_duplicates"),
+                    "failed": result.get("failed"),
+                    "orders_jsonl": result.get("orders_jsonl"),
+                    "source_dir": str(source_dir or "").strip(),
+                    "source_mode": str(source_mode or "").strip(),
+                    "source_dry_run": bool(source_dry_run),
+                },
+            )
         return JSONResponse(result)
 
     @router.post("/api/providers/{ym}/import")

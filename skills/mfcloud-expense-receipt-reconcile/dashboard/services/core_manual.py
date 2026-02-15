@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -26,6 +27,11 @@ PROVIDER_STORAGE_STATE_NAMES: dict[str, str] = {
     "gamma": "gamma",
 }
 ALLOWED_RECEIPT_SUFFIXES = {".pdf", ".jpg", ".jpeg", ".png"}
+MANUAL_SOURCE_DIR_ENV = "AX_MANUAL_RECEIPT_SOURCE_DIR"
+MANUAL_SOURCE_MODE_ENV = "AX_MANUAL_RECEIPT_SOURCE_MODE"
+MANUAL_SOURCE_DRY_RUN_ENV = "AX_MANUAL_RECEIPT_SOURCE_DRY_RUN"
+MANUAL_SOURCE_DEFAULT_MODE = "copy"
+MANUAL_SOURCE_DEFAULT_DIR = r"G:\マイドライブ\_ax\gaspdf"
 
 
 def _manual_month_root_for_ym(year: int, month: int) -> Path:
@@ -123,6 +129,41 @@ def _extract_skipped_dirs_and_files(rows: Any) -> tuple[list[str], list[str]]:
     return dirs, files
 
 
+def _manual_source_dir(raw: str | Path | None = None) -> Path | None:
+    if raw is not None:
+        normalized = str(raw).strip()
+        if not normalized:
+            return None
+        return Path(normalized).expanduser()
+
+    raw = str(os.environ.get(MANUAL_SOURCE_DIR_ENV, "")).strip()
+    if raw:
+        return Path(raw).expanduser()
+
+    if not MANUAL_SOURCE_DEFAULT_DIR:
+        return None
+    path = Path(MANUAL_SOURCE_DEFAULT_DIR).expanduser()
+    if path.exists() and path.is_dir():
+        return path
+    return None
+
+
+def _manual_source_mode(raw: str | None = None) -> str:
+    if raw is None:
+        raw = str(os.environ.get(MANUAL_SOURCE_MODE_ENV, MANUAL_SOURCE_DEFAULT_MODE))
+    raw = str(raw).strip().lower()
+    if raw in {"copy", "move"}:
+        return raw
+    return MANUAL_SOURCE_DEFAULT_MODE
+
+
+def _manual_source_dry_run(raw: bool | None = None) -> bool:
+    if raw is not None:
+        return bool(raw)
+    raw = str(os.environ.get(MANUAL_SOURCE_DRY_RUN_ENV, "")).strip().lower()
+    return raw in {"1", "true", "on", "yes"}
+
+
 def _provider_step_attempted_for_ym(year: int, month: int) -> bool:
     month_root = _manual_month_root_for_ym(year, month)
     provider_import_report = month_root / "manual" / "reports" / "provider_import_last.json"
@@ -214,7 +255,13 @@ def _resolve_provider_storage_state_for_ym(year: int, month: int, provider: str)
     return _ax_home() / "sessions" / f"{session_name}.storage.json"
 
 
-def _import_manual_receipts_for_ym(year: int, month: int) -> dict[str, Any]:
+def _import_manual_receipts_for_ym(
+    year: int,
+    month: int,
+    source_dir: str | Path | None = None,
+    source_mode: str | None = None,
+    source_dry_run: bool | None = None,
+) -> dict[str, Any]:
     if month < 1 or month > 12:
         raise HTTPException(status_code=400, detail="Month must be between 1 and 12.")
 
@@ -227,7 +274,15 @@ def _import_manual_receipts_for_ym(year: int, month: int) -> dict[str, Any]:
         raise HTTPException(status_code=500, detail=f"manual import module load failed: {exc}") from exc
 
     try:
-        result = import_manual_receipts_for_month(output_root, year, month, ingestion_channel="manual_inbox")
+        result = import_manual_receipts_for_month(
+            output_root,
+            year,
+            month,
+            ingestion_channel="manual_inbox",
+            source_dir=_manual_source_dir(source_dir),
+            source_mode=_manual_source_mode(source_mode),
+            source_dry_run=_manual_source_dry_run(source_dry_run),
+        )
     except HTTPException:
         raise
     except Exception as exc:
@@ -236,6 +291,7 @@ def _import_manual_receipts_for_ym(year: int, month: int) -> dict[str, Any]:
     return {
         "status": "ok",
         "ym": result.get("ym"),
+        "source_import": result.get("source_import") if isinstance(result.get("source_import"), dict) else {},
         "found_pdfs": int(result.get("found_pdfs") or 0),
         "found_files": int(result.get("found_files") or result.get("found_pdfs") or 0),
         "imported": int(result.get("imported") or 0),
