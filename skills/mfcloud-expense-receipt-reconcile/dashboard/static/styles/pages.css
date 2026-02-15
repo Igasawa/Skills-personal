@@ -223,6 +223,10 @@
   flex-wrap: wrap;
 }
 
+.next-step .muted {
+  width: 100%;
+}
+
 .grid {
   display: grid;
   gap: 16px;
@@ -240,6 +244,16 @@
 
 .next-step .secondary {
   min-height: 36px;
+}
+
+.next-step-reason {
+  font-size: 12px;
+}
+
+.wizard-step.step-focus,
+.task-process-row.step-focus {
+  border-color: rgb(var(--semantic-feedback-warning-surface) / 0.8);
+  box-shadow: 0 0 0 3px rgb(var(--semantic-feedback-warning-surface) / 0.24);
 }
 
 .stats-grid {

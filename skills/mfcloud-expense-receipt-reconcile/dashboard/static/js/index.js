@@ -1019,7 +1019,7 @@
     el.classList.add("pending");
   }
 
-  function renderNextStep(message, href) {
+  function renderNextStep(message, href, reason = "") {
     if (!wizardNext) return;
     wizardNext.innerHTML = "";
     if (!message) {
@@ -1030,12 +1030,49 @@
     const text = document.createElement("span");
     text.textContent = message;
     wizardNext.appendChild(text);
+    if (reason) {
+      const reasonEl = document.createElement("span");
+      reasonEl.className = "muted next-step-reason";
+      reasonEl.textContent = reason;
+      wizardNext.appendChild(reasonEl);
+    }
     if (!href) return;
     const link = document.createElement("a");
     link.href = href;
     link.className = "secondary";
     link.textContent = "開く";
+    if (String(href || "").trim().startsWith("#")) {
+      link.href = href;
+      link.addEventListener("click", (event) => {
+        event.preventDefault();
+        navigateToStep(href);
+      });
+    }
     wizardNext.appendChild(link);
+  }
+
+  function navigateToStep(href) {
+    if (!href || typeof href !== "string") return;
+    const id = href.trim();
+    if (!id.startsWith("#")) return;
+    const target = document.querySelector(id);
+    if (!target) return;
+    target.scrollIntoView({
+      behavior: "smooth",
+      block: "start",
+    });
+    const hadTabIndex = target.hasAttribute("tabindex");
+    target.setAttribute("tabindex", "-1");
+    if (typeof target.focus === "function") {
+      target.focus({ preventScroll: true });
+    }
+    target.classList.add("step-focus");
+    setTimeout(() => {
+      target.classList.remove("step-focus");
+      if (!hadTabIndex) {
+        target.removeAttribute("tabindex");
+      }
+    }, 1400);
   }
 
   function inferNextStepFromFlags(data) {
@@ -1125,6 +1162,48 @@
 
   function computeNextStep(data, ym) {
     const nextStep = resolveNextStep(data);
+    const nextStepGuidance = {
+      preflight: {
+        message: "まずは前提条件の確認から進めてください。",
+        reason: "ログイン状態と月次情報を確認して、実行可能条件をそろえます。",
+      },
+      amazon_or_rakuten_download: {
+        message: "まずは Amazon か楽天のいずれかの領収書取得を先に実行してください。",
+        reason: "少なくとも1社分の領収書取得が必要です。未取得があると次の処理に進めません。",
+      },
+      amazon_download: {
+        message: "Amazon の領収書を取得してください。",
+        reason: "Amazon 側の対象月データを取得して、次の除外判断・印刷へ進みます。",
+      },
+      amazon_decide_print: {
+        message: "Amazon の除外設定・印刷対象を確認してください。",
+        reason: "除外対象を確定して印刷完了まで進めると状態が保存されます。",
+      },
+      rakuten_download: {
+        message: "楽天の領収書を取得してください。",
+        reason: "楽天側の対象月データを取得して、次の除外判断・印刷へ進みます。",
+      },
+      rakuten_decide_print: {
+        message: "楽天の除外設定・印刷対象を確認してください。",
+        reason: "除外対象を確定して印刷完了まで進めると状態が保存されます。",
+      },
+      provider_ingest: {
+        message: "外部CSVの取り込みを実行してください。",
+        reason: "Amazon/楽天で取得しきれない分を、共通フォルダ経由で取り込むフェーズです。",
+      },
+      mf_reconcile: {
+        message: "MF連携の突合せ実行へ進めてください。",
+        reason: "取り込み済みデータをMFの下書き作成へ反映します。",
+      },
+      done: {
+        message: "すべて完了しました。月次アーカイブを実行できます。",
+        reason: "最後に月次クローズやアーカイブを実行して、次月運用に備えます。",
+      },
+      fallback: {
+        message: "処理の取得に時間がかかっています。更新を待ってください。",
+        reason: "バックエンドから最新状態を反映するまで数秒待って再取得してください。",
+      },
+    };
     const nextStepAnchors = {
       preflight: "#step-preflight",
       amazon_or_rakuten_download: "#step-amazon-download",
@@ -1137,20 +1216,12 @@
       done: "#step-month-close",
     };
     const href = nextStepAnchors[String(nextStep || "")] || null;
-    if (nextStep === "preflight") return { message: "まずは前提条件の確認から進めてください。", href };
-    if (nextStep === "amazon_or_rakuten_download") {
-      return { message: "まずは Amazon か楽天のいずれかの領収書取得を先に実行してください。", href };
-    }
-    if (nextStep === "amazon_download") return { message: "Amazon の領収書を取得してください。", href };
-    if (nextStep === "amazon_decide_print") return { message: "Amazon の除外設定・印刷対象を確認してください。", href };
-    if (nextStep === "rakuten_download") return { message: "楽天の領収書を取得してください。", href };
-    if (nextStep === "rakuten_decide_print") return { message: "楽天の除外設定・印刷対象を確認してください。", href };
-    if (nextStep === "provider_ingest") return { message: "外部CSVの取り込みを実行してください。", href };
-    if (nextStep === "mf_reconcile") return { message: "MF連携の突合せ実行へ進めてください。", href };
-    if (nextStep === "done") {
-      return { message: "すべて完了しました。月次アーカイブを実行できます。", href };
-    }
-    return { message: "処理の取得に時間がかかっています。更新を待ってください。", href };
+    const guidance = nextStepGuidance[String(nextStep || "")] || nextStepGuidance.fallback;
+    return {
+      message: guidance.message,
+      reason: guidance.reason,
+      href,
+    };
   }
 
 
@@ -1505,11 +1576,10 @@
             showToast(`${labels[key]}が完了しました。`, "success");
           }
         });
-        window.__stepState = stepStates;
       }
-
+      window.__stepState = stepStates;
       const next = computeNextStep(data, ym);
-      renderNextStep(next.message, next.href);
+      renderNextStep(next.message, next.href, next.reason);
       if (stepRetryTimer) {
         clearTimeout(stepRetryTimer);
         stepRetryTimer = null;
