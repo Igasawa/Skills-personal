@@ -35,16 +35,17 @@ TEXT_EXTENSIONS = {
 TEXT_FILENAMES = {".editorconfig", ".gitattributes", ".gitignore", "README.md"}
 KNOWN_MOJIBAKE_MARKERS = {
     "�",
-    "ぁE",
-    "�E",
-    "、E{",
-    "候裁E",
-    "作�E",
-    "完亁E",
-    "取征E",
-    "重褁E",
-    "失敁E",
-    "アチE",
+    # Common corruption patterns (UTF-8 decoding artifacts) observed in repository checks.
+    "\u3041E",
+    "\ufffdE",
+    "\u3001E{",
+    "\u5019\u88fcE",
+    "\u4f5c\uFFFDE",
+    "\u5b8c\u4e01E",
+    "\u53d6\u5f81E",
+    "\u91cd\u8901E",
+    "\u5931\u6551E",
+    "\u30a2\u30c1E",
 }
 
 
