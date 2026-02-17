@@ -15,9 +15,9 @@
       <header class="hero">
         <div>
           <p class="eyebrow">KIL</p>
-          <h1>KIL Review Dashboard</h1>
+          <h1>KIL Review ダッシュボード</h1>
           <p class="subtitle">
-            AGENTS用のKnowledge Integration Loopの簡易レポートを毎日1回反映し、未対応項目を見える化します。
+            AGENTS の Knowledge Integration Loop（KIL）を人間が確認しやすい形で表示します。
           </p>
         </div>
       </header>
@@ -25,83 +25,88 @@
       <section class="card">
         <div class="kil-review-toolbar">
           <div class="section-header">
-            <h2>データ読込</h2>
+            <h2>KIL Review 操作</h2>
             <button type="button" class="secondary" id="kil-review-refresh">更新</button>
           </div>
           <div class="kil-review-toolbar-controls">
             <label>
-              データソース
+              取得元
               <select id="kil-review-source">
-                <option value="auto" selected>Auto（優先: index）</option>
+                <option value="auto" selected>自動（優先順）</option>
                 <option value="index">AGENT_BRAIN_INDEX.jsonl</option>
                 <option value="markdown">AGENT_BRAIN.md</option>
-                <option value="all">両方（重複除去）</option>
+                <option value="all">両方</option>
               </select>
             </label>
             <label>
-              表示件数
+              取得件数
               <select id="kil-review-limit">
                 <option value="10">10件</option>
                 <option value="20" selected>20件</option>
                 <option value="50">50件</option>
               </select>
             </label>
-            <p id="kil-review-status" class="muted">読み込み前</p>
-          </div>
-        </div>
-      </section>
-
-      <section class="grid two">
-        <div class="card">
-          <h2>集計</h2>
-          <div class="grid two kil-review-grid" id="kil-review-summary">
-            <div class="kil-review-stat">
-              <span class="label">表示件数</span>
-              <span class="value" id="kil-review-count">0</span>
-            </div>
-            <div class="kil-review-stat">
-              <span class="label">データソース</span>
-              <span class="value" id="kil-review-source-used">-</span>
-            </div>
-            <div class="kil-review-stat">
-              <span class="label">index 件数</span>
-              <span class="value" id="kil-review-index-count">0</span>
-            </div>
-            <div class="kil-review-stat">
-              <span class="label">markdown 件数</span>
-              <span class="value" id="kil-review-markdown-count">0</span>
-            </div>
-            <div class="kil-review-stat">
-              <span class="label">期限超過</span>
-              <span class="value" id="kil-review-overdue">0</span>
-            </div>
-            <div class="kil-review-stat">
-              <span class="label">7日以内</span>
-              <span class="value" id="kil-review-due-soon">0</span>
-            </div>
-            <div class="kil-review-stat">
-              <span class="label">期限未設定</span>
-              <span class="value" id="kil-review-no-deadline">0</span>
-            </div>
-            <div class="kil-review-stat">
-              <span class="label">更新時刻</span>
-              <span class="value" id="kil-review-generated-at">-</span>
-            </div>
-          </div>
-        </div>
-
-        <div class="card">
-          <h2>リスク/カテゴリ</h2>
-          <div id="kil-review-risk-grid" class="kil-review-risk-grid">
-            <div class="muted">データを読み込んでください。</div>
+            <p id="kil-review-status" class="muted">読み込み待機中</p>
           </div>
         </div>
       </section>
 
       <section class="card">
         <div class="section-header">
-          <h2>最新エントリ</h2>
-          <p id="kil-review-empty" class="muted hidden">データがありません</p>
+          <h2>要約サマリー</h2>
+          <p id="kil-review-summary-line" class="muted">要約を取得中...</p>
+        </div>
+        <div class="grid two kil-review-grid" id="kil-review-summary">
+          <div class="kil-review-stat">
+            <span class="label">表示件数</span>
+            <span class="value" id="kil-review-count">0</span>
+          </div>
+          <div class="kil-review-stat">
+            <span class="label">要レビュー件数</span>
+            <span class="value" id="kil-review-review-needed">0</span>
+          </div>
+          <div class="kil-review-stat">
+            <span class="label">実際に使用した取得元</span>
+            <span class="value" id="kil-review-source-used">-</span>
+          </div>
+          <div class="kil-review-stat">
+            <span class="label">index件数</span>
+            <span class="value" id="kil-review-index-count">0</span>
+          </div>
+          <div class="kil-review-stat">
+            <span class="label">markdown件数</span>
+            <span class="value" id="kil-review-markdown-count">0</span>
+          </div>
+          <div class="kil-review-stat">
+            <span class="label">期限超過</span>
+            <span class="value" id="kil-review-overdue">0</span>
+          </div>
+          <div class="kil-review-stat">
+            <span class="label">期限7日以内</span>
+            <span class="value" id="kil-review-due-soon">0</span>
+          </div>
+          <div class="kil-review-stat">
+            <span class="label">期限なし</span>
+            <span class="value" id="kil-review-no-deadline">0</span>
+          </div>
+          <div class="kil-review-stat">
+            <span class="label">取得時刻</span>
+            <span class="value" id="kil-review-generated-at">-</span>
+          </div>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>リスク傾向</h2>
+        <div id="kil-review-risk-grid" class="kil-review-risk-grid">
+          <div class="muted">リスク集計データがありません</div>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="section-header">
+          <h2>要レビュー対象エントリ</h2>
+          <p id="kil-review-empty" class="muted hidden">要レビュー対象の項目はありません</p>
         </div>
         <ul id="kil-review-items" class="kil-review-items"></ul>
       </section>

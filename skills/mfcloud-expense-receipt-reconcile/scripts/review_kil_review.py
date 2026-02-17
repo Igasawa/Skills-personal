@@ -48,8 +48,8 @@ def _contains(path: Path, needle: str) -> bool:
 def check_required_files() -> CheckResult:
     missing = [str(path) for path in REQUIRED_FILES if not path.exists()]
     if missing:
-        return _ng(f"required files missing: {', '.join(missing)}")
-    return _ok("required files exist")
+        return _ng(f"必須ファイル不足: {', '.join(missing)}")
+    return _ok("必須ファイル: OK")
 
 
 def check_server_file_contract() -> CheckResult:
@@ -66,34 +66,34 @@ def check_server_file_contract() -> CheckResult:
             return _ng(f"{path} is missing")
 
     checks.append(
-        _ok("pages.py has /kil-review route")
+        _ok("pages.py: /kil-review ルートあり")
         if _contains(pages, '"/kil-review"')
-        else _ng("pages.py is missing route /kil-review")
+        else _ng("pages.py: /kil-review ルートがありません")
     )
     checks.append(
-        _ok("api.py has /api/kil-review endpoint")
+        _ok("api.py: /api/kil-review エンドポイントあり")
         if _contains(api, '"/api/kil-review"')
-        else _ng("api.py is missing /api/kil-review endpoint")
+        else _ng("api.py: /api/kil-review エンドポイントがありません")
     )
     checks.append(
-        _ok("common.js has kil-review nav link")
+        _ok("common.js: ナビゲーションに KIL Review がある")
         if _contains(common, '"/kil-review"') and _contains(common, 'tab: "kil-review"')
-        else _ng("common.js does not include /kil-review menu definition")
+        else _ng("common.js: ナビゲーションに /kil-review 定義がありません")
     )
     checks.append(
-        _ok("common.js handles kil-review active tab")
+        _ok("common.js: /kil-review の active 判定あり")
         if _contains(common, '"/kil-review"') and _contains(common, 'if (normalized === "/kil-review")')
-        else _ng("common.js does not handle /kil-review active tab")
+        else _ng("common.js: /kil-review の active 判定がありません")
     )
     checks.append(
-        _ok("kil_review.html includes required ids")
+        _ok("kil_review.html: 必要IDを確認")
         if all(_contains(template, needle) for needle in ("kil-review-source", "kil-review-limit", "kil-review-refresh"))
-        else _ng("kil_review.html is missing required element ids")
+        else _ng("kil_review.html: 必要IDが不足しています")
     )
     checks.append(
-        _ok("kil-review.js calls /api/kil-review")
+        _ok("kil-review.js: API呼び出しあり")
         if _contains(scripts, '"/api/kil-review"')
-        else _ng("kil-review.js is missing api request")
+        else _ng("kil-review.js: API呼び出しがありません")
     )
 
     ok = all(item.ok for item in checks)
@@ -117,11 +117,11 @@ def check_kil_review_page(base_url: str) -> CheckResult:
     try:
         html = _fetch_text(request_url)
     except urllib.error.HTTPError as exc:
-        return _ng(f"HTTP error for page: {request_url}: {exc.code}")
+        return _ng(f"ページ取得エラー: {request_url} ({exc.code})")
     except urllib.error.URLError as exc:
-        return _ng(f"Request failed for page: {request_url}: {exc}")
+        return _ng(f"ページ要求エラー: {request_url} ({exc})")
     except UnicodeDecodeError as exc:
-        return _ng(f"Invalid encoding for page: {request_url}: {exc}")
+        return _ng(f"ページ文字コードエラー: {request_url} ({exc})")
 
     required_markers = [
         'id="kil-review-source"',
@@ -134,8 +134,8 @@ def check_kil_review_page(base_url: str) -> CheckResult:
     ]
     missing = [marker for marker in required_markers if marker not in html]
     if missing:
-        return _ng(f"/kil-review page is missing required markers: {', '.join(missing)}")
-    return _ok("kil-review page loads and contains required UI markers")
+        return _ng(f"/kil-review ページに不足マーカー: {', '.join(missing)}")
+    return _ok("kil-review ページ: UIマーカー確認済み")
 
 
 def _fetch_text(url: str) -> str:
@@ -163,54 +163,54 @@ def check_api(base_url: str, strict: bool) -> CheckResult:
         try:
             payload = _fetch_json(request_url)
         except urllib.error.HTTPError as exc:
-            return _ng(f"HTTP error for source={source}: {exc.code}")
+            return _ng(f"HTTPエラー: source={source} ({exc.code})")
         except urllib.error.URLError as exc:
-            return _ng(f"Request failed for source={source}: {exc}")
+            return _ng(f"API要求エラー: source={source} ({exc})")
         except json.JSONDecodeError:
-            return _ng(f"Invalid JSON for source={source}")
+            return _ng(f"JSONパース失敗: source={source}")
 
         missing = sorted(required_top_level - set(payload.keys()))
         if missing:
-            return _ng(f"{source}: missing top-level keys: {', '.join(missing)}")
+            return _ng(f"{source}: 必須キー不足: {', '.join(missing)}")
 
         count = payload.get("count")
         if not isinstance(count, int) or count < 0:
-            return _ng(f"{source}: invalid count value")
+            return _ng(f"{source}: count が不正")
 
         if count != len(payload.get("items", [])):
-            return _ng(f"{source}: count({count}) does not match rows({len(payload.get('items', []))})")
+            return _ng(f"{source}: count({count}) と items 件数({len(payload.get('items', []))}) が不一致")
         if payload.get("limit") != 5:
-            return _ng(f"{source}: limit mismatch ({payload.get('limit')})")
+            return _ng(f"{source}: limit が想定値と異なります ({payload.get('limit')})")
 
         review = payload.get("review")
         if not isinstance(review, dict):
-            return _ng(f"{source}: review must be dict")
+            return _ng(f"{source}: review は辞書形式ではありません")
         if payload.get("status") != "ok":
-            return _ng(f"{source}: status is not ok ({payload.get('status')})")
+            return _ng(f"{source}: status が ok ではありません ({payload.get('status')})")
         if strict:
             source_counts = payload.get("source_counts")
             if not isinstance(source_counts, dict):
-                return _ng(f"{source}: source_counts must be dict")
+                return _ng(f"{source}: source_counts が辞書形式ではありません")
             for key in ("index", "markdown"):
                 value = source_counts.get(key)
                 if not isinstance(value, int) or value < 0:
-                    return _ng(f"{source}: source_counts[{key}] must be non-negative int")
+                    return _ng(f"{source}: source_counts[{key}] は0以上整数ではありません")
 
             for key in ("overdue", "due_within_7d", "no_deadline"):
                 value = review.get(key)
                 if not isinstance(value, int) or value < 0:
-                    return _ng(f"{source}: review[{key}] must be non-negative int")
+                    return _ng(f"{source}: review[{key}] は0以上整数ではありません")
 
             for item in payload.get("items", []):
                 if not isinstance(item, dict):
-                    return _ng(f"{source}: each item must be a dict")
+                    return _ng(f"{source}: items が不正（辞書ではありません）")
                 for field in ("source", "commit", "date", "summary"):
                     if not str(item.get(field) or "").strip():
-                        return _ng(f"{source}: item missing required field '{field}'")
+                        return _ng(f"{source}: item に必須項目 '{field}' がありません")
                 if item.get("source") not in {"index", "markdown"}:
-                    return _ng(f"{source}: item has unexpected source '{item.get('source')}'")
+                    return _ng(f"{source}: 不正な source '{item.get('source')}'")
 
-    return _ok("api checks passed")
+    return _ok("API チェック: OK")
 
 
 def run(base_url: str, skip_http: bool, strict: bool) -> int:
@@ -228,16 +228,16 @@ def run(base_url: str, skip_http: bool, strict: bool) -> int:
 
     failed = [item for item in checks if not item.ok]
     passed = [item for item in checks if item.ok]
-    mode = "contract + api" if not skip_http else "contract only"
-    print(f"KIL Review acceptance summary: checks={len(checks)} pass={len(passed)} fail={len(failed)} mode={mode}")
+    mode = "契約チェック+HTTP API" if not skip_http else "契約チェックのみ"
+    print(f"KIL Review 受け入れサマリー: チェック={len(checks)} / 成功={len(passed)} / 失敗={len(failed)} / モード={mode}")
 
     if failed:
         for item in failed:
-            print(f"[NG] {item.message}")
-        print(f"\nKIL review failed: {len(failed)} check(s) failed.")
+            print(f"[未達] {item.message}")
+        print(f"\nKIL Review 不合格: {len(failed)} 件のチェックが未達です。")
         return 1
 
-    print("\nKIL review checks passed. No review required.")
+    print("\nKIL Review 合格: 人手レビューは現時点で不要です。")
     return 0
 
 
