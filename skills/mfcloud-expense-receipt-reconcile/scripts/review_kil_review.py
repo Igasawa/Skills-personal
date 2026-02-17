@@ -166,15 +166,13 @@ def run(base_url: str, skip_http: bool) -> int:
         checks.append(check_api(base_url))
 
     failed = [item for item in checks if not item.ok]
-    for item in checks:
-        status = "OK" if item.ok else "NG"
-        print(f"[{status}] {item.message}")
-
     if failed:
+        for item in failed:
+            print(f"[NG] {item.message}")
         print(f"\nKIL review failed: {len(failed)} check(s) failed.")
         return 1
 
-    print("\nKIL review checks passed.")
+    print("\nKIL review checks passed. No review required.")
     return 0
 
 
