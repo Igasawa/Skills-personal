@@ -26,7 +26,9 @@
       <section class="card">
         <h2>workflowひな形設定</h2>
         <form id="run-form" class="form">
-          <input type="hidden" name="template_id" value="{{ workflow_template.id | default('', true) }}" />
+          <input type="hidden" name="template_id" value="{{ template_id | default('', true) }}" />
+          <input type="hidden" name="template_mode" value="{{ template_mode | default('edit', true) }}" />
+          <input type="hidden" name="template_updated_at" value="{{ template_updated_at | default('', true) }}" />
           <div class="form-row">
             <label>
               ひな形名

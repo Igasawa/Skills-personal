@@ -2219,3 +2219,38 @@ def test_api_save_workflow_template_duplicate_name_and_update_conflict(monkeypat
     stale_conflict_res = client.post("/api/workflow-templates", json=stale_payload)
     assert stale_conflict_res.status_code == 409
     assert "Template was updated by another action." in str(stale_conflict_res.json().get("detail"))
+
+
+def test_api_save_workflow_template_copy_mode_creates_new_template(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    client = _create_client(monkeypatch, tmp_path)
+    create_payload = {
+        "name": "Alpha",
+        "year": 2026,
+        "month": 1,
+        "mfcloud_url": "https://example.com/alpha",
+        "notes": "base",
+    }
+    create_res = client.post("/api/workflow-templates", json=create_payload)
+    assert create_res.status_code == 200
+    created = create_res.json()["template"]
+
+    copy_payload = {
+        "template_id": "",
+        "name": "Alpha Copy",
+        "year": 2026,
+        "month": 1,
+        "mfcloud_url": "https://example.com/alpha",
+        "notes": "copied",
+        "base_updated_at": str(created.get("updated_at") or ""),
+        "rakuten_orders_url": "",
+    }
+    copy_res = client.post("/api/workflow-templates", json=copy_payload)
+    assert copy_res.status_code == 200
+    body = copy_res.json()
+    assert body["updated"] is False
+    assert body["template"]["name"] == "Alpha Copy"
+    assert body["template"]["id"] != created["id"]
+
+    rows = json.loads(_workflow_template_store(tmp_path).read_text(encoding="utf-8"))
+    assert isinstance(rows, list)
+    assert len(rows) == 2

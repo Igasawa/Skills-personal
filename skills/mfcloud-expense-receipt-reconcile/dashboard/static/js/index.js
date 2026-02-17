@@ -73,6 +73,21 @@
 
   const workflowTemplate = parseWorkflowTemplate(pageEl);
 
+  function getTemplateMode() {
+    if (!form) return "edit";
+    return String(form.querySelector("[name=template_mode]")?.value || "edit").trim().toLowerCase();
+  }
+
+  function getTemplateIdFromForm() {
+    if (!form) return "";
+    return String(form.querySelector("[name=template_id]")?.value || "").trim();
+  }
+
+  function getTemplateUpdatedAtFromForm() {
+    if (!form) return "";
+    return String(form.querySelector("[name=template_updated_at]")?.value || "").trim();
+  }
+
   function readYmFromQueryString() {
     if (typeof window === "undefined") return "";
     try {
@@ -377,9 +392,9 @@
     const mfcloudEl = form.querySelector("[name=mfcloud_url]");
     const notesEl = form.querySelector("[name=notes]");
     const rakutenOrdersEl = form.querySelector("[name=rakuten_orders_url]");
-    const templateIdEl = form.querySelector("[name=template_id]");
+    const templateMode = getTemplateMode();
+    const templateId = templateMode === "copy" ? "" : getTemplateIdFromForm();
     const name = String(nameEl?.value || "").trim();
-    const templateId = String(templateIdEl?.value || "").trim();
     return {
       template_id: templateId,
       name,
@@ -390,9 +405,7 @@
       rakuten_orders_url: String(rakutenOrdersEl?.value || "").trim(),
       allow_duplicate_name: false,
       base_updated_at:
-        workflowTemplate && String(workflowTemplate.id || "") === templateId
-          ? String(workflowTemplate.updated_at || "")
-          : "",
+        templateMode === "copy" ? "" : getTemplateUpdatedAtFromForm() || String(workflowTemplate?.updated_at || ""),
     };
   }
 
@@ -415,6 +428,8 @@
 
     const saveButton = document.getElementById("workflow-template-save");
     const templateIdInput = form.querySelector("[name=template_id]");
+    const templateModeInput = form.querySelector("[name=template_mode]");
+    const templateUpdatedAtInput = form.querySelector("[name=template_updated_at]");
     const originalButtonLabel = saveButton ? String(saveButton.textContent || "").trim() : "Save template";
     templateSaveState.inFlight = true;
     if (saveButton) {
@@ -444,6 +459,12 @@
       const month = Number(payload.month || 0);
       if (templateIdInput && templateId) {
         templateIdInput.value = templateId;
+      }
+      if (templateModeInput) {
+        templateModeInput.value = "edit";
+      }
+      if (templateUpdatedAtInput && template) {
+        templateUpdatedAtInput.value = String(template.updated_at || "");
       }
       const successMessage = data.updated ? "Template updated." : "Template saved.";
       showToast(successMessage, "success");

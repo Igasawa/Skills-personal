@@ -436,3 +436,32 @@ def test_expense_workflow_copy_page_prefills_template_and_sidebar_link(monkeypat
         "label": "Monthly Copy Source (2026-02)",
         "tab": "wizard-copy",
     } in links
+
+
+def test_expense_workflow_copy_page_copy_mode_prefills_and_clears_template_id_for_create(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _write_json(
+        _workflow_template_store(tmp_path),
+        [
+            {
+                "id": "copy-source",
+                "name": "Monthly Copy Source",
+                "year": 2026,
+                "month": 2,
+                "mfcloud_url": "https://example.com/mf",
+                "notes": "copied from source",
+                "rakuten_orders_url": "https://example.com/orders",
+                "created_at": "2026-02-01T00:00:00",
+                "updated_at": "2026-02-01T12:34:56",
+            },
+        ],
+    )
+    client = _create_client(monkeypatch, tmp_path)
+    res = client.get("/expense-workflow-copy?template=copy-source&mode=copy")
+    assert res.status_code == 200
+    assert 'name="template_id" value=""' in res.text
+    assert 'name="template_mode" value="copy"' in res.text
+    assert 'name="template_updated_at" value="2026-02-01T12:34:56"' in res.text
+    assert 'value="Monthly Copy Source"' in res.text
+    assert 'value="https://example.com/mf"' in res.text
