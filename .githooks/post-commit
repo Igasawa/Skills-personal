@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+PYTHON_BIN="${KIL_PYTHON_BIN:-}"
+PYTHON_ARGS=""
+
+if [ -z "$PYTHON_BIN" ]; then
+  if command -v python3 >/dev/null 2>&1; then
+    PYTHON_BIN="$(command -v python3)"
+  elif command -v python >/dev/null 2>&1; then
+    PYTHON_BIN="$(command -v python)"
+  elif command -v py >/dev/null 2>&1; then
+    PYTHON_BIN="py"
+    PYTHON_ARGS="-3"
+  fi
+fi
+
+if [ -z "$PYTHON_BIN" ]; then
+  echo "[KIL] Python not found. skipping AGENT_BRAIN update." >&2
+  exit 0
+fi
+
+mkdir -p "$ROOT_DIR/docs"
+
+(
+  cd "$ROOT_DIR"
+  "$PYTHON_BIN" $PYTHON_ARGS scripts/analyze_commit.py >> "$ROOT_DIR/docs/.kil_post_commit_hook.log" 2>&1
+) &
+disown || true
+
+exit 0
