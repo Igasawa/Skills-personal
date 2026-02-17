@@ -13,7 +13,6 @@
       data-sidebar-links='{{ (sidebar_links | default([], true)) | tojson }}'
       data-workflow-template='{{ (workflow_template | default({}, true)) | tojson }}'
       data-template-mode='{{ template_mode | default("new", true) }}'
-      data-template-source-id='{{ template_source_id | default("", true) }}'
     >
       <header class="hero">
         <div>
@@ -46,7 +45,7 @@
         <h2>workflowひな形設定</h2>
         <form id="run-form" class="form">
           <input type="hidden" name="template_id" value="{{ template_id | default('', true) }}" />
-          <input type="hidden" name="template_mode" value="{{ template_mode | default('edit', true) }}" />
+          <input type="hidden" name="template_mode" value="{{ template_mode | default('new', true) }}" />
           <input type="hidden" name="template_source_id" value="{{ template_source_id | default('', true) }}" />
           <input type="hidden" name="template_updated_at" value="{{ template_updated_at | default('', true) }}" />
           <div class="form-row">

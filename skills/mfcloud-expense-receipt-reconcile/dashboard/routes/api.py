@@ -50,6 +50,7 @@ def create_api_router() -> APIRouter:
     WORKFLOW_TEMPLATE_MAX_URL_CHARS = 2048
     WORKFLOW_TEMPLATE_MAX_NOTES_CHARS = 4000
     WORKFLOW_TEMPLATE_MAX_SEARCH_CHARS = 200
+    WORKFLOW_TEMPLATE_MODES = {"new", "edit", "copy"}
     WORKFLOW_TEMPLATE_SORT_OPTIONS = {
         "updated_desc",
         "updated_asc",
@@ -2118,6 +2119,10 @@ def create_api_router() -> APIRouter:
             return ""
         return raw
 
+    def _normalize_workflow_template_mode(value: Any) -> str:
+        mode = str(value or "").strip().lower()
+        return mode if mode in WORKFLOW_TEMPLATE_MODES else "new"
+
     def _normalize_workflow_template_name(value: Any) -> str:
         return " ".join(str(value or "").strip().split())[:WORKFLOW_TEMPLATE_MAX_NAME_CHARS] or "workflow template"
 
@@ -2193,6 +2198,7 @@ def create_api_router() -> APIRouter:
                     "mfcloud_url": mfcloud_url,
                     "notes": _normalize_workflow_template_notes(row.get("notes")),
                     "rakuten_orders_url": _normalize_workflow_template_url(row.get("rakuten_orders_url")) or "",
+                    "source_template_id": _normalize_workflow_template_id(row.get("source_template_id")),
                     "created_at": _normalize_workflow_template_timestamp(row.get("created_at"))
                     or _workflow_template_timestamp_now(),
                     "updated_at": _normalize_workflow_template_timestamp(row.get("updated_at"))
@@ -2229,6 +2235,7 @@ def create_api_router() -> APIRouter:
                     "mfcloud_url": mfcloud_url,
                     "notes": _normalize_workflow_template_notes(row.get("notes")),
                     "rakuten_orders_url": _normalize_workflow_template_url(row.get("rakuten_orders_url")),
+                    "source_template_id": _normalize_workflow_template_id(row.get("source_template_id")),
                     "created_at": str(row.get("created_at") or _workflow_template_timestamp_now()),
                     "updated_at": str(row.get("updated_at") or _workflow_template_timestamp_now()),
                 }
@@ -2256,7 +2263,26 @@ def create_api_router() -> APIRouter:
         if not isinstance(payload, dict):
             raise HTTPException(status_code=400, detail="Request body must be a JSON object.")
 
-        template_id = _normalize_workflow_template_id(payload.get("template_id") or payload.get("id"))
+        raw_template_id = _normalize_workflow_template_id(payload.get("template_id") or payload.get("id"))
+        template_mode = _normalize_workflow_template_mode(payload.get("template_mode"))
+        template_mode_requested = str(payload.get("template_mode") or "").strip().lower() in WORKFLOW_TEMPLATE_MODES
+        base_updated_at = _normalize_workflow_template_timestamp(payload.get("base_updated_at"))
+
+        if template_mode == "copy":
+            template_id = ""
+        else:
+            template_id = raw_template_id
+
+        source_template_id = ""
+        if template_mode == "copy":
+            source_template_id = _normalize_workflow_template_id(
+                payload.get("source_template_id")
+                or payload.get("template_source_id")
+                or raw_template_id
+            )
+        if template_mode == "edit" and template_mode_requested and template_id and not base_updated_at:
+            raise HTTPException(status_code=400, detail="Template base timestamp is required for edit mode.")
+
         name = _normalize_workflow_template_name(payload.get("name"))
         if not name:
             raise HTTPException(status_code=400, detail="Template name is required.")
@@ -2270,7 +2296,7 @@ def create_api_router() -> APIRouter:
         if year < 2000 or year > 3000:
             raise HTTPException(status_code=400, detail="Invalid year/month.")
 
-        return {
+        normalized = {
             "id": template_id or uuid4().hex[:24],
             "name": name,
             "year": year,
@@ -2278,11 +2304,15 @@ def create_api_router() -> APIRouter:
             "mfcloud_url": mfcloud_url,
             "notes": _normalize_workflow_template_notes(payload.get("notes")),
             "rakuten_orders_url": _normalize_workflow_template_url(payload.get("rakuten_orders_url")) or "",
+            "template_mode": template_mode,
             "allow_duplicate_name": bool(payload.get("allow_duplicate_name")),
-            "base_updated_at": _normalize_workflow_template_timestamp(payload.get("base_updated_at")),
+            "base_updated_at": base_updated_at,
             "created_at": "",
             "updated_at": _workflow_template_timestamp_now(),
         }
+        if source_template_id:
+            normalized["source_template_id"] = source_template_id
+        return normalized
 
     @router.get("/api/workspace/state")
     def api_get_workspace_state() -> JSONResponse:
@@ -2377,6 +2407,7 @@ def create_api_router() -> APIRouter:
     def api_save_workflow_template(payload: dict[str, Any]) -> JSONResponse:
         payload = _normalize_workflow_template_payload(payload)
         template_id = str(payload.get("id") or "")
+        source_template_id = _normalize_workflow_template_id(payload.get("source_template_id"))
         allow_duplicate_name = bool(payload.get("allow_duplicate_name"))
         base_updated_at = _normalize_workflow_template_timestamp(payload.get("base_updated_at"))
         existing = _read_workflow_templates()
@@ -2394,6 +2425,9 @@ def create_api_router() -> APIRouter:
                 sanitized = dict(payload)
                 sanitized.pop("allow_duplicate_name", None)
                 sanitized.pop("base_updated_at", None)
+                sanitized.pop("template_mode", None)
+                if source_template_id:
+                    sanitized["source_template_id"] = source_template_id
                 existing[index] = dict(template, **sanitized)
                 saved = dict(existing[index])
                 saved.pop("allow_duplicate_name", None)
@@ -2415,6 +2449,9 @@ def create_api_router() -> APIRouter:
             sanitized = dict(payload)
             sanitized.pop("allow_duplicate_name", None)
             sanitized.pop("base_updated_at", None)
+            sanitized.pop("template_mode", None)
+            if source_template_id:
+                sanitized["source_template_id"] = source_template_id
             existing.append(sanitized)
             saved = dict(payload)
             saved.pop("allow_duplicate_name", None)

@@ -171,6 +171,11 @@
     return String(form.querySelector("[name=template_id]")?.value || "").trim();
   }
 
+  function getTemplateSourceIdFromForm() {
+    if (!form) return "";
+    return String(form.querySelector("[name=template_source_id]")?.value || "").trim();
+  }
+
   function getTemplateUpdatedAtFromForm() {
     if (!form) return "";
     return String(form.querySelector("[name=template_updated_at]")?.value || "").trim();
@@ -482,9 +487,12 @@
     const rakutenOrdersEl = form.querySelector("[name=rakuten_orders_url]");
     const templateMode = getTemplateMode();
     const templateId = templateMode === "copy" ? "" : getTemplateIdFromForm();
+    const templateSourceId = templateMode === "copy" ? getTemplateSourceIdFromForm() || String(workflowTemplate?.id || "").trim() : "";
     const name = String(nameEl?.value || "").trim();
     return {
       template_id: templateId,
+      template_mode: templateMode,
+      template_source_id: templateSourceId,
       name,
       year: Number(yearEl?.value || 0),
       month: Number(monthEl?.value || 0),
