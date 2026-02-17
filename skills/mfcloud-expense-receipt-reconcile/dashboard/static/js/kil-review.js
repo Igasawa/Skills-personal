@@ -72,22 +72,16 @@
 
   function toDeadlineBadge(value) {
     const state = deadlineStatus(value);
-    if (state === "no_deadline") return "期限なし";
+    if (state === "no_deadline") return "未設定";
     if (state === "overdue") return "期限超過";
     if (state === "due_within_7d") return "7日以内";
-    return "期限内";
+    return "期限あり";
   }
 
   function isReviewTarget(item) {
     const status = deadlineStatus(item?.deadline);
     const risk = toLowerSafe(item?.risk);
-    return status === "overdue" || status === "due_within_7d" || (risk && ![
-      "normal",
-      "low",
-      "info",
-      "none",
-      "",
-    ].includes(risk));
+    return status === "overdue" || status === "due_within_7d" || (risk && !["normal", "low", "info", "none", ""].includes(risk));
   }
 
   function renderSummary(payload) {
@@ -109,7 +103,7 @@
     setText(generatedAtEl, payload.generated_at ? String(payload.generated_at) : "-");
 
     if (summaryLineEl) {
-      const line = `要レビュー: ${reviewNeeded}件（期限超過 ${overdue}件 / 7日以内 ${dueSoon}件） / 合計 ${total}件`;
+      const line = `要レビュー: ${reviewNeeded}件（期限超過 ${overdue}件 / 7日以内 ${dueSoon}件） / 全件 ${total}件`;
       setText(summaryLineEl, line);
     }
   }
@@ -119,16 +113,29 @@
     const files = payload.data_files || {};
     const indexPath = String(files.index_path || "AGENT_BRAIN_INDEX.jsonl");
     const markdownPath = String(files.markdown_path || "AGENT_BRAIN.md");
-    const indexState = files.index_exists ? "有効" : "未作成";
-    const mdState = files.markdown_exists ? "有効" : "未作成";
+    const indexState = files.index_exists ? "あり" : "なし";
+    const mdState = files.markdown_exists ? "あり" : "なし";
 
     filesEl.innerHTML = "";
     const li1 = document.createElement("li");
-    li1.textContent = `${indexPath}（${indexState}）`;
+    li1.textContent = `${indexPath} / ${indexState}`;
     const li2 = document.createElement("li");
-    li2.textContent = `${markdownPath}（${mdState}）`;
+    li2.textContent = `${markdownPath} / ${mdState}`;
     filesEl.appendChild(li1);
     filesEl.appendChild(li2);
+  }
+
+  function riskLabel(value) {
+    switch (value) {
+      case "high":
+        return "高";
+      case "medium":
+        return "中";
+      case "low":
+        return "低";
+      default:
+        return value || "不明";
+    }
   }
 
   function renderRisk(payload) {
@@ -138,7 +145,7 @@
     riskGridEl.innerHTML = "";
 
     if (!keys.length) {
-      riskGridEl.innerHTML = `<div class="muted">リスク集計データがありません</div>`;
+      riskGridEl.innerHTML = `<div class="muted">リスク情報がありません</div>`;
       return;
     }
 
@@ -150,7 +157,7 @@
 
         const label = document.createElement("span");
         label.className = "label";
-        label.textContent = name;
+        label.textContent = riskLabel(name);
 
         const value = document.createElement("span");
         value.className = "value";
@@ -170,14 +177,15 @@
     itemsEl.innerHTML = "";
     if (!items.length) {
       emptyEl.classList.remove("hidden");
-      setText(emptyEl, "データがありません。")
+      setText(emptyEl, "データがありません");
       return;
     }
     if (!reviewItems.length) {
       emptyEl.classList.remove("hidden");
-      setText(emptyEl, "今回の対象ではレビュー対象の項目はありません。")
+      setText(emptyEl, "要レビュー対象はありません（設定を見直してください）");
       return;
     }
+
     emptyEl.classList.add("hidden");
 
     reviewItems.forEach((item) => {
@@ -203,14 +211,14 @@
 
       const summary = document.createElement("p");
       summary.className = "kil-review-item-summary";
-      summary.textContent = String(item.summary || "").trim() || "要約がありません";
+      summary.textContent = String(item.summary || "").trim() || "要約なし";
 
       const meta = document.createElement("div");
       meta.className = "kil-review-item-meta";
 
       const risk = document.createElement("span");
       risk.className = "kil-review-chip";
-      risk.textContent = `リスク: ${String(item.risk || "normal")}`;
+      risk.textContent = `重要度: ${String(item.risk || "normal")}`;
 
       const deadline = document.createElement("span");
       deadline.className = "kil-review-chip";
@@ -218,11 +226,11 @@
 
       const action = document.createElement("span");
       action.className = "kil-review-chip";
-      action.textContent = "要レビュー";
+      action.textContent = "レビュー要";
 
       const details = document.createElement("details");
       const detailSummary = document.createElement("summary");
-      detailSummary.textContent = "詳細（必要なときのみ）";
+      detailSummary.textContent = "展開して確認";
       const body = document.createElement("pre");
       body.className = "log";
       const detailPayload = {
@@ -283,12 +291,12 @@
       renderRisk(payload || {});
       renderItems(payload || {});
 
-      setText(statusEl, "最終更新: " + new Date().toLocaleString("ja-JP"));
+      setText(statusEl, "更新: " + new Date().toLocaleString("ja-JP"));
       showToast("KIL Review を更新しました", "success");
     } catch (error) {
       const message = toFriendlyMessage(error?.message || "KIL Review の取得に失敗しました");
       setText(statusEl, message);
-      setText(summaryLineEl, "取得失敗。後で再読み込みしてください。");
+      setText(summaryLineEl, "取得に失敗しました");
       showToast(message, "error");
     } finally {
       setBusy(false);

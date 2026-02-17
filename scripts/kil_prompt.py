@@ -30,9 +30,10 @@ def build_kil_prompt(context: Dict[str, Any]) -> str:
         patch_preview += "\n... (truncated ...)"
 
     return (
-        "You are the Knowledge Integration Loop (KIL) knowledge extractor.\n"
-        "Analyze the commit and extract only reusable agent-operational knowledge.\n\n"
-        "INPUT:\n"
+        "あなたは Knowledge Integration Loop (KIL) のコミット知識抽出エージェントです。\n"
+        "この差分から、エージェントが次回の判断に再利用できる\n"
+        "運用知識（再利用方針・制約・未解決事項）だけを抽出してください。\n\n"
+        "インプット:\n"
         f"- Commit: {commit.get('hash','unknown')}\n"
         f"- Author: {commit.get('author','unknown')} <{commit.get('email','unknown')}>\n"
         f"- Date: {commit.get('date','unknown')}\n"
@@ -45,10 +46,11 @@ def build_kil_prompt(context: Dict[str, Any]) -> str:
         "```diff\n"
         f"{patch_preview}\n"
         "```\n\n"
-        f"- Confidence hint (for priority): {confidence_hint}\n\n"
-        "OUTPUT RULES:\n"
-        "Return valid JSON only. No markdown, no explanation. "
-        "Use these keys exactly:\n"
+        f"- 優先度ヒント: {confidence_hint}\n\n"
+        "出力ルール:\n"
+        "厳密に JSON のみを返してください。説明文・Markdown・前置きは不要です。\n"
+        "値のテキストは日本語（自然文）で出力してください。\n"
+        "キーは固定で以下を必ず含めてください。\n"
         '{\n'
         '  "summary": "string",\n'
         '  "intent": "string",\n'
@@ -58,6 +60,6 @@ def build_kil_prompt(context: Dict[str, Any]) -> str:
         '  "scope": ["string", "..."],\n'
         '  "confidence": 0.0,\n'
         '  "risk": "low|medium|high",\n'
-        '  "review_deadline": "YYYY-MM-DD or null"\n'
-        '}\n'
+        '  "review_deadline": "YYYY-MM-DD または null"\n'
+        "}\n"
     )

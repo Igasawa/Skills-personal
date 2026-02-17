@@ -17,7 +17,8 @@
           <p class="eyebrow">KIL</p>
           <h1>KIL Review ダッシュボード</h1>
           <p class="subtitle">
-            AGENTS の Knowledge Integration Loop（KIL）を人間が確認しやすい形で表示します。
+            AGENTS の Knowledge Integration Loop で抽出した知識を、
+            人間レビューが必要なものに絞って表示します。
           </p>
         </div>
       </header>
@@ -30,43 +31,43 @@
           </div>
           <div class="kil-review-toolbar-controls">
             <label>
-              取得元
+              データ元
               <select id="kil-review-source">
-                <option value="auto" selected>自動（優先順）</option>
+                <option value="auto" selected>自動</option>
                 <option value="index">AGENT_BRAIN_INDEX.jsonl</option>
                 <option value="markdown">AGENT_BRAIN.md</option>
                 <option value="all">両方</option>
               </select>
             </label>
             <label>
-              取得件数
+              表示件数
               <select id="kil-review-limit">
                 <option value="10">10件</option>
                 <option value="20" selected>20件</option>
                 <option value="50">50件</option>
               </select>
             </label>
-            <p id="kil-review-status" class="muted">読み込み待機中</p>
+            <p id="kil-review-status" class="muted">読込中...</p>
           </div>
         </div>
       </section>
 
       <section class="card">
         <div class="section-header">
-          <h2>要約サマリー</h2>
-          <p id="kil-review-summary-line" class="muted">要約を取得中...</p>
+          <h2>要約</h2>
+          <p id="kil-review-summary-line" class="muted">読込中...</p>
         </div>
         <div class="grid two kil-review-grid" id="kil-review-summary">
           <div class="kil-review-stat">
-            <span class="label">表示件数</span>
+            <span class="label">対象件数</span>
             <span class="value" id="kil-review-count">0</span>
           </div>
           <div class="kil-review-stat">
-            <span class="label">要レビュー件数</span>
+            <span class="label">レビュー必要件数</span>
             <span class="value" id="kil-review-review-needed">0</span>
           </div>
           <div class="kil-review-stat">
-            <span class="label">実際に使用した取得元</span>
+            <span class="label">データ元</span>
             <span class="value" id="kil-review-source-used">-</span>
           </div>
           <div class="kil-review-stat">
@@ -82,37 +83,37 @@
             <span class="value" id="kil-review-overdue">0</span>
           </div>
           <div class="kil-review-stat">
-            <span class="label">期限7日以内</span>
+            <span class="label">7日以内</span>
             <span class="value" id="kil-review-due-soon">0</span>
           </div>
           <div class="kil-review-stat">
-            <span class="label">期限なし</span>
+            <span class="label">期限未設定</span>
             <span class="value" id="kil-review-no-deadline">0</span>
           </div>
           <div class="kil-review-stat">
-            <span class="label">取得時刻</span>
+            <span class="label">更新時刻</span>
             <span class="value" id="kil-review-generated-at">-</span>
           </div>
         </div>
       </section>
 
       <section class="card">
-        <h2>リスク傾向</h2>
+        <h2>リスク分布</h2>
         <div id="kil-review-risk-grid" class="kil-review-risk-grid">
-          <div class="muted">リスク集計データがありません</div>
+          <div class="muted">リスク情報がありません</div>
         </div>
       </section>
 
       <section class="card">
         <div class="section-header">
-          <h2>要レビュー対象エントリ</h2>
-          <p id="kil-review-empty" class="muted hidden">要レビュー対象の項目はありません</p>
+          <h2>人間レビュー対象</h2>
+          <p id="kil-review-empty" class="muted hidden">表示対象のレビュー項目がありません</p>
         </div>
         <ul id="kil-review-items" class="kil-review-items"></ul>
       </section>
 
       <section class="card">
-        <h2>参照ファイル</h2>
+        <h2>参照元</h2>
         <ul id="kil-review-data-files" class="muted">
           <li>AGENT_BRAIN_INDEX.jsonl / AGENT_BRAIN.md</li>
         </ul>

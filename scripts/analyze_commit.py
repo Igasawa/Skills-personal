@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env python3
+#!/usr/bin/env python3
 """Knowledge Integration Loop (KIL) commit analyzer."""
 
 from __future__ import annotations
@@ -55,18 +55,17 @@ def load_secret_env() -> None:
         AX_HOME / "secrets" / "kintone.env",
         AX_HOME / "secrets" / "kil.env",
     ]
+    loaded = False
     for path in candidate_paths:
         if path is None:
             continue
         if not path.exists():
             continue
         try:
-            with path.open("r", encoding="utf-8-sig") as f:
-                lines = f.read().splitlines()
+            lines = path.read_text(encoding="utf-8-sig").splitlines()
         except OSError:
             continue
-
-    for line in lines:
+        for line in lines:
             raw = line.strip()
             if not raw or raw.startswith("#"):
                 continue
@@ -77,6 +76,10 @@ def load_secret_env() -> None:
             value = value.strip().strip('"').strip("'")
             if key and not os.environ.get(key):
                 os.environ[key] = value
+        loaded = True
+        break
+    if not loaded:
+        return
 
 
 def run_git(args: List[str]) -> str:
@@ -302,36 +305,36 @@ def fallback_record(commit: Dict[str, str], files: List[Dict[str, str]]) -> Dict
     scope = infer_scope(files)
     subject = commit.get("subject", "").strip()
     body = commit.get("body", "").strip()
-    summary = subject or "No commit message summary available."
-    intent = body if body else "No explicit intent was provided in commit body."
+    summary = subject or "コミットメッセージから要約を取得できませんでした。"
+    intent = body if body else "コミット本文に意図が記載されていません。"
 
     new_rules: List[str] = []
     anti_patterns: List[str] = []
     debt: List[str] = []
 
     if any("TODO" in (item.get("status", "") + item.get("path", "")) for item in files):
-        debt.append(
-            "TODO/FIXME found in touched changes; verify if behavior is completed."
-        )
-        anti_patterns.append("Do not assume TODO changes are production-ready.")
+        debt.append("TODO/FIXME が残る変更です。動作完了条件を明文化してください。")
+        anti_patterns.append("TODO/FIXME が残る変更を本番反映条件にしない。")
 
     if any(item.get("status", "").startswith("D") for item in files):
-        anti_patterns.append("Deleted files may imply migration or reference cleanup is needed.")
+        anti_patterns.append(
+            "削除ファイルに対して参照・移行影響の棚卸しが必要な場合があります。"
+        )
 
     if not summary:
-        summary = "Repository change committed."
+        summary = "リポジトリ変更がコミットされました。"
     if not intent:
-        intent = "Unknown intent."
+        intent = "意図は判定できません。"
 
     if not new_rules:
-        new_rules = ["Keep review focused on touched scope and revert scope assumptions."]
+        new_rules = ["コミット差分の影響範囲を限定してレビューし、不要な範囲の仮説を避ける。"]
 
     return {
         "summary": summary,
         "intent": intent[:1200],
         "new_rules": new_rules,
         "anti_patterns": anti_patterns,
-        "debt": debt or ["No immediate debt identified during fallback extraction."],
+        "debt": debt or ["現時点で確度が高い未解決課題は確認できませんでした。"],
         "scope": scope,
         "confidence": 0.35,
         "risk": "medium",
@@ -342,8 +345,15 @@ def fallback_record(commit: Dict[str, str], files: List[Dict[str, str]]) -> Dict
 def commit_entry_exists_in_markdown(commit_hash: str) -> bool:
     if not BRAIN_MD.exists():
         return False
-    marker = f"Commit: {commit_hash}"
-    return marker in BRAIN_MD.read_text(encoding="utf-8", errors="ignore")
+    try:
+        text = BRAIN_MD.read_text(encoding="utf-8", errors="ignore")
+    except OSError:
+        return False
+    marker_pattern = re.compile(
+        rf"^##\s*\[\d{{4}}-\d{{2}}-\d{{2}}\]\s*Commit:\s*{re.escape(commit_hash)}(?:\s|$)",
+        re.M,
+    )
+    return bool(marker_pattern.search(text))
 
 
 def commit_entry_exists_in_index(commit_hash: str) -> bool:
@@ -371,16 +381,19 @@ def append_knowledge(
         return
 
     ts = commit.get("date") or datetime.now(timezone.utc).isoformat()
+    date_match = re.search(r"\b(20\d{2}-\d{2}-\d{2})\b", ts)
+    entry_date = date_match.group(1) if date_match else datetime.now(timezone.utc).date().isoformat()
     markdown_lines = [
-        "- **Summary**: " + record.get("summary", ""),
-        "- **Acquired knowledge**: " + (", ".join(record.get("new_rules", [])) or '-'),
-        "- **Rules to follow**: " + (", ".join(record.get("anti_patterns", [])) or '-'),
-        "- **Outstanding context**: " + (", ".join(record.get("debt", [])) or '-'),
-        "- **Scope**: " + (", ".join(record.get("scope", [])) or '-'),
-        f"- **Confidence**: {record.get('confidence', 0.0)}",
-        f"- **Severity**: {record.get('risk', 'medium')}",
-        f"- **Review deadline**: {record.get('review_deadline') or '-'}",
-        f"- **Source**: {source}",
+        f"## [{entry_date}] Commit: {commit_hash}",
+        "- **要約**: " + record.get("summary", ""),
+        "- **獲得した知識**: " + (", ".join(record.get("new_rules", [])) or "-"),
+        "- **守るべきルール**: " + (", ".join(record.get("anti_patterns", [])) or "-"),
+        "- **未解決の文脈**: " + (", ".join(record.get("debt", [])) or "-"),
+        "- **対象範囲**: " + (", ".join(record.get("scope", [])) or "-"),
+        f"- **確度**: {record.get('confidence', 0.0)}",
+        f"- **重要度**: {record.get('risk', 'medium')}",
+        f"- **レビュー期限**: {record.get('review_deadline') or '-'}",
+        f"- **ソース**: {source}",
         "",
         "",
     ]

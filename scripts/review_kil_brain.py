@@ -70,16 +70,16 @@ def _infer_review_plan(record: Dict[str, Any]) -> ReviewResult:
 
     needs_human_review = risk == "high" or confidence < REVIEW_SCORE_RANGES.get(risk, 0.0)
     if needs_human_review:
-        issues.append("High review risk or low model confidence.")
+        issues.append("重要度が高い変更、またはモデル信頼度が閾値未満のため、必須で人間レビューが必要です。")
 
     if needs_soon:
-        recommendations.append("Review deadline exists. prioritize before next risky changes.")
+        recommendations.append("レビュー期限が設定されています。次の高リスク変更前に優先対応してください。")
 
     if "docs" in scope:
-        recommendations.append("Check documentation impact and keep docs sync.")
+        recommendations.append("ドキュメント影響を確認し、関連ドキュメントを最新状態に保ってください。")
 
     if "ci" in scope:
-        recommendations.append("Run post-commit + test pipeline checks for CI-related touches.")
+        recommendations.append("CI関連差分は事前に post-commit + テストパイプラインを実行して再現性を担保してください。")
 
     severity = "low"
     if risk == "high":

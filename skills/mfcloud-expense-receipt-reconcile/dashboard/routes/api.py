@@ -2964,15 +2964,57 @@ def create_api_router() -> APIRouter:
                     continue
                 date_text = _as_str(row.get("date") or row.get("created_at") or row.get("timestamp"))
                 date_norm = _to_date(date_text) or date_text or datetime.now().isoformat()[:10]
-                summary = _as_str(row.get("summary") or row.get("title") or row.get("message") or row.get("description"))
-                knowledge = _to_list_text(row.get("knowledge") or row.get("acquired_knowledge"))
-                rules = _to_list_text(row.get("rules") or row.get("guardrails"))
-                context = _to_list_text(row.get("context") or row.get("unresolved_context") or row.get("notes"))
+                summary = _as_str(
+                    row.get("summary")
+                    or row.get("title")
+                    or row.get("message")
+                    or row.get("description")
+                    or row.get("intent")
+                )
+                knowledge = _to_list_text(
+                    row.get("knowledge")
+                    or row.get("acquired_knowledge")
+                    or row.get("new_rules")
+                )
+                rules = _to_list_text(
+                    row.get("rules")
+                    or row.get("guardrails")
+                    or row.get("anti_patterns")
+                )
+                context = _to_list_text(
+                    row.get("context")
+                    or row.get("unresolved_context")
+                    or row.get("notes")
+                    or row.get("debt")
+                )
+                deadline = _as_str(
+                    row.get("review_deadline")
+                    or row.get("deadline")
+                    or row.get("next_deadline")
+                    or row.get("due_date")
+                )
                 if not summary and not knowledge and not rules and not context:
                     raw = _as_str(row.get("raw") or row.get("text") or str(row))
                     summary = raw if raw else "No summary extracted."
                 risk = _as_str(row.get("risk") or row.get("severity") or row.get("rule_level"))
-                record = _to_record(row, "index", commit, date_norm, summary, knowledge, rules, context, risk, row)
+                record = _to_record(
+                    {
+                        "summary": summary,
+                        "knowledge": knowledge,
+                        "rules": rules,
+                        "context": context,
+                        "deadline": deadline,
+                    },
+                    "index",
+                    commit,
+                    date_norm,
+                    summary,
+                    knowledge,
+                    rules,
+                    context,
+                    risk,
+                    row,
+                )
                 if record:
                     records.append(record)
             return records
@@ -2986,7 +3028,7 @@ def create_api_router() -> APIRouter:
 
             records: list[dict[str, object]] = []
             pattern = re.compile(
-                r"^##\s*\[(?P<date>\d{4}-\d{2}-\d{2})\]\s*Commit:\s*(?P<commit>.+?)(?:\r?\n(?P<body>.*?))?(?=^##\s*\[|\Z)",
+                r'^##\s*\[(?P<date>\d{4}-\d{2}-\d{2})\]\s*Commit:\s*(?P<commit>.+?)(?:\r?\n(?P<body>.*?))?(?=^##\s*\[|\Z)',
                 re.M | re.S,
             )
             for match in pattern.finditer(text):
@@ -3008,19 +3050,42 @@ def create_api_router() -> APIRouter:
                     else:
                         free_lines.append(line)
 
-                summary = _as_str(payload.get("概要") or payload.get("Summary") or "AGENT_BRAIN snapshot")
-                knowledge = _to_list_text(payload.get("獲得した知識") or payload.get("Knowledge"))
-                rules = _to_list_text(payload.get("守るべきルール") or payload.get("Rules"))
-                context = _to_list_text(payload.get("未解決の文脈") or payload.get("Unresolved context"))
+                summary = _as_str(
+                    payload.get("要約")
+                    or payload.get("Summary")
+                    or "AGENT_BRAIN snapshot"
+                )
+                knowledge = _to_list_text(
+                    payload.get("獲得した知識")
+                    or payload.get("Acquired knowledge")
+                    or payload.get("Knowledge")
+                )
+                rules = _to_list_text(
+                    payload.get("守るべきルール")
+                    or payload.get("Rules")
+                )
+                context = _to_list_text(
+                    payload.get("未解決の文脈")
+                    or payload.get("Unresolved context")
+                    or payload.get("Notes")
+                )
                 if not context and free_lines:
                     context = free_lines[:3]
-                risk = _as_str(payload.get("リスク") or payload.get("Risk"))
+                risk = _as_str(
+                    payload.get("重要度")
+                    or payload.get("Severity")
+                    or payload.get("Risk")
+                )
                 record = _to_record(
                     {
                         "summary": summary,
                         "notes": "\n".join(context),
                         "date": date_text,
-                        "deadline": _as_str(payload.get("期限")),
+                        "deadline": _as_str(
+                            payload.get("レビュー期限")
+                            or payload.get("Review deadline")
+                            or payload.get("Deadline")
+                        ),
                     },
                     "markdown",
                     commit,
