@@ -1,0 +1,16 @@
+{
+  "name": "SSL Renewal (template)",
+  "steps": [
+    {"type": "goto", "url": "/"},
+    {"type": "wait_for_selector", "selector": "body", "state": "visible", "timeout": 30000},
+    {"type": "assert_title_contains", "text": "Lolipop"},
+    {"type": "screenshot", "name": "01_top"},
+    {"type": "click", "selector": "a:has-text(\"SSL\")"},
+    {"type": "wait_for_selector", "selector": "a:has-text(\"Certificates\")", "state": "visible", "timeout": 30000},
+    {"type": "click", "selector": "a:has-text(\"Certificates\")"},
+    {"type": "wait_for_selector", "selector": "button:has-text(\"Reissue\")", "state": "visible", "timeout": 30000},
+    {"type": "click", "selector": "button:has-text(\"Reissue\")"},
+    {"type": "wait_for_selector", "selector": "text=Reissued", "state": "visible", "timeout": 30000},
+    {"type": "screenshot", "name": "02_after_reissue"}
+  ]
+}

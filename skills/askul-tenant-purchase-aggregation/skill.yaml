@@ -1,0 +1,45 @@
+version: 1
+name: askul-tenant-purchase-aggregation
+kind: automation
+
+entrypoint:
+  runtime: python
+  command: python scripts/run.py
+
+connections:
+  - web:askul
+  - local:csv-analysis
+
+defaults:
+  params:
+    mode: aggregate
+    csv_path: null
+  config:
+    dry_run: true
+    csv:
+      encoding: auto
+      delimiter: auto
+      amount_column: 税込小計
+      date_column: null
+      date_column_candidates:
+        - 受付日
+        - 伝票日付
+        - 注文日
+      item_column_candidates:
+        - 商品名
+        - 商品情報
+      comment_column_candidates:
+        - 備考
+        - コメント
+      tenant_column: null
+      tenant_default: UNKNOWN
+      tenant_rules: []
+      tenant_map: null
+    filters:
+      min_date: null
+      max_date: null
+      allow_negative: true
+      min_tenant_confidence: 0.6
+    reporting:
+      output_dir: null
+      include_item_breakdown: true

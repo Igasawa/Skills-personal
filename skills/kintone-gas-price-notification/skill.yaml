@@ -1,0 +1,33 @@
+version: 1
+name: kintone-gas-price-notification
+kind: automation
+
+entrypoint:
+  runtime: python
+  command: python scripts/run.py
+
+connections:
+  - web:gogo.gs
+  - kintone:thread-comment
+
+secrets:
+  env:
+    - KINTONE_USERNAME
+    - KINTONE_PASSWORD
+
+defaults:
+  params:
+    day: 10
+    fallback_days: 2
+  config:
+    kintone:
+      subdomain: "5atx9"
+      space_id: 24
+      thread_id: 36
+      allow_session_fallback: true
+      session_name: "kintone"
+    preflight:
+      enabled: true
+      subdomain: "5atx9"
+      space_id: 81
+      thread_id: 131

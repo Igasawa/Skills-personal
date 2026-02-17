@@ -1,0 +1,12 @@
+{
+  "name": "Cron list check (template)",
+  "steps": [
+    {"type": "goto", "url": "/"},
+    {"type": "wait_for_selector", "selector": "body", "state": "visible", "timeout": 30000},
+    {"type": "assert_title_contains", "text": "Lolipop"},
+    {"type": "click", "selector": "a:has-text(\"Cron\")"},
+    {"type": "wait_for_selector", "selector": "table", "state": "visible", "timeout": 30000},
+    {"type": "assert_text", "text": "Cron"},
+    {"type": "screenshot", "name": "04_cron_list"}
+  ]
+}

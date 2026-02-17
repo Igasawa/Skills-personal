@@ -1,0 +1,41 @@
+version: 1
+name: docs-knowledge-refresh
+kind: automation
+
+entrypoint:
+  runtime: python
+  command: python scripts/run.py
+
+connections:
+  - local:markdown-docs
+  - local:knowledge-freshness-audit
+
+secrets:
+  env: []
+
+defaults:
+  params:
+    scan_paths:
+      - docs
+    max_age_days: 30
+    warn_within_days: 7
+    fail_on_stale: false
+  config:
+    dry_run: true
+    targets:
+      paths:
+        - docs
+      extensions:
+        - ".md"
+      exclude_dirs:
+        - ".git"
+        - "output"
+        - "node_modules"
+        - "__pycache__"
+    policy:
+      default_max_age_days: 30
+      warn_within_days: 7
+    registry:
+      path: "docs/knowledge_refresh_registry.json"
+    report:
+      write_markdown: false

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Docs Knowledge Refresh"
+  short_description: "Audit stale knowledge docs on a schedule"
+  default_prompt: "Run a freshness audit for markdown docs and report stale items."

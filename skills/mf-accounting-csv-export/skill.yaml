@@ -1,0 +1,33 @@
+version: 1
+name: mf-accounting-csv-export
+kind: automation
+
+entrypoint:
+  runtime: python
+  command: python scripts/run.py
+
+connections:
+  - moneyforward:cloud-accounting-csv-export
+  - local:csv-analysis
+
+secrets:
+  env:
+    - MF_ACCOUNTING_USERNAME
+    - MF_ACCOUNTING_PASSWORD
+
+defaults:
+  config:
+    dry_run: true
+    csv:
+      preset: "journal_standard"
+      encoding: "auto"
+      delimiter: "auto"
+      write_normalized: true
+    paths:
+      download_url: null
+      watch_dir: null
+      download_dir: null
+      output_dir: null
+    playwright:
+      session_name: "mf-accounting"
+      storage_state_path: null

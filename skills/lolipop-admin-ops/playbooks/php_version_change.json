@@ -1,0 +1,14 @@
+{
+  "name": "PHP version change (template)",
+  "steps": [
+    {"type": "goto", "url": "/"},
+    {"type": "wait_for_selector", "selector": "body", "state": "visible", "timeout": 30000},
+    {"type": "assert_text", "text": "Server Settings"},
+    {"type": "click", "selector": "a:has-text(\"Server Settings\")"},
+    {"type": "wait_for_selector", "selector": "select", "state": "visible", "timeout": 30000},
+    {"type": "select_option", "selector": "select[name='php-version']", "value": "8.2"},
+    {"type": "wait_ms", "value": "1200"},
+    {"type": "click", "selector": "button:has-text(\"Save\")"},
+    {"type": "screenshot", "name": "03_after_php_change"}
+  ]
+}

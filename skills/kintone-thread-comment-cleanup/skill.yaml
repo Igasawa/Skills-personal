@@ -1,0 +1,26 @@
+version: 1
+name: kintone-thread-comment-cleanup
+kind: automation
+
+entrypoint:
+  runtime: python
+  command: python scripts/run.py
+
+connections:
+  - kintone:thread-comment-delete
+
+secrets:
+  env:
+    - KINTONE_USERNAME
+    - KINTONE_PASSWORD
+
+defaults:
+  config:
+    kintone:
+      subdomain: "5atx9"
+      # 本番スレッドは利用時に指定する（誤削除防止）
+    preflight:
+      enabled: true
+      subdomain: "5atx9"
+      space_id: 81
+      thread_id: 131

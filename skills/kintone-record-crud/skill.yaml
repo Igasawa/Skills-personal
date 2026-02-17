@@ -1,0 +1,26 @@
+version: 1
+name: kintone-record-crud
+kind: automation
+
+entrypoint:
+  runtime: python
+  command: python scripts/run.py
+
+connections:
+  - kintone:record-add
+  - kintone:record-update
+  - kintone:records-upsert
+
+secrets:
+  env:
+    - KINTONE_USERNAME
+    - KINTONE_PASSWORD
+    - KINTONE_API_TOKEN
+
+defaults:
+  config:
+    kintone:
+      subdomain: "5atx9"
+      allow_session_fallback: true
+      session_name: "kintone"
+

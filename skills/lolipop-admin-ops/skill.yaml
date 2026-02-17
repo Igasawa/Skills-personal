@@ -1,0 +1,26 @@
+version: 1
+name: lolipop-admin-ops
+kind: automation
+
+entrypoint:
+  runtime: python
+  command: python scripts/run.py
+
+connections:
+  - lolipop:admin-console
+
+secrets:
+  env:
+    - LOLIPOP_USERNAME
+    - LOLIPOP_PASSWORD
+
+defaults:
+  params:
+    action: run-playbook
+    dry_run: true
+    allow_production: false
+    environment: production
+  config:
+    lolipop:
+      base_url: "https://secure.lolipop.jp"
+      session_name: "lolipop"
