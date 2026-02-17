@@ -2474,6 +2474,47 @@ def create_api_router() -> APIRouter:
             headers={"Cache-Control": "no-store"},
         )
 
+    @router.delete("/api/workflow-templates/{template_id}")
+    def api_delete_workflow_template(
+        template_id: str,
+        base_updated_at: str | None = Query(default=None),
+    ) -> JSONResponse:
+        normalized_template_id = _normalize_workflow_template_id(template_id)
+        if not normalized_template_id:
+            raise HTTPException(status_code=400, detail="Invalid template id.")
+
+        base_updated_at = _normalize_workflow_template_timestamp(base_updated_at)
+
+        existing = _read_workflow_templates()
+        target = None
+        target_index = -1
+        for index, row in enumerate(existing):
+            if str(row.get("id") or "") == normalized_template_id:
+                target = row
+                target_index = index
+                break
+
+        if target is None:
+            raise HTTPException(status_code=404, detail="Template not found.")
+
+        target_updated_at = str(target.get("updated_at") or "")
+        if base_updated_at and target_updated_at and target_updated_at != base_updated_at:
+            raise HTTPException(status_code=409, detail="Template was updated by another action. Reload and try again.")
+
+        existing.pop(target_index)
+
+        for row in existing:
+            if str(row.get("source_template_id") or "") == normalized_template_id:
+                row["source_template_id"] = ""
+
+        _write_workflow_templates(existing)
+        core_scheduler.delete_timer_state(normalized_template_id)
+
+        return JSONResponse(
+            {"status": "ok", "deleted_template_id": normalized_template_id, "count": len(existing)},
+            headers={"Cache-Control": "no-store"},
+        )
+
     @router.get("/api/scheduler/state")
     def api_get_scheduler_state(template_id: str | None = Query(default=None)) -> JSONResponse:
         state = core_scheduler.get_state(template_id=template_id)

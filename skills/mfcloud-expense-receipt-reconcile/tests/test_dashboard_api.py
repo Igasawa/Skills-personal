@@ -2366,3 +2366,142 @@ def test_api_save_workflow_template_copy_mode_rejects_unknown_source(monkeypatch
     assert res.status_code == 404
     detail = str(res.json().get("detail") or "")
     assert "template_source_id not found" in detail
+
+
+def test_api_delete_workflow_template_removes_template_timer_and_clears_references(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    client = _create_client(monkeypatch, tmp_path)
+
+    create_res = client.post(
+        "/api/workflow-templates",
+        json={
+            "name": "Base",
+            "year": 2026,
+            "month": 1,
+            "mfcloud_url": "https://example.com/base",
+            "notes": "base",
+        },
+    )
+    assert create_res.status_code == 200
+    base_template = create_res.json()["template"]
+    base_template_id = str(base_template["id"])
+    assert base_template_id
+
+    state_res = client.post(
+        f"/api/scheduler/state?template_id={base_template_id}",
+        json={
+            "enabled": True,
+            "mode": "preflight_mf",
+            "year": 2026,
+            "month": 1,
+            "run_date": "2099-01-01",
+            "run_time": "08:30",
+            "catch_up_policy": "run_on_startup",
+            "recurrence": "daily",
+            "auth_handoff": True,
+            "auto_receipt_name": False,
+            "mf_draft_create": False,
+        },
+    )
+    assert state_res.status_code == 200
+
+    copy_child_res = client.post(
+        "/api/workflow-templates",
+        json={
+            "template_mode": "copy",
+            "template_source_id": base_template_id,
+            "name": "Child Copy",
+            "year": 2026,
+            "month": 1,
+            "mfcloud_url": "https://example.com/base",
+            "notes": "child",
+            "rakuten_orders_url": "",
+        },
+    )
+    assert copy_child_res.status_code == 200
+    child_template = copy_child_res.json()["template"]
+    child_template_id = str(child_template["id"])
+    assert child_template_id
+
+    copy_grandchild_res = client.post(
+        "/api/workflow-templates",
+        json={
+            "template_mode": "copy",
+            "template_source_id": child_template_id,
+            "name": "Grandchild Copy",
+            "year": 2026,
+            "month": 1,
+            "mfcloud_url": "https://example.com/base",
+            "notes": "grandchild",
+            "rakuten_orders_url": "",
+        },
+    )
+    assert copy_grandchild_res.status_code == 200
+    grandchild_template = copy_grandchild_res.json()["template"]
+    grandchild_template_id = str(grandchild_template["id"])
+    assert grandchild_template_id
+
+    delete_res = client.delete(f"/api/workflow-templates/{child_template_id}")
+    assert delete_res.status_code == 200
+    delete_body = delete_res.json()
+    assert delete_body["deleted_template_id"] == child_template_id
+    assert delete_body["count"] == 2
+
+    templates = json.loads(_workflow_template_store(tmp_path).read_text(encoding="utf-8"))
+    assert isinstance(templates, list)
+    assert all(str(row.get("id") or "") != child_template_id for row in templates)
+    assert any(str(row.get("id") or "") == grandchild_template_id for row in templates)
+    for row in templates:
+        if str(row.get("id") or "") == grandchild_template_id:
+            assert str(row.get("source_template_id") or "") == ""
+
+    state_path = _artifact_root(tmp_path) / "_scheduler" / "scheduler_state.json"
+    assert state_path.exists()
+    state = json.loads(state_path.read_text(encoding="utf-8"))
+    timers = state.get("template_timers")
+    assert isinstance(timers, dict)
+    assert base_template_id in timers
+    assert child_template_id not in timers
+    assert grandchild_template_id in timers
+
+
+def test_api_delete_workflow_template_concurrency_conflict(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    client = _create_client(monkeypatch, tmp_path)
+    create_res = client.post(
+        "/api/workflow-templates",
+        json={
+            "name": "Base",
+            "year": 2026,
+            "month": 1,
+            "mfcloud_url": "https://example.com/base",
+            "notes": "base",
+        },
+    )
+    assert create_res.status_code == 200
+    created = create_res.json()["template"]
+    template_id = str(created["id"])
+    assert template_id
+    stale_stamp = "2000-01-01T00:00:00"
+
+    conflict_res = client.delete(f"/api/workflow-templates/{template_id}?base_updated_at={stale_stamp}")
+    assert conflict_res.status_code == 409
+    detail = str(conflict_res.json().get("detail") or "")
+    assert "Template was updated by another action." in detail
+
+
+def test_api_delete_workflow_template_not_found(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    client = _create_client(monkeypatch, tmp_path)
+    target_id = "a" * 24
+    res = client.delete(f"/api/workflow-templates/{target_id}")
+    assert res.status_code == 404
+    assert str(res.json().get("detail") or "").startswith("Template not found")
+
+
+def test_api_delete_workflow_template_invalid_id(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    client = _create_client(monkeypatch, tmp_path)
+    invalid_id = "x" * 65
+    res = client.delete(f"/api/workflow-templates/{invalid_id}")
+    assert res.status_code == 400
+    assert str(res.json().get("detail") or "") == "Invalid template id."

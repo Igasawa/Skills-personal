@@ -381,6 +381,7 @@ def delete_timer_state(template_id: str | None) -> None:
             return
         timers.pop(normalized_id, None)
         state["template_timers"] = timers
+        _next_retry_at_by_template.pop(normalized_id, None)
         _write_state_unlocked(state)
 
 
