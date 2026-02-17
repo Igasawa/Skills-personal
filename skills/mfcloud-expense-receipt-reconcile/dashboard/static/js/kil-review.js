@@ -99,6 +99,23 @@
     return Array.from(new Set(endpoints));
   }
 
+  function fetchWithTimeout(url, options, timeoutMs = 12000) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+    return fetch(url, { ...options, signal: controller.signal })
+      .then((response) => {
+        clearTimeout(timeoutId);
+        return response;
+      })
+      .catch((error) => {
+        clearTimeout(timeoutId);
+        if (error?.name === "AbortError") {
+          throw new Error(`Request timeout after ${timeoutMs}ms: ${url}`);
+        }
+        throw error;
+      });
+  }
+
   function parseDate(value) {
     const text = String(value || "").trim();
     if (!text) return null;
@@ -466,7 +483,7 @@
       for (const base of getApiBaseCandidates()) {
         const url = `${base}?${params}`;
         try {
-          const res = await fetch(url, { cache: "no-store" });
+          const res = await fetchWithTimeout(url, { cache: "no-store" });
           if (!res.ok) {
             const detail = await res.json().catch(() => ({}));
             lastError = `${url} -> HTTP ${res.status}: ${toFriendlyMessage(detail.detail || "Request failed")}`;
