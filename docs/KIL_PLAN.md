@@ -217,3 +217,13 @@ scripts/
 4. é€£æºç’°å¢ƒï¼ˆWindows / macOSï¼‰ã§ãƒ•ãƒƒã‚¯ãŒèµ·å‹•ã—ã€æœ€ä½Ž1ä»¶ã®åˆ†æžã‚’ä¿å­˜ã§ãã‚‹ã€‚  
 5. APIãƒšã‚¤ãƒ­ãƒ¼ãƒ‰ã«ã‚·ãƒ¼ã‚¯ãƒ¬ãƒƒãƒˆç–‘ã„æ–‡å­—åˆ—ãŒå«ã¾ã‚Œãªã„ã€‚  
 
+
+---
+
+## ‰^—p’Ç‹L: ƒRƒ~ƒbƒg‚²‚Æ‚ÌŽ©—¥ŠwKƒ‹[ƒv
+
+1. `post-commit` ‚ÅƒRƒ~ƒbƒg’¼Œã‚É `scripts/analyze_commit.py` ‚ð•K‚¸ŽÀs‚µAÅVƒRƒ~ƒbƒg‚ð `AGENT_BRAIN` ‚É”½‰f‚·‚éB
+2. ŽŸ‚Ìƒ^ƒXƒNŠJŽn‘O‚ÉA`AGENT_BRAIN.md` ‚Æ `AGENT_BRAIN_INDEX.jsonl` ‚ÌÅV5ŒˆÈã‚ðŠm”F‚µ‚ÄAs“®ŽwjE‹ÖŽ~Ž–€E–¢‰ðŒˆ•¶–¬‚ðˆø‚«Œp‚®B
+3. ”½‰fˆ—Ž¸”s‚Í `AGENT_BRAIN_ERROR.log` ‚É‹L˜^‚µAƒRƒ~ƒbƒg‚ÍŽ~‚ß‚¸ŽŸ‰ñŠJŽnŽž‚É•œ‹Œ‘Î‰ž‚·‚éiÄŽÀs‰ÂjB
+4. `KIL_GEMINI_MODEL` ‚Æ `GEMINI_API_KEY` ‚Í `AX_HOME` ”z‰º‚Ì env ŠÇ—ƒtƒ@ƒCƒ‹iŠù’è: `~/.ax/secrets/kintone.env`j‚ÅŠÇ—‚µAƒŠƒ|ƒWƒgƒŠŠO‚É•ÛŽ‚·‚éB
+5. ‰^—pŒø‰Ê‘ª’è‚Æ‚µ‚ÄA`AGENT_BRAIN.md` / `AGENT_BRAIN_INDEX.jsonl` ‚ÌÅVƒGƒ“ƒgƒŠ”‚ð’ÇÕ‚µAXV‚ªŽ~‚Ü‚Á‚Ä‚¢‚È‚¢‚©‚ðŠm”F‚·‚éB
