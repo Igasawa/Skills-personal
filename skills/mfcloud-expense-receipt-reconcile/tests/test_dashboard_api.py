@@ -2274,11 +2274,11 @@ def test_api_save_workflow_template_copy_mode_copies_source_scheduler_state(monk
     scheduler_res = client.post(
         f"/api/scheduler/state?template_id={source_template_id}",
         json={
-            "enabled": False,
+            "enabled": True,
             "mode": "preflight_mf",
             "year": 2026,
             "month": 1,
-            "run_date": "2026-03-01",
+            "run_date": "2099-01-01",
             "run_time": "08:30",
             "catch_up_policy": "run_on_startup",
             "recurrence": "daily",
@@ -2324,3 +2324,45 @@ def test_api_save_workflow_template_copy_mode_copies_source_scheduler_state(monk
     assert copied_timer["year"] == source_timer_state["year"]
     assert copied_timer["month"] == source_timer_state["month"]
     assert copied_timer["auth_handoff"] == source_timer_state["auth_handoff"]
+    assert copied_timer["enabled"] is False
+    assert copied_timer["auto_start_enabled"] is False
+    assert copied_timer["last_result"] is None
+    assert copied_timer["last_triggered_signature"] == ""
+
+
+def test_api_save_workflow_template_copy_mode_requires_source_template_id(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    client = _create_client(monkeypatch, tmp_path)
+    res = client.post(
+        "/api/workflow-templates",
+        json={
+            "template_mode": "copy",
+            "name": "Alpha Copy",
+            "year": 2026,
+            "month": 1,
+            "mfcloud_url": "https://example.com/alpha",
+            "notes": "copied",
+        },
+    )
+    assert res.status_code == 400
+    detail = str(res.json().get("detail") or "")
+    assert "template_source_id is required for copy mode" in detail
+
+
+def test_api_save_workflow_template_copy_mode_rejects_unknown_source(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    client = _create_client(monkeypatch, tmp_path)
+    res = client.post(
+        "/api/workflow-templates",
+        json={
+            "template_mode": "copy",
+            "template_source_id": "not-exists-123",
+            "name": "Alpha Copy",
+            "year": 2026,
+            "month": 1,
+            "mfcloud_url": "https://example.com/alpha",
+            "notes": "copied",
+            "base_updated_at": "2099-01-01T00:00:00",
+        },
+    )
+    assert res.status_code == 404
+    detail = str(res.json().get("detail") or "")
+    assert "template_source_id not found" in detail

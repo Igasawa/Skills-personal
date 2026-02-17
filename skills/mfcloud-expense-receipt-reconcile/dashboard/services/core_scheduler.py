@@ -51,6 +51,20 @@ _TIMER_STATE_KEYS = {
     "last_triggered_signature",
     "last_triggered_at",
 }
+_TIMER_STATE_COPY_KEYS = {
+    "mode",
+    "year",
+    "month",
+    "mfcloud_url",
+    "notes",
+    "run_date",
+    "run_time",
+    "catch_up_policy",
+    "recurrence",
+    "auth_handoff",
+    "auto_receipt_name",
+    "mf_draft_create",
+}
 
 _state_lock = threading.Lock()
 _worker_lock = threading.Lock()
@@ -297,6 +311,21 @@ def _normalize_template_id(template_id: Any) -> str:
     return raw or _DEFAULT_TEMPLATE_ID
 
 
+def _build_copied_timer_state(source_state: dict[str, Any] | None) -> dict[str, Any]:
+    source_state = _normalize_state(source_state)
+    copied = _default_state()
+    for key in _TIMER_STATE_COPY_KEYS:
+        copied[key] = source_state.get(key)
+    copied["enabled"] = False
+    copied["auto_start_enabled"] = False
+    copied["updated_at"] = _now_iso()
+    copied["last_evaluated_at"] = None
+    copied["last_result"] = None
+    copied["last_triggered_signature"] = ""
+    copied["last_triggered_at"] = None
+    return copied
+
+
 def _get_template_timers(state: dict[str, Any]) -> dict[str, dict[str, Any]]:
     raw_timers = state.get("template_timers")
     if not isinstance(raw_timers, dict):
@@ -333,12 +362,24 @@ def copy_timer_state(source_template_id: str | None, target_template_id: str | N
         state = _read_state_unlocked()
         timers = _get_template_timers(state)
         source_state = timers.get(source_id)
-        if not source_state:
-            source_state = _default_state()
-        copied = _normalize_state(source_state)
-        copied["updated_at"] = _now_iso()
+        copied = _build_copied_timer_state(source_state)
         timers[target_id] = copied
         _next_retry_at_by_template.pop(target_id, None)
+        state["template_timers"] = timers
+        _write_state_unlocked(state)
+
+
+def delete_timer_state(template_id: str | None) -> None:
+    normalized_id = _normalize_template_id(template_id)
+    if normalized_id == _DEFAULT_TEMPLATE_ID:
+        return
+
+    with _state_lock:
+        state = _read_state_unlocked()
+        timers = _get_template_timers(state)
+        if normalized_id not in timers:
+            return
+        timers.pop(normalized_id, None)
         state["template_timers"] = timers
         _write_state_unlocked(state)
 
@@ -445,10 +486,16 @@ def _align_state_for_repetition(state: dict[str, Any], scheduled: datetime) -> N
     state["run_time"] = next_scheduled.strftime("%H:%M")
 
 
-def _enrich_state(state: dict[str, Any]) -> dict[str, Any]:
+def _enrich_state(
+    state: dict[str, Any], *, template_id: str | None = None, template_timers_count: int | None = None
+) -> dict[str, Any]:
     view = _normalize_state(state)
     scheduled = _scheduled_datetime(view)
     view["next_run_at"] = scheduled.isoformat(timespec="seconds") if scheduled else None
+    if template_id is not None:
+        view["template_id"] = _normalize_template_id(template_id)
+    if template_timers_count is not None:
+        view["template_timers_count"] = template_timers_count
     view["autostart_supported"] = _autostart_supported()
     view["autostart_path"] = str(_autostart_script_path())
     view["auto_start_active"] = _autostart_active()
@@ -566,15 +613,24 @@ def evaluate_once(template_id: str | None = None) -> dict[str, Any]:
             ids = list(timers.keys())
             for template_key in ids:
                 _evaluate_single_timer(timers[template_key], template_key, now)
-            default_state = timers.get(_DEFAULT_TEMPLATE_ID) or timers[ids[0]]
+            default_template_id = _DEFAULT_TEMPLATE_ID if _DEFAULT_TEMPLATE_ID in timers else (ids[0] if ids else _DEFAULT_TEMPLATE_ID)
+            default_state = timers.get(default_template_id, _default_state())
             _write_state_unlocked({"template_timers": timers})
-            return _enrich_state(default_state)
+            return _enrich_state(
+                default_state,
+                template_id=default_template_id,
+                template_timers_count=len(timers),
+            )
 
         template_key = _normalize_template_id(template_id)
         timer_state = _ensure_template_state_container(state, template_key)
         _evaluate_single_timer(timer_state, template_key, now)
         _write_state_unlocked(state)
-        return _enrich_state(timer_state)
+        return _enrich_state(
+            timer_state,
+            template_id=template_key,
+            template_timers_count=len(_get_template_timers(state)),
+        )
 
 
 def get_state(template_id: str | None = None) -> dict[str, Any]:
@@ -582,7 +638,11 @@ def get_state(template_id: str | None = None) -> dict[str, Any]:
         state = _read_state_unlocked()
         template_key = _normalize_template_id(template_id)
         timer_state = _ensure_template_state_container(state, template_key)
-        return _enrich_state(timer_state)
+        return _enrich_state(
+            timer_state,
+            template_id=template_key,
+            template_timers_count=len(_get_template_timers(state)),
+        )
 
 
 def update_state(payload: dict[str, Any] | None, template_id: str | None = None) -> dict[str, Any]:

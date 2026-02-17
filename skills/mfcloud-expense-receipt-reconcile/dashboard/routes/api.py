@@ -2280,6 +2280,8 @@ def create_api_router() -> APIRouter:
                 or payload.get("template_source_id")
                 or raw_template_id
             )
+        if template_mode == "copy" and not source_template_id:
+            raise HTTPException(status_code=400, detail="template_source_id is required for copy mode.")
         if template_mode == "edit" and template_mode_requested and template_id and not base_updated_at:
             raise HTTPException(status_code=400, detail="編集時はベース更新日時が必要です。")
 
@@ -2436,6 +2438,11 @@ def create_api_router() -> APIRouter:
                 break
 
         if not updated:
+            template_mode = str(payload.get("template_mode") or "").strip().lower()
+            if template_mode == "copy":
+                source_exists = any(str(row.get("id") or "") == source_template_id for row in existing)
+                if not source_exists:
+                    raise HTTPException(status_code=404, detail="template_source_id not found.")
             if (not allow_duplicate_name) and _template_name_taken(
                 existing,
                 str(payload.get("name") or ""),
@@ -2444,7 +2451,6 @@ def create_api_router() -> APIRouter:
                 raise HTTPException(status_code=409, detail="Template name already exists.")
             if len(existing) >= WORKFLOW_TEMPLATE_MAX_ITEMS:
                 raise HTTPException(status_code=409, detail="Template limit reached. Remove one and save again.")
-            template_mode = str(payload.get("template_mode") or "").strip().lower()
             payload["created_at"] = _workflow_template_timestamp_now()
             payload["updated_at"] = payload["created_at"]
             sanitized = dict(payload)
