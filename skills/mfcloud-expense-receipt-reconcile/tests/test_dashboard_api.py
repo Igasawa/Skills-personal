@@ -2254,3 +2254,73 @@ def test_api_save_workflow_template_copy_mode_creates_new_template(monkeypatch: 
     rows = json.loads(_workflow_template_store(tmp_path).read_text(encoding="utf-8"))
     assert isinstance(rows, list)
     assert len(rows) == 2
+
+
+def test_api_save_workflow_template_copy_mode_copies_source_scheduler_state(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    client = _create_client(monkeypatch, tmp_path)
+    create_payload = {
+        "name": "Alpha",
+        "year": 2026,
+        "month": 1,
+        "mfcloud_url": "https://example.com/alpha",
+        "notes": "base",
+    }
+    create_res = client.post("/api/workflow-templates", json=create_payload)
+    assert create_res.status_code == 200
+    created = create_res.json()["template"]
+    source_template_id = str(created["id"])
+    assert source_template_id
+
+    scheduler_res = client.post(
+        f"/api/scheduler/state?template_id={source_template_id}",
+        json={
+            "enabled": False,
+            "mode": "preflight_mf",
+            "year": 2026,
+            "month": 1,
+            "run_date": "2026-03-01",
+            "run_time": "08:30",
+            "catch_up_policy": "run_on_startup",
+            "recurrence": "daily",
+            "auth_handoff": False,
+        },
+    )
+    assert scheduler_res.status_code == 200
+    source_timer_state = scheduler_res.json()
+    assert source_timer_state["status"] == "ok"
+
+    copy_payload = {
+        "template_mode": "copy",
+        "template_source_id": source_template_id,
+        "name": "Alpha Copy",
+        "year": 2026,
+        "month": 1,
+        "mfcloud_url": "https://example.com/alpha",
+        "notes": "copied",
+        "base_updated_at": str(created.get("updated_at") or ""),
+        "rakuten_orders_url": "",
+    }
+    copy_res = client.post("/api/workflow-templates", json=copy_payload)
+    assert copy_res.status_code == 200
+    copied = copy_res.json()["template"]
+    copied_template_id = str(copied["id"])
+    assert copied_template_id
+    assert copied_template_id != source_template_id
+
+    state_path = _artifact_root(tmp_path) / "_scheduler" / "scheduler_state.json"
+    assert state_path.exists()
+    state = json.loads(state_path.read_text(encoding="utf-8"))
+    timers = state.get("template_timers")
+    assert isinstance(timers, dict)
+    assert source_template_id in timers
+    assert copied_template_id in timers
+
+    copied_timer = timers[copied_template_id]
+    assert copied_timer["mode"] == source_timer_state["mode"]
+    assert copied_timer["run_date"] == source_timer_state["run_date"]
+    assert copied_timer["run_time"] == source_timer_state["run_time"]
+    assert copied_timer["catch_up_policy"] == source_timer_state["catch_up_policy"]
+    assert copied_timer["recurrence"] == source_timer_state["recurrence"]
+    assert copied_timer["year"] == source_timer_state["year"]
+    assert copied_timer["month"] == source_timer_state["month"]
+    assert copied_timer["auth_handoff"] == source_timer_state["auth_handoff"]

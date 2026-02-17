@@ -58,6 +58,26 @@
     return map[code] || code || "1回";
   }
 
+  function resolveTemplateIdForScheduler() {
+    const templateId = String(form.querySelector("[name=template_id]")?.value || "").trim();
+    if (templateId) {
+      return templateId;
+    }
+
+    const templateMode = String(form.querySelector("[name=template_mode]")?.value || "").trim().toLowerCase();
+    if (templateMode === "copy") {
+      return String(form.querySelector("[name=template_source_id]")?.value || "").trim();
+    }
+
+    return "";
+  }
+
+  function buildSchedulerStateUrl() {
+    const templateId = resolveTemplateIdForScheduler();
+    if (!templateId) return "/api/scheduler/state";
+    return `/api/scheduler/state?template_id=${encodeURIComponent(templateId)}`;
+  }
+
   function setBusy(nextBusy) {
     busy = Boolean(nextBusy);
     enabledEl.disabled = busy;
@@ -73,7 +93,10 @@
   }
 
   async function apiGetState() {
-    const res = await fetch(`/api/scheduler/state?_=${Date.now()}`, { cache: "no-store" }).catch(() => null);
+    const baseUrl = buildSchedulerStateUrl();
+    const res = await fetch(`${baseUrl}${baseUrl.includes("?") ? "&" : "?"}_=${Date.now()}`, {
+      cache: "no-store",
+    }).catch(() => null);
     if (!res) throw new Error("network error");
     const body = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(body.detail || `HTTP ${res.status}`);
@@ -81,7 +104,8 @@
   }
 
   async function apiSaveState(payload) {
-    const res = await fetch("/api/scheduler/state", {
+    const baseUrl = buildSchedulerStateUrl();
+    const res = await fetch(baseUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload || {}),

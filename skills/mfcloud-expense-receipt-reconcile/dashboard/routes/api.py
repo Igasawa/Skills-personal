@@ -2444,6 +2444,7 @@ def create_api_router() -> APIRouter:
                 raise HTTPException(status_code=409, detail="Template name already exists.")
             if len(existing) >= WORKFLOW_TEMPLATE_MAX_ITEMS:
                 raise HTTPException(status_code=409, detail="Template limit reached. Remove one and save again.")
+            template_mode = str(payload.get("template_mode") or "").strip().lower()
             payload["created_at"] = _workflow_template_timestamp_now()
             payload["updated_at"] = payload["created_at"]
             sanitized = dict(payload)
@@ -2456,6 +2457,8 @@ def create_api_router() -> APIRouter:
             saved = dict(payload)
             saved.pop("allow_duplicate_name", None)
             saved.pop("base_updated_at", None)
+            if template_mode == "copy" and source_template_id:
+                core_scheduler.copy_timer_state(source_template_id, str(saved.get("id") or ""))
 
         existing.sort(key=lambda row: str(row.get("updated_at") or row.get("created_at") or ""), reverse=True)
         _write_workflow_templates(existing)
@@ -2466,14 +2469,17 @@ def create_api_router() -> APIRouter:
         )
 
     @router.get("/api/scheduler/state")
-    def api_get_scheduler_state() -> JSONResponse:
-        state = core_scheduler.get_state()
+    def api_get_scheduler_state(template_id: str | None = Query(default=None)) -> JSONResponse:
+        state = core_scheduler.get_state(template_id=template_id)
         return JSONResponse({"status": "ok", **state}, headers={"Cache-Control": "no-store"})
 
     @router.post("/api/scheduler/state")
-    def api_set_scheduler_state(payload: dict[str, Any] | None = None) -> JSONResponse:
+    def api_set_scheduler_state(
+        payload: dict[str, Any] | None = None,
+        template_id: str | None = Query(default=None),
+    ) -> JSONResponse:
         body = payload if isinstance(payload, dict) else {}
-        state = core_scheduler.update_state(body)
+        state = core_scheduler.update_state(body, template_id=template_id)
         return JSONResponse({"status": "ok", **state}, headers={"Cache-Control": "no-store"})
 
     @router.post("/api/print-pdf/{ym}/{source}/{filename}")

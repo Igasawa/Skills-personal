@@ -29,13 +29,35 @@ SCHEDULER_POLL_SECONDS = 15
 AUTOSTART_SCRIPT_NAME = "MF_Expense_Dashboard_Autostart.cmd"
 SCHEDULE_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 SCHEDULE_TIME_RE = re.compile(r"^\d{2}:\d{2}$")
+_DEFAULT_TEMPLATE_ID = "__default__"
+_TIMER_STATE_KEYS = {
+    "enabled",
+    "mode",
+    "year",
+    "month",
+    "mfcloud_url",
+    "notes",
+    "run_date",
+    "run_time",
+    "catch_up_policy",
+    "recurrence",
+    "auth_handoff",
+    "auto_receipt_name",
+    "mf_draft_create",
+    "auto_start_enabled",
+    "updated_at",
+    "last_evaluated_at",
+    "last_result",
+    "last_triggered_signature",
+    "last_triggered_at",
+}
 
 _state_lock = threading.Lock()
 _worker_lock = threading.Lock()
 _worker_thread: threading.Thread | None = None
 _stop_event = threading.Event()
 _started_at = datetime.now()
-_next_retry_at: datetime | None = None
+_next_retry_at_by_template: dict[str, datetime | None] = {}
 
 
 def _now_iso() -> str:
@@ -221,13 +243,104 @@ def _normalize_state(payload: Any) -> dict[str, Any]:
 
 
 def _read_state_unlocked() -> dict[str, Any]:
-    return _normalize_state(_read_json(_state_path()))
+    raw = _read_json(_state_path())
+    if not isinstance(raw, dict):
+        return {"template_timers": {_DEFAULT_TEMPLATE_ID: _default_state()}}
+
+    template_timers: dict[str, dict[str, Any]] = {}
+    raw_timers = raw.get("template_timers")
+    if isinstance(raw_timers, dict):
+        for template_id, source_state in raw_timers.items():
+            if not isinstance(template_id, str):
+                continue
+            template_id = template_id.strip()
+            if not template_id:
+                continue
+            template_timers[template_id] = _normalize_state(source_state)
+
+    legacy_state = _normalize_state({k: v for k, v in raw.items() if k != "template_timers" and k in _TIMER_STATE_KEYS})
+    if legacy_state and not template_timers:
+        template_timers[_DEFAULT_TEMPLATE_ID] = legacy_state
+    elif _DEFAULT_TEMPLATE_ID not in template_timers and any(k in raw for k in _TIMER_STATE_KEYS):
+        template_timers[_DEFAULT_TEMPLATE_ID] = legacy_state
+
+    if not template_timers:
+        template_timers[_DEFAULT_TEMPLATE_ID] = _default_state()
+    return {"template_timers": template_timers}
 
 
 def _write_state_unlocked(state: dict[str, Any]) -> None:
+    raw_timers = state.get("template_timers") if isinstance(state, dict) else None
+    timers: dict[str, dict[str, Any]] = {}
+    if isinstance(raw_timers, dict):
+        for template_id, source_state in raw_timers.items():
+            if not isinstance(template_id, str):
+                continue
+            template_id = template_id.strip()
+            if not template_id:
+                continue
+            timers[template_id] = _normalize_state(source_state)
+
+    if not timers:
+        timers[_DEFAULT_TEMPLATE_ID] = _default_state()
+    default_state = timers.get(_DEFAULT_TEMPLATE_ID, _default_state())
+
     path = _state_path()
     path.parent.mkdir(parents=True, exist_ok=True)
-    _write_json(path, _normalize_state(state))
+    payload = dict(default_state)
+    payload["template_timers"] = timers
+    _write_json(path, payload)
+
+
+def _normalize_template_id(template_id: Any) -> str:
+    raw = str(template_id or "").strip()
+    return raw or _DEFAULT_TEMPLATE_ID
+
+
+def _get_template_timers(state: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    raw_timers = state.get("template_timers")
+    if not isinstance(raw_timers, dict):
+        return {_DEFAULT_TEMPLATE_ID: _default_state()}
+    timers: dict[str, dict[str, Any]] = {}
+    for key, value in raw_timers.items():
+        if not isinstance(key, str):
+            continue
+        template_id = key.strip()
+        if not template_id:
+            continue
+        timers[template_id] = _normalize_state(value)
+    if not timers:
+        timers[_DEFAULT_TEMPLATE_ID] = _default_state()
+    return timers
+
+
+def _ensure_template_state_container(state: dict[str, Any], template_id: str) -> dict[str, Any]:
+    normalized_id = _normalize_template_id(template_id)
+    timers = _get_template_timers(state)
+    if normalized_id not in timers:
+        timers[normalized_id] = _default_state()
+    state["template_timers"] = timers
+    return timers[normalized_id]
+
+
+def copy_timer_state(source_template_id: str | None, target_template_id: str | None) -> None:
+    source_id = _normalize_template_id(source_template_id)
+    target_id = _normalize_template_id(target_template_id)
+    if target_id == source_id:
+        return
+
+    with _state_lock:
+        state = _read_state_unlocked()
+        timers = _get_template_timers(state)
+        source_state = timers.get(source_id)
+        if not source_state:
+            source_state = _default_state()
+        copied = _normalize_state(source_state)
+        copied["updated_at"] = _now_iso()
+        timers[target_id] = copied
+        _next_retry_at_by_template.pop(target_id, None)
+        state["template_timers"] = timers
+        _write_state_unlocked(state)
 
 
 def _scheduled_datetime(state: dict[str, Any]) -> datetime | None:
@@ -342,123 +455,137 @@ def _enrich_state(state: dict[str, Any]) -> dict[str, Any]:
     return view
 
 
-def evaluate_once() -> dict[str, Any]:
-    global _next_retry_at
+def _evaluate_single_timer(timer_state: dict[str, Any], template_id: str, now: datetime) -> None:
+    next_retry_at = _next_retry_at_by_template.get(template_id)
+    if not bool(timer_state.get("enabled")):
+        timer_state["last_evaluated_at"] = now.isoformat(timespec="seconds")
+        _next_retry_at_by_template.pop(template_id, None)
+        return
+
+    timer_state["last_evaluated_at"] = now.isoformat(timespec="seconds")
+
+    scheduled = _scheduled_datetime(timer_state)
+    if scheduled is None:
+        timer_state["enabled"] = False
+        timer_state["last_result"] = {
+            "status": "failed",
+            "at": _now_iso(),
+            "detail": "Scheduler run_date/run_time is invalid.",
+        }
+        _next_retry_at_by_template.pop(template_id, None)
+        return
+
+    signature = _schedule_signature(timer_state)
+    if signature and signature == str(timer_state.get("last_triggered_signature") or ""):
+        _next_retry_at_by_template.pop(template_id, None)
+        return
+
+    if now < scheduled:
+        _next_retry_at_by_template.pop(template_id, None)
+        return
+
+    missed = scheduled < _started_at
+    if missed and str(timer_state.get("catch_up_policy")) == "skip":
+        if _is_repeating(timer_state):
+            _align_state_for_repetition(timer_state, scheduled)
+        else:
+            timer_state["enabled"] = False
+        timer_state["last_triggered_signature"] = signature
+        timer_state["last_triggered_at"] = now.isoformat(timespec="seconds")
+        timer_state["last_result"] = {
+            "status": "skipped_missed",
+            "at": _now_iso(),
+            "scheduled_for": scheduled.isoformat(timespec="seconds"),
+        }
+        _next_retry_at_by_template.pop(template_id, None)
+        return
+
+    if next_retry_at is not None and now < next_retry_at:
+        return
+
+    try:
+        run_payload = _build_run_payload(timer_state, scheduled=scheduled)
+        run_result = core_runs._start_run(run_payload)
+    except HTTPException as exc:
+        detail = str(exc.detail)
+        if exc.status_code == 409 and "already in progress" in detail.lower():
+            _next_retry_at_by_template[template_id] = now + timedelta(seconds=60)
+            timer_state["last_result"] = {
+                "status": "deferred",
+                "at": _now_iso(),
+                "detail": detail,
+                "scheduled_for": scheduled.isoformat(timespec="seconds"),
+            }
+        else:
+            timer_state["enabled"] = False
+            timer_state["last_triggered_signature"] = signature
+            timer_state["last_triggered_at"] = now.isoformat(timespec="seconds")
+            timer_state["last_result"] = {
+                "status": "failed",
+                "at": _now_iso(),
+                "code": int(exc.status_code),
+                "detail": detail,
+                "scheduled_for": scheduled.isoformat(timespec="seconds"),
+            }
+            _next_retry_at_by_template.pop(template_id, None)
+        return
+    except Exception as exc:  # noqa: BLE001
+        timer_state["enabled"] = False
+        timer_state["last_triggered_signature"] = signature
+        timer_state["last_triggered_at"] = now.isoformat(timespec="seconds")
+        timer_state["last_result"] = {
+            "status": "failed",
+            "at": _now_iso(),
+            "detail": str(exc),
+            "scheduled_for": scheduled.isoformat(timespec="seconds"),
+        }
+        _next_retry_at_by_template.pop(template_id, None)
+        return
+
+    if _is_repeating(timer_state):
+        _align_state_for_repetition(timer_state, scheduled)
+    else:
+        timer_state["enabled"] = False
+    timer_state["last_triggered_signature"] = signature
+    timer_state["last_triggered_at"] = now.isoformat(timespec="seconds")
+    timer_state["last_result"] = {
+        "status": "started",
+        "at": _now_iso(),
+        "scheduled_for": scheduled.isoformat(timespec="seconds"),
+        "run_id": str(run_result.get("run_id") or ""),
+    }
+    _next_retry_at_by_template.pop(template_id, None)
+
+
+def evaluate_once(template_id: str | None = None) -> dict[str, Any]:
     now = datetime.now()
     with _state_lock:
         state = _read_state_unlocked()
-        state["last_evaluated_at"] = now.isoformat(timespec="seconds")
+        timers = _get_template_timers(state)
+        if template_id is None:
+            ids = list(timers.keys())
+            for template_key in ids:
+                _evaluate_single_timer(timers[template_key], template_key, now)
+            default_state = timers.get(_DEFAULT_TEMPLATE_ID) or timers[ids[0]]
+            _write_state_unlocked({"template_timers": timers})
+            return _enrich_state(default_state)
 
-        if not bool(state.get("enabled")):
-            _write_state_unlocked(state)
-            return _enrich_state(state)
-
-        scheduled = _scheduled_datetime(state)
-        if scheduled is None:
-            state["enabled"] = False
-            state["last_result"] = {
-                "status": "failed",
-                "at": _now_iso(),
-                "detail": "Scheduler run_date/run_time is invalid.",
-            }
-            _write_state_unlocked(state)
-            _next_retry_at = None
-            return _enrich_state(state)
-
-        signature = _schedule_signature(state)
-        if signature and signature == str(state.get("last_triggered_signature") or ""):
-            _write_state_unlocked(state)
-            return _enrich_state(state)
-
-        if now < scheduled:
-            _write_state_unlocked(state)
-            return _enrich_state(state)
-
-        missed = scheduled < _started_at
-        if missed and str(state.get("catch_up_policy")) == "skip":
-            if _is_repeating(state):
-                _align_state_for_repetition(state, scheduled)
-            else:
-                state["enabled"] = False
-            state["last_triggered_signature"] = signature
-            state["last_triggered_at"] = now.isoformat(timespec="seconds")
-            state["last_result"] = {
-                "status": "skipped_missed",
-                "at": _now_iso(),
-                "scheduled_for": scheduled.isoformat(timespec="seconds"),
-            }
-            _write_state_unlocked(state)
-            _next_retry_at = None
-            return _enrich_state(state)
-
-        if _next_retry_at is not None and now < _next_retry_at:
-            _write_state_unlocked(state)
-            return _enrich_state(state)
-
-        try:
-            run_payload = _build_run_payload(state, scheduled=scheduled)
-            run_result = core_runs._start_run(run_payload)
-        except HTTPException as exc:
-            detail = str(exc.detail)
-            if exc.status_code == 409 and "already in progress" in detail.lower():
-                _next_retry_at = now + timedelta(seconds=60)
-                state["last_result"] = {
-                    "status": "deferred",
-                    "at": _now_iso(),
-                    "detail": detail,
-                    "scheduled_for": scheduled.isoformat(timespec="seconds"),
-                }
-            else:
-                state["enabled"] = False
-                state["last_triggered_signature"] = signature
-                state["last_triggered_at"] = now.isoformat(timespec="seconds")
-                state["last_result"] = {
-                    "status": "failed",
-                    "at": _now_iso(),
-                    "code": int(exc.status_code),
-                    "detail": detail,
-                    "scheduled_for": scheduled.isoformat(timespec="seconds"),
-                }
-                _next_retry_at = None
-            _write_state_unlocked(state)
-            return _enrich_state(state)
-        except Exception as exc:  # noqa: BLE001
-            state["enabled"] = False
-            state["last_triggered_signature"] = signature
-            state["last_triggered_at"] = now.isoformat(timespec="seconds")
-            state["last_result"] = {
-                "status": "failed",
-                "at": _now_iso(),
-                "detail": str(exc),
-                "scheduled_for": scheduled.isoformat(timespec="seconds"),
-            }
-            _write_state_unlocked(state)
-            _next_retry_at = None
-            return _enrich_state(state)
-
-        if _is_repeating(state):
-            _align_state_for_repetition(state, scheduled)
-        else:
-            state["enabled"] = False
-        state["last_triggered_signature"] = signature
-        state["last_triggered_at"] = now.isoformat(timespec="seconds")
-        state["last_result"] = {
-            "status": "started",
-            "at": _now_iso(),
-            "scheduled_for": scheduled.isoformat(timespec="seconds"),
-            "run_id": str(run_result.get("run_id") or ""),
-        }
+        template_key = _normalize_template_id(template_id)
+        timer_state = _ensure_template_state_container(state, template_key)
+        _evaluate_single_timer(timer_state, template_key, now)
         _write_state_unlocked(state)
-        _next_retry_at = None
-        return _enrich_state(state)
+        return _enrich_state(timer_state)
 
 
-def get_state() -> dict[str, Any]:
+def get_state(template_id: str | None = None) -> dict[str, Any]:
     with _state_lock:
-        return _enrich_state(_read_state_unlocked())
+        state = _read_state_unlocked()
+        template_key = _normalize_template_id(template_id)
+        timer_state = _ensure_template_state_container(state, template_key)
+        return _enrich_state(timer_state)
 
 
-def update_state(payload: dict[str, Any] | None) -> dict[str, Any]:
+def update_state(payload: dict[str, Any] | None, template_id: str | None = None) -> dict[str, Any]:
     body = payload if isinstance(payload, dict) else {}
     keys = set(body.keys())
     mutable = {
@@ -483,55 +610,57 @@ def update_state(payload: dict[str, Any] | None) -> dict[str, Any]:
 
     with _state_lock:
         state = _read_state_unlocked()
+        timer_state = _ensure_template_state_container(state, template_id)
         rearm = False
 
         if "enabled" in body:
-            state["enabled"] = bool(body.get("enabled"))
-            if state["enabled"]:
+            timer_state["enabled"] = bool(body.get("enabled"))
+            if timer_state["enabled"]:
                 rearm = True
         if "mode" in body:
-            state["mode"] = _normalize_mode(body.get("mode"))
+            timer_state["mode"] = _normalize_mode(body.get("mode"))
         if "year" in body:
             year = _as_int(body.get("year"))
-            state["year"] = year
+            timer_state["year"] = year
         if "month" in body:
             month = _as_int(body.get("month"))
-            state["month"] = month if month is not None and 1 <= month <= 12 else None
+            timer_state["month"] = month if month is not None and 1 <= month <= 12 else None
         if "mfcloud_url" in body:
-            state["mfcloud_url"] = _normalize_text(body.get("mfcloud_url"), max_len=2000)
+            timer_state["mfcloud_url"] = _normalize_text(body.get("mfcloud_url"), max_len=2000)
         if "notes" in body:
-            state["notes"] = _normalize_text(body.get("notes"), max_len=2000)
+            timer_state["notes"] = _normalize_text(body.get("notes"), max_len=2000)
         if "run_date" in body:
-            state["run_date"] = _normalize_run_date(body.get("run_date"))
+            timer_state["run_date"] = _normalize_run_date(body.get("run_date"))
         if "run_time" in body:
-            state["run_time"] = _normalize_run_time(body.get("run_time"))
+            timer_state["run_time"] = _normalize_run_time(body.get("run_time"))
         if "catch_up_policy" in body:
-            state["catch_up_policy"] = _normalize_catch_up_policy(body.get("catch_up_policy"))
+            timer_state["catch_up_policy"] = _normalize_catch_up_policy(body.get("catch_up_policy"))
         if "recurrence" in body:
-            state["recurrence"] = _normalize_recurrence(body.get("recurrence"))
+            timer_state["recurrence"] = _normalize_recurrence(body.get("recurrence"))
         if "auth_handoff" in body:
-            state["auth_handoff"] = bool(body.get("auth_handoff"))
+            timer_state["auth_handoff"] = bool(body.get("auth_handoff"))
         if "auto_receipt_name" in body:
-            state["auto_receipt_name"] = bool(body.get("auto_receipt_name"))
+            timer_state["auto_receipt_name"] = bool(body.get("auto_receipt_name"))
         if "mf_draft_create" in body:
-            state["mf_draft_create"] = bool(body.get("mf_draft_create"))
+            timer_state["mf_draft_create"] = bool(body.get("mf_draft_create"))
         if "auto_start_enabled" in body:
             auto_start_enabled = bool(body.get("auto_start_enabled"))
             _set_autostart_enabled(auto_start_enabled)
-            state["auto_start_enabled"] = auto_start_enabled
+            timer_state["auto_start_enabled"] = auto_start_enabled
 
         if rearm:
-            state["last_result"] = None
-            state["last_triggered_signature"] = ""
-            state["last_triggered_at"] = None
+            timer_state["last_result"] = None
+            timer_state["last_triggered_signature"] = ""
+            timer_state["last_triggered_at"] = None
 
-        if bool(state.get("enabled")):
-            _validate_enabled_state(state)
+        if bool(timer_state.get("enabled")):
+            _validate_enabled_state(timer_state)
 
-        state["updated_at"] = _now_iso()
+        timer_state["updated_at"] = _now_iso()
+        state["template_timers"][_normalize_template_id(template_id)] = timer_state
         _write_state_unlocked(state)
 
-    return evaluate_once()
+    return evaluate_once(template_id)
 
 
 def _worker_loop() -> None:
@@ -546,12 +675,12 @@ def _worker_loop() -> None:
 def start_worker() -> None:
     global _worker_thread
     global _started_at
-    global _next_retry_at
+    global _next_retry_at_by_template
     with _worker_lock:
         if _worker_thread and _worker_thread.is_alive():
             return
         _started_at = datetime.now()
-        _next_retry_at = None
+        _next_retry_at_by_template = {}
         _stop_event.clear()
         try:
             evaluate_once()
