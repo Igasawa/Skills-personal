@@ -111,7 +111,40 @@ def _fetch_json(url: str) -> dict[str, Any]:
         return json.loads(payload_text)
 
 
-def check_api(base_url: str) -> CheckResult:
+def check_kil_review_page(base_url: str) -> CheckResult:
+    url = base_url.rstrip("/")
+    request_url = f"{url}/kil-review"
+    try:
+        html = _fetch_text(request_url)
+    except urllib.error.HTTPError as exc:
+        return _ng(f"HTTP error for page: {request_url}: {exc.code}")
+    except urllib.error.URLError as exc:
+        return _ng(f"Request failed for page: {request_url}: {exc}")
+    except UnicodeDecodeError as exc:
+        return _ng(f"Invalid encoding for page: {request_url}: {exc}")
+
+    required_markers = [
+        'id="kil-review-source"',
+        'id="kil-review-limit"',
+        'id="kil-review-refresh"',
+        'id="kil-review-status"',
+        'id="kil-review-items"',
+        'src="/static/js/kil-review.js"',
+        "KIL Review Dashboard",
+    ]
+    missing = [marker for marker in required_markers if marker not in html]
+    if missing:
+        return _ng(f"/kil-review page is missing required markers: {', '.join(missing)}")
+    return _ok("kil-review page loads and contains required UI markers")
+
+
+def _fetch_text(url: str) -> str:
+    with urllib.request.urlopen(url, timeout=10) as response:
+        payload_bytes = response.read()
+        return payload_bytes.decode("utf-8")
+
+
+def check_api(base_url: str, strict: bool) -> CheckResult:
     url = base_url.rstrip("/")
     sources = ["auto", "index", "markdown", "all", "fallback"]
     required_top_level = {
@@ -146,24 +179,52 @@ def check_api(base_url: str) -> CheckResult:
 
         if count != len(payload.get("items", [])):
             return _ng(f"{source}: count({count}) does not match rows({len(payload.get('items', []))})")
+        if payload.get("limit") != 5:
+            return _ng(f"{source}: limit mismatch ({payload.get('limit')})")
 
         review = payload.get("review")
         if not isinstance(review, dict):
             return _ng(f"{source}: review must be dict")
         if payload.get("status") != "ok":
             return _ng(f"{source}: status is not ok ({payload.get('status')})")
+        if strict:
+            source_counts = payload.get("source_counts")
+            if not isinstance(source_counts, dict):
+                return _ng(f"{source}: source_counts must be dict")
+            for key in ("index", "markdown"):
+                value = source_counts.get(key)
+                if not isinstance(value, int) or value < 0:
+                    return _ng(f"{source}: source_counts[{key}] must be non-negative int")
+
+            for key in ("overdue", "due_within_7d", "no_deadline"):
+                value = review.get(key)
+                if not isinstance(value, int) or value < 0:
+                    return _ng(f"{source}: review[{key}] must be non-negative int")
+
+            for item in payload.get("items", []):
+                if not isinstance(item, dict):
+                    return _ng(f"{source}: each item must be a dict")
+                for field in ("source", "commit", "date", "summary"):
+                    if not str(item.get(field) or "").strip():
+                        return _ng(f"{source}: item missing required field '{field}'")
+                if item.get("source") not in {"index", "markdown"}:
+                    return _ng(f"{source}: item has unexpected source '{item.get('source')}'")
 
     return _ok("api checks passed")
 
 
-def run(base_url: str, skip_http: bool) -> int:
+def run(base_url: str, skip_http: bool, strict: bool) -> int:
     checks: list[CheckResult] = [
         check_required_files(),
         check_server_file_contract(),
     ]
 
     if not skip_http:
-        checks.append(check_api(base_url))
+        if strict:
+            checks.append(check_kil_review_page(base_url))
+            checks.append(check_api(base_url, strict=True))
+        else:
+            checks.append(check_api(base_url, strict=False))
 
     failed = [item for item in checks if not item.ok]
     passed = [item for item in checks if item.ok]
@@ -192,8 +253,13 @@ def main() -> int:
         action="store_true",
         help="Skip runtime HTTP checks and validate files/contracts only.",
     )
+    parser.add_argument(
+        "--strict",
+        action="store_true",
+        help="Enable stricter API and rendered page checks (slower but more complete).",
+    )
     args = parser.parse_args()
-    return run(base_url=args.base_url, skip_http=args.skip_http)
+    return run(base_url=args.base_url, skip_http=args.skip_http, strict=args.strict)
 
 
 if __name__ == "__main__":
