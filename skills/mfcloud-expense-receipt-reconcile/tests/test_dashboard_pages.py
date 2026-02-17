@@ -256,6 +256,12 @@ def test_workspace_page_shows_core_link_and_prompt_tools(
     assert "data-workspace-link-details" in res.text
     assert 'id="workspace-prompt-active-label"' in res.text
     assert "/static/js/workspace.js" in res.text
+    assert 'href="/status"' in res.text
+
+    match = re.search(r"data-sidebar-links='(.*?)'", res.text)
+    assert match is not None
+    links = json.loads(match.group(1))
+    assert all(link.get("href") != "/status" for link in links)
 
 
 def test_errors_page_shows_incident_controls(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

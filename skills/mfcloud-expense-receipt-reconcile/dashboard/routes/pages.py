@@ -15,7 +15,6 @@ WORKFLOW_TEMPLATE_SIDEBAR_LINK_LIMIT = 30
 DEFAULT_SIDEBAR_LINKS = [
     {"href": "/", "label": "ワークフロー", "tab": "wizard"},
     {"href": "/expense-workflow-copy", "label": "ワークフロー（複製）", "tab": "wizard-copy"},
-    {"href": "/status", "label": "ステータス", "tab": "status"},
     {"href": "/kil-review", "label": "KIL Review", "tab": "kil-review"},
     {"href": "/errors", "label": "エラー", "tab": "errors"},
     {"href": "/workspace", "label": "ワークスペース", "tab": "workspace"},

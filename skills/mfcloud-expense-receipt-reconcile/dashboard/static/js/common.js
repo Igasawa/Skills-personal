@@ -10,7 +10,6 @@
 const DEFAULT_DASHBOARD_SIDEBAR_LINKS = Object.freeze([
     { href: "/", label: "ワークフロー", tab: "wizard" },
     { href: "/expense-workflow-copy", label: "ワークフロー（複製）", tab: "wizard-copy" },
-    { href: "/status", label: "ステータス", tab: "status" },
     { href: "/kil-review", label: "KIL Review", tab: "kil-review" },
     { href: "/errors", label: "エラー", tab: "errors" },
     { href: "/workspace", label: "ワークスペース", tab: "workspace" },
