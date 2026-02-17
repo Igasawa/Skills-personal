@@ -8,7 +8,8 @@
   const THEME_VALUES = new Set([THEME_LIGHT, THEME_DARK]);
   const THEME_SELECTION_VALUES = new Set([THEME_LIGHT, THEME_DARK, THEME_SYSTEM]);
   const DEFAULT_DASHBOARD_SIDEBAR_LINKS = Object.freeze([
-    { href: "/", label: "Dashboard", tab: "wizard" },
+    { href: "/", label: "workflow：経費精算", tab: "wizard" },
+    { href: "/expense-workflow-copy", label: "workflow：経費精算（複製）", tab: "wizard-copy" },
     { href: "/status", label: "Status", tab: "status" },
     { href: "/errors", label: "Errors", tab: "errors" },
     { href: "/workspace", label: "Workspace", tab: "workspace" },
@@ -164,7 +165,7 @@
 
     const heading = document.createElement("div");
     heading.className = "dashboard-sidebar-section-title";
-    heading.textContent = "Theme";
+    heading.textContent = "表示テーマ";
     section.appendChild(heading);
 
     section.appendChild(buildThemeToggle());
@@ -205,13 +206,13 @@
 
     const sidebar = document.createElement("aside");
     sidebar.className = "dashboard-sidebar";
-    sidebar.setAttribute("aria-label", "Dashboard navigation");
+    sidebar.setAttribute("aria-label", "workflow：経費精算");
 
     const nav = document.createElement("nav");
     nav.className = "dashboard-sidebar-nav";
     const title = document.createElement("div");
     title.className = "dashboard-sidebar-title";
-    title.textContent = "MF Expense";
+    title.textContent = "workflow：経費精算";
     sidebar.appendChild(title);
 
     links.forEach((linkConfig) => {

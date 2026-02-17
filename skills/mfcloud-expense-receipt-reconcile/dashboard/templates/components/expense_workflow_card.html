@@ -4,63 +4,63 @@
         data-ym=""
         data-archive-href-template="/runs/__YM__/archived-receipts"
       >
-        <h2>Workflow</h2>
+        <h2>ワークフロー</h2>
         <div id="wizard-next" class="next-step hidden" aria-live="polite"></div>
         <div class="wizard-step">
           <div class="step-head">
             <span class="step-num">-</span>
-            <span class="step-title">Target settings</span>
-            <span class="step-status pending">Not started</span>
+            <span class="step-title">対象設定（実行依頼）</span>
+            <span class="step-status pending">未実行</span>
           </div>
           <div class="scheduler-panel" id="scheduler-panel">
             <div class="scheduler-head">
-              <h3>Auto run scheduler</h3>
+              <h3>タイマー自動実行</h3>
             </div>
             <div class="scheduler-grid">
               <label>
-                Date
+                実行日
                 <input type="date" id="scheduler-run-date" />
               </label>
               <label>
-                Time
+                実行時刻
                 <input type="time" id="scheduler-run-time" value="09:00" />
               </label>
               <label>
-                Mode
+                実行モード
                 <select id="scheduler-mode">
-                  <option value="preflight">Step 0</option>
-                  <option value="preflight_mf">Step 0 (MF only)</option>
-                  <option value="amazon_download">Step 1</option>
-                  <option value="rakuten_download">Step 2</option>
-                  <option value="provider_ingest">Step 3</option>
-                  <option value="mf_bulk_upload_task">Step 4</option>
-                  <option value="mf_reconcile">Step 5</option>
+                  <option value="preflight">手順0</option>
+                  <option value="preflight_mf">手順0（MFのみ）</option>
+                  <option value="amazon_download">手順1</option>
+                  <option value="rakuten_download">手順2</option>
+                  <option value="provider_ingest">手順3</option>
+                  <option value="mf_bulk_upload_task">手順4</option>
+                  <option value="mf_reconcile">手順5</option>
                 </select>
               </label>
               <label>
-                Catch-up
+                再実行条件
                 <select id="scheduler-catch-up">
-                  <option value="run_on_startup">Run at startup</option>
-                  <option value="skip">Skip</option>
+                  <option value="run_on_startup">次回起動時に実行</option>
+                  <option value="skip">スキップ</option>
                 </select>
               </label>
               <label class="inline-check">
                 <input type="checkbox" id="scheduler-auth-handoff" />
-                Auth handoff
+                ログイン画面を開いて実行
               </label>
               <label class="inline-check">
                 <input type="checkbox" id="scheduler-autostart" />
-                Auto start
+                起動時自動実行
               </label>
               <label class="inline-check">
                 <input type="checkbox" id="scheduler-enabled" />
-                Enable scheduler
+                自動実行を有効化
               </label>
             </div>
             <div class="scheduler-actions">
-              <button type="button" class="secondary" id="scheduler-refresh">Reload</button>
-              <button type="button" class="primary" id="scheduler-save">Save</button>
-              <span class="muted" id="scheduler-summary">No schedule</span>
+              <button type="button" class="secondary" id="scheduler-refresh">更新</button>
+              <button type="button" class="primary" id="scheduler-save">保存</button>
+              <span class="muted" id="scheduler-summary">未設定</span>
             </div>
           </div>
         </div>
@@ -68,43 +68,43 @@
           <div id="step-0" class="wizard-step">
             <div class="step-head">
               <span class="step-num">0</span>
-              <span class="step-title">Step 0</span>
-              <span class="step-status">Not done</span>
+              <span class="step-title">手順0</span>
+              <span class="step-status">未実行</span>
             </div>
           </div>
           <div id="step-1" class="wizard-step">
             <div class="step-head">
               <span class="step-num">1</span>
-              <span class="step-title">Step 1</span>
-              <span class="step-status">Not done</span>
+              <span class="step-title">手順1</span>
+              <span class="step-status">未実行</span>
             </div>
           </div>
           <div id="step-2" class="wizard-step">
             <div class="step-head">
               <span class="step-num">2</span>
-              <span class="step-title">Step 2</span>
-              <span class="step-status">Not done</span>
+              <span class="step-title">手順2</span>
+              <span class="step-status">未実行</span>
             </div>
           </div>
           <div id="step-3" class="wizard-step">
             <div class="step-head">
               <span class="step-num">3</span>
-              <span class="step-title">Step 3</span>
-              <span class="step-status">Not done</span>
+              <span class="step-title">手順3</span>
+              <span class="step-status">未実行</span>
             </div>
           </div>
           <div id="step-4" class="wizard-step">
             <div class="step-head">
               <span class="step-num">4</span>
-              <span class="step-title">Step 4</span>
-              <span class="step-status">Not done</span>
+              <span class="step-title">手順4</span>
+              <span class="step-status">未実行</span>
             </div>
           </div>
           <div id="step-5" class="wizard-step">
             <div class="step-head">
               <span class="step-num">5</span>
-              <span class="step-title">Step 5</span>
-              <span class="step-status">Not done</span>
+              <span class="step-title">手順5</span>
+              <span class="step-status">未実行</span>
             </div>
           </div>
         </div>

@@ -93,32 +93,39 @@ def test_index_page_shows_manual_archive_button(monkeypatch: pytest.MonkeyPatch,
     res = client.get("/")
     assert res.status_code == 200
     assert 'data-workspace-link' not in res.text
-    assert 'id="run-form"' not in res.text
-    assert 'id="step-0"' in res.text
-    assert 'id="step-1"' in res.text
-    assert 'id="step-2"' in res.text
-    assert 'id="step-3"' in res.text
-    assert 'id="step-4"' in res.text
-    assert 'id="step-5"' in res.text
-    assert 'id="step-6"' not in res.text
-    assert 'data-step-id="preflight"' not in res.text
-    assert 'data-step-id="provider_ingest"' not in res.text
-    assert 'data-step-id="mf_reconcile"' not in res.text
-    assert 'data-archive-action="archive_outputs"' not in res.text
-    assert 'data-archive-action="month_close"' not in res.text
+    assert 'id="run-form"' in res.text
+    assert 'id="step-preflight"' in res.text
+    assert 'id="step-amazon-task"' in res.text
+    assert 'id="step-rakuten-task"' in res.text
+    assert 'id="step-provider-ingest"' in res.text
+    assert 'id="step-mf-bulk-upload-task"' in res.text
+    assert 'id="step-mf-reconcile"' in res.text
+    assert 'id="step-month-close"' in res.text
+    assert 'data-step-id="preflight"' in res.text
+    assert 'data-task-id="amazon"' in res.text
+    assert 'data-task-id="rakuten"' in res.text
+    assert 'data-step-id="provider_ingest"' in res.text
+    assert 'data-step-id="mf_reconcile"' in res.text
+    assert 'data-archive-action="archive_outputs"' in res.text
+    assert 'data-archive-action="month_close"' in res.text
     assert "data-archive-page-link" not in res.text
     assert "data-archive-href-template=" in res.text
     assert "data-fallback-href=" not in res.text
-    assert 'data-step-action=' not in res.text
-    assert 'data-step-link=' not in res.text
-    assert 'data-step-reset=' not in res.text
-    assert 'data-manual-action=' not in res.text
-    assert 'data-provider-action=' not in res.text
-    assert 'data-provider-source-summary' not in res.text
-    assert 'data-provider-source-setup-guide' not in res.text
+    assert 'data-step-action="preflight"' in res.text
+    assert 'data-step-action="preflight_mf"' in res.text
+    assert 'data-step-link="amazon_exclude"' in res.text
+    assert 'data-step-link="rakuten_exclude"' in res.text
+    assert 'data-step-reset="amazon_download"' in res.text
+    assert 'data-manual-action="run_mf_bulk_upload"' in res.text
+    assert 'data-manual-action="run_mf_csv_import"' in res.text
+    assert 'data-provider-action="open_provider_source"' in res.text
+    assert 'data-provider-action="open_shared_inbox"' in res.text
+    assert 'data-provider-action="import_provider_receipts"' in res.text
+    assert 'data-provider-action="print_provider_receipts"' in res.text
+    assert 'data-provider-source-summary' in res.text
+    assert 'data-provider-source-setup-guide' in res.text
     assert "/workspace" in res.text
-    assert "data-mf-summary" not in res.text
-    assert "Not done" in res.text
+    assert "未実行" in res.text
     assert 'id="scheduler-panel"' in res.text
     assert 'id="scheduler-enabled"' in res.text
     assert 'id="scheduler-run-date"' in res.text
@@ -179,7 +186,7 @@ def test_expense_workflow_copy_page_shows_shared_wizard(monkeypatch: pytest.Monk
     match = re.search(r"data-sidebar-links='(.*?)'", res.text)
     assert match is not None
     links = json.loads(match.group(1))
-    assert {"href": "/expense-workflow-copy", "label": "Workflow Copy", "tab": "wizard-copy"} in links
+    assert {"href": "/expense-workflow-copy", "label": "workflow：経費精算（複製）", "tab": "wizard-copy"} in links
 
 
 def test_index_page_exposes_latest_run_status_hooks(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

@@ -989,21 +989,21 @@
     if (!el) return;
     el.classList.remove("done", "running", "pending");
     if (id === "mf_reconcile" && state !== "running") {
-      el.textContent = "Idle";
+      el.textContent = "未実行";
       el.classList.add("pending");
       return;
     }
     if (state === "done") {
-      el.textContent = "Done";
+      el.textContent = "完了";
       el.classList.add("done");
       return;
     }
     if (state === "running") {
-      el.textContent = "(msg)";
+      el.textContent = "実行中";
       el.classList.add("running");
       return;
     }
-    el.textContent = "Pending";
+    el.textContent = "未実行";
     el.classList.add("pending");
   }
 
@@ -1012,16 +1012,16 @@
     if (!el) return;
     el.classList.remove("done", "running", "pending");
     if (state === "done") {
-      el.textContent = "Done";
+      el.textContent = "完了";
       el.classList.add("done");
       return;
     }
     if (state === "running") {
-      el.textContent = "(msg)";
+      el.textContent = "実行中";
       el.classList.add("running");
       return;
     }
-    el.textContent = "Pending";
+    el.textContent = "未実行";
     el.classList.add("pending");
   }
 
@@ -1978,14 +1978,14 @@
       setTaskStatus("rakuten", taskStates.rakuten);
 
       const labels = {
-        preflight: "Preflight",
-        amazon_download: "Amazon download",
-        amazon_decide_print: "Amazon print decision",
-        rakuten_download: "Rakuten download",
-        rakuten_decide_print: "Rakuten print decision",
-        provider_ingest: "Provider ingest",
-        mf_bulk_upload_task: "MF bulk upload",
-        mf_reconcile: "MF reconcile",
+        preflight: "事前準備",
+        amazon_download: "Amazon取り込み",
+        amazon_decide_print: "Amazon印刷判定",
+        rakuten_download: "楽天取り込み",
+        rakuten_decide_print: "楽天印刷判定",
+        provider_ingest: "プロバイダ受領分の取り込み",
+        mf_bulk_upload_task: "MF一括アップロード",
+        mf_reconcile: "MF突合",
       };
       if (!window.__stepState) {
         window.__stepState = stepStates;
@@ -1993,7 +1993,7 @@
         Object.keys(stepStates).forEach((key) => {
           if (key === "mf_reconcile") return;
           if (window.__stepState[key] && window.__stepState[key] !== "done" && stepStates[key] === "done") {
-            showToast(`${labels[key]} completed.`, "success");
+            showToast(`${labels[key]}が完了しました。`, "success");
           }
         });
       }
@@ -2177,4 +2177,3 @@
     });
   });
 })();
-

@@ -212,6 +212,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "scripts\start_dashboard.ps1
 - ダッシュボードの文言は、機能に合う内容を短く平易に書き、できるだけわかりやすくシンプルにする。
 - 英語を許容するのは、コード識別子・APIキー・ログ解析用の固定判定文字列など、機械処理上必要な箇所のみ。
 - UI文言を追加・変更する際は、日本語表示になっていることを確認してから反映する。
+- `workflow：経費精算（複製）` 画面を含むすべてのダッシュボード表示項目は、既定で日本語表示とする。
 
 ## Official manual review (automated)
 - Run periodic checks: `npm run review:manual -- --review-type weekly`

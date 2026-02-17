@@ -35,6 +35,7 @@
 ## 3.1 ダッシュボード文言ポリシー
 - ダッシュボードの利用者向け文言は日本語を基本とする
 - 文言は機能に合う内容を短く平易に書き、できるだけわかりやすくシンプルにする
+- ワークフロー複製（`workflow：経費精算（複製）`）画面を含む、運用UI表示の既定言語は日本語とする。
 
 ## 4. レシート取り扱いルール
 - 原則：1明細=1レシート
@@ -106,4 +107,3 @@
 - Auto printout is disabled by default; user prints manually from the opened PDF dialog (Ctrl+P).
 - Monochrome is controlled by printer/driver defaults; the dashboard does not force printer color mode.
 - API: POST /api/print-run/{ym}/{source} (source=amazon|rakuten).
-

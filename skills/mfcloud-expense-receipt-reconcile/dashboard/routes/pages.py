@@ -11,8 +11,8 @@ from services import core
 
 ARCHIVE_SNAPSHOT_RE = re.compile(r"^\d{8}_\d{6}$")
 DEFAULT_SIDEBAR_LINKS = [
-    {"href": "/", "label": "Dashboard", "tab": "wizard"},
-    {"href": "/expense-workflow-copy", "label": "Workflow Copy", "tab": "wizard-copy"},
+    {"href": "/", "label": "workflow：経費精算", "tab": "wizard"},
+    {"href": "/expense-workflow-copy", "label": "workflow：経費精算（複製）", "tab": "wizard-copy"},
     {"href": "/status", "label": "Status", "tab": "status"},
     {"href": "/errors", "label": "Errors", "tab": "errors"},
     {"href": "/workspace", "label": "Workspace", "tab": "workspace"},
