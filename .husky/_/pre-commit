@@ -1,4 +1,28 @@
 #!/usr/bin/env bash
 set -euo pipefail
+
+# KIL pre-commit guard: ensure post-commit hook is managed and present
+REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+HOOK_CFG="$(git -C "$REPO_ROOT" config --get core.hooksPath 2>/dev/null || true)"
+if [ -z "${HOOK_CFG}" ]; then
+  HOOK_DIR="$REPO_ROOT/.git/hooks"
+else
+  case "$HOOK_CFG" in
+    /*)
+      HOOK_DIR="$HOOK_CFG"
+      ;;
+    *)
+      HOOK_DIR="$REPO_ROOT/$HOOK_CFG"
+      ;;
+  esac
+fi
+
+POST_COMMIT_HOOK="$HOOK_DIR/post-commit"
+if [ ! -f "$POST_COMMIT_HOOK" ] || ! grep -q "KIL_MANAGED_HOOK: post-commit" "$POST_COMMIT_HOOK"; then
+  echo "[KIL] pre-commit guard failed: managed post-commit hook is not installed." >&2
+  echo "[KIL] Run: powershell -ExecutionPolicy Bypass -File .\\scripts\\bootstrap_kil.ps1" >&2
+  exit 1
+fi
+
 python scripts/check_text_encoding.py
 echo "Pre-commit checks passed."

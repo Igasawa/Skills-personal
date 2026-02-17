@@ -30,8 +30,12 @@ $verifyArgs = @(
     "-VerifyOnly"
 )
 
-$verifyOutput = & $runner $verifyArgs 2>&1
+$originalEa = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
+$verifyOutput = & $runner @verifyArgs 2>&1
+$verifyOutput = @($verifyOutput)
 $verifyExit = $LASTEXITCODE
+$ErrorActionPreference = $originalEa
 
 if ($verifyExit -ne 0 -and -not $VerifyOnly) {
     Write-Host "[KIL] Hook is missing or unmanaged. Auto-bootstrap now..."
