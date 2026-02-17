@@ -50,7 +50,7 @@
     const label = document.createElement("label");
     label.className = "inline-check";
     label.appendChild(reviewOnlySelect);
-    label.appendChild(document.createTextNode(" レビュー対象のみ"));
+    label.appendChild(document.createTextNode(" 繝ｬ繝薙Η繝ｼ蟇ｾ雎｡縺ｮ縺ｿ"));
     container.insertBefore(label, statusEl);
   })();
 
@@ -133,10 +133,10 @@
 
   function toDeadlineBadge(value) {
     const state = deadlineStatus(value);
-    if (state === "no_deadline") return "未設定";
-    if (state === "overdue") return "期限超過";
-    if (state === "due_within_7d") return "7日以内";
-    return "期限あり";
+    if (state === "no_deadline") return "譛ｪ險ｭ螳・;
+    if (state === "overdue") return "譛滄剞雜・℃";
+    if (state === "due_within_7d") return "7譌･莉･蜀・;
+    return "譛滄剞縺ゅｊ";
   }
 
   function isReviewTarget(item) {
@@ -146,8 +146,15 @@
     }
 
     const status = deadlineStatus(item?.deadline);
-    const risk = toLowerSafe(item?.risk);
-    return status === "overdue" || status === "due_within_7d" || (risk && !["normal", "low", "info", "none", ""].includes(risk));
+    const severity = toLowerSafe(item?.review_severity || item?.risk);
+
+    if (status === "overdue" || status === "due_within_7d") {
+      return true;
+    }
+    if (status === "no_deadline") {
+      return false;
+    }
+    return severity === "high" || severity === "critical";
   }
 
   function renderSummary(payload) {
@@ -172,7 +179,7 @@
     setText(generatedAtEl, payload.generated_at ? String(payload.generated_at) : "-");
 
     if (summaryLineEl) {
-      const line = `要レビュー: ${reviewNeeded}件（期限超過 ${overdue}件 / 7日以内 ${dueSoon}件） / 全件 ${total}件`;
+      const line = `隕√Ξ繝薙Η繝ｼ: ${reviewNeeded}莉ｶ・域悄髯占ｶ・℃ ${overdue}莉ｶ / 7譌･莉･蜀・${dueSoon}莉ｶ・・/ 蜈ｨ莉ｶ ${total}莉ｶ`;
       setText(summaryLineEl, line);
     }
   }
@@ -183,7 +190,7 @@
       return;
     }
     const score = toInt(health.score, 0);
-    const statusLabel = String(health.status_label || "要確認");
+    const statusLabel = String(health.status_label || "隕∫｢ｺ隱・);
     const status = String(health.status || "warning");
     const lagCommits = health.lag_commits;
     const lagDays = health.lag_days;
@@ -196,13 +203,13 @@
     healthStatusEl.className = oldClasses.join(" ").trim();
 
     setText(healthStatusEl, statusLabel);
-    setText(healthScoreEl, `${score}点`);
+    setText(healthScoreEl, `${score}轤ｹ`);
     setText(healthLagCommitsEl, lagCommits == null ? "-" : String(toInt(lagCommits, 0)));
-    setText(healthLagDaysEl, lagDays == null ? "-" : `${toInt(lagDays, 0)}日`);
-    setText(healthFallbackEl, `${toPercent(health.fallback_ratio)}（${toInt(health.fallback_records, 0)}件）`);
+    setText(healthLagDaysEl, lagDays == null ? "-" : `${toInt(lagDays, 0)}譌･`);
+    setText(healthFallbackEl, `${toPercent(health.fallback_ratio)}・・{toInt(health.fallback_records, 0)}莉ｶ・荏);
     setText(healthAnalyzedAtEl, health.analyzed_at || "-");
     setText(healthAnalyzedCommitEl, health.analyzed_commit || "unknown");
-    setText(healthMessageEl, health.message || "学習状態を取得できません。");
+    setText(healthMessageEl, health.message || "蟄ｦ鄙堤憾諷九ｒ蜿門ｾ励〒縺阪∪縺帙ｓ縲・);
   }
 
   function renderFiles(payload) {
@@ -219,8 +226,8 @@
           label: "candidate",
         }))
       : [];
-    const indexState = files.index_exists ? "あり" : "なし";
-    const mdState = files.markdown_exists ? "あり" : "なし";
+    const indexState = files.index_exists ? "縺ゅｊ" : "縺ｪ縺・;
+    const mdState = files.markdown_exists ? "縺ゅｊ" : "縺ｪ縺・;
 
     filesEl.innerHTML = "";
     const li1 = document.createElement("li");
@@ -268,13 +275,13 @@
   function riskLabel(value) {
     switch (value) {
       case "high":
-        return "高";
+        return "鬮・;
       case "medium":
-        return "中";
+        return "荳ｭ";
       case "low":
-        return "低";
+        return "菴・;
       default:
-        return value || "不明";
+        return value || "荳肴・";
     }
   }
 
@@ -285,7 +292,7 @@
     riskGridEl.innerHTML = "";
 
     if (!keys.length) {
-      riskGridEl.innerHTML = `<div class="muted">リスク情報がありません</div>`;
+      riskGridEl.innerHTML = `<div class="muted">繝ｪ繧ｹ繧ｯ諠・ｱ縺後≠繧翫∪縺帙ｓ</div>`;
       return;
     }
 
@@ -319,12 +326,12 @@
     itemsEl.innerHTML = "";
     if (!items.length) {
       emptyEl.classList.remove("hidden");
-      setText(emptyEl, "データがありません");
+      setText(emptyEl, "繝・・繧ｿ縺後≠繧翫∪縺帙ｓ");
       return;
     }
     if (!visibleItems.length) {
       emptyEl.classList.remove("hidden");
-      setText(emptyEl, "要レビュー対象はありません（設定を見直してください）");
+      setText(emptyEl, "隕√Ξ繝薙Η繝ｼ蟇ｾ雎｡縺ｯ縺ゅｊ縺ｾ縺帙ｓ・郁ｨｭ螳壹ｒ隕狗峩縺励※縺上□縺輔＞・・);
       return;
     }
 
@@ -353,30 +360,60 @@
 
       const summary = document.createElement("p");
       summary.className = "kil-review-item-summary";
-      summary.textContent = String(item.summary || "").trim() || "要約なし";
+      summary.textContent = String(item.summary || "").trim() || "隕∫ｴ・↑縺・;
+
+      const reviewIssues = Array.isArray(item.review_issues) ? item.review_issues.filter(Boolean) : [];
+      const reviewRecommendations = Array.isArray(item.review_recommendations)
+        ? item.review_recommendations.filter(Boolean)
+        : [];
+      if (item?.needs_human_review) {
+        const reason = document.createElement("p");
+        reason.className = "kil-review-item-summary";
+        if (reviewIssues.length > 0) {
+          reason.textContent = `レビュー理由: ${String(reviewIssues[0])}`;
+        } else {
+          reason.textContent = "レビュー理由: 要レビュー条件に該当しました（要件: 期限超過/高リスク/Confidenceしきい値下回り）。再実行して理由を確認してください。";
+        }
+        row.appendChild(reason);
+      } else if (toLowerSafe(item?.review_severity) === "high" || toLowerSafe(item?.review_severity) === "critical") {
+        const reason = document.createElement("p");
+        reason.className = "kil-review-item-summary";
+        reason.textContent = "レビュー理由: 高リスク差分として自動分類（要レビュー情報が未取得）";
+        row.appendChild(reason);
+      } else if (reviewRecommendations.length > 0) {
+        const recommendation = document.createElement("p");
+        recommendation.className = "kil-review-item-summary";
+        recommendation.textContent = `次アクション: ${String(reviewRecommendations[0])}`;
+        row.appendChild(recommendation);
+      }
 
       const meta = document.createElement("div");
       meta.className = "kil-review-item-meta";
 
       const risk = document.createElement("span");
       risk.className = "kil-review-chip";
-      risk.textContent = `重要度: ${String(item.risk || "normal")}`;
+      risk.textContent = `驥崎ｦ∝ｺｦ: ${String(item.risk || "normal")}`;
 
       const deadline = document.createElement("span");
       deadline.className = "kil-review-chip";
-      deadline.textContent = `期限: ${deadlineStatusLabel}`;
+      deadline.textContent = `譛滄剞: ${deadlineStatusLabel}`;
 
       const action = document.createElement("span");
       action.className = "kil-review-chip";
-      action.textContent = "レビュー要";
+      action.textContent = item?.needs_human_review ? "要レビュー" : "自動判定済み";
 
       const details = document.createElement("details");
       const detailSummary = document.createElement("summary");
-      detailSummary.textContent = "展開して確認";
+      detailSummary.textContent = "螻暮幕縺励※遒ｺ隱・;
       const body = document.createElement("pre");
       body.className = "log";
       const detailPayload = {
         commit: item.commit || "",
+        needs_human_review: !!item.needs_human_review,
+        needs_soon: !!item.needs_soon,
+        review_severity: item.review_severity || item.risk || "",
+        review_issues: item.review_issues || [],
+        review_recommendations: item.review_recommendations || [],
         knowledge: item.knowledge || [],
         rules: item.rules || [],
         context: item.context || [],
@@ -401,11 +438,11 @@
   function setBusy(state) {
     if (refreshButton) {
       refreshButton.disabled = !!state;
-      refreshButton.textContent = state ? "更新中..." : "更新";
+      refreshButton.textContent = state ? "譖ｴ譁ｰ荳ｭ..." : "譖ｴ譁ｰ";
     }
 
     if (statusEl) {
-      statusEl.textContent = state ? "読み込み中..." : statusEl.textContent;
+      statusEl.textContent = state ? "隱ｭ縺ｿ霎ｼ縺ｿ荳ｭ..." : statusEl.textContent;
     }
   }
 
@@ -420,8 +457,8 @@
     }
 
     setBusy(true);
-    setText(statusEl, "取得中...");
-    setText(summaryLineEl, "取得中...");
+    setText(statusEl, "蜿門ｾ嶺ｸｭ...");
+    setText(summaryLineEl, "蜿門ｾ嶺ｸｭ...");
 
     try {
       let lastError = "unknown";
@@ -439,7 +476,7 @@
           if (payload) {
             break;
           }
-          lastError = `${url} -> 空レスポンス`;
+          lastError = `${url} -> 遨ｺ繝ｬ繧ｹ繝昴Φ繧ｹ`;
           break;
         } catch (error) {
           lastError = `${url} -> ${error?.message ? String(error.message) : "Request failed"}`;
@@ -448,7 +485,7 @@
       }
 
       if (!payload) {
-        throw new Error(`KIL Review API の取得に失敗しました。${lastError}`);
+        throw new Error(`KIL Review API 縺ｮ蜿門ｾ励↓螟ｱ謨励＠縺ｾ縺励◆縲・{lastError}`);
       }
 
       renderSummary(payload || {});
@@ -457,12 +494,12 @@
       renderRisk(payload || {});
       renderItems(payload || {});
 
-      setText(statusEl, "更新: " + new Date().toLocaleString("ja-JP"));
-      showToast("KIL Review を更新しました", "success");
+      setText(statusEl, "譖ｴ譁ｰ: " + new Date().toLocaleString("ja-JP"));
+      showToast("KIL Review 繧呈峩譁ｰ縺励∪縺励◆", "success");
     } catch (error) {
-      const message = toFriendlyMessage(error?.message || "KIL Review の取得に失敗しました");
+      const message = toFriendlyMessage(error?.message || "KIL Review 縺ｮ蜿門ｾ励↓螟ｱ謨励＠縺ｾ縺励◆");
       setText(statusEl, message);
-      setText(summaryLineEl, "取得に失敗しました");
+      setText(summaryLineEl, "蜿門ｾ励↓螟ｱ謨励＠縺ｾ縺励◆");
       showToast(message, "error");
     } finally {
       setBusy(false);
@@ -495,3 +532,5 @@
 
   void fetchKilReview();
 })();
+
+

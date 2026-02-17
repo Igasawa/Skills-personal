@@ -68,26 +68,32 @@ def _infer_review_plan(record: Dict[str, Any]) -> ReviewResult:
     issues: List[str] = []
     recommendations: List[str] = []
 
-    needs_human_review = risk == "high" or confidence < REVIEW_SCORE_RANGES.get(risk, 0.0)
+    threshold = REVIEW_SCORE_RANGES.get(risk, 0.0)
+    needs_human_review = risk == "high" or confidence < threshold
     if needs_human_review:
-        issues.append("重要度が高い変更、またはモデル信頼度が閾値未満のため、必須で人間レビューが必要です。")
+        reason = "高リスク" if risk == "high" else "信頼度しきい値未満"
+        issues.append(
+            f"要レビュー: {reason} "
+            f"(risk={risk}, confidence={confidence:.2f}, threshold={threshold:.2f})"
+        )
 
     if needs_soon:
-        recommendations.append("レビュー期限が設定されています。次の高リスク変更前に優先対応してください。")
+        recommendations.append(f"レビュー期限が設定されています: {', '.join(deadlines)}")
 
     if "docs" in scope:
-        recommendations.append("ドキュメント影響を確認し、関連ドキュメントを最新状態に保ってください。")
+        recommendations.append(
+            "ドキュメント変更を検出: AGENT_BRAIN.md / AGENT_BRAIN_INDEX.jsonl / "
+            "AGENT_BRAIN_REVIEW.jsonl の同期確認が必要です。"
+        )
 
     if "ci" in scope:
-        recommendations.append("CI関連差分は事前に post-commit + テストパイプラインを実行して再現性を担保してください。")
+        recommendations.append("CI と post-commit チェックを実行して再現性を担保してください。")
 
     severity = "low"
     if risk == "high":
         severity = "critical"
     elif risk == "medium":
         severity = "medium"
-    else:
-        severity = "low"
 
     return ReviewResult(
         commit=commit,
