@@ -10,6 +10,19 @@ from fastapi.templating import Jinja2Templates
 from services import core
 
 ARCHIVE_SNAPSHOT_RE = re.compile(r"^\d{8}_\d{6}$")
+DEFAULT_SIDEBAR_LINKS = [
+    {"href": "/", "label": "Dashboard", "tab": "wizard"},
+    {"href": "/status", "label": "Status", "tab": "status"},
+    {"href": "/errors", "label": "Errors", "tab": "errors"},
+    {"href": "/workspace", "label": "Workspace", "tab": "workspace"},
+]
+
+
+def _dashboard_context(active_tab: str) -> dict[str, object]:
+    return {
+        "active_tab": active_tab,
+        "sidebar_links": DEFAULT_SIDEBAR_LINKS,
+    }
 
 
 def create_pages_router(templates: Jinja2Templates) -> APIRouter:
@@ -22,9 +35,9 @@ def create_pages_router(templates: Jinja2Templates) -> APIRouter:
             request,
             "index.html",
             {
+                **_dashboard_context("wizard"),
                 "defaults": defaults,
                 "ax_home": str(core._ax_home()),
-                "active_tab": "wizard",
             },
         )
 
@@ -50,13 +63,13 @@ def create_pages_router(templates: Jinja2Templates) -> APIRouter:
             request,
             "status.html",
             {
+                **_dashboard_context("status"),
                 "artifacts": artifacts,
                 "archive_history": archive_history,
                 "latest_job": latest_job,
                 "latest_job_ym": latest_job_ym,
                 "running_job": running_job,
                 "ax_home": str(core._ax_home()),
-                "active_tab": "status",
             },
         )
 
@@ -66,8 +79,8 @@ def create_pages_router(templates: Jinja2Templates) -> APIRouter:
             request,
             "workspace.html",
             {
+                **_dashboard_context("workspace"),
                 "ax_home": str(core._ax_home()),
-                "active_tab": "workspace",
             },
         )
 
@@ -77,8 +90,8 @@ def create_pages_router(templates: Jinja2Templates) -> APIRouter:
             request,
             "errors.html",
             {
+                **_dashboard_context("errors"),
                 "ax_home": str(core._ax_home()),
-                "active_tab": "errors",
             },
         )
 
@@ -141,6 +154,7 @@ def create_pages_router(templates: Jinja2Templates) -> APIRouter:
             request,
             "run.html",
             {
+                **_dashboard_context("status"),
                 "ym": ym,
                 "counts": merged_counts,
                 "rows": rows[:50],
@@ -193,6 +207,7 @@ def create_pages_router(templates: Jinja2Templates) -> APIRouter:
             request,
             "excluded_pdfs.html",
             {
+                **_dashboard_context("status"),
                 "ym": ym,
                 "rows": rows,
                 "total": len(rows),
@@ -222,6 +237,7 @@ def create_pages_router(templates: Jinja2Templates) -> APIRouter:
             request,
             "archive_receipts.html",
             {
+                **_dashboard_context("status"),
                 "ym": ym,
                 "rows": archive_data.get("rows") if isinstance(archive_data.get("rows"), list) else [],
                 "snapshots": archive_data.get("snapshots") if isinstance(archive_data.get("snapshots"), list) else [],

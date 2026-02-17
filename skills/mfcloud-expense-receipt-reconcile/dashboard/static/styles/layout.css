@@ -5,6 +5,85 @@
   animation: fadeIn var(--motion-duration-slow) var(--motion-easing-decelerate);
 }
 
+.dashboard-shell {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  gap: 22px;
+  align-items: start;
+}
+
+.dashboard-sidebar {
+  position: sticky;
+  top: 24px;
+  align-self: start;
+  background: rgb(var(--surface-1));
+  border: 1px solid rgb(var(--semantic-field-border-default));
+  border-radius: 20px;
+  box-shadow: var(--shadow);
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-height: fit-content;
+}
+
+.dashboard-sidebar-title {
+  margin: 0 2px 6px;
+  color: rgb(var(--text-secondary));
+  font-size: 13px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.dashboard-sidebar-nav {
+  display: grid;
+  gap: 8px;
+}
+
+.dashboard-sidebar-link {
+  display: block;
+  text-decoration: none;
+  color: rgb(var(--text-secondary));
+  border: 1px solid rgb(var(--semantic-field-border-default));
+  border-radius: 12px;
+  padding: 10px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  background: rgb(var(--surface-2));
+  transition: background var(--transition-fast), border-color var(--transition-fast), color var(--transition-fast);
+}
+
+.dashboard-sidebar-link:hover {
+  background: rgb(var(--semantic-interaction-hover-overlay));
+  color: rgb(var(--text-default));
+}
+
+.dashboard-sidebar-link.is-active {
+  border-color: rgb(var(--semantic-button-primary-bg));
+  background: rgb(var(--semantic-button-primary-bg));
+  color: rgb(var(--semantic-button-primary-text));
+}
+
+.dashboard-main-content {
+  display: block;
+  min-width: 0;
+}
+
+.dashboard-sidebar-section {
+  margin-top: 10px;
+  padding-top: 12px;
+  border-top: 1px solid rgb(var(--semantic-field-border-default));
+  display: grid;
+  gap: 10px;
+}
+
+.dashboard-sidebar-section-title {
+  font-size: 12px;
+  color: rgb(var(--text-secondary));
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
 .hero {
   display: flex;
   justify-content: space-between;
@@ -54,6 +133,21 @@ h1 {
   background: rgb(var(--surface-1));
   border: 1px solid rgb(var(--semantic-field-border-default));
   box-shadow: var(--shadow-md);
+}
+
+.dashboard-sidebar .theme-toggle {
+  width: 100%;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  border-radius: 12px;
+  padding: 6px;
+}
+
+.dashboard-sidebar .theme-toggle-button {
+  width: 100%;
+  justify-content: center;
+  padding: 8px 6px;
 }
 
 .theme-toggle-button {
@@ -175,6 +269,10 @@ h1 {
 }
 
 @media (max-width: 720px) {
+  .dashboard-shell {
+    grid-template-columns: 1fr;
+  }
+
   .hero {
     flex-direction: column;
   }

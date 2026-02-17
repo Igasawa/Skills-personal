@@ -7,16 +7,16 @@
     <link rel="stylesheet" href="/static/styles.css" />
   </head>
   <body>
-    <div class="page">
+    <div
+      class="page"
+      data-active-tab="{{ active_tab | default('status', true) }}"
+      data-sidebar-links='{{ (sidebar_links | default([], true)) | tojson }}'
+    >
       <header class="hero">
         <div>
           <p class="eyebrow">経費精算ダッシュボード</p>
           <h1>{{ ym }}</h1>
           <p class="subtitle">成果物の確認と除外・印刷（完了記録まで）の確定を行います。</p>
-        </div>
-        <div class="hero-meta">
-          <a class="pill" href="/">ダッシュボードへ戻る</a>
-        </div>
       </header>
 
       <section class="grid two">
@@ -344,6 +344,3 @@
     <script src="/static/js/run.js"></script>
   </body>
 </html>
-
-
-

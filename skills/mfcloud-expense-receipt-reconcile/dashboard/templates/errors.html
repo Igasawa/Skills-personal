@@ -7,20 +7,16 @@
     <link rel="stylesheet" href="/static/styles.css" />
   </head>
   <body>
-    <div class="page errors-page">
+    <div
+      class="page errors-page"
+      data-active-tab="{{ active_tab | default('errors', true) }}"
+      data-sidebar-links='{{ (sidebar_links | default([], true)) | tojson }}'
+    >
       <header class="hero">
         <div>
           <p class="eyebrow">Error Incident Management</p>
           <h1>Error Center</h1>
           <p class="subtitle">失敗ログの確認、修正計画、GO実行、アーカイブをこの画面で行います。</p>
-        </div>
-        <div class="hero-meta">
-          <div class="hero-tabs">
-            <a class="pill" href="/">ウィザード</a>
-            <a class="pill" href="/status">実行状況</a>
-            <a class="pill is-active" href="/errors">Errors</a>
-            <a class="pill" href="/workspace">Workspace</a>
-          </div>
         </div>
       </header>
 

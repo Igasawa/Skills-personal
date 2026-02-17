@@ -7,6 +7,12 @@
   const THEME_SYSTEM = "system";
   const THEME_VALUES = new Set([THEME_LIGHT, THEME_DARK]);
   const THEME_SELECTION_VALUES = new Set([THEME_LIGHT, THEME_DARK, THEME_SYSTEM]);
+  const DEFAULT_DASHBOARD_SIDEBAR_LINKS = Object.freeze([
+    { href: "/", label: "Dashboard", tab: "wizard" },
+    { href: "/status", label: "Status", tab: "status" },
+    { href: "/errors", label: "Errors", tab: "errors" },
+    { href: "/workspace", label: "Workspace", tab: "workspace" },
+  ]);
   let currentThemeSelection = THEME_SYSTEM;
 
   function showToast(message, type = "info") {
@@ -150,10 +156,96 @@
   }
 
   function mountThemeToggle() {
-    document.querySelectorAll(".hero-meta").forEach((heroMeta) => {
-      if (heroMeta.querySelector(".theme-toggle")) return;
-      heroMeta.insertAdjacentElement("afterbegin", buildThemeToggle());
+    const sidebar = document.querySelector(".dashboard-sidebar");
+    if (!sidebar || sidebar.querySelector(".theme-toggle")) return;
+
+    const section = document.createElement("div");
+    section.className = "dashboard-sidebar-section";
+
+    const heading = document.createElement("div");
+    heading.className = "dashboard-sidebar-section-title";
+    heading.textContent = "Theme";
+    section.appendChild(heading);
+
+    section.appendChild(buildThemeToggle());
+    sidebar.appendChild(section);
+    updateThemeToggleState(currentThemeSelection);
+  }
+
+  function getSidebarConfig() {
+    const page = document.querySelector(".page");
+    if (!page) return DEFAULT_DASHBOARD_SIDEBAR_LINKS;
+    const raw = page.dataset.sidebarLinks;
+    if (!raw) return DEFAULT_DASHBOARD_SIDEBAR_LINKS;
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+    } catch (_error) {
+      // Keep defaults when custom links are missing or malformed.
+    }
+    return DEFAULT_DASHBOARD_SIDEBAR_LINKS;
+  }
+
+  function getActiveDashboardTab(pathname) {
+    const normalized = (pathname || "").replace(/\/+$/, "");
+    if (!normalized || normalized === "/") return "wizard";
+    if (normalized === "/status") return "status";
+    if (normalized === "/errors") return "errors";
+    if (normalized === "/workspace") return "workspace";
+    if (normalized.startsWith("/runs/")) return "status";
+    if (normalized.startsWith("/files/")) return "status";
+    return "wizard";
+  }
+
+  function buildDashboardSidebar() {
+    const page = document.querySelector(".page");
+    const activeTab = page?.dataset?.activeTab || getActiveDashboardTab(window.location.pathname);
+    const links = getSidebarConfig();
+
+    const sidebar = document.createElement("aside");
+    sidebar.className = "dashboard-sidebar";
+    sidebar.setAttribute("aria-label", "Dashboard navigation");
+
+    const nav = document.createElement("nav");
+    nav.className = "dashboard-sidebar-nav";
+    const title = document.createElement("div");
+    title.className = "dashboard-sidebar-title";
+    title.textContent = "MF Expense";
+    sidebar.appendChild(title);
+
+    links.forEach((linkConfig) => {
+      const item = document.createElement("a");
+      item.href = linkConfig.href;
+      item.className = "dashboard-sidebar-link";
+      item.textContent = linkConfig.label;
+      if (linkConfig.tab === activeTab) {
+        item.classList.add("is-active");
+        item.setAttribute("aria-current", "page");
+      }
+      nav.appendChild(item);
     });
+    sidebar.appendChild(nav);
+    return sidebar;
+  }
+
+  function mountDashboardSidebar() {
+    const page = document.querySelector(".page");
+    if (!page || page.querySelector(".dashboard-shell")) return;
+    if (!page.children.length) return;
+
+    const sidebar = buildDashboardSidebar();
+    const mainContent = document.createElement("div");
+    mainContent.className = "dashboard-main-content";
+
+    while (page.firstChild) {
+      mainContent.appendChild(page.firstChild);
+    }
+
+    const shell = document.createElement("div");
+    shell.className = "dashboard-shell";
+    shell.appendChild(sidebar);
+    shell.appendChild(mainContent);
+    page.appendChild(shell);
   }
 
   function bindSystemThemeSync() {
@@ -175,12 +267,12 @@
 
   function initThemeToggle() {
     applyTheme(readStoredTheme());
-    mountThemeToggle();
-    updateThemeToggleState(currentThemeSelection);
     bindSystemThemeSync();
   }
 
   initThemeToggle();
+  mountDashboardSidebar();
+  mountThemeToggle();
 
   window.DashboardCommon = {
     applyTheme,

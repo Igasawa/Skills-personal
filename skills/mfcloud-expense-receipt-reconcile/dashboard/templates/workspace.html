@@ -7,7 +7,11 @@
     <link rel="stylesheet" href="/static/styles.css" />
   </head>
   <body>
-    <div class="page workspace-page">
+    <div
+      class="page workspace-page"
+      data-active-tab="{{ active_tab | default('workspace', true) }}"
+      data-sidebar-links='{{ (sidebar_links | default([], true)) | tojson }}'
+    >
       <header class="hero">
         <div>
           <p class="eyebrow">作業スペース</p>
@@ -15,14 +19,6 @@
           <p class="subtitle">
             必要なリンクとエージェント向けのプロンプトをまとめて管理します。設定内容はこのブラウザだけでなく共有保存されます。
           </p>
-        </div>
-        <div class="hero-meta">
-          <div class="hero-tabs">
-            <a class="pill" href="/">ウィザード</a>
-            <a class="pill" href="/status">実行状況</a>
-            <a class="pill" href="/errors">Errors</a>
-            <a class="pill is-active" href="/workspace">Workspace</a>
-          </div>
         </div>
       </header>
 

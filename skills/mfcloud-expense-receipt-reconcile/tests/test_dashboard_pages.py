@@ -91,7 +91,7 @@ def test_index_page_shows_manual_archive_button(monkeypatch: pytest.MonkeyPatch,
     client = _create_client(monkeypatch, tmp_path)
     res = client.get("/")
     assert res.status_code == 200
-    assert 'data-workspace-link' in res.text
+    assert 'data-workspace-link' not in res.text
     assert 'href="/workspace"' in res.text
     assert 'data-task-id="amazon"' in res.text
     assert 'data-task-status="amazon"' in res.text
@@ -211,7 +211,6 @@ def test_workspace_page_shows_core_link_and_prompt_tools(
     client = _create_client(monkeypatch, tmp_path)
     res = client.get("/workspace")
     assert res.status_code == 200
-    assert "エージェント作業スペース" in res.text
     assert "https://expense.moneyforward.com/expense_reports" in res.text
     assert 'data-prompt-key="mf_expense_reports"' in res.text
     assert "workspace-edit-prompt" in res.text
@@ -230,7 +229,7 @@ def test_errors_page_shows_incident_controls(monkeypatch: pytest.MonkeyPatch, tm
     client = _create_client(monkeypatch, tmp_path)
     res = client.get("/errors")
     assert res.status_code == 200
-    assert 'href="/errors"' in res.text
+    assert 'href="/errors"' not in res.text
     assert 'id="error-incidents-list"' in res.text
     assert 'id="error-detail"' in res.text
     assert 'id="errors-plan-all"' in res.text

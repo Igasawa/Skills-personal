@@ -7,7 +7,11 @@
     <link rel="stylesheet" href="/static/styles.css" />
   </head>
   <body>
-    <div class="page">
+    <div
+      class="page"
+      data-active-tab="{{ active_tab | default('wizard', true) }}"
+      data-sidebar-links='{{ (sidebar_links | default([], true)) | tojson }}'
+    >
       <header class="hero">
         <div>
           <p class="eyebrow">MF経費精算 / Amazon / 楽天</p>
@@ -15,14 +19,6 @@
           <p class="subtitle">
             成果物の確認と実行をまとめて管理します。ローカル専用（127.0.0.1）。
           </p>
-        </div>
-        <div class="hero-meta">
-          <div class="hero-tabs">
-            <a class="pill is-active" href="/">ウィザード</a>
-            <a class="pill" href="/status">実行状況</a>
-            <a class="pill" href="/errors">Errors</a>
-            <a class="pill" href="/workspace" data-workspace-link>Workspace</a>
-          </div>
         </div>
       </header>
 
