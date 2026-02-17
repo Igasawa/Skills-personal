@@ -5,6 +5,7 @@
   const toFriendlyMessage = Common.toFriendlyMessage || ((text) => String(text || ""));
   const bindCopyButtons = Common.bindCopyButtons || (() => {});
 
+  const pageEl = document.querySelector(".page");
   const form = document.getElementById("run-form");
   const logEl = document.getElementById("run-log");
   const errorBox = document.getElementById("error-box");
@@ -56,6 +57,21 @@
     return { year, month, ym: `${year.toString().padStart(4, "0")}-${String(month).padStart(2, "0")}` };
   }
 
+  function parseWorkflowTemplate(page) {
+    if (!page) return null;
+    const raw = String(page.dataset.workflowTemplate || "").trim();
+    if (!raw) return null;
+    try {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === "object") return parsed;
+    } catch {
+      // Ignore malformed metadata.
+    }
+    return null;
+  }
+
+  const workflowTemplate = parseWorkflowTemplate(pageEl);
+
   function readYmFromQueryString() {
     if (typeof window === "undefined") return "";
     try {
@@ -101,7 +117,13 @@
   function restoreYmSelection() {
     if (!form) return;
     const queryYm = readYmFromQueryString();
-    const savedYm = queryYm || readYmFromLocalStorage();
+    const templateYm =
+      workflowTemplate &&
+      Number.parseInt(String(workflowTemplate.year || 0), 10) &&
+      Number.parseInt(String(workflowTemplate.month || 0), 10)
+        ? normalizeYm(workflowTemplate.year, workflowTemplate.month)
+        : "";
+    const savedYm = queryYm || templateYm || readYmFromLocalStorage();
     if (savedYm) setYmToForm(savedYm);
     persistYmSelection(getYmFromForm());
   }
@@ -344,6 +366,81 @@
       auto_receipt_name: true,
       mode,
     };
+  }
+
+  function buildTemplatePayload() {
+    if (!form) return null;
+    const nameEl = form.querySelector("[name=template_name]");
+    const yearEl = form.querySelector("[name=year]");
+    const monthEl = form.querySelector("[name=month]");
+    const mfcloudEl = form.querySelector("[name=mfcloud_url]");
+    const notesEl = form.querySelector("[name=notes]");
+    const rakutenOrdersEl = form.querySelector("[name=rakuten_orders_url]");
+    const templateIdEl = form.querySelector("[name=template_id]");
+    const name = String(nameEl?.value || "").trim();
+    return {
+      template_id: String(templateIdEl?.value || "").trim(),
+      name,
+      year: Number(yearEl?.value || 0),
+      month: Number(monthEl?.value || 0),
+      mfcloud_url: String(mfcloudEl?.value || "").trim(),
+      notes: String(notesEl?.value || "").trim(),
+      rakuten_orders_url: String(rakutenOrdersEl?.value || "").trim(),
+    };
+  }
+
+  async function saveWorkflowTemplate() {
+    if (!form) return;
+    const payload = buildTemplatePayload();
+    if (!payload) return;
+    if (!payload.name) {
+      const message = "テンプレート名を入力してください。";
+      showToast(message, "error");
+      return;
+    }
+    if (!payload.year || !payload.month || !payload.mfcloud_url) {
+      const message = "年・月・MF Cloud URLは必須です。";
+      showToast(message, "error");
+      return;
+    }
+
+    const saveButton = document.getElementById("workflow-template-save");
+    if (saveButton) saveButton.disabled = true;
+    clearError();
+
+    try {
+      const res = await fetch("/api/workflow-templates", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const message = toFriendlyMessage(data.detail);
+        showError(message);
+        showToast(message, "error");
+        return;
+      }
+
+      const template = data.template || null;
+      const templateId = String(template?.id || payload.template_id || "").trim();
+      const year = Number(payload.year || 0);
+      const month = Number(payload.month || 0);
+      const templateNameEl = form.querySelector("[name=template_id]");
+      if (templateNameEl && templateId) {
+        templateNameEl.value = templateId;
+      }
+      if (templateNameEl && templateId && year && month) {
+        window.location.href = `/expense-workflow-copy?template=${encodeURIComponent(templateId)}&year=${year}&month=${month}`;
+        return;
+      }
+      const message = "workflowひな形を保存しました。";
+      showToast(message, "success");
+    } catch {
+      showToast("保存に失敗しました。", "error");
+    } finally {
+      if (saveButton) saveButton.disabled = false;
+    }
   }
 
   async function startRun(mode) {
@@ -2153,6 +2250,11 @@
     };
     form.querySelector("[name=year]")?.addEventListener("change", handleYmChanged);
     form.querySelector("[name=month]")?.addEventListener("change", handleYmChanged);
+    const templateSaveButton = document.getElementById("workflow-template-save");
+    templateSaveButton?.addEventListener("click", (event) => {
+      event.preventDefault();
+      saveWorkflowTemplate();
+    });
 
     restoreYmSelection();
     const initialYm = getYmFromForm();

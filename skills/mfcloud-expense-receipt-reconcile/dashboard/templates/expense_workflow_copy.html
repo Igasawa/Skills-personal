@@ -11,16 +11,57 @@
       class="page workflow-copy-page"
       data-active-tab="{{ active_tab | default('wizard-copy', true) }}"
       data-sidebar-links='{{ (sidebar_links | default([], true)) | tojson }}'
+      data-workflow-template='{{ (workflow_template | default({}, true)) | tojson }}'
     >
       <header class="hero">
         <div>
           <p class="eyebrow">Amazon / 楽天</p>
           <h1>workflow：経費精算（複製）</h1>
           <p class="subtitle">
-            この画面は複製して、将来のワークフロー雛形として再利用するためのテンプレート元です。
+            この画面は、複製して将来のワークフロー雛形として再利用するためのテンプレート元です。
           </p>
         </div>
       </header>
+
+      <section class="card">
+        <h2>workflowひな形設定</h2>
+        <form id="run-form" class="form">
+          <input type="hidden" name="template_id" value="{{ workflow_template.id | default('', true) }}" />
+          <div class="form-row">
+            <label>
+              ひな形名
+              <input
+                type="text"
+                name="template_name"
+                value="{{ workflow_template.name | default('', true) }}"
+                placeholder="例: 12月分"
+                required
+              />
+            </label>
+            <label>
+              年
+              <input type="number" name="year" value="{{ defaults.year }}" min="2000" max="2100" required />
+            </label>
+            <label>
+              月
+              <input type="number" name="month" value="{{ defaults.month }}" min="1" max="12" required />
+            </label>
+          </div>
+          <label>
+            MF Cloud URL
+            <input type="url" name="mfcloud_url" value="{{ defaults.mfcloud_url }}" required />
+          </label>
+          <label>
+            備考
+            <input type="text" name="notes" value="{{ defaults.notes }}" placeholder="ひな形内で利用する補足メモを入れられます" />
+          </label>
+          <input type="hidden" name="rakuten_orders_url" value="{{ defaults.rakuten_orders_url }}" />
+          <div class="form-row">
+            <button type="button" id="workflow-template-save" class="secondary">ひな形を保存</button>
+            <span class="muted">保存するとサイドバーにリンクが追加され、再利用できます。</span>
+          </div>
+        </form>
+      </section>
 
       {% include "components/expense_workflow_card.html" %}
 

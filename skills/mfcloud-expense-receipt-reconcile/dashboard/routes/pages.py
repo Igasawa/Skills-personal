@@ -3,13 +3,15 @@ from __future__ import annotations
 from pathlib import Path
 import re
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from services import core
 
 ARCHIVE_SNAPSHOT_RE = re.compile(r"^\d{8}_\d{6}$")
+WORKFLOW_TEMPLATE_SIDEBAR_LABEL_LIMIT = 38
+WORKFLOW_TEMPLATE_SIDEBAR_LINK_LIMIT = 30
 DEFAULT_SIDEBAR_LINKS = [
     {"href": "/", "label": "workflow：経費精算", "tab": "wizard"},
     {"href": "/expense-workflow-copy", "label": "workflow：経費精算（複製）", "tab": "wizard-copy"},
@@ -19,10 +21,91 @@ DEFAULT_SIDEBAR_LINKS = [
 ]
 
 
+def _workflow_template_store() -> Path:
+    return core._artifact_root() / "_workflow_templates" / "workflow_templates.json"
+
+
+def _read_workflow_templates() -> list[dict[str, object]]:
+    raw = core._read_json(_workflow_template_store())
+    if not isinstance(raw, list):
+        return []
+
+    templates: list[dict[str, object]] = []
+    for row in raw:
+        if not isinstance(row, dict):
+            continue
+        template_id = str(row.get("id") or "").strip()
+        if not template_id:
+            continue
+        try:
+            year = int(row.get("year"))
+            month = int(row.get("month"))
+        except Exception:
+            continue
+        if not 2000 <= year <= 3000 or not 1 <= month <= 12:
+            continue
+        templates.append(
+            {
+                "id": template_id,
+                "name": str(row.get("name") or "").strip()[:WORKFLOW_TEMPLATE_SIDEBAR_LABEL_LIMIT],
+                "year": year,
+                "month": month,
+                "mfcloud_url": str(row.get("mfcloud_url") or ""),
+                "notes": str(row.get("notes") or ""),
+                "rakuten_orders_url": str(row.get("rakuten_orders_url") or ""),
+                "created_at": str(row.get("created_at") or ""),
+                "updated_at": str(row.get("updated_at") or ""),
+            }
+        )
+
+    return templates
+
+
+def _workflow_template_sidebar_links() -> list[dict[str, object]]:
+    links: list[dict[str, object]] = []
+    for template in _read_workflow_templates()[:WORKFLOW_TEMPLATE_SIDEBAR_LINK_LIMIT]:
+        template_id = str(template.get("id") or "").strip()
+        label = str(template.get("name") or "workflow template").strip()[:WORKFLOW_TEMPLATE_SIDEBAR_LABEL_LIMIT]
+        if not template_id:
+            continue
+        links.append(
+            {
+                "href": f"/expense-workflow-copy?template={template_id}",
+                "label": label,
+                "tab": "wizard-copy",
+            }
+        )
+
+    return links
+
+
+def _lookup_workflow_template(template_id: str | None) -> dict[str, object] | None:
+    if not template_id:
+        return None
+    wanted = str(template_id).strip()
+    if not wanted:
+        return None
+    for template in _read_workflow_templates():
+        if str(template.get("id")) == wanted:
+            return template
+    return None
+
+
 def _dashboard_context(active_tab: str) -> dict[str, object]:
+    links = list(DEFAULT_SIDEBAR_LINKS)
+    for link in _workflow_template_sidebar_links():
+        links.append(link)
+    deduped = []
+    seen = set()
+    for link in links:
+        href = str(link.get("href", "")).strip()
+        if href in seen:
+            continue
+        deduped.append(link)
+        seen.add(href)
     return {
         "active_tab": active_tab,
-        "sidebar_links": DEFAULT_SIDEBAR_LINKS,
+        "sidebar_links": deduped,
     }
 
 
@@ -43,14 +126,31 @@ def create_pages_router(templates: Jinja2Templates) -> APIRouter:
         )
 
     @router.get("/expense-workflow-copy", response_class=HTMLResponse)
-    def workflow_copy(request: Request) -> HTMLResponse:
+    def workflow_copy(
+        request: Request,
+        template: str | None = Query(default=None),
+    ) -> HTMLResponse:
         defaults = core._resolve_form_defaults()
+        workflow_template = _lookup_workflow_template(template)
+        if workflow_template:
+            try:
+                defaults["year"] = int(workflow_template.get("year"))
+            except Exception:
+                pass
+            try:
+                defaults["month"] = int(workflow_template.get("month"))
+            except Exception:
+                pass
+            defaults["mfcloud_url"] = str(workflow_template.get("mfcloud_url") or defaults["mfcloud_url"])
+            defaults["notes"] = str(workflow_template.get("notes") or defaults["notes"])
+            defaults["rakuten_orders_url"] = str(workflow_template.get("rakuten_orders_url") or "")
         return templates.TemplateResponse(
             request,
             "expense_workflow_copy.html",
             {
                 **_dashboard_context("wizard-copy"),
                 "defaults": defaults,
+                "workflow_template": workflow_template,
                 "ax_home": str(core._ax_home()),
             },
         )

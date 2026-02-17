@@ -9,6 +9,7 @@ import sys
 from datetime import datetime
 from pathlib import Path
 from typing import Any
+from uuid import uuid4
 from urllib.parse import urlparse
 
 from fastapi import APIRouter, HTTPException, Query, Request
@@ -44,6 +45,11 @@ def create_api_router() -> APIRouter:
     WORKSPACE_MAX_NOTE_ENTRIES = 400
     WORKSPACE_MAX_NOTE_CHARS = 4000
     WORKSPACE_DEFAULT_PROMPT_KEY = "mf_expense_reports"
+    WORKFLOW_TEMPLATE_MAX_ITEMS = 30
+    WORKFLOW_TEMPLATE_MAX_NAME_CHARS = 80
+    WORKFLOW_TEMPLATE_MAX_URL_CHARS = 2048
+    WORKFLOW_TEMPLATE_MAX_NOTES_CHARS = 4000
+    WORKFLOW_TEMPLATE_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
     ERROR_INCIDENT_ID_RE = re.compile(r"^[A-Za-z0-9._-]+$")
     GAS_WEBHOOK_TOKEN_ENV = "AX_PROVIDER_IMPORT_WEBHOOK_TOKEN"
     GAS_WEBHOOK_TOKEN_HEADER = "x-provider-import-token"
@@ -2092,6 +2098,136 @@ def create_api_router() -> APIRouter:
 
         return JSONResponse({"status": "ok", "checklist": checklist})
 
+    def _workflow_templates_path() -> Path:
+        return core._artifact_root() / "_workflow_templates" / "workflow_templates.json"
+
+    def _normalize_workflow_template_id(value: Any) -> str:
+        raw = str(value or "").strip()
+        if not raw or not WORKFLOW_TEMPLATE_ID_RE.fullmatch(raw):
+            return ""
+        return raw
+
+    def _normalize_workflow_template_name(value: Any) -> str:
+        return " ".join(str(value or "").strip().split())[:WORKFLOW_TEMPLATE_MAX_NAME_CHARS] or "workflow template"
+
+    def _normalize_workflow_template_url(value: Any) -> str:
+        raw = str(value or "").strip()
+        if not raw:
+            return ""
+        if len(raw) > WORKFLOW_TEMPLATE_MAX_URL_CHARS:
+            raw = raw[:WORKFLOW_TEMPLATE_MAX_URL_CHARS]
+        parsed = urlparse(raw)
+        if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+            return ""
+        return raw
+
+    def _normalize_workflow_template_notes(value: Any) -> str:
+        return " ".join(str(value or "").strip().split())[:WORKFLOW_TEMPLATE_MAX_NOTES_CHARS]
+
+    def _workflow_template_timestamp_now() -> str:
+        return datetime.now().isoformat(timespec="seconds")
+
+    def _read_workflow_templates() -> list[dict[str, Any]]:
+        raw = core._read_json(_workflow_templates_path())
+        if not isinstance(raw, list):
+            return []
+
+        rows: list[dict[str, Any]] = []
+        for row in raw:
+            if not isinstance(row, dict):
+                continue
+            template_id = _normalize_workflow_template_id(row.get("id"))
+            if not template_id:
+                continue
+            try:
+                year_raw = int(row.get("year", 0))
+                month_raw = int(row.get("month", 0))
+            except Exception:
+                continue
+            mfcloud_url = _normalize_workflow_template_url(row.get("mfcloud_url"))
+            if not mfcloud_url:
+                continue
+            if year_raw < 2000 or year_raw > 3000 or month_raw < 1 or month_raw > 12:
+                continue
+            rows.append(
+                {
+                    "id": template_id,
+                    "name": _normalize_workflow_template_name(row.get("name")),
+                    "year": year_raw,
+                    "month": month_raw,
+                    "mfcloud_url": mfcloud_url,
+                    "notes": _normalize_workflow_template_notes(row.get("notes")),
+                    "rakuten_orders_url": _normalize_workflow_template_url(row.get("rakuten_orders_url")),
+                    "created_at": str(row.get("created_at") or ""),
+                    "updated_at": str(row.get("updated_at") or ""),
+                }
+            )
+        rows.sort(key=lambda item: str(item.get("updated_at") or item.get("created_at") or ""), reverse=True)
+        if len(rows) > WORKFLOW_TEMPLATE_MAX_ITEMS:
+            rows = rows[:WORKFLOW_TEMPLATE_MAX_ITEMS]
+        return rows
+
+    def _write_workflow_templates(rows: list[dict[str, Any]]) -> None:
+        if len(rows) > WORKFLOW_TEMPLATE_MAX_ITEMS:
+            rows = rows[:WORKFLOW_TEMPLATE_MAX_ITEMS]
+        normalized: list[dict[str, Any]] = []
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            template_id = _normalize_workflow_template_id(row.get("id"))
+            if not template_id:
+                continue
+            year = core._safe_non_negative_int(row.get("year"), default=0)
+            month = core._safe_non_negative_int(row.get("month"), default=0)
+            mfcloud_url = _normalize_workflow_template_url(row.get("mfcloud_url"))
+            if not template_id or not mfcloud_url or not (2000 <= year <= 3000 and 1 <= month <= 12):
+                continue
+            normalized.append(
+                {
+                    "id": template_id,
+                    "name": _normalize_workflow_template_name(row.get("name")),
+                    "year": year,
+                    "month": month,
+                    "mfcloud_url": mfcloud_url,
+                    "notes": _normalize_workflow_template_notes(row.get("notes")),
+                    "rakuten_orders_url": _normalize_workflow_template_url(row.get("rakuten_orders_url")),
+                    "created_at": str(row.get("created_at") or _workflow_template_timestamp_now()),
+                    "updated_at": str(row.get("updated_at") or _workflow_template_timestamp_now()),
+                }
+            )
+        core._write_json(_workflow_templates_path(), normalized)
+
+    def _normalize_workflow_template_payload(payload: Any) -> dict[str, Any]:
+        if not isinstance(payload, dict):
+            raise HTTPException(status_code=400, detail="Request body must be a JSON object.")
+
+        template_id = _normalize_workflow_template_id(payload.get("template_id"))
+        name = _normalize_workflow_template_name(payload.get("name"))
+        mfcloud_url = _normalize_workflow_template_url(payload.get("mfcloud_url"))
+        if not mfcloud_url:
+            raise HTTPException(status_code=400, detail="MF Cloud expense list URL is required.")
+        try:
+            year = int(payload.get("year"))
+            month = int(payload.get("month"))
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail="Invalid year/month.") from exc
+        if not 1 <= month <= 12:
+            raise HTTPException(status_code=400, detail="Invalid year/month.")
+        if year < 2000 or year > 3000:
+            raise HTTPException(status_code=400, detail="Invalid year/month.")
+
+        return {
+            "id": template_id or uuid4().hex[:24],
+            "name": name,
+            "year": year,
+            "month": month,
+            "mfcloud_url": mfcloud_url,
+            "notes": _normalize_workflow_template_notes(payload.get("notes")),
+            "rakuten_orders_url": _normalize_workflow_template_url(payload.get("rakuten_orders_url")),
+            "created_at": "",
+            "updated_at": _workflow_template_timestamp_now(),
+        }
+
     @router.get("/api/workspace/state")
     def api_get_workspace_state() -> JSONResponse:
         state = _read_workspace_state()
@@ -2136,6 +2272,39 @@ def create_api_router() -> APIRouter:
         saved = _write_workspace_state(current, revision=current_revision + 1)
         return JSONResponse(
             {"status": "ok", **saved, "conflict_resolved": revision_conflict},
+            headers={"Cache-Control": "no-store"},
+        )
+
+    @router.get("/api/workflow-templates")
+    def api_get_workflow_templates() -> JSONResponse:
+        templates = _read_workflow_templates()
+        return JSONResponse(
+            {"status": "ok", "templates": templates, "count": len(templates)},
+            headers={"Cache-Control": "no-store"},
+        )
+
+    @router.post("/api/workflow-templates")
+    def api_save_workflow_template(payload: dict[str, Any]) -> JSONResponse:
+        payload = _normalize_workflow_template_payload(payload)
+        template_id = str(payload.get("id") or "")
+        existing = _read_workflow_templates()
+        updated = False
+        for index, template in enumerate(existing):
+            if str(template.get("id")) == template_id:
+                payload["created_at"] = str(template.get("created_at") or _workflow_template_timestamp_now())
+                existing[index] = dict(template, **payload)
+                updated = True
+                break
+
+        if not updated:
+            payload["created_at"] = _workflow_template_timestamp_now()
+            existing.append(payload)
+
+        existing.sort(key=lambda row: str(row.get("updated_at") or row.get("created_at") or ""), reverse=True)
+        _write_workflow_templates(existing)
+
+        return JSONResponse(
+            {"status": "ok", "template": payload, "count": len(existing)},
             headers={"Cache-Control": "no-store"},
         )
 

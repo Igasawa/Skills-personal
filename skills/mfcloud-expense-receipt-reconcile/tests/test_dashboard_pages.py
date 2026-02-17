@@ -173,7 +173,11 @@ def test_expense_workflow_copy_page_shows_shared_wizard(monkeypatch: pytest.Monk
     res = client.get("/expense-workflow-copy")
     assert res.status_code == 200
     assert 'id="wizard"' in res.text
-    assert 'id="run-form"' not in res.text
+    assert 'id="run-form"' in res.text
+    assert 'name="template_name"' in res.text
+    assert 'name="template_id"' in res.text
+    assert 'id="workflow-template-save"' in res.text
+    assert "data-workflow-template" in res.text
     assert 'id="step-0"' in res.text
     assert 'id="step-1"' in res.text
     assert 'id="step-2"' in res.text
