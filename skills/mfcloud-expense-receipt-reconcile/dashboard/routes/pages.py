@@ -12,6 +12,7 @@ from services import core
 ARCHIVE_SNAPSHOT_RE = re.compile(r"^\d{8}_\d{6}$")
 DEFAULT_SIDEBAR_LINKS = [
     {"href": "/", "label": "Dashboard", "tab": "wizard"},
+    {"href": "/expense-workflow-copy", "label": "Workflow Copy", "tab": "wizard-copy"},
     {"href": "/status", "label": "Status", "tab": "status"},
     {"href": "/errors", "label": "Errors", "tab": "errors"},
     {"href": "/workspace", "label": "Workspace", "tab": "workspace"},
@@ -36,6 +37,19 @@ def create_pages_router(templates: Jinja2Templates) -> APIRouter:
             "index.html",
             {
                 **_dashboard_context("wizard"),
+                "defaults": defaults,
+                "ax_home": str(core._ax_home()),
+            },
+        )
+
+    @router.get("/expense-workflow-copy", response_class=HTMLResponse)
+    def workflow_copy(request: Request) -> HTMLResponse:
+        defaults = core._resolve_form_defaults()
+        return templates.TemplateResponse(
+            request,
+            "expense_workflow_copy.html",
+            {
+                **_dashboard_context("wizard-copy"),
                 "defaults": defaults,
                 "ax_home": str(core._ax_home()),
             },

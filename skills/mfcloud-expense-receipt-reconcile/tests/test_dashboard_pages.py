@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+import re
 
 from fastapi import FastAPI
 from fastapi.templating import Jinja2Templates
@@ -174,6 +175,25 @@ def test_index_page_shows_archive_history_links(monkeypatch: pytest.MonkeyPatch,
     assert 'class="archive-history"' in res.text
     assert 'data-archive-history-list' in res.text
     assert f"/runs/{ym}/archived-receipts" in res.text
+
+
+def test_expense_workflow_copy_page_shows_shared_wizard(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    client = _create_client(monkeypatch, tmp_path)
+    res = client.get("/expense-workflow-copy")
+    assert res.status_code == 200
+    assert 'id="wizard"' in res.text
+    assert 'id="run-form"' in res.text
+    assert 'id="step-preflight"' in res.text
+    assert 'id="step-mf-bulk-upload-task"' in res.text
+    assert 'id="step-mf-reconcile"' in res.text
+    assert 'data-provider-source-setup-guide' in res.text
+    assert "/static/js/index.js" in res.text
+    assert "/static/js/scheduler.js" in res.text
+
+    match = re.search(r"data-sidebar-links='(.*?)'", res.text)
+    assert match is not None
+    links = json.loads(match.group(1))
+    assert {"href": "/expense-workflow-copy", "label": "Workflow Copy", "tab": "wizard-copy"} in links
 
 
 def test_index_page_exposes_latest_run_status_hooks(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

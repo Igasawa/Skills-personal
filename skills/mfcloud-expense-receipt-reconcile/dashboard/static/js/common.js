@@ -189,6 +189,7 @@
   function getActiveDashboardTab(pathname) {
     const normalized = (pathname || "").replace(/\/+$/, "");
     if (!normalized || normalized === "/") return "wizard";
+    if (normalized === "/expense-workflow-copy") return "wizard-copy";
     if (normalized === "/status") return "status";
     if (normalized === "/errors") return "errors";
     if (normalized === "/workspace") return "workspace";

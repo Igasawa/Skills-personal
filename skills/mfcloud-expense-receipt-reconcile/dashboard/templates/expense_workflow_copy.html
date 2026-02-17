@@ -3,21 +3,21 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>経費精算ダッシュボード</title>
+    <title>経費精算ステップウィザード（複製）</title>
     <link rel="stylesheet" href="/static/styles.css" />
   </head>
   <body>
     <div
-      class="page"
-      data-active-tab="{{ active_tab | default('wizard', true) }}"
+      class="page workflow-copy-page"
+      data-active-tab="{{ active_tab | default('wizard-copy', true) }}"
       data-sidebar-links='{{ (sidebar_links | default([], true)) | tojson }}'
     >
       <header class="hero">
         <div>
           <p class="eyebrow">MF経費精算 / Amazon / 楽天</p>
-          <h1>経費精算ダッシュボード</h1>
+          <h1>経費精算ステップウィザード（複製）</h1>
           <p class="subtitle">
-            成果物の確認と実行をまとめて管理します。ローカル専用（127.0.0.1）。
+            既存ウィザードの複製版です。設定や手順は同一の画面構成を使って、今後の自動化拡張用に活用できます。
           </p>
         </div>
       </header>
@@ -32,3 +32,4 @@
     <script src="/static/js/scheduler.js"></script>
   </body>
 </html>
+
