@@ -2842,11 +2842,78 @@ def create_api_router() -> APIRouter:
         only_review: bool = Query(default=False),
     ) -> JSONResponse:
         requested = str(source or "auto").strip().lower()
-        if requested not in {"auto", "index", "markdown", "all", "fallback"}:
-            requested = "auto"
+        requested_source = requested if requested in {"auto", "index", "markdown", "all", "fallback"} else "auto"
+        requested = "all" if requested_source == "fallback" else requested_source
 
         requested_limit = max(1, min(int(limit), 200))
-        docs_dir = core.SKILL_ROOT.parent.parent / "docs"
+        def _resolve_kil_docs_dir() -> tuple[Path, list[dict[str, Any]]]:
+            candidate_defs: list[tuple[str, Path]] = [
+                ("skill_root/docs", core.SKILL_ROOT / "docs"),
+                ("skills/docs", core.SKILL_ROOT.parent / "docs"),
+                ("repo_root/docs", core.SKILL_ROOT.parent.parent / "docs"),
+                ("repo_parent/docs", core.SKILL_ROOT.parent.parent.parent / "docs"),
+                ("cwd/docs", Path.cwd() / "docs"),
+            ]
+
+            diagnostics: list[dict[str, Any]] = []
+            selected_dir: Path | None = None
+            first_existing_dir: Path | None = None
+
+            for label, candidate in candidate_defs:
+                exists = candidate.exists()
+                is_dir = candidate.is_dir() if exists else False
+                contains_index = False
+                contains_markdown = False
+                contains_review = False
+
+                if exists and is_dir:
+                    if first_existing_dir is None:
+                        first_existing_dir = candidate
+                    contains_index = (candidate / "AGENT_BRAIN_INDEX.jsonl").exists()
+                    contains_markdown = (candidate / "AGENT_BRAIN.md").exists()
+                    contains_review = (candidate / "AGENT_BRAIN_REVIEW.jsonl").exists()
+                    has_kil_files = contains_index or contains_markdown
+                    status = "has_kil_documents" if has_kil_files else "empty_directory"
+                    if has_kil_files and selected_dir is None:
+                        selected_dir = candidate
+                else:
+                    status = "missing" if not exists else "not_directory"
+
+                diagnostics.append(
+                    {
+                        "label": label,
+                        "path": str(candidate),
+                        "exists": bool(exists),
+                        "is_dir": bool(is_dir),
+                        "status": status,
+                        "contains_index": bool(contains_index),
+                        "contains_markdown": bool(contains_markdown),
+                        "contains_review": bool(contains_review),
+                    }
+                )
+
+            if selected_dir is None:
+                selected_dir = first_existing_dir or candidate_defs[-1][1]
+
+            resolved = str(selected_dir)
+            for entry in diagnostics:
+                if entry["path"] == resolved:
+                    if entry["status"] == "missing":
+                        entry["status"] = "selected_fallback"
+                    elif entry["status"] == "not_directory":
+                        entry["status"] = "selected_non_directory_fallback"
+                    elif entry["status"] == "empty_directory":
+                        entry["status"] = "selected_empty_directory"
+                    else:
+                        entry["status"] = "selected_kil_documents"
+                    entry["selected"] = True
+                else:
+                    entry["selected"] = False
+
+            return selected_dir, diagnostics
+
+        docs_dir, docs_dir_diagnostics = _resolve_kil_docs_dir()
+        docs_dir_candidates = [row["path"] for row in docs_dir_diagnostics]
         index_path = docs_dir / "AGENT_BRAIN_INDEX.jsonl"
         markdown_path = docs_dir / "AGENT_BRAIN.md"
         review_path = docs_dir / "AGENT_BRAIN_REVIEW.jsonl"
@@ -3368,7 +3435,7 @@ def create_api_router() -> APIRouter:
         return JSONResponse(
             {
                 "status": "ok",
-                "requested_source": requested,
+                "requested_source": requested_source,
                 "source_used": selected_source,
                 "source_counts": {
                     "index": len(index_records),
@@ -3405,6 +3472,8 @@ def create_api_router() -> APIRouter:
                     "markdown_exists": markdown_path.exists(),
                     "index_path": str(index_path),
                     "markdown_path": str(markdown_path),
+                    "docs_dir_candidates": docs_dir_candidates,
+                    "docs_dir_diagnostics": docs_dir_diagnostics,
                 },
             },
             headers={"Cache-Control": "no-store"},

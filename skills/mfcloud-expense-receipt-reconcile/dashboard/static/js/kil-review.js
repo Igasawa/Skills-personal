@@ -185,6 +185,15 @@
     const files = payload.data_files || {};
     const indexPath = String(files.index_path || "AGENT_BRAIN_INDEX.jsonl");
     const markdownPath = String(files.markdown_path || "AGENT_BRAIN.md");
+    const candidates = Array.isArray(files.docs_dir_diagnostics)
+      ? files.docs_dir_diagnostics
+      : Array.isArray(files.docs_dir_candidates)
+      ? files.docs_dir_candidates.map((path) => ({
+          path,
+          status: "legacy",
+          label: "candidate",
+        }))
+      : [];
     const indexState = files.index_exists ? "あり" : "なし";
     const mdState = files.markdown_exists ? "あり" : "なし";
 
@@ -195,6 +204,40 @@
     li2.textContent = `${markdownPath} / ${mdState}`;
     filesEl.appendChild(li1);
     filesEl.appendChild(li2);
+    const li3 = document.createElement("li");
+    const selected = candidates.find((entry) => entry.selected);
+    if (selected && selected.path) {
+      li3.textContent = `AGENT_BRAIN search target: ${selected.path} (${selected.status || "selected"})`;
+    } else {
+      li3.textContent = `AGENT_BRAIN search target: ${candidates.length ? candidates[0].path : "-"}`;
+    }
+    if (!candidates.length) {
+      li3.title = "No diagnostics for AGENT_BRAIN directory candidates.";
+    } else if (selected && typeof selected.path === "string") {
+      li3.title = selected.path;
+    } else {
+      li3.title = String(candidates.map((entry) => `${entry.label || "candidate"}: ${entry.path}`).join(" | "));
+    }
+    filesEl.appendChild(li3);
+
+    const li4 = document.createElement("li");
+    li4.textContent = "AGENT_BRAIN candidate list:";
+    filesEl.appendChild(li4);
+
+    if (!candidates.length) {
+      const liNone = document.createElement("li");
+      liNone.textContent = "-";
+      filesEl.appendChild(liNone);
+    } else {
+      candidates.forEach((candidate) => {
+        const hasFiles = candidate.contains_index || candidate.contains_markdown || candidate.contains_review ? "yes" : "no";
+        const marker = candidate.selected ? "*" : "-";
+        const status = candidate.status || "unknown";
+        const line = document.createElement("li");
+        line.textContent = `${marker} ${candidate.label || "candidate"}: ${candidate.path || "-"} / files=${hasFiles} / ${status}`;
+        filesEl.appendChild(line);
+      });
+    }
   }
 
   function riskLabel(value) {
