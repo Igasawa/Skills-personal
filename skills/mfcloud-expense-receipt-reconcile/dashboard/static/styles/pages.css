@@ -865,6 +865,36 @@
   font-weight: 700;
 }
 
+.kil-review-health-status {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.kil-review-health-status-ok {
+  color: rgb(var(--semantic-feedback-success-text));
+  background: rgb(var(--semantic-feedback-success-surface) / 0.18);
+  border-color: rgb(var(--semantic-feedback-success-surface) / 0.5);
+}
+
+.kil-review-health-status-warning {
+  color: rgb(var(--semantic-feedback-warning-text));
+  background: rgb(var(--semantic-feedback-warning-surface) / 0.18);
+  border-color: rgb(var(--semantic-feedback-warning-surface) / 0.5);
+}
+
+.kil-review-health-status-stale {
+  color: rgb(var(--semantic-feedback-warning-text));
+  background: rgb(var(--semantic-feedback-warning-surface) / 0.26);
+  border-color: rgb(var(--semantic-feedback-warning-surface) / 0.6);
+}
+
+.kil-review-health-status-stale_critical {
+  color: rgb(var(--semantic-feedback-danger-text));
+  background: rgb(var(--semantic-feedback-danger-surface) / 0.24);
+  border-color: rgb(var(--semantic-feedback-danger-surface) / 0.6);
+}
+
 .kil-review-toolbar {
   display: grid;
   gap: 12px;

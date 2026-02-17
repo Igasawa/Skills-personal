@@ -5,6 +5,7 @@
 
   const sourceSelect = document.getElementById("kil-review-source");
   const limitSelect = document.getElementById("kil-review-limit");
+  let reviewOnlySelect = document.getElementById("kil-review-only-review");
   const refreshButton = document.getElementById("kil-review-refresh");
   const statusEl = document.getElementById("kil-review-status");
   const summaryLineEl = document.getElementById("kil-review-summary-line");
@@ -17,10 +18,39 @@
   const dueSoonEl = document.getElementById("kil-review-due-soon");
   const noDeadlineEl = document.getElementById("kil-review-no-deadline");
   const generatedAtEl = document.getElementById("kil-review-generated-at");
+  const healthStatusEl = document.getElementById("kil-review-health-status");
+  const healthScoreEl = document.getElementById("kil-review-health-score");
+  const healthLagCommitsEl = document.getElementById("kil-review-health-lag-commits");
+  const healthLagDaysEl = document.getElementById("kil-review-health-lag-days");
+  const healthFallbackEl = document.getElementById("kil-review-health-fallback-ratio");
+  const healthAnalyzedAtEl = document.getElementById("kil-review-health-analyzed-at");
+  const healthAnalyzedCommitEl = document.getElementById("kil-review-health-analyzed-commit");
+  const healthMessageEl = document.getElementById("kil-review-health-message");
   const riskGridEl = document.getElementById("kil-review-risk-grid");
   const itemsEl = document.getElementById("kil-review-items");
   const emptyEl = document.getElementById("kil-review-empty");
   const filesEl = document.getElementById("kil-review-data-files");
+
+  (function ensureReviewOnlyToggle() {
+    if (reviewOnlySelect || !statusEl) {
+      return;
+    }
+
+    const container = statusEl.closest(".kil-review-toolbar-controls");
+    if (!container) {
+      return;
+    }
+
+    reviewOnlySelect = document.createElement("input");
+    reviewOnlySelect.type = "checkbox";
+    reviewOnlySelect.id = "kil-review-only-review";
+
+    const label = document.createElement("label");
+    label.className = "inline-check";
+    label.appendChild(reviewOnlySelect);
+    label.appendChild(document.createTextNode(" レビュー対象のみ"));
+    container.insertBefore(label, statusEl);
+  })();
 
   function setText(el, value) {
     if (!el) return;
@@ -36,6 +66,12 @@
     return String(value || "")
       .trim()
       .toLowerCase();
+  }
+
+  function toPercent(value) {
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed)) return "0%";
+    return `${Math.round(parsed * 100)}%`;
   }
 
   function parseDate(value) {
@@ -79,6 +115,11 @@
   }
 
   function isReviewTarget(item) {
+    const needsHumanReview = item?.needs_human_review;
+    if (typeof needsHumanReview === "boolean") {
+      return needsHumanReview;
+    }
+
     const status = deadlineStatus(item?.deadline);
     const risk = toLowerSafe(item?.risk);
     return status === "overdue" || status === "due_within_7d" || (risk && !["normal", "low", "info", "none", ""].includes(risk));
@@ -86,11 +127,14 @@
 
   function renderSummary(payload) {
     const review = payload.review || {};
+    const reviewCounts = payload.review_counts || {};
     const overdue = toInt(review.overdue, 0);
     const dueSoon = toInt(review.due_within_7d, 0);
     const noDeadline = toInt(review.no_deadline, 0);
     const total = toInt(payload.count, 0);
-    const reviewNeeded = overdue + dueSoon;
+    const humanReviewRequired = toInt(reviewCounts.human_review_required, 0);
+    const hasReviewCounts = humanReviewRequired > 0 || toInt(reviewCounts.human_review_soon, 0) > 0;
+    const reviewNeeded = hasReviewCounts ? humanReviewRequired : overdue + dueSoon;
 
     setText(sourceUsedEl, payload.source_used || payload.requested_source || "-");
     setText(countEl, total);
@@ -106,6 +150,34 @@
       const line = `要レビュー: ${reviewNeeded}件（期限超過 ${overdue}件 / 7日以内 ${dueSoon}件） / 全件 ${total}件`;
       setText(summaryLineEl, line);
     }
+  }
+
+  function renderHealth(payload) {
+    const health = payload.health || {};
+    if (!healthStatusEl || !healthScoreEl || !healthLagCommitsEl || !healthLagDaysEl || !healthFallbackEl || !healthAnalyzedAtEl || !healthAnalyzedCommitEl || !healthMessageEl) {
+      return;
+    }
+    const score = toInt(health.score, 0);
+    const statusLabel = String(health.status_label || "要確認");
+    const status = String(health.status || "warning");
+    const lagCommits = health.lag_commits;
+    const lagDays = health.lag_days;
+
+    const statusClass = `kil-review-health-status-${status}`;
+    const oldClasses = String(healthStatusEl.className || "")
+      .split(" ")
+      .filter((cls) => Boolean(cls) && !cls.startsWith("kil-review-health-status-"));
+    oldClasses.push(statusClass);
+    healthStatusEl.className = oldClasses.join(" ").trim();
+
+    setText(healthStatusEl, statusLabel);
+    setText(healthScoreEl, `${score}点`);
+    setText(healthLagCommitsEl, lagCommits == null ? "-" : String(toInt(lagCommits, 0)));
+    setText(healthLagDaysEl, lagDays == null ? "-" : `${toInt(lagDays, 0)}日`);
+    setText(healthFallbackEl, `${toPercent(health.fallback_ratio)}（${toInt(health.fallback_records, 0)}件）`);
+    setText(healthAnalyzedAtEl, health.analyzed_at || "-");
+    setText(healthAnalyzedCommitEl, health.analyzed_commit || "unknown");
+    setText(healthMessageEl, health.message || "学習状態を取得できません。");
   }
 
   function renderFiles(payload) {
@@ -172,7 +244,9 @@
   function renderItems(payload) {
     if (!itemsEl || !emptyEl) return;
     const items = Array.isArray(payload.items) ? payload.items : [];
+    const showOnlyReview = Boolean(reviewOnlySelect && reviewOnlySelect.checked);
     const reviewItems = items.filter(isReviewTarget);
+    const visibleItems = showOnlyReview ? items.filter((item) => item?.needs_human_review === true) : reviewItems;
 
     itemsEl.innerHTML = "";
     if (!items.length) {
@@ -180,7 +254,7 @@
       setText(emptyEl, "データがありません");
       return;
     }
-    if (!reviewItems.length) {
+    if (!visibleItems.length) {
       emptyEl.classList.remove("hidden");
       setText(emptyEl, "要レビュー対象はありません（設定を見直してください）");
       return;
@@ -188,7 +262,7 @@
 
     emptyEl.classList.add("hidden");
 
-    reviewItems.forEach((item) => {
+    visibleItems.forEach((item) => {
       const row = document.createElement("li");
       row.className = "kil-review-item";
 
@@ -273,6 +347,9 @@
     const source = sourceSelect.value || "auto";
     const limit = Number.parseInt(String(limitSelect.value || "20"), 10) || 20;
     const params = new URLSearchParams({ source, limit: String(limit) });
+    if (reviewOnlySelect && reviewOnlySelect.checked) {
+      params.set("only_review", "1");
+    }
 
     setBusy(true);
     setText(statusEl, "取得中...");
@@ -287,6 +364,7 @@
       const payload = await res.json().catch(() => ({}));
 
       renderSummary(payload || {});
+      renderHealth(payload || {});
       renderFiles(payload || {});
       renderRisk(payload || {});
       renderItems(payload || {});
@@ -317,6 +395,12 @@
 
   if (limitSelect) {
     limitSelect.addEventListener("change", () => {
+      void fetchKilReview();
+    });
+  }
+
+  if (reviewOnlySelect) {
+    reviewOnlySelect.addEventListener("change", () => {
       void fetchKilReview();
     });
   }

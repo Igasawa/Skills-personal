@@ -2839,6 +2839,7 @@ def create_api_router() -> APIRouter:
     def api_get_kil_review(
         source: str = Query(default="auto"),
         limit: int = Query(default=20, ge=1, le=200),
+        only_review: bool = Query(default=False),
     ) -> JSONResponse:
         requested = str(source or "auto").strip().lower()
         if requested not in {"auto", "index", "markdown", "all", "fallback"}:
@@ -2848,6 +2849,7 @@ def create_api_router() -> APIRouter:
         docs_dir = core.SKILL_ROOT.parent.parent / "docs"
         index_path = docs_dir / "AGENT_BRAIN_INDEX.jsonl"
         markdown_path = docs_dir / "AGENT_BRAIN.md"
+        review_path = docs_dir / "AGENT_BRAIN_REVIEW.jsonl"
         today = datetime.now().date()
 
         def _safe_read_text(path: Path) -> str:
@@ -3101,6 +3103,134 @@ def create_api_router() -> APIRouter:
                     records.append(record)
             return records
 
+        def _read_review_records() -> dict[str, dict[str, object]]:
+            if not review_path.exists():
+                return {}
+
+            review_by_commit: dict[str, dict[str, object]] = {}
+            for row in core._read_jsonl(review_path):
+                if not isinstance(row, dict):
+                    continue
+                commit = _as_str(row.get("commit"))
+                if not commit:
+                    continue
+                review_by_commit[commit] = {
+                    "needs_human_review": bool(row.get("needs_human_review", False)),
+                    "needs_soon": bool(row.get("needs_soon", False)),
+                    "review_severity": _as_str(
+                        row.get("severity") or row.get("risk") or row.get("severity")
+                    ),
+                    "review_issues": (
+                        row.get("issues")
+                        if isinstance(row.get("issues"), list)
+                        else []
+                    ),
+                    "review_recommendations": (
+                        row.get("recommendations")
+                        if isinstance(row.get("recommendations"), list)
+                        else []
+                    ),
+                }
+            return review_by_commit
+
+        def _apply_review_metadata(
+            row: dict[str, object],
+            review_by_commit: dict[str, dict[str, object]],
+        ) -> None:
+            if not isinstance(row, dict):
+                return
+            commit = _as_str(row.get("commit"))
+            if not commit:
+                return
+            review = review_by_commit.get(commit)
+            if not isinstance(review, dict):
+                return
+            row["needs_human_review"] = review.get("needs_human_review", False)
+            row["needs_soon"] = review.get("needs_soon", False)
+            row["review_severity"] = review.get("review_severity", "")
+            row["review_issues"] = review.get("review_issues", [])
+            row["review_recommendations"] = review.get("review_recommendations", [])
+
+        def _run_git_command(args: list[str], *, timeout_seconds: int = 3) -> tuple[str | None, int]:
+            cmd = ["git", *args]
+            try:
+                result = subprocess.run(
+                    cmd,
+                    cwd=str(core.SKILL_ROOT),
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                    timeout=max(1, int(timeout_seconds)),
+                )
+            except Exception:
+                return None, -1
+            output = str(result.stdout or "").strip()
+            return (output or None), int(result.returncode)
+
+        def _git_head_commit() -> str | None:
+            output, code = _run_git_command(["rev-parse", "HEAD"])
+            if code != 0 or not output:
+                return None
+            return output.splitlines()[0].strip()
+
+        def _git_lag_commits(base_commit: str | None) -> int | None:
+            commit = _as_str(base_commit)
+            if not commit:
+                return None
+            output, code = _run_git_command(["rev-list", "--count", f"{commit}..HEAD"], timeout_seconds=3)
+            if code != 0 or not output:
+                return None
+            try:
+                return max(0, int(output.splitlines()[0].strip()))
+            except Exception:
+                return None
+
+        def _to_datetime_value(value: object) -> datetime | None:
+            text = _as_str(value)
+            if not text:
+                return None
+            try:
+                return datetime.fromisoformat(text)
+            except Exception:
+                pass
+            for fmt in ("%Y-%m-%d", "%Y/%m/%d"):
+                try:
+                    return datetime.strptime(text, fmt)
+                except Exception:
+                    continue
+            fallback = _to_date(text)
+            if not fallback:
+                return None
+            try:
+                return datetime.fromisoformat(fallback)
+            except Exception:
+                return None
+
+        def _latest_index_entry(
+            rows: list[dict[str, object]],
+        ) -> tuple[dict[str, object] | None, str | None, str | None]:
+            latest_record: dict[str, object] | None = None
+            latest_dt: datetime | None = None
+            latest_commit: str | None = None
+            latest_date_text: str | None = None
+            for row in rows:
+                if not isinstance(row, dict):
+                    continue
+                candidate = _to_datetime_value(row.get("date"))
+                if candidate is None:
+                    continue
+                if latest_dt is None or candidate > latest_dt:
+                    latest_dt = candidate
+                    latest_record = row
+                    latest_commit = _as_str(row.get("commit"))
+                    latest_date_text = _to_date(row.get("date")) or _as_str(row.get("date"))
+            if latest_record is None and rows:
+                fallback = rows[0]
+                latest_record = fallback
+                latest_commit = _as_str(fallback.get("commit"))
+                latest_date_text = _to_date(fallback.get("date")) or _as_str(fallback.get("date"))
+            return latest_record, latest_commit, latest_date_text
+
         def _dedupe_items(items: list[dict[str, object]]) -> list[dict[str, object]]:
             out: list[dict[str, object]] = []
             seen: set[str] = set()
@@ -3116,6 +3246,12 @@ def create_api_router() -> APIRouter:
 
         index_records = _read_index_records()
         markdown_records = _read_markdown_records()
+        review_records = _read_review_records()
+
+        for row in index_records:
+            _apply_review_metadata(row, review_records)
+        for row in markdown_records:
+            _apply_review_metadata(row, review_records)
 
         if requested == "index":
             selected_source = "index"
@@ -3137,6 +3273,9 @@ def create_api_router() -> APIRouter:
                 selected_source = "none"
                 rows = []
 
+        if only_review:
+            rows = [row for row in rows if bool(row.get("needs_human_review", False))]
+
         rows.sort(
             key=lambda item: _to_date(item.get("date")) or "",
             reverse=True,
@@ -3145,12 +3284,86 @@ def create_api_router() -> APIRouter:
 
         risk_counts: dict[str, int] = {}
         review_status = {"overdue": 0, "due_within_7d": 0, "no_deadline": 0}
+        human_review_count = 0
+        human_review_soon_count = 0
         for item in rows:
             risk_key = _as_str(item.get("risk") or "normal").lower()
             risk_counts[risk_key] = risk_counts.get(risk_key, 0) + 1
             status, _days = _deadline_status(_as_str(item.get("deadline")))
             if status in review_status:
                 review_status[status] += 1
+            if bool(item.get("needs_human_review", False)):
+                human_review_count += 1
+            if bool(item.get("needs_soon", False)):
+                human_review_soon_count += 1
+
+        head_commit = _git_head_commit()
+        _, latest_commit, latest_record_date = _latest_index_entry(index_records)
+        analyzed_at = _to_datetime_value(latest_record_date)
+        lag_commits = _git_lag_commits(latest_commit)
+        lag_days = None if analyzed_at is None else max(0, (today - analyzed_at.date()).days)
+        is_latest = bool(head_commit and latest_commit and head_commit == latest_commit)
+
+        fallback_count = len([item for item in rows if _as_str(item.get("source")).lower() != "index"])
+        total_rows = len(rows)
+        fallback_ratio = (fallback_count / total_rows) if total_rows > 0 else 0.0
+
+        health_score = 100
+        health_alerts: list[str] = []
+        if not index_records and not markdown_records:
+            health_score = 0
+            health_alerts.append("知識データが見つかりません。post-commit実行履歴を確認してください。")
+        else:
+            if not latest_record_date:
+                health_score -= 35
+                health_alerts.append("最新コミット解析結果を特定できません。")
+            else:
+                if lag_days is None:
+                    health_score -= 15
+                    health_alerts.append("最終解析日時の取得に失敗しました。")
+                elif lag_days >= 7:
+                    health_score -= min(40, lag_days * 2)
+                    health_alerts.append(f"最新解析から{lag_days}日経過しています。")
+
+            if head_commit and latest_commit and latest_commit != head_commit:
+                if lag_commits is None:
+                    health_score -= 15
+                    health_alerts.append("HEADコミットとの差分件数を取得できません。")
+                else:
+                    health_score -= min(40, max(0, lag_commits))
+                    if lag_commits > 0:
+                        health_alerts.append(f"HEADとの差分が{lag_commits}コミットあります。")
+
+            if not index_records:
+                health_score -= 20
+                health_alerts.append("AGENT_BRAIN_INDEX.jsonlが未作成です。")
+
+            if fallback_ratio >= 0.6:
+                health_score -= 10
+                health_alerts.append("表示中の知識データがMarkdown由来が多いです。")
+
+            if review_status["overdue"] > 0:
+                overdue_penalty = min(20, review_status["overdue"] * 2)
+                health_score -= overdue_penalty
+                health_alerts.append(f"期限超過が{review_status['overdue']}件あります。")
+
+        health_score = max(0, min(100, health_score))
+        if health_score >= 85:
+            health_status = "ok"
+            health_status_label = "順調"
+        elif health_score >= 65:
+            health_status = "warning"
+            health_status_label = "要確認"
+        elif health_score >= 35:
+            health_status = "stale"
+            health_status_label = "遅れあり"
+        else:
+            health_status = "stale_critical"
+            health_status_label = "要緊急対応"
+
+        health_message = "学習は最新コミットへ追従しています。"
+        if health_alerts:
+            health_message = " / ".join(health_alerts[:3])
 
         return JSONResponse(
             {
@@ -3166,6 +3379,26 @@ def create_api_router() -> APIRouter:
                 "items": rows,
                 "risk_counts": risk_counts,
                 "review": review_status,
+                "review_counts": {
+                    "human_review_required": human_review_count,
+                    "human_review_soon": human_review_soon_count,
+                },
+                "health": {
+                    "status": health_status,
+                    "status_label": health_status_label,
+                    "message": health_message,
+                    "score": health_score,
+                    "is_latest": is_latest,
+                    "head_commit": head_commit[:12] if head_commit else None,
+                    "analyzed_commit": latest_commit[:12] if latest_commit else None,
+                    "analyzed_at": _to_date(latest_record_date) if latest_record_date else None,
+                    "lag_commits": lag_commits,
+                    "lag_days": lag_days,
+                    "fallback_records": fallback_count,
+                    "fallback_ratio": round(float(fallback_ratio), 4),
+                    "total_index_records": len(index_records),
+                    "total_markdown_records": len(markdown_records),
+                },
                 "generated_at": datetime.now().isoformat(timespec="seconds"),
                 "data_files": {
                     "index_exists": index_path.exists(),

@@ -98,6 +98,43 @@
       </section>
 
       <section class="card">
+        <div class="section-header">
+          <h2>学習ヘルス</h2>
+          <p id="kil-review-health-message" class="muted">読込中...</p>
+        </div>
+        <div class="grid two kil-review-grid" id="kil-review-health">
+          <div class="kil-review-stat">
+            <span class="label">ヘルス状態</span>
+            <span class="value kil-review-health-status" id="kil-review-health-status">-</span>
+          </div>
+          <div class="kil-review-stat">
+            <span class="label">学習スコア</span>
+            <span class="value" id="kil-review-health-score">0</span>
+          </div>
+          <div class="kil-review-stat">
+            <span class="label">HEADとの差分</span>
+            <span class="value" id="kil-review-health-lag-commits">-</span>
+          </div>
+          <div class="kil-review-stat">
+            <span class="label">最終解析から</span>
+            <span class="value" id="kil-review-health-lag-days">-</span>
+          </div>
+          <div class="kil-review-stat">
+            <span class="label">Markdown比率</span>
+            <span class="value" id="kil-review-health-fallback-ratio">-</span>
+          </div>
+          <div class="kil-review-stat">
+            <span class="label">最新解析コミット</span>
+            <span class="value" id="kil-review-health-analyzed-commit">-</span>
+          </div>
+          <div class="kil-review-stat">
+            <span class="label">最新解析日時</span>
+            <span class="value" id="kil-review-health-analyzed-at">-</span>
+          </div>
+        </div>
+      </section>
+
+      <section class="card">
         <h2>リスク分布</h2>
         <div id="kil-review-risk-grid" class="kil-review-risk-grid">
           <div class="muted">リスク情報がありません</div>
