@@ -276,7 +276,7 @@ def call_gemini(prompt: str) -> Dict[str, Any]:
     endpoint = GEMINI_ENDPOINT.format(
         model=LLM_MODEL, query=urlencode({"key": api_key})
     )
-    body = {
+    body_plain = {
         "contents": [
             {
                 "role": "user",
@@ -294,17 +294,40 @@ def call_gemini(prompt: str) -> Dict[str, Any]:
             "maxOutputTokens": 3072,
         },
     }
-    req = url_request.Request(
-        endpoint,
-        data=json.dumps(body).encode("utf-8"),
-        headers={"Content-Type": "application/json"},
-        method="POST",
-    )
+    body_json_mode = {
+        **body_plain,
+        "generationConfig": {
+            **body_plain["generationConfig"],
+            "responseMimeType": "application/json",
+        },
+    }
+
+    def do_request(payload: Dict[str, Any]) -> str:
+        req = url_request.Request(
+            endpoint,
+            data=json.dumps(payload).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        try:
+            with url_request.urlopen(req, timeout=LLM_TIMEOUT_SECONDS) as response:
+                return response.read().decode("utf-8", errors="replace")
+        except url_error.HTTPError as exc:
+            detail = ""
+            try:
+                detail = exc.read().decode("utf-8", errors="replace")
+            except Exception:
+                detail = ""
+            raise RuntimeError(
+                f"failed to call Gemini API: {exc} {detail}".strip()
+            ) from exc
+        except url_error.URLError as exc:
+            raise RuntimeError(f"failed to call Gemini API: {exc}") from exc
+
     try:
-        with url_request.urlopen(req, timeout=LLM_TIMEOUT_SECONDS) as response:
-            raw = response.read().decode("utf-8", errors="replace")
-    except url_error.URLError as exc:
-        raise RuntimeError(f"failed to call Gemini API: {exc}") from exc
+        raw = do_request(body_json_mode)
+    except RuntimeError:
+        raw = do_request(body_plain)
 
     model_response = parse_model_json(raw)
     text = extract_model_text(model_response)
