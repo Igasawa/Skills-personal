@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import re
 import threading
+import calendar
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -22,6 +23,7 @@ SCHEDULER_ALLOWED_MODES = {
     "mf_reconcile",
 }
 CATCH_UP_POLICIES = {"run_on_startup", "skip"}
+SCHEDULER_RECURRENCE = {"once", "daily", "weekly", "monthly"}
 DEFAULT_RUN_TIME = "09:00"
 SCHEDULER_POLL_SECONDS = 15
 AUTOSTART_SCRIPT_NAME = "MF_Expense_Dashboard_Autostart.cmd"
@@ -59,6 +61,7 @@ def _default_state() -> dict[str, Any]:
         "run_date": None,
         "run_time": DEFAULT_RUN_TIME,
         "catch_up_policy": "run_on_startup",
+        "recurrence": "once",
         "auth_handoff": False,
         "auto_receipt_name": True,
         "mf_draft_create": True,
@@ -90,6 +93,13 @@ def _normalize_catch_up_policy(value: Any) -> str:
     if policy in CATCH_UP_POLICIES:
         return policy
     return "run_on_startup"
+
+
+def _normalize_recurrence(value: Any) -> str:
+    recurrence = str(value or "once").strip().lower()
+    if recurrence in SCHEDULER_RECURRENCE:
+        return recurrence
+    return "once"
 
 
 def _normalize_run_date(value: Any) -> str | None:
@@ -195,6 +205,7 @@ def _normalize_state(payload: Any) -> dict[str, Any]:
     out["run_date"] = _normalize_run_date(src.get("run_date"))
     out["run_time"] = _normalize_run_time(src.get("run_time"))
     out["catch_up_policy"] = _normalize_catch_up_policy(src.get("catch_up_policy"))
+    out["recurrence"] = _normalize_recurrence(src.get("recurrence"))
     out["auth_handoff"] = bool(src.get("auth_handoff"))
     out["auto_receipt_name"] = bool(src.get("auto_receipt_name", True))
     out["mf_draft_create"] = bool(src.get("mf_draft_create", True))
@@ -239,6 +250,7 @@ def _schedule_signature(state: dict[str, Any]) -> str:
         ym,
         str(state.get("run_date") or ""),
         str(state.get("run_time") or ""),
+        str(state.get("recurrence") or "once"),
         "1" if bool(state.get("auth_handoff")) else "0",
         "1" if bool(state.get("auto_receipt_name")) else "0",
         "1" if bool(state.get("mf_draft_create")) else "0",
@@ -248,11 +260,20 @@ def _schedule_signature(state: dict[str, Any]) -> str:
     return "|".join(items)
 
 
-def _build_run_payload(state: dict[str, Any]) -> dict[str, Any]:
-    year = _as_int(state.get("year"))
-    month = _as_int(state.get("month"))
+def _scheduled_month_from_state(state: dict[str, Any], scheduled: datetime | None = None) -> tuple[int, int]:
+    if scheduled is None:
+        year = _as_int(state.get("year"))
+        month = _as_int(state.get("month"))
+    else:
+        year = scheduled.year
+        month = scheduled.month
     if year is None or month is None or month < 1 or month > 12:
         raise HTTPException(status_code=400, detail="Scheduler year/month is invalid.")
+    return year, month
+
+
+def _build_run_payload(state: dict[str, Any], *, scheduled: datetime | None = None) -> dict[str, Any]:
+    year, month = _scheduled_month_from_state(state, scheduled=scheduled)
     payload = {
         "year": year,
         "month": month,
@@ -278,6 +299,37 @@ def _validate_enabled_state(state: dict[str, Any]) -> None:
     if not _scheduled_datetime(state):
         raise HTTPException(status_code=400, detail="Scheduler run_time is invalid.")
     _build_run_payload(state)
+
+
+def _is_repeating(state: dict[str, Any]) -> bool:
+    return _normalize_recurrence(state.get("recurrence")) != "once"
+
+
+def _next_recurrence_datetime(scheduled: datetime, recurrence: str) -> datetime:
+    normalized = _normalize_recurrence(recurrence)
+    if normalized == "daily":
+        return scheduled + timedelta(days=1)
+    if normalized == "weekly":
+        return scheduled + timedelta(weeks=1)
+    if normalized == "monthly":
+        year = scheduled.year
+        month = scheduled.month + 1
+        if month > 12:
+            year += 1
+            month = 1
+        max_day = calendar.monthrange(year, month)[1]
+        day = min(scheduled.day, max_day)
+        return scheduled.replace(year=year, month=month, day=day)
+    return scheduled
+
+
+def _align_state_for_repetition(state: dict[str, Any], scheduled: datetime) -> None:
+    next_scheduled = _next_recurrence_datetime(scheduled, _normalize_recurrence(state.get("recurrence")))
+    state["enabled"] = True
+    state["year"] = next_scheduled.year
+    state["month"] = next_scheduled.month
+    state["run_date"] = next_scheduled.strftime("%Y-%m-%d")
+    state["run_time"] = next_scheduled.strftime("%H:%M")
 
 
 def _enrich_state(state: dict[str, Any]) -> dict[str, Any]:
@@ -324,7 +376,10 @@ def evaluate_once() -> dict[str, Any]:
 
         missed = scheduled < _started_at
         if missed and str(state.get("catch_up_policy")) == "skip":
-            state["enabled"] = False
+            if _is_repeating(state):
+                _align_state_for_repetition(state, scheduled)
+            else:
+                state["enabled"] = False
             state["last_triggered_signature"] = signature
             state["last_triggered_at"] = now.isoformat(timespec="seconds")
             state["last_result"] = {
@@ -341,7 +396,7 @@ def evaluate_once() -> dict[str, Any]:
             return _enrich_state(state)
 
         try:
-            run_payload = _build_run_payload(state)
+            run_payload = _build_run_payload(state, scheduled=scheduled)
             run_result = core_runs._start_run(run_payload)
         except HTTPException as exc:
             detail = str(exc.detail)
@@ -381,7 +436,10 @@ def evaluate_once() -> dict[str, Any]:
             _next_retry_at = None
             return _enrich_state(state)
 
-        state["enabled"] = False
+        if _is_repeating(state):
+            _align_state_for_repetition(state, scheduled)
+        else:
+            state["enabled"] = False
         state["last_triggered_signature"] = signature
         state["last_triggered_at"] = now.isoformat(timespec="seconds")
         state["last_result"] = {
@@ -413,6 +471,7 @@ def update_state(payload: dict[str, Any] | None) -> dict[str, Any]:
         "run_date",
         "run_time",
         "catch_up_policy",
+        "recurrence",
         "auth_handoff",
         "auto_receipt_name",
         "mf_draft_create",
@@ -448,6 +507,8 @@ def update_state(payload: dict[str, Any] | None) -> dict[str, Any]:
             state["run_time"] = _normalize_run_time(body.get("run_time"))
         if "catch_up_policy" in body:
             state["catch_up_policy"] = _normalize_catch_up_policy(body.get("catch_up_policy"))
+        if "recurrence" in body:
+            state["recurrence"] = _normalize_recurrence(body.get("recurrence"))
         if "auth_handoff" in body:
             state["auth_handoff"] = bool(body.get("auth_handoff"))
         if "auto_receipt_name" in body:

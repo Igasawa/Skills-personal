@@ -132,6 +132,7 @@ def test_index_page_shows_manual_archive_button(monkeypatch: pytest.MonkeyPatch,
     assert 'id="scheduler-run-time"' in res.text
     assert 'id="scheduler-mode"' in res.text
     assert 'id="scheduler-catch-up"' in res.text
+    assert 'id="scheduler-recurrence"' in res.text
     assert 'id="scheduler-auth-handoff"' in res.text
     assert 'id="scheduler-autostart"' in res.text
     assert 'id="scheduler-refresh"' in res.text
@@ -180,6 +181,7 @@ def test_expense_workflow_copy_page_shows_shared_wizard(monkeypatch: pytest.Monk
     assert 'id="step-4"' in res.text
     assert 'id="step-5"' in res.text
     assert 'id="step-6"' not in res.text
+    assert 'id="scheduler-recurrence"' in res.text
     assert "/static/js/index.js" in res.text
     assert "/static/js/scheduler.js" in res.text
 

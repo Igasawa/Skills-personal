@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+from datetime import datetime
 from pathlib import Path
 import subprocess
 import sys
@@ -245,12 +246,103 @@ def _provider_step_attempted_for_ym(year: int, month: int) -> bool:
     return False
 
 
+def _provider_import_last_for_ym(year: int, month: int) -> dict[str, Any]:
+    report_path = _manual_month_root_for_ym(year, month) / "manual" / "reports" / "provider_import_last.json"
+    payload = _read_json(report_path)
+    if not isinstance(payload, dict):
+        return {
+            "attempted": False,
+            "status": "",
+            "found_files": 0,
+            "found_pdfs": 0,
+            "imported": 0,
+            "imported_missing_amount": 0,
+            "skipped_duplicates": 0,
+            "failed": 0,
+            "manual_action_required": False,
+            "manual_action_reason": "",
+            "provider_filter": [],
+            "ingestion_channel": "",
+            "provider_counts": {provider: {"found": 0, "imported": 0, "skipped_duplicates": 0, "failed": 0} for provider in (*PROVIDER_KEYS, "manual")},
+            "updated_at": None,
+            "report_path": str(report_path),
+            "source_import": {},
+            "report_json": str(report_path.parent / "manual_import_last.json"),
+            "provider_report_json": str(report_path),
+        }
+
+    updated_at = None
+    try:
+        updated_at = datetime.fromtimestamp(report_path.stat().st_mtime).isoformat(timespec="seconds")
+    except Exception:
+        updated_at = None
+
+    attempted = _provider_step_attempted_for_ym(year, month)
+    found_files = int(payload.get("found_files") or 0)
+    found_pdfs = int(payload.get("found_pdfs") or 0)
+    imported = int(payload.get("imported") or 0)
+    imported_missing_amount = int(payload.get("imported_missing_amount") or 0)
+    skipped_duplicates = int(payload.get("skipped_duplicates") or 0)
+    failed = int(payload.get("failed") or 0)
+    provider_counts_payload = payload.get("provider_counts") if isinstance(payload.get("provider_counts"), dict) else {}
+    provider_counts: dict[str, dict[str, int]] = {}
+    for provider in (*PROVIDER_KEYS, "manual"):
+        raw_counts = provider_counts_payload.get(provider) if isinstance(provider_counts_payload, dict) else {}
+        provider_counts[provider] = {
+            "found": int(raw_counts.get("found") or 0) if isinstance(raw_counts, dict) else 0,
+            "imported": int(raw_counts.get("imported") or 0) if isinstance(raw_counts, dict) else 0,
+            "skipped_duplicates": int(raw_counts.get("skipped_duplicates") or 0) if isinstance(raw_counts, dict) else 0,
+            "failed": int(raw_counts.get("failed") or 0) if isinstance(raw_counts, dict) else 0,
+        }
+    provider_filter = []
+    provider_filter_payload = payload.get("provider_filter")
+    if isinstance(provider_filter_payload, list):
+        provider_filter = [str(value).strip() for value in provider_filter_payload if str(value).strip()]
+    manual_action_required = bool(payload.get("manual_action_required"))
+    if not manual_action_required and (skipped_duplicates > 0 or failed > 0):
+        manual_action_required = True
+    manual_action_reason = str(payload.get("manual_action_reason") or "").strip()
+    if not manual_action_reason:
+        if failed > 0 and skipped_duplicates > 0:
+            manual_action_reason = "skipped_and_failed"
+        elif failed > 0:
+            manual_action_reason = "failed"
+        elif skipped_duplicates > 0:
+            manual_action_reason = "skipped"
+
+    raw_status = str(payload.get("status") or "").strip().lower()
+    if not raw_status:
+        raw_status = "warning" if manual_action_required else ""
+
+    return {
+        "attempted": attempted,
+        "status": raw_status,
+        "found_files": found_files,
+        "found_pdfs": found_pdfs,
+        "imported": imported,
+        "imported_missing_amount": imported_missing_amount,
+        "skipped_duplicates": skipped_duplicates,
+        "failed": failed,
+        "manual_action_required": manual_action_required,
+        "manual_action_reason": manual_action_reason,
+        "provider_filter": provider_filter,
+        "ingestion_channel": str(payload.get("ingestion_channel") or "").strip(),
+        "provider_counts": provider_counts,
+        "updated_at": updated_at,
+        "source_import": payload.get("source_import") if isinstance(payload.get("source_import"), dict) else {},
+        "report_json": str(payload.get("report_json") or str(report_path.parent / "manual_import_last.json")),
+        "provider_report_json": str(payload.get("provider_report_json") or str(report_path)),
+        "report_path": str(report_path),
+    }
+
+
 def _provider_inbox_status_for_ym(year: int, month: int) -> dict[str, Any]:
     statuses: dict[str, dict[str, Any]] = {}
     source_status = _manual_source_dir_status(year=year, month=month)
     attempted = _provider_step_attempted_for_ym(year, month)
     shared_inbox_dir = _manual_inbox_dir_for_ym(year, month, create=True)
     pending_total = len(_iter_receipt_files(shared_inbox_dir))
+    last_import = _provider_import_last_for_ym(year, month)
     provider_pending_total = 0
     for provider in PROVIDER_KEYS:
         provider_dir = _provider_inbox_dir_for_ym(year, month, provider, create=False)
@@ -273,6 +365,7 @@ def _provider_inbox_status_for_ym(year: int, month: int) -> dict[str, Any]:
         "pending_total": pending_total,
         "source": source_status,
         "providers": statuses,
+        "last_import": last_import,
     }
 
 

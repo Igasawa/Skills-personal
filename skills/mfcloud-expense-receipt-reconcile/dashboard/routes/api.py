@@ -45,6 +45,8 @@ def create_api_router() -> APIRouter:
     WORKSPACE_MAX_NOTE_CHARS = 4000
     WORKSPACE_DEFAULT_PROMPT_KEY = "mf_expense_reports"
     ERROR_INCIDENT_ID_RE = re.compile(r"^[A-Za-z0-9._-]+$")
+    GAS_WEBHOOK_TOKEN_ENV = "AX_PROVIDER_IMPORT_WEBHOOK_TOKEN"
+    GAS_WEBHOOK_TOKEN_HEADER = "x-provider-import-token"
 
     def _actor_from_request(request: Request) -> dict[str, str]:
         ip = request.client.host if request.client else ""
@@ -74,6 +76,129 @@ def create_api_router() -> APIRouter:
         if not value or not ERROR_INCIDENT_ID_RE.fullmatch(value):
             raise HTTPException(status_code=400, detail="Invalid incident id.")
         return value
+
+    def _to_non_negative_int(value: Any, *, default: int = 0) -> int:
+        try:
+            parsed = int(value)
+        except Exception:
+            return default
+        return parsed if parsed >= 0 else 0
+
+    def _normalize_provider_filter(values: Any) -> list[str]:
+        result: list[str] = []
+        seen: set[str] = set()
+        if not isinstance(values, list):
+            return result
+        for value in values:
+            provider = str(value or "").strip().lower()
+            if not provider:
+                continue
+            if provider in core.PROVIDER_KEYS and provider not in seen:
+                result.append(provider)
+                seen.add(provider)
+        return result
+
+    def _normalize_provider_counts(values: Any) -> dict[str, dict[str, int]]:
+        raw = values if isinstance(values, dict) else {}
+        normalized: dict[str, dict[str, int]] = {}
+        for provider in (*core.PROVIDER_KEYS, "manual"):
+            row = raw.get(provider) if isinstance(raw.get(provider), dict) else {}
+            if not isinstance(row, dict):
+                row = {}
+            normalized[provider] = {
+                "found": _to_non_negative_int(row.get("found"), default=0),
+                "imported": _to_non_negative_int(row.get("imported"), default=0),
+                "imported_missing_amount": _to_non_negative_int(row.get("imported_missing_amount"), default=0),
+                "skipped_duplicates": _to_non_negative_int(row.get("skipped_duplicates"), default=0),
+                "failed": _to_non_negative_int(row.get("failed"), default=0),
+            }
+        return normalized
+
+    def _normalize_provider_import_result(payload: Any, year: int, month: int) -> dict[str, Any]:
+        if not isinstance(payload, dict):
+            raise HTTPException(status_code=400, detail="Request body must be a JSON object.")
+
+        year_month = f"{year:04d}-{month:02d}"
+        found_files = _to_non_negative_int(payload.get("found_files"), default=0)
+        found_pdfs = _to_non_negative_int(payload.get("found_pdfs"), default=found_files)
+        imported = _to_non_negative_int(payload.get("imported"), default=0)
+        imported_missing_amount = _to_non_negative_int(payload.get("imported_missing_amount"), default=0)
+        skipped_duplicates = _to_non_negative_int(payload.get("skipped_duplicates"), default=0)
+        failed = _to_non_negative_int(payload.get("failed"), default=0)
+        provider_filter = _normalize_provider_filter(payload.get("provider_filter"))
+
+        manual_action_required = bool(payload.get("manual_action_required"))
+        if not manual_action_required and (skipped_duplicates > 0 or failed > 0):
+            manual_action_required = True
+        manual_action_reason = str(payload.get("manual_action_reason") or "").strip()
+        if not manual_action_reason and manual_action_required:
+            if failed > 0 and skipped_duplicates > 0:
+                manual_action_reason = "skipped_and_failed"
+            elif failed > 0:
+                manual_action_reason = "failed"
+            else:
+                manual_action_reason = "skipped"
+
+        status = str(payload.get("status") or "").strip().lower()
+        if status in {"", "running", "pending", "unknown"}:
+            if manual_action_required:
+                status = "warning"
+            else:
+                status = "ok"
+        if status not in {"ok", "success", "warning", "failed", "error"}:
+            status = "success"
+
+        source_import = payload.get("source_import") if isinstance(payload.get("source_import"), dict) else {}
+        ingestion_channel = str(payload.get("ingestion_channel") or "provider_inbox").strip().lower()
+        report_dir = core._artifact_root() / year_month / "manual" / "reports"
+        report_json = str(payload.get("report_json") or "").strip() or str(report_dir / "manual_import_last.json")
+        provider_report_json = (
+            str(payload.get("provider_report_json") or "").strip()
+            or str(report_dir / "provider_import_last.json")
+        )
+
+        return {
+            "ym": year_month,
+            "attempted": bool(payload.get("attempted", True)),
+            "status": status,
+            "found_files": found_files,
+            "found_pdfs": found_pdfs,
+            "imported": imported,
+            "imported_missing_amount": imported_missing_amount,
+            "skipped_duplicates": skipped_duplicates,
+            "failed": failed,
+            "manual_action_required": manual_action_required,
+            "manual_action_reason": manual_action_reason,
+            "provider_filter": provider_filter,
+            "ingestion_channel": ingestion_channel,
+            "provider_counts": _normalize_provider_counts(payload.get("provider_counts")),
+            "updated_at": str(payload.get("updated_at") or "").strip() or None,
+            "source_import": source_import,
+            "report_json": report_json,
+            "provider_report_json": provider_report_json,
+            "skipped_rows": payload.get("skipped_rows") if isinstance(payload.get("skipped_rows"), list) else [],
+            "failed_rows": payload.get("failed_rows") if isinstance(payload.get("failed_rows"), list) else [],
+            "imported_rows": payload.get("imported_rows") if isinstance(payload.get("imported_rows"), list) else [],
+            "report_path": str(report_dir / "provider_import_last.json"),
+        }
+
+    def _resolve_provider_import_webhook_token(request: Request, token: str | None) -> str | None:
+        provided = str(token or "").strip()
+        if not provided:
+            provided = str(request.headers.get(GAS_WEBHOOK_TOKEN_HEADER) or "").strip()
+        if not provided:
+            auth = str(request.headers.get("authorization") or request.headers.get("Authorization") or "").strip()
+            if auth.lower().startswith("bearer "):
+                provided = auth[7:].strip()
+        return provided or None
+
+    def _validate_provider_import_webhook_token(request: Request, token: str | None = None) -> None:
+        expected = str(os.environ.get(GAS_WEBHOOK_TOKEN_ENV) or "").strip()
+        if not expected:
+            return
+        provided = _resolve_provider_import_webhook_token(request, token)
+        if not provided or provided != expected:
+            raise HTTPException(status_code=401, detail="Invalid provider import webhook token.")
 
     def _parse_ym(value: Any) -> tuple[int, int] | None:
         text = str(value or "").strip()
@@ -1439,6 +1564,54 @@ def create_api_router() -> APIRouter:
             },
         )
         return JSONResponse(result)
+
+    @router.post("/api/provider-import/{ym}/result")
+    def api_provider_import_webhook(
+        ym: str,
+        payload: dict[str, Any],
+        request: Request,
+        token: str | None = Query(default=None),
+    ) -> JSONResponse:
+        ym = core._safe_ym(ym)
+        year, month = core._split_ym(ym)
+        _validate_provider_import_webhook_token(request=request, token=token)
+        actor = _actor_from_request(request)
+
+        normalized = _normalize_provider_import_result(payload, year, month)
+        report_path = core._artifact_root() / ym / "manual" / "reports" / "provider_import_last.json"
+        report_path.parent.mkdir(parents=True, exist_ok=True)
+        core._write_json(report_path, normalized)
+
+        manual_action_required = bool(normalized.get("manual_action_required") or False)
+        failed_count = int(normalized.get("failed") or 0)
+        audit_status = "warning" if manual_action_required or failed_count > 0 else "success"
+        core._append_audit_event(
+            year=year,
+            month=month,
+            event_type="provider_ingest",
+            action="import_webhook",
+            status=audit_status,
+            actor=actor,
+            details={
+                "source": "google_apps_script",
+                "ingestion_channel": str(normalized.get("ingestion_channel") or ""),
+                "found_files": normalized.get("found_files"),
+                "imported": normalized.get("imported"),
+                "skipped_duplicates": normalized.get("skipped_duplicates"),
+                "failed": failed_count,
+                "manual_action_required": manual_action_required,
+                "manual_action_reason": str(normalized.get("manual_action_reason") or ""),
+                "report_path": str(report_path),
+            },
+        )
+        return JSONResponse(
+            {
+                "status": "ok",
+                "ym": ym,
+                "provider_report_json": str(normalized.get("provider_report_json") or report_path),
+                "report_path": str(report_path),
+            }
+        )
 
     @router.post("/api/providers/{ym}/print-run")
     def api_provider_print_run(ym: str, request: Request) -> JSONResponse:

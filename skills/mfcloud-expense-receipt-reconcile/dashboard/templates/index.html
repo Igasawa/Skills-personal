@@ -97,6 +97,15 @@
                   <option value="skip">スキップして無効化</option>
                 </select>
               </label>
+              <label>
+                繰り返し
+                <select id="scheduler-recurrence">
+                  <option value="once">1回だけ</option>
+                  <option value="daily">毎日</option>
+                  <option value="weekly">毎週</option>
+                  <option value="monthly">毎月（同日）</option>
+                </select>
+              </label>
               <label class="inline-check">
                 <input type="checkbox" id="scheduler-auth-handoff" />
                 ログイン画面を開いて実行（有人）
@@ -205,6 +214,7 @@
               </button>
               <span class="muted">自動取得されない領収書（Aqua Voice / Claude / ChatGPT / Gamma など）を共通フォルダの直下に入れて取り込みます。<a href="/workspace" target="_blank" rel="noopener noreferrer">ワークスペースを開く</a></span>
               <span class="muted" data-provider-source-summary>Provider source folder status will appear here.</span>
+              <span class="muted" data-provider-import-summary>Provider import result will appear here.</span>
               <span class="muted" data-provider-source-setup-guide hidden>
                 `AX_MANUAL_RECEIPT_SOURCE_DIR` を設定してください。<a href="#" target="_blank" rel="noopener noreferrer">セットアップ手順</a>
               </span>

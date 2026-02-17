@@ -121,3 +121,166 @@ function dailyReport() {
   generateWeeklyReport();
 }
 ```
+
+## Example 5: Monthly GAS Import + Dashboard Webhook
+
+```javascript
+const PROVIDER_IMPORT_SETTINGS = {
+  scriptProjectId: '1AjvXBW7pwKbNjWVS2QVKeYbp911Mph5xvD0OPeWHQzDh5CeWf2V-pBcs',
+  baseUrlProp: 'AX_EXPENSE_DASHBOARD_BASE_URL',
+  webhookTokenProp: 'AX_PROVIDER_IMPORT_WEBHOOK_TOKEN',
+  providers: ['aquavoice', 'claude', 'chatgpt', 'gamma'],
+};
+
+function runMonthlyProviderImportWithWebhook() {
+  const ym = getTargetYearMonthForProviderImport_();
+  const props = PropertiesService.getScriptProperties();
+  const baseUrl = String(props.getProperty(PROVIDER_IMPORT_SETTINGS.baseUrlProp) || '').trim();
+  const token = String(props.getProperty(PROVIDER_IMPORT_SETTINGS.webhookTokenProp) || '').trim();
+
+  if (!baseUrl) {
+    throw new Error('Script property AX_EXPENSE_DASHBOARD_BASE_URL is required.');
+  }
+
+  const importResult = runGmailProviderImport_(ym);
+  const payload = buildProviderImportPayload_(ym, importResult);
+  return postProviderImportResult_(baseUrl, ym, payload, token);
+}
+
+function setupMonthlyProviderImportTrigger() {
+  const fn = 'runMonthlyProviderImportWithWebhook';
+  ScriptApp.getProjectTriggers().forEach((trigger) => {
+    if (trigger.getHandlerFunction() === fn) {
+      ScriptApp.deleteTrigger(trigger);
+    }
+  });
+
+  ScriptApp.newTrigger(fn)
+    .timeBased()
+    .everyMonths(1)
+    .onMonthDay(5)
+    .atHour(4)
+    .nearMinute(0)
+    .create();
+
+  Logger.log('Monthly trigger configured: 5th day 04:00');
+}
+
+function runGmailProviderImport_(ym) {
+  // TODO: replace with your existing Gmail import flow.
+  // Return an object with fields like:
+  // {foundFiles, foundPdfs, imported, importedMissingAmount,
+  //  skippedDuplicates, failed, providerCounts, manualActionRequired, manualActionReason}
+  return {
+    foundFiles: 0,
+    foundPdfs: 0,
+    imported: 0,
+    importedMissingAmount: 0,
+    skippedDuplicates: 0,
+    failed: 0,
+    providerCounts: {
+      aquavoice: {found: 0, imported: 0, imported_missing_amount: 0, skipped_duplicates: 0, failed: 0},
+      claude: {found: 0, imported: 0, imported_missing_amount: 0, skipped_duplicates: 0, failed: 0},
+      chatgpt: {found: 0, imported: 0, imported_missing_amount: 0, skipped_duplicates: 0, failed: 0},
+      gamma: {found: 0, imported: 0, imported_missing_amount: 0, skipped_duplicates: 0, failed: 0},
+    },
+    manualActionRequired: false,
+    manualActionReason: '',
+  };
+}
+
+function buildProviderImportPayload_(ym, importResult) {
+  const nowIso = new Date().toISOString();
+  const manualActionRequired = Boolean(importResult.manualActionRequired) ||
+    Number(importResult.failed || 0) > 0 ||
+    Number(importResult.skippedDuplicates || 0) > 0;
+
+  return {
+    attempted: true,
+    status: manualActionRequired ? 'warning' : 'ok',
+    found_files: Number(importResult.foundFiles || 0),
+    found_pdfs: Number(importResult.foundPdfs || importResult.foundFiles || 0),
+    imported: Number(importResult.imported || 0),
+    imported_missing_amount: Number(importResult.importedMissingAmount || 0),
+    skipped_duplicates: Number(importResult.skippedDuplicates || 0),
+    failed: Number(importResult.failed || 0),
+    manual_action_required: manualActionRequired,
+    manual_action_reason: manualActionRequired ? String(importResult.manualActionReason || (Number(importResult.failed || 0) > 0 ? 'failed' : 'skipped')) : '',
+    provider_filter: PROVIDER_IMPORT_SETTINGS.providers,
+    ingestion_channel: 'provider_inbox',
+    provider_counts: buildProviderCounts_(importResult.providerCounts),
+    updated_at: nowIso,
+    source_import: {
+      script_id: ScriptApp.getScriptId(),
+      script_name: PROVIDER_IMPORT_SETTINGS.scriptProjectId,
+      executed_at: nowIso,
+      target_ym: ym,
+    },
+    report_json: `manual/reports/manual_import_last.json`,
+    provider_report_json: `manual/reports/provider_import_last.json`,
+  };
+}
+
+function buildProviderCounts_(providerCounts) {
+  const result = {};
+  const asNumber = (value) => {
+    const num = Number(value);
+    return Number.isFinite(num) && num > 0 ? Math.floor(num) : 0;
+  };
+
+  PROVIDER_IMPORT_SETTINGS.providers.forEach((name) => {
+    const row = providerCounts && providerCounts[name] ? providerCounts[name] : {};
+    result[name] = {
+      found: asNumber(row.found),
+      imported: asNumber(row.imported),
+      imported_missing_amount: asNumber(row.imported_missing_amount),
+      skipped_duplicates: asNumber(row.skipped_duplicates),
+      failed: asNumber(row.failed),
+    };
+  });
+
+  result.manual = {
+    found: 0,
+    imported: 0,
+    imported_missing_amount: 0,
+    skipped_duplicates: 0,
+    failed: 0,
+  };
+  return result;
+}
+
+function postProviderImportResult_(baseUrl, ym, payload, token) {
+  const endpoint = `${baseUrl.replace(/\/$/, '')}/api/provider-import/${encodeURIComponent(ym)}/result`;
+  const headers = {'Content-Type': 'application/json'};
+  if (token) {
+    headers['x-provider-import-token'] = token;
+  }
+
+  const response = UrlFetchApp.fetch(endpoint, {
+    method: 'post',
+    headers,
+    payload: JSON.stringify(payload),
+    muteHttpExceptions: true,
+  });
+
+  const code = response.getResponseCode();
+  const body = response.getContentText();
+  if (code < 200 || code >= 300) {
+    throw new Error(`Provider import webhook failed (${code}): ${body}`);
+  }
+
+  return JSON.parse(body);
+}
+
+function getTargetYearMonthForProviderImport_() {
+  const now = new Date();
+  const target = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  return Utilities.formatDate(target, Session.getScriptTimeZone(), 'yyyy-MM');
+}
+
+function testProviderImportWebhookPayloadOnly_() {
+  const ym = getTargetYearMonthForProviderImport_();
+  const payload = buildProviderImportPayload_(ym, runGmailProviderImport_(ym));
+  Logger.log(JSON.stringify(payload));
+}
+```

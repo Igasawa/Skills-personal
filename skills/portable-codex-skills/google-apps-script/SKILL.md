@@ -102,3 +102,13 @@ Detailed content is available in reference files (loaded on demand):
 - [references/examples.md](references/examples.md) - Production-ready code examples (spreadsheet reports, Gmail auto-responder, document generation, trigger setup)
 - [references/best-practices.md](references/best-practices.md) - Detailed best practices with code blocks for batch operations, caching, error handling, scopes, and persistence
 - [references/patterns.md](references/patterns.md) - Common reusable patterns (data validation, retry logic, form response processing)
+## Dashboard/Webhook Integration (Expense Reconcile)
+
+Use this pattern when a GAS workflow must report monthly import status to the workflow dashboard card.
+
+- Store dashboard base URL in Script Properties: `AX_EXPENSE_DASHBOARD_BASE_URL`
+- Optional token: `AX_PROVIDER_IMPORT_WEBHOOK_TOKEN` (send as `x-provider-import-token`)
+- POST endpoint format: `POST /api/provider-import/{ym}/result` (`ym = YYYY-MM`)
+- Keep payload aligned with backend fields (`found_files`, `found_pdfs`, `imported`, `imported_missing_amount`, `skipped_duplicates`, `failed`, `provider_counts`, `manual_action_required`, etc.)
+- Use 5th day monthly trigger: `everyMonths(1).onMonthDay(5).atHour(4)`
+- See `references/examples.md` for implementation code.

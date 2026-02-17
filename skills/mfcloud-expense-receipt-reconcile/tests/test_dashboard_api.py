@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 import subprocess
 import sys
+from datetime import datetime, timedelta
 from typing import Any
 
 from fastapi import FastAPI
@@ -14,6 +15,7 @@ import pytest
 from dashboard.routes import api as api_routes
 from dashboard.services import core_runs
 from dashboard.services import core_scheduler
+from services import core_scheduler as public_core_scheduler
 
 
 def _artifact_root(ax_home: Path) -> Path:
@@ -1980,6 +1982,7 @@ def test_api_scheduler_state_get_returns_default(monkeypatch: pytest.MonkeyPatch
     assert body["status"] == "ok"
     assert body["enabled"] is False
     assert body["mode"] == "preflight"
+    assert body["recurrence"] == "once"
     assert body["run_time"] == "09:00"
     assert body["catch_up_policy"] == "run_on_startup"
     assert body["next_run_at"] is None
@@ -2003,6 +2006,7 @@ def test_api_scheduler_state_post_persists_and_toggles_autostart(
             "run_date": "2026-03-01",
             "run_time": "08:30",
             "catch_up_policy": "run_on_startup",
+            "recurrence": "daily",
             "auth_handoff": False,
             "auto_start_enabled": True,
         },
@@ -2015,6 +2019,7 @@ def test_api_scheduler_state_post_persists_and_toggles_autostart(
     assert body["month"] == 1
     assert body["run_date"] == "2026-03-01"
     assert body["run_time"] == "08:30"
+    assert body["recurrence"] == "daily"
     assert body["auto_start_enabled"] is True
     assert body["auto_start_active"] is True
 
@@ -2027,6 +2032,7 @@ def test_api_scheduler_state_post_persists_and_toggles_autostart(
     assert persisted["mode"] == "preflight_mf"
     assert persisted["run_date"] == "2026-03-01"
     assert persisted["run_time"] == "08:30"
+    assert persisted["recurrence"] == "daily"
     assert persisted["auto_start_enabled"] is True
 
     off_res = client.post("/api/scheduler/state", json={"enabled": False, "auto_start_enabled": False})
@@ -2054,3 +2060,48 @@ def test_api_scheduler_state_post_rejects_enable_without_schedule(
     assert res.status_code == 400
     detail = str(res.json().get("detail") or "")
     assert "run_date" in detail
+
+
+def test_api_scheduler_state_daily_recurrence_advances_run_date(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    client = _create_client(monkeypatch, tmp_path)
+    run_payloads: list[dict[str, object]] = []
+
+    def fake_start_run(payload: dict[str, object]) -> dict[str, str]:
+        run_payloads.append(payload)
+        return {"run_id": "run_20260210_000001"}
+
+    monkeypatch.setattr(public_core_scheduler.core_runs, "_start_run", fake_start_run)
+
+    now = datetime.now()
+    run_time = (now - timedelta(minutes=1)).strftime("%H:%M")
+    run_date = now.strftime("%Y-%m-%d")
+
+    post_res = client.post(
+        "/api/scheduler/state",
+        json={
+            "enabled": True,
+            "mode": "preflight",
+            "year": now.year,
+            "month": now.month,
+            "run_date": run_date,
+            "run_time": run_time,
+            "recurrence": "daily",
+            "catch_up_policy": "run_on_startup",
+            "auth_handoff": False,
+        },
+    )
+    assert post_res.status_code == 200
+    body = post_res.json()
+    assert body["status"] == "ok"
+    assert body["recurrence"] == "daily"
+    assert body["enabled"] is True
+    assert body["last_result"]["status"] == "started"
+    assert run_payloads
+    assert run_payloads[0]["year"] == now.year
+    assert run_payloads[0]["month"] == now.month
+
+    expected_next = now + timedelta(days=1)
+    assert body["run_date"] == expected_next.strftime("%Y-%m-%d")
+    assert body["run_time"] == run_time
+    assert body["year"] == expected_next.year
+    assert body["month"] == expected_next.month

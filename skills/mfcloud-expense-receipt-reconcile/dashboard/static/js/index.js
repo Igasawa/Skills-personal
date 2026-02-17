@@ -1827,6 +1827,61 @@
     }
   }
 
+  function buildProviderImportSummaryText(rawProviders, runningMode) {
+    const providers = rawProviders && typeof rawProviders === "object" ? rawProviders : {};
+    const running = String(runningMode || "").trim() === "import_provider_receipts";
+    if (running) {
+      return "Provider import is running...";
+    }
+
+    const lastImport = providers.last_import && typeof providers.last_import === "object" ? providers.last_import : {};
+    const attempted = Boolean(lastImport.attempted);
+    const pending = toCount(providers.pending_total);
+    const updatedAt = String(lastImport.updated_at || "").trim();
+    const updatedText = updatedAt ? ` (${updatedAt})` : "";
+
+    if (!attempted) {
+      if (pending > 0) {
+        return `${pending} file(s) are waiting to be imported.`;
+      }
+      return `No provider import has been executed yet.${updatedText}`;
+    }
+
+    const foundFiles = toCount(lastImport.found_files);
+    const foundPdfs = toCount(lastImport.found_pdfs);
+    const imported = toCount(lastImport.imported);
+    const skipped = toCount(lastImport.skipped_duplicates);
+    const failed = toCount(lastImport.failed);
+    const manualActionRequired = Boolean(lastImport.manual_action_required);
+    const manualActionReason = String(lastImport.manual_action_reason || "").trim();
+
+    const detected = foundPdfs > 0 ? foundPdfs : foundFiles;
+    const parts = [];
+    if (detected > 0) {
+      parts.push(`Detected: ${detected}`);
+    }
+    if (imported > 0) {
+      parts.push(`Imported: ${imported}`);
+    }
+    if (skipped > 0) {
+      parts.push(`Skipped(dup): ${skipped}`);
+    }
+    if (failed > 0) {
+      parts.push(`Failed: ${failed}`);
+    }
+
+    const prefix = manualActionRequired || failed > 0 ? "⚠ Import completed with warnings: " : "Import completed: ";
+    const summary = parts.length > 0 ? parts.join(" / ") : "No rows were detected.";
+    const reason = manualActionReason ? ` (reason: ${manualActionReason})` : "";
+    return `${prefix}${summary}${reason}${updatedText}`;
+  }
+
+  function renderProviderImportSummary(rawProviders, runningMode, fallbackMessage = "") {
+    const summaryEl = document.querySelector("[data-provider-import-summary]");
+    if (!summaryEl) return;
+    summaryEl.textContent = fallbackMessage || buildProviderImportSummaryText(rawProviders, runningMode);
+  }
+
 
   function setStepLinkState(link, enabled, href) {
     if (!link) return;
@@ -1925,6 +1980,7 @@
         applyArchiveAvailability({ running_mode: "", amazon: {}, rakuten: {} });
         applyManualAvailability({ running_mode: "" });
         renderProviderSourceSummary(null, "Provider source folder status is unavailable.");
+        renderProviderImportSummary(null, "", "Provider import result is unavailable.");
         renderMfSummary(null, "MF summary unavailable.");
         if (!stepRetryTimer) {
           stepRetryTimer = setTimeout(() => {
@@ -1961,6 +2017,7 @@
       applyManualAvailability(data);
       applyProviderAvailability(data);
       renderProviderSourceSummary(data.providers?.source);
+      renderProviderImportSummary(data.providers, runningMode);
       applyLinkAvailability(data, ym);
       renderMfSummary(data);
 
@@ -2014,6 +2071,7 @@
       applyManualAvailability({ running_mode: "" });
       applyProviderAvailability({ running_mode: "", preflight: {} });
       renderProviderSourceSummary(null, "Failed to refresh provider status.");
+      renderProviderImportSummary(null, "", "Failed to refresh provider import status.");
       renderMfSummary(null, "MF summary unavailable.");
       if (!stepRetryTimer) {
         stepRetryTimer = setTimeout(() => {
