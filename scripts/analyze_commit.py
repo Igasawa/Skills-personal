@@ -171,10 +171,14 @@ def get_patch_excerpt(commit: str) -> str:
 
 
 def parse_model_json(raw: str) -> Dict[str, Any]:
-    payload = json.loads(raw.strip())
-    if not isinstance(payload, dict):
-        raise ValueError("model output is not a JSON object")
-    return payload
+    parsed = _parse_json_from_model_text(raw)
+    if parsed is not None:
+        return parsed
+
+    preview = raw
+    if len(preview) > LLM_RESPONSE_TEXT_PREVIEW:
+        preview = preview[:LLM_RESPONSE_TEXT_PREVIEW] + "..."
+    raise ValueError(f"model output is not a JSON object: {preview}")
 
 
 def _extract_json_candidates_from_text(raw: str) -> List[str]:
