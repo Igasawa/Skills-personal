@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import inspect
 import json
 import os
 import re
@@ -17,6 +18,21 @@ from pypdf import PdfReader, PdfWriter
 from services import core
 from services import core_scheduler
 from services import core_shared
+
+
+def _provider_source_status_for_ym(year: int, month: int) -> dict[str, Any]:
+    source_status = core._manual_source_dir_status(year=year, month=month)
+    path = str(source_status.get("path") or "").strip()
+    configured = bool(source_status.get("configured"))
+    exists = bool(source_status.get("exists"))
+    scan_summary = source_status.get("scan_summary") if isinstance(source_status.get("scan_summary"), dict) else {}
+    return {
+        "path": path,
+        "configured": configured,
+        "exists": exists,
+        "pending_files": int(source_status.get("pending_files") or 0),
+        "scan_summary": scan_summary,
+    }
 
 
 def create_api_router() -> APIRouter:
@@ -206,20 +222,6 @@ def create_api_router() -> APIRouter:
         if run_dirs:
             return run_dirs[0]
         return None
-
-    def _provider_source_status_for_ym(year: int, month: int) -> dict[str, Any]:
-        source_status = core._manual_source_dir_status(year=year, month=month)
-        path = str(source_status.get("path") or "").strip()
-        configured = bool(source_status.get("configured"))
-        exists = bool(source_status.get("exists"))
-        scan_summary = source_status.get("scan_summary") if isinstance(source_status.get("scan_summary"), dict) else {}
-        return {
-            "path": path,
-            "configured": configured,
-            "exists": exists,
-            "pending_files": int(source_status.get("pending_files") or 0),
-            "scan_summary": scan_summary,
-        }
 
     def _workspace_state_path() -> Path:
         return core._artifact_root() / "_workspace" / "workspace_state.json"
@@ -1318,13 +1320,16 @@ def create_api_router() -> APIRouter:
             )
             raise HTTPException(status_code=409, detail=detail)
         try:
-            result = core._import_manual_receipts_for_ym(
-                year,
-                month,
-                source_dir=source_dir,
-                source_mode=source_mode,
-                source_dry_run=source_dry_run,
-            )
+            import_func = core._import_manual_receipts_for_ym
+            try:
+                import_sig = inspect.signature(import_func)
+                import_params = set(import_sig.parameters)
+            except (TypeError, ValueError):
+                import_params = set()
+            if "source_dir" not in import_params:
+                result = import_func(year, month)  # type: ignore[misc]
+            else:
+                result = import_func(year, month, source_dir, source_mode, source_dry_run)  # type: ignore[misc]
         except HTTPException as exc:
             core._append_audit_event(
                 year=year,

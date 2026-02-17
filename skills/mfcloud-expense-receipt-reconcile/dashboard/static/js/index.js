@@ -1,4 +1,4 @@
-﻿(function () {
+(function () {
   // UI copy is centralized in this file.
   const Common = window.DashboardCommon || {};
   const showToast = Common.showToast || (() => {});

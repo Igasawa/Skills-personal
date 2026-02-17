@@ -619,11 +619,13 @@ def _workflow_state_for_ym(year: int, month: int) -> dict[str, Any]:
 
     def _resolve_downloaded(section: dict[str, Any], orders_exists: bool) -> bool:
         status = str(section.get("download_status") or "").strip().lower()
+        downloaded_at = bool(section.get("downloaded_at"))
+        confirmed_printed = bool(section.get("confirmed_at")) and bool(section.get("printed_at"))
         if status == "failed":
             return False
         if status == "success":
-            return bool(section.get("downloaded_at")) or orders_exists
-        return orders_exists
+            return downloaded_at or orders_exists or confirmed_printed
+        return downloaded_at or orders_exists or confirmed_printed
 
     amazon_downloaded = _resolve_downloaded(amazon_section, amazon_orders_exists)
     rakuten_downloaded = _resolve_downloaded(rakuten_section, rakuten_orders_exists)
@@ -649,12 +651,10 @@ def _workflow_state_for_ym(year: int, month: int) -> dict[str, Any]:
     amazon_pending = amazon_downloaded and not amazon_done
     rakuten_pending = rakuten_downloaded and not rakuten_done
     any_source_downloaded = amazon_downloaded or rakuten_downloaded
-    downloaded_sources = (1 if amazon_downloaded else 0) + (1 if rakuten_downloaded else 0)
-    completed_sources = (1 if amazon_done else 0) + (1 if rakuten_done else 0)
-    source_ready_for_reconcile = any_source_downloaded and completed_sources == downloaded_sources
+    source_ready_for_reconcile = amazon_done and rakuten_done
     can_reconcile = bool(source_ready_for_reconcile)
 
-    can_archive = bool(any_source_downloaded and source_ready_for_reconcile)
+    can_archive = bool(amazon_done or rakuten_done)
 
     next_step = "done"
     next_step_reason = "workflow_complete"
@@ -686,7 +686,7 @@ def _workflow_state_for_ym(year: int, month: int) -> dict[str, Any]:
         next_step = "rakuten_download"
         next_step_reason = "rakuten_download_required"
 
-    allowed_run_modes: list[str] = ["preflight", "preflight_mf"]
+    allowed_run_modes: list[str] = ["preflight"]
     if preflight_done:
         allowed_run_modes.extend(["amazon_download", "rakuten_download"])
         if amazon_downloaded:
@@ -790,25 +790,9 @@ def _assert_archive_allowed(year: int, month: int) -> None:
     archive_state = state.get("archive") if isinstance(state.get("archive"), dict) else {}
     if bool(archive_state.get("can_archive")):
         return
-
-    amazon_done = bool(state.get("amazon", {}).get("confirmed") and state.get("amazon", {}).get("printed"))
-    rakuten_done = bool(state.get("rakuten", {}).get("confirmed") and state.get("rakuten", {}).get("printed"))
-    amazon_downloaded = bool(state.get("amazon", {}).get("downloaded"))
-    rakuten_downloaded = bool(state.get("rakuten", {}).get("downloaded"))
-    has_source = amazon_downloaded or rakuten_downloaded
-    if not has_source:
-        raise HTTPException(
-            status_code=409,
-            detail="Workflow order violation: archive requires at least one source download to be completed first.",
-        )
     raise HTTPException(
         status_code=409,
-        detail=(
-            "Workflow order violation: archive requires all downloaded sources "
-            "to complete confirmation and print before archive."
-            f" current_sources={int(amazon_downloaded)}/{int(rakuten_downloaded)},"
-            f" completed={int(amazon_done)}/{int(rakuten_done)}"
-        ),
+        detail="Workflow order violation: archive requires at least one source to complete confirmation and print first.",
     )
 
 
@@ -1151,6 +1135,13 @@ def _reconcile_running_jobs() -> None:
         if returncode is None:
             returncode = -1
         _record_download_result(year, month, mode, returncode)
+        if returncode != 0:
+            _capture_failed_run_incident(
+                meta_path=p,
+                meta=data,
+                reason=reason,
+                inferred_from=inferred_from,
+            )
         _append_audit_event(
             year=year,
             month=month,
@@ -1165,12 +1156,6 @@ def _reconcile_running_jobs() -> None:
                 "returncode": returncode,
                 "inferred_from": inferred_from,
             },
-        )
-        _capture_failed_run_incident(
-            meta_path=p,
-            meta=data,
-            reason=reason,
-            inferred_from=inferred_from,
         )
 
 
@@ -1217,6 +1202,13 @@ def _run_worker(process: subprocess.Popen, meta_path: Path) -> None:
         return
     mode = str(params.get("mode") or "unknown")
     _record_download_result(year, month, mode, exit_code)
+    if exit_code != 0:
+        _capture_failed_run_incident(
+            meta_path=meta_path,
+            meta=meta,
+            reason="worker_exit",
+            inferred_from="process_wait",
+        )
     _append_audit_event(
         year=year,
         month=month,
@@ -1227,12 +1219,6 @@ def _run_worker(process: subprocess.Popen, meta_path: Path) -> None:
         mode=mode,
         run_id=str(meta.get("run_id") or ""),
         details={"returncode": exit_code},
-    )
-    _capture_failed_run_incident(
-        meta_path=meta_path,
-        meta=meta,
-        reason="worker_exit",
-        inferred_from="process_wait",
     )
 
 
