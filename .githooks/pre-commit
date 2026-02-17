@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+python scripts/check_text_encoding.py
 echo "Running local CI checks..."
 npm --prefix skills/mfcloud-expense-receipt-reconcile run ci:local
