@@ -16,6 +16,7 @@ from urllib import request as url_request
 from urllib.parse import urlencode
 
 from kil_prompt import build_kil_prompt
+from review_kil_brain import review_kil_brain
 
 ROOT = Path(__file__).resolve().parent.parent
 DOCS_DIR = ROOT / "docs"
@@ -465,6 +466,12 @@ def main() -> int:
     except Exception as exc:
         log_error(commit, "append_knowledge", exc)
         return 0
+
+    try:
+        review_kil_brain(commit)
+    except Exception as exc:
+        log_error(commit, "review_kil_brain", exc)
+        # Non-blocking: analysis success should not fail commit hook flow.
     return 0
 
 
