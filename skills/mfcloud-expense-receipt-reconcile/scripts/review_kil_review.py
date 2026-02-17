@@ -166,6 +166,10 @@ def run(base_url: str, skip_http: bool) -> int:
         checks.append(check_api(base_url))
 
     failed = [item for item in checks if not item.ok]
+    passed = [item for item in checks if item.ok]
+    mode = "contract + api" if not skip_http else "contract only"
+    print(f"KIL Review acceptance summary: checks={len(checks)} pass={len(passed)} fail={len(failed)} mode={mode}")
+
     if failed:
         for item in failed:
             print(f"[NG] {item.message}")
