@@ -40,30 +40,30 @@
   const templateSaveState = { inFlight: false };
   const TEMPLATE_MODE_CONFIG = {
     new: {
-      chip: "Create",
-      saveLabel: "Save as new template",
+      chip: "新規",
+      saveLabel: "新規テンプレートとして保存",
       description:
-        "Create a new workflow template. This template is also available from the sidebar after saving.",
-      summary: "Template form mode: create",
-      successMessage: "Template created.",
-      nameSeed: " (copy)",
+        "新規テンプレートとして保存します。保存後、サイドバーからすぐ利用できます。",
+      summary: "フォームモード: 新規",
+      successMessage: "テンプレートを新規作成しました。",
+      nameSeed: "（複製）",
     },
     edit: {
-      chip: "Edit",
-      saveLabel: "Save template",
-      description: "You are editing an existing workflow template. Changes will update the selected template.",
-      summary: "Template form mode: edit",
-      successMessage: "Template updated.",
+      chip: "編集",
+      saveLabel: "テンプレートを保存",
+      description: "既存テンプレートを編集中です。保存すると選択中のテンプレートを更新します。",
+      summary: "フォームモード: 編集",
+      successMessage: "テンプレートを更新しました。",
       nameSeed: "",
     },
     copy: {
-      chip: "Copy",
-      saveLabel: "Save as copied template",
+      chip: "複製",
+      saveLabel: "複製テンプレートとして保存",
       description:
-        "This is copy mode. Saving creates a new template based on the selected source and adds it to the sidebar immediately.",
-      summary: "Template form mode: copy",
-      successMessage: "Template copied and ready.",
-      nameSeed: " (copy)",
+        "複製モードです。保存すると選択元を基に新規テンプレートを作成し、サイドバーへ追加します。",
+      summary: "フォームモード: 複製",
+      successMessage: "テンプレートを複製しました。",
+      nameSeed: "（複製）",
     },
   };
 
@@ -510,13 +510,13 @@
     const payload = buildTemplatePayload();
     if (!payload) return;
     if (!payload.name) {
-      const message = "Template name is required.";
+      const message = "テンプレート名を入力してください。";
       showError(message);
       showToast(message, "error");
       return;
     }
     if (!payload.year || !payload.month || !payload.mfcloud_url) {
-      const message = "MF Cloud URL is required.";
+      const message = "URLを入力してください。";
       showError(message);
       showToast(message, "error");
       return;
@@ -528,12 +528,12 @@
     const templateIdInput = form.querySelector("[name=template_id]");
     const templateModeInput = form.querySelector("[name=template_mode]");
     const templateUpdatedAtInput = form.querySelector("[name=template_updated_at]");
-    const originalButtonLabel = config.saveLabel || (saveButton ? String(saveButton.textContent || "").trim() : "Save template");
+    const originalButtonLabel = config.saveLabel || (saveButton ? String(saveButton.textContent || "").trim() : "テンプレートを保存");
     templateSaveState.inFlight = true;
     if (saveButton) {
       saveButton.disabled = true;
       saveButton.dataset.busy = "1";
-      saveButton.textContent = "Saving...";
+      saveButton.textContent = "保存中...";
     }
     clearError();
 
@@ -545,7 +545,7 @@
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        const message = toFriendlyMessage(data.detail) || "Failed to save template.";
+        const message = toFriendlyMessage(data.detail) || "テンプレートの保存に失敗しました。";
         showError(message);
         showToast(message, "error");
         return;
@@ -572,7 +572,7 @@
       }
       showError("");
     } catch {
-      const message = "Failed to save workflow template.";
+      const message = "テンプレートの保存に失敗しました。";
       showError(message);
       showToast(message, "error");
     } finally {

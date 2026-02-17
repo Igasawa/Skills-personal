@@ -13,11 +13,11 @@ ARCHIVE_SNAPSHOT_RE = re.compile(r"^\d{8}_\d{6}$")
 WORKFLOW_TEMPLATE_SIDEBAR_LABEL_LIMIT = 38
 WORKFLOW_TEMPLATE_SIDEBAR_LINK_LIMIT = 30
 DEFAULT_SIDEBAR_LINKS = [
-    {"href": "/", "label": "workflow：経費精算", "tab": "wizard"},
-    {"href": "/expense-workflow-copy", "label": "workflow：経費精算（複製）", "tab": "wizard-copy"},
-    {"href": "/status", "label": "Status", "tab": "status"},
-    {"href": "/errors", "label": "Errors", "tab": "errors"},
-    {"href": "/workspace", "label": "Workspace", "tab": "workspace"},
+    {"href": "/", "label": "ワークフロー", "tab": "wizard"},
+    {"href": "/expense-workflow-copy", "label": "ワークフロー（複製）", "tab": "wizard-copy"},
+    {"href": "/status", "label": "ステータス", "tab": "status"},
+    {"href": "/errors", "label": "エラー", "tab": "errors"},
+    {"href": "/workspace", "label": "ワークスペース", "tab": "workspace"},
 ]
 
 
@@ -71,7 +71,7 @@ def _workflow_template_sidebar_links() -> list[dict[str, object]]:
     links: list[dict[str, object]] = []
     for template in _read_workflow_templates()[:WORKFLOW_TEMPLATE_SIDEBAR_LINK_LIMIT]:
         template_id = str(template.get("id") or "").strip()
-        label = str(template.get("name") or "workflow template").strip()[:WORKFLOW_TEMPLATE_SIDEBAR_LABEL_LIMIT]
+        label = str(template.get("name") or "ワークフローテンプレート").strip()[:WORKFLOW_TEMPLATE_SIDEBAR_LABEL_LIMIT]
         if not template_id:
             continue
         year = int(template.get("year") or 0)

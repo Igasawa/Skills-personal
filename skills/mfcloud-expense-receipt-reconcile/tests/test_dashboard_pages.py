@@ -204,7 +204,7 @@ def test_expense_workflow_copy_page_shows_shared_wizard(monkeypatch: pytest.Monk
     assert any(
         link.get("href") == "/expense-workflow-copy"
         and link.get("tab") == "wizard-copy"
-        and str(link.get("label", "")).startswith("workflow")
+        and "ワークフロー" in str(link.get("label", ""))
         for link in links
     )
 

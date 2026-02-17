@@ -2124,7 +2124,7 @@ def create_api_router() -> APIRouter:
         return mode if mode in WORKFLOW_TEMPLATE_MODES else "new"
 
     def _normalize_workflow_template_name(value: Any) -> str:
-        return " ".join(str(value or "").strip().split())[:WORKFLOW_TEMPLATE_MAX_NAME_CHARS] or "workflow template"
+        return " ".join(str(value or "").strip().split())[:WORKFLOW_TEMPLATE_MAX_NAME_CHARS] or "ワークフローテンプレート"
 
     def _normalize_workflow_template_url(value: Any) -> str:
         raw = str(value or "").strip()
@@ -2281,20 +2281,20 @@ def create_api_router() -> APIRouter:
                 or raw_template_id
             )
         if template_mode == "edit" and template_mode_requested and template_id and not base_updated_at:
-            raise HTTPException(status_code=400, detail="Template base timestamp is required for edit mode.")
+            raise HTTPException(status_code=400, detail="編集時はベース更新日時が必要です。")
 
         name = _normalize_workflow_template_name(payload.get("name"))
         if not name:
-            raise HTTPException(status_code=400, detail="Template name is required.")
+            raise HTTPException(status_code=400, detail="テンプレート名を入力してください。")
         mfcloud_url = _normalize_workflow_template_url(payload.get("mfcloud_url"))
         if not mfcloud_url:
-            raise HTTPException(status_code=400, detail="MF Cloud expense list URL is required.")
+            raise HTTPException(status_code=400, detail="ソースURLを入力してください。")
         year = core._safe_non_negative_int(payload.get("year"), default=0)
         month = core._safe_non_negative_int(payload.get("month"), default=0)
         if not 1 <= month <= 12:
-            raise HTTPException(status_code=400, detail="Invalid year/month.")
+            raise HTTPException(status_code=400, detail="年月が正しくありません。")
         if year < 2000 or year > 3000:
-            raise HTTPException(status_code=400, detail="Invalid year/month.")
+            raise HTTPException(status_code=400, detail="年月が正しくありません。")
 
         normalized = {
             "id": template_id or uuid4().hex[:24],

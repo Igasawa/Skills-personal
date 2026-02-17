@@ -7,12 +7,12 @@
   const THEME_SYSTEM = "system";
   const THEME_VALUES = new Set([THEME_LIGHT, THEME_DARK]);
   const THEME_SELECTION_VALUES = new Set([THEME_LIGHT, THEME_DARK, THEME_SYSTEM]);
-  const DEFAULT_DASHBOARD_SIDEBAR_LINKS = Object.freeze([
-    { href: "/", label: "workflow：経費精算", tab: "wizard" },
-    { href: "/expense-workflow-copy", label: "workflow：経費精算（複製）", tab: "wizard-copy" },
-    { href: "/status", label: "Status", tab: "status" },
-    { href: "/errors", label: "Errors", tab: "errors" },
-    { href: "/workspace", label: "Workspace", tab: "workspace" },
+const DEFAULT_DASHBOARD_SIDEBAR_LINKS = Object.freeze([
+    { href: "/", label: "ワークフロー", tab: "wizard" },
+    { href: "/expense-workflow-copy", label: "ワークフロー（複製）", tab: "wizard-copy" },
+    { href: "/status", label: "ステータス", tab: "status" },
+    { href: "/errors", label: "エラー", tab: "errors" },
+    { href: "/workspace", label: "ワークスペース", tab: "workspace" },
   ]);
   let currentThemeSelection = THEME_SYSTEM;
 
@@ -50,7 +50,11 @@
   function toFriendlyMessage(detail) {
     const text = String(detail || "");
     if (text.includes("Another run is already in progress")) return "すでに実行中の処理があります。完了してから再度お試しください。";
-    if (text.includes("MF Cloud expense list URL is required")) return "MFクラウド経費一覧URLを入力してください。";
+    if (text.includes("Template base timestamp is required for edit mode.")) return "編集時はベース更新日時が必要です。";
+    if (text.includes("Template name is required.")) return "テンプレート名を入力してください。";
+    if (text.includes("MF Cloud expense list URL is required.")) return "ソースURLを入力してください。";
+    if (text.includes("Invalid year/month")) return "年月が正しくありません。";
+    if (text.includes("MF Cloud expense list URL is required")) return "ソースURLを入力してください。";
     if (text.includes("Invalid year/month") || text.includes("Month must be")) return "年月の形式が正しくありません。YYYY-MM で確認してください。";
     if (text.includes("Missing amazon/orders.jsonl")) return "Amazonの注文データがありません。先にAmazonの領収書取得を実行してください。";
     if (text.includes("Missing mfcloud/expenses.jsonl")) return "MFクラウドの抽出データがありません。先にMF抽出を実行してください。";
@@ -206,13 +210,13 @@
 
     const sidebar = document.createElement("aside");
     sidebar.className = "dashboard-sidebar";
-    sidebar.setAttribute("aria-label", "workflow：経費精算");
+    sidebar.setAttribute("aria-label", "ワークフロー");
 
     const nav = document.createElement("nav");
     nav.className = "dashboard-sidebar-nav";
     const title = document.createElement("div");
     title.className = "dashboard-sidebar-title";
-    title.textContent = "workflow：経費精算";
+    title.textContent = "ワークフロー";
     sidebar.appendChild(title);
 
     links.forEach((linkConfig) => {

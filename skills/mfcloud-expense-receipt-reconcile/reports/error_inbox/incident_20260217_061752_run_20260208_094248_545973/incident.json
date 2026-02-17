@@ -1,8 +1,8 @@
 {
   "incident_id": "incident_20260217_061752_run_20260208_094248_545973",
-  "status": "new",
+  "status": "planned",
   "created_at": "2026-02-17T06:17:52+00:00",
-  "updated_at": "2026-02-17T06:17:52+00:00",
+  "updated_at": "2026-02-17T08:23:41+00:00",
   "run_id": "run_20260208_094248_545973",
   "year": 2026,
   "month": 1,
@@ -20,5 +20,7 @@
     "log_path": "C:\\Users\\TatsuoIgasawa\\AppData\\Local\\Temp\\pytest-of-TatsuoIgasawa\\pytest-366\\test_reconcile_running_jobs_ma0\\artifacts\\mfcloud-expense-receipt-reconcile\\_runs\\run_20260208_094248_545973.log",
     "audit_path": "",
     "context_path": ""
-  }
+  },
+  "plan_path": "C:\\Users\\TatsuoIgasawa\\.vscode\\Skillpersonal\\skills\\mfcloud-expense-receipt-reconcile\\reports\\error_plans\\incident_20260217_061752_run_20260208_094248_545973\\plan.json",
+  "planned_at": "2026-02-17T08:23:41+00:00"
 }
