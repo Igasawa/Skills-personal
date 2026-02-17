@@ -27,7 +27,7 @@ AX_HOME = Path(os.environ.get("AX_HOME", Path.home() / ".ax"))
 MAX_PATCH_CHARS = 14_000
 TRUNCATE_CHARS = 1_000
 LLM_TIMEOUT_SECONDS = 25
-LLM_MODEL = "gemini-1.5-flash"
+LLM_MODEL = os.environ.get("KIL_GEMINI_MODEL", "gemini-flash-latest")
 GEMINI_ENDPOINT = (
     "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?{query}"
 )
@@ -190,7 +190,7 @@ def extract_model_text(response: Dict[str, Any]) -> str:
 
 
 def call_gemini(prompt: str) -> Dict[str, Any]:
-    api_key = os.environ.get("GEMINI_API_KEY")
+    api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("KIL_GEMINI_API_KEY")
     if not api_key:
         raise RuntimeError("GEMINI_API_KEY is not configured")
 
