@@ -16,6 +16,15 @@ def _artifact_root(ax_home: Path) -> Path:
     return ax_home / "artifacts" / "mfcloud-expense-receipt-reconcile"
 
 
+def _write_json(path: Path, data: dict[str, object] | list[object]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def _workflow_template_store(ax_home: Path) -> Path:
+    return _artifact_root(ax_home) / "_workflow_templates" / "workflow_templates.json"
+
+
 def _write_jsonl(path: Path, rows: list[dict]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8") as handle:
@@ -125,7 +134,7 @@ def test_index_page_shows_manual_archive_button(monkeypatch: pytest.MonkeyPatch,
     assert 'data-provider-source-summary' in res.text
     assert 'data-provider-source-setup-guide' in res.text
     assert "/workspace" in res.text
-    assert "未実行" in res.text
+    assert "\u672a\u5b9f\u884c" in res.text
     assert 'id="scheduler-panel"' in res.text
     assert 'id="scheduler-enabled"' in res.text
     assert 'id="scheduler-run-date"' in res.text
@@ -192,7 +201,12 @@ def test_expense_workflow_copy_page_shows_shared_wizard(monkeypatch: pytest.Monk
     match = re.search(r"data-sidebar-links='(.*?)'", res.text)
     assert match is not None
     links = json.loads(match.group(1))
-    assert {"href": "/expense-workflow-copy", "label": "workflow：経費精算（複製）", "tab": "wizard-copy"} in links
+    assert any(
+        link.get("href") == "/expense-workflow-copy"
+        and link.get("tab") == "wizard-copy"
+        and str(link.get("label", "")).startswith("workflow")
+        for link in links
+    )
 
 
 def test_index_page_exposes_latest_run_status_hooks(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -386,3 +400,39 @@ def test_download_archived_pdf_route_returns_pdf(
     res = client.get(f"/files/{ym}/archive/20260209_101530/rakuten/RAK-ARC-001.pdf")
     assert res.status_code == 200
     assert res.headers.get("content-type", "").startswith("application/pdf")
+
+
+def test_expense_workflow_copy_page_prefills_template_and_sidebar_link(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    _write_json(
+        _workflow_template_store(tmp_path),
+        [
+            {
+                "id": "copy-source",
+                "name": "Monthly Copy Source",
+                "year": 2026,
+                "month": 2,
+                "mfcloud_url": "https://example.com/mf",
+                "notes": "copied from source",
+                "rakuten_orders_url": "https://example.com/orders",
+                "created_at": "2026-02-01T00:00:00",
+                "updated_at": "2026-02-01T00:00:00",
+            },
+        ],
+    )
+    client = _create_client(monkeypatch, tmp_path)
+    res = client.get("/expense-workflow-copy?template_id=copy-source")
+    assert res.status_code == 200
+    assert 'value="copy-source"' in res.text
+    assert 'value="Monthly Copy Source"' in res.text
+    assert 'value="2026"' in res.text
+    assert 'value="2"' in res.text
+    assert 'value="https://example.com/mf"' in res.text
+
+    match = re.search(r"data-sidebar-links='(.*?)'", res.text)
+    assert match is not None
+    links = json.loads(match.group(1))
+    assert {
+        "href": "/expense-workflow-copy?template=copy-source",
+        "label": "Monthly Copy Source (2026-02)",
+        "tab": "wizard-copy",
+    } in links

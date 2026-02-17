@@ -31,11 +31,12 @@ def _read_workflow_templates() -> list[dict[str, object]]:
         return []
 
     templates: list[dict[str, object]] = []
+    seen: set[str] = set()
     for row in raw:
         if not isinstance(row, dict):
             continue
         template_id = str(row.get("id") or "").strip()
-        if not template_id:
+        if not template_id or template_id in seen:
             continue
         try:
             year = int(row.get("year"))
@@ -57,7 +58,12 @@ def _read_workflow_templates() -> list[dict[str, object]]:
                 "updated_at": str(row.get("updated_at") or ""),
             }
         )
+        seen.add(template_id)
 
+    templates.sort(
+        key=lambda row: str(row.get("updated_at") or row.get("created_at") or ""),
+        reverse=True,
+    )
     return templates
 
 
@@ -68,6 +74,10 @@ def _workflow_template_sidebar_links() -> list[dict[str, object]]:
         label = str(template.get("name") or "workflow template").strip()[:WORKFLOW_TEMPLATE_SIDEBAR_LABEL_LIMIT]
         if not template_id:
             continue
+        year = int(template.get("year") or 0)
+        month = int(template.get("month") or 0)
+        if 1 <= month <= 12 and 2000 <= year <= 3000:
+            label = f"{label} ({year:04d}-{month:02d})"
         links.append(
             {
                 "href": f"/expense-workflow-copy?template={template_id}",
@@ -129,9 +139,10 @@ def create_pages_router(templates: Jinja2Templates) -> APIRouter:
     def workflow_copy(
         request: Request,
         template: str | None = Query(default=None),
+        template_id: str | None = Query(default=None),
     ) -> HTMLResponse:
         defaults = core._resolve_form_defaults()
-        workflow_template = _lookup_workflow_template(template)
+        workflow_template = _lookup_workflow_template(template or template_id)
         if workflow_template:
             try:
                 defaults["year"] = int(workflow_template.get("year"))

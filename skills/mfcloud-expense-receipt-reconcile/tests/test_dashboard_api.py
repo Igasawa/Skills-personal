@@ -26,7 +26,11 @@ def _reports_dir(ax_home: Path, ym: str) -> Path:
     return _artifact_root(ax_home) / ym / "reports"
 
 
-def _write_json(path: Path, data: dict[str, Any]) -> None:
+def _workflow_template_store(ax_home: Path) -> Path:
+    return _artifact_root(ax_home) / "_workflow_templates" / "workflow_templates.json"
+
+
+def _write_json(path: Path, data: dict[str, Any] | list[Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
 
@@ -2105,3 +2109,113 @@ def test_api_scheduler_state_daily_recurrence_advances_run_date(monkeypatch: pyt
     assert body["run_time"] == run_time
     assert body["year"] == expected_next.year
     assert body["month"] == expected_next.month
+
+
+def test_api_get_workflow_templates_supports_search_sort_and_pagination(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    _write_json(
+        _workflow_template_store(tmp_path),
+        [
+            {
+                "id": "tmpl-alpha",
+                "name": "Alpha",
+                "year": 2026,
+                "month": 1,
+                "mfcloud_url": "https://example.com/alpha",
+                "notes": "alpha workflow",
+                "rakuten_orders_url": "",
+                "created_at": "2026-02-01T10:00:00",
+                "updated_at": "2026-02-01T10:00:00",
+            },
+            {
+                "id": "tmpl-beta",
+                "name": "Beta",
+                "year": 2025,
+                "month": 12,
+                "mfcloud_url": "https://example.com/beta",
+                "notes": "beta workflow",
+                "rakuten_orders_url": "",
+                "created_at": "2026-02-02T10:00:00",
+                "updated_at": "2026-02-03T10:00:00",
+            },
+            {
+                "id": "tmpl-gamma",
+                "name": "Gamma",
+                "year": 2027,
+                "month": 3,
+                "mfcloud_url": "https://example.com/gamma",
+                "notes": "gamma workflow",
+                "rakuten_orders_url": "",
+                "created_at": "2026-02-03T10:00:00",
+                "updated_at": "2026-01-30T10:00:00",
+            },
+        ],
+    )
+    client = _create_client(monkeypatch, tmp_path)
+
+    res_by_year = client.get("/api/workflow-templates?sort=year_desc")
+    assert res_by_year.status_code == 200
+    body_by_year = res_by_year.json()
+    assert [item["name"] for item in body_by_year["templates"]] == ["Gamma", "Alpha", "Beta"]
+    assert body_by_year["count"] == 3
+    assert body_by_year["total_count"] == 3
+
+    res_by_name = client.get("/api/workflow-templates?search=alpha&sort=name_asc")
+    assert res_by_name.status_code == 200
+    body_by_name = res_by_name.json()
+    assert [item["name"] for item in body_by_name["templates"]] == ["Alpha"]
+    assert body_by_name["count"] == 1
+    assert body_by_name["total_count"] == 1
+
+    res_paged = client.get("/api/workflow-templates?sort=updated_desc&limit=2&offset=1")
+    assert res_paged.status_code == 200
+    body_paged = res_paged.json()
+    assert [item["name"] for item in body_paged["templates"]] == ["Alpha", "Gamma"]
+    assert body_paged["count"] == 2
+    assert body_paged["total_count"] == 3
+
+
+def test_api_save_workflow_template_duplicate_name_and_update_conflict(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    client = _create_client(monkeypatch, tmp_path)
+    create_payload = {
+        "name": "Alpha",
+        "year": 2026,
+        "month": 1,
+        "mfcloud_url": "https://example.com/alpha",
+        "notes": "first",
+    }
+    create_res = client.post("/api/workflow-templates", json=create_payload)
+    assert create_res.status_code == 200
+    created = create_res.json()["template"]
+    template_id = str(created["id"])
+    base_updated_at = str(created.get("updated_at") or "")
+    assert template_id
+
+    duplicate_res = client.post("/api/workflow-templates", json=create_payload)
+    assert duplicate_res.status_code == 409
+    assert "Template name already exists." in str(duplicate_res.json().get("detail"))
+
+    update_payload = {
+        "template_id": template_id,
+        "name": "Alpha",
+        "year": 2026,
+        "month": 1,
+        "mfcloud_url": "https://example.com/alpha",
+        "notes": "updated",
+        "base_updated_at": base_updated_at,
+    }
+    update_res = client.post("/api/workflow-templates", json=update_payload)
+    assert update_res.status_code == 200
+    assert update_res.json()["updated"] is True
+    assert update_res.json()["template"]["notes"] == "updated"
+
+    stale_payload = dict(update_payload)
+    stale_payload["notes"] = "stale"
+    stale_payload["base_updated_at"] = base_updated_at
+    stored = json.loads(_workflow_template_store(tmp_path).read_text(encoding="utf-8"))
+    assert isinstance(stored, list) and stored
+    stored[0]["updated_at"] = "2026-03-01T00:00:00"
+    _write_json(_workflow_template_store(tmp_path), stored)
+
+    stale_conflict_res = client.post("/api/workflow-templates", json=stale_payload)
+    assert stale_conflict_res.status_code == 409
+    assert "Template was updated by another action." in str(stale_conflict_res.json().get("detail"))

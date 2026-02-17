@@ -37,6 +37,7 @@
   const monthCloseChecklistKeys = ["expense_submission", "document_printout", "mf_accounting_link"];
   const YM_STORAGE_KEY = "mfcloud.dashboard.selectedYm";
   const YM_PATTERN = /^(\d{4})-(\d{2})$/;
+  const templateSaveState = { inFlight: false };
 
   function normalizeYm(yearValue, monthValue) {
     const year = Number.parseInt(String(yearValue ?? "").trim(), 10);
@@ -378,34 +379,49 @@
     const rakutenOrdersEl = form.querySelector("[name=rakuten_orders_url]");
     const templateIdEl = form.querySelector("[name=template_id]");
     const name = String(nameEl?.value || "").trim();
+    const templateId = String(templateIdEl?.value || "").trim();
     return {
-      template_id: String(templateIdEl?.value || "").trim(),
+      template_id: templateId,
       name,
       year: Number(yearEl?.value || 0),
       month: Number(monthEl?.value || 0),
       mfcloud_url: String(mfcloudEl?.value || "").trim(),
       notes: String(notesEl?.value || "").trim(),
       rakuten_orders_url: String(rakutenOrdersEl?.value || "").trim(),
+      allow_duplicate_name: false,
+      base_updated_at:
+        workflowTemplate && String(workflowTemplate.id || "") === templateId
+          ? String(workflowTemplate.updated_at || "")
+          : "",
     };
   }
 
   async function saveWorkflowTemplate() {
-    if (!form) return;
+    if (!form || templateSaveState.inFlight) return;
     const payload = buildTemplatePayload();
     if (!payload) return;
     if (!payload.name) {
-      const message = "テンプレート名を入力してください。";
+      const message = "Template name is required.";
+      showError(message);
       showToast(message, "error");
       return;
     }
     if (!payload.year || !payload.month || !payload.mfcloud_url) {
-      const message = "年・月・MF Cloud URLは必須です。";
+      const message = "MF Cloud URL is required.";
+      showError(message);
       showToast(message, "error");
       return;
     }
 
     const saveButton = document.getElementById("workflow-template-save");
-    if (saveButton) saveButton.disabled = true;
+    const templateIdInput = form.querySelector("[name=template_id]");
+    const originalButtonLabel = saveButton ? String(saveButton.textContent || "").trim() : "Save template";
+    templateSaveState.inFlight = true;
+    if (saveButton) {
+      saveButton.disabled = true;
+      saveButton.dataset.busy = "1";
+      saveButton.textContent = "Saving...";
+    }
     clearError();
 
     try {
@@ -416,7 +432,7 @@
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        const message = toFriendlyMessage(data.detail);
+        const message = toFriendlyMessage(data.detail) || "Failed to save template.";
         showError(message);
         showToast(message, "error");
         return;
@@ -426,20 +442,29 @@
       const templateId = String(template?.id || payload.template_id || "").trim();
       const year = Number(payload.year || 0);
       const month = Number(payload.month || 0);
-      const templateNameEl = form.querySelector("[name=template_id]");
-      if (templateNameEl && templateId) {
-        templateNameEl.value = templateId;
+      if (templateIdInput && templateId) {
+        templateIdInput.value = templateId;
       }
-      if (templateNameEl && templateId && year && month) {
+      const successMessage = data.updated ? "Template updated." : "Template saved.";
+      showToast(successMessage, "success");
+      if (templateId && year && month) {
         window.location.href = `/expense-workflow-copy?template=${encodeURIComponent(templateId)}&year=${year}&month=${month}`;
         return;
       }
-      const message = "workflowひな形を保存しました。";
-      showToast(message, "success");
+      showError("");
     } catch {
-      showToast("保存に失敗しました。", "error");
+      const message = "Failed to save workflow template.";
+      showError(message);
+      showToast(message, "error");
     } finally {
-      if (saveButton) saveButton.disabled = false;
+      if (saveButton) {
+        saveButton.disabled = false;
+        saveButton.textContent = originalButtonLabel;
+        if (saveButton.dataset) {
+          delete saveButton.dataset.busy;
+        }
+      }
+      templateSaveState.inFlight = false;
     }
   }
 
