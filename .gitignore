@@ -30,4 +30,5 @@ skills/mfcloud-expense-receipt-reconcile/reports/error_inbox/
 .husky/_/post-commit
 .husky/_/*.kil-orig-*
 docs/.kil_post_commit_hook.log
+docs/AGENT_BRAIN_ERROR.log
 

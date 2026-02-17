@@ -32,6 +32,7 @@ LLM_MODEL = os.environ.get("KIL_GEMINI_MODEL", "gemini-flash-latest")
 GEMINI_ENDPOINT = (
     "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?{query}"
 )
+LLM_RESPONSE_TEXT_PREVIEW = 1200
 
 REDACT_PATTERNS = [
     re.compile(r"\bsk_live_[A-Za-z0-9]{16,}\b"),
@@ -176,6 +177,76 @@ def parse_model_json(raw: str) -> Dict[str, Any]:
     return payload
 
 
+def _extract_json_candidates_from_text(raw: str) -> List[str]:
+    seen: set[str] = set()
+    candidates: List[str] = []
+
+    def push(candidate: str) -> None:
+        key = candidate.strip()
+        if not key:
+            return
+        if key in seen:
+            return
+        seen.add(key)
+        candidates.append(key)
+
+    for match in re.finditer(r"```(?:json)?\s*([\s\S]*?)```", raw, flags=re.IGNORECASE):
+        push(match.group(1).strip())
+
+    push(raw.strip())
+
+    text_len = len(raw)
+    index = 0
+    while index < text_len:
+        start = raw.find("{", index)
+        if start < 0:
+            break
+        depth = 0
+        in_string = False
+        escaped = False
+        end = -1
+        for pos in range(start, text_len):
+            ch = raw[pos]
+            if in_string:
+                if escaped:
+                    escaped = False
+                elif ch == "\\":
+                    escaped = True
+                elif ch == '"':
+                    in_string = False
+                continue
+
+            if ch == '"':
+                in_string = True
+            elif ch == "{":
+                depth += 1
+            elif ch == "}":
+                depth -= 1
+                if depth == 0:
+                    end = pos + 1
+                    break
+
+        if end < 0:
+            index = start + 1
+            continue
+
+        push(raw[start:end])
+        index = end
+
+    return candidates
+
+
+def _parse_json_from_model_text(raw: str) -> Optional[Dict[str, Any]]:
+    for candidate in _extract_json_candidates_from_text(raw):
+        try:
+            parsed = json.loads(candidate)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(parsed, dict):
+            return parsed
+    return None
+
+
 def extract_model_text(response: Dict[str, Any]) -> str:
     try:
         candidates = response.get("candidates", [])
@@ -216,7 +287,7 @@ def call_gemini(prompt: str) -> Dict[str, Any]:
             "temperature": 0.1,
             "topK": 20,
             "topP": 0.8,
-            "maxOutputTokens": 1536,
+            "maxOutputTokens": 3072,
         },
     }
     req = url_request.Request(
@@ -234,10 +305,13 @@ def call_gemini(prompt: str) -> Dict[str, Any]:
     model_response = parse_model_json(raw)
     text = extract_model_text(model_response)
 
-    match = re.search(r"\{[\s\S]*\}", text)
-    if not match:
-        raise ValueError("model output does not contain JSON")
-    return parse_model_json(match.group(0))
+    payload = _parse_json_from_model_text(text)
+    if not payload:
+        preview = text
+        if len(preview) > LLM_RESPONSE_TEXT_PREVIEW:
+            preview = preview[:LLM_RESPONSE_TEXT_PREVIEW] + "..."
+        raise ValueError(f"model output does not contain JSON: {preview}")
+    return payload
 
 
 def safe_list(value: Any) -> List[str]:
