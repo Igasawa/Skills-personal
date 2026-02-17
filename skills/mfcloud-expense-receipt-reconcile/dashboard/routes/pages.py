@@ -16,6 +16,7 @@ DEFAULT_SIDEBAR_LINKS = [
     {"href": "/", "label": "ワークフロー", "tab": "wizard"},
     {"href": "/expense-workflow-copy", "label": "ワークフロー（複製）", "tab": "wizard-copy"},
     {"href": "/status", "label": "ステータス", "tab": "status"},
+    {"href": "/kil-review", "label": "KIL Review", "tab": "kil-review"},
     {"href": "/errors", "label": "エラー", "tab": "errors"},
     {"href": "/workspace", "label": "ワークスペース", "tab": "workspace"},
 ]
@@ -210,6 +211,17 @@ def create_pages_router(templates: Jinja2Templates) -> APIRouter:
                 "latest_job": latest_job,
                 "latest_job_ym": latest_job_ym,
                 "running_job": running_job,
+                "ax_home": str(core._ax_home()),
+            },
+        )
+
+    @router.get("/kil-review", response_class=HTMLResponse)
+    def kil_review(request: Request) -> HTMLResponse:
+        return templates.TemplateResponse(
+            request,
+            "kil_review.html",
+            {
+                **_dashboard_context("kil-review"),
                 "ax_home": str(core._ax_home()),
             },
         )

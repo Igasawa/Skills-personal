@@ -2835,4 +2835,281 @@ def create_api_router() -> APIRouter:
             )
         return JSONResponse(result, headers={"Cache-Control": "no-store"})
 
+    @router.get("/api/kil-review")
+    def api_get_kil_review(
+        source: str = Query(default="auto"),
+        limit: int = Query(default=20, ge=1, le=200),
+    ) -> JSONResponse:
+        requested = str(source or "auto").strip().lower()
+        if requested not in {"auto", "index", "markdown", "all", "fallback"}:
+            requested = "auto"
+
+        requested_limit = max(1, min(int(limit), 200))
+        docs_dir = core.SKILL_ROOT.parent.parent / "docs"
+        index_path = docs_dir / "AGENT_BRAIN_INDEX.jsonl"
+        markdown_path = docs_dir / "AGENT_BRAIN.md"
+        today = datetime.now().date()
+
+        def _safe_read_text(path: Path) -> str:
+            if not path.exists():
+                return ""
+            try:
+                return path.read_text(encoding="utf-8-sig")
+            except Exception:
+                return path.read_text(encoding="utf-8", errors="ignore")
+
+        def _as_str(value: object) -> str:
+            text = str(value or "").strip()
+            return text
+
+        def _to_date(value: object) -> str | None:
+            raw = _as_str(value)
+            if not raw:
+                return None
+            for pattern in (
+                r"\b(20\d{2}-\d{2}-\d{2})\b",
+                r"\b(20\d{2}/\d{1,2}/\d{1,2})\b",
+                r"\b(20\d{2})年(\d{1,2})月(\d{1,2})日\b",
+            ):
+                match = re.search(pattern, raw)
+                if not match:
+                    continue
+                try:
+                    if len(match.groups()) == 3:
+                        return f"{int(match.group(1)):04d}-{int(match.group(2)):02d}-{int(match.group(3)):02d}"
+                    parsed = datetime.strptime(match.group(0), "%Y-%m-%d").date()
+                    return parsed.isoformat()
+                except Exception:
+                    try:
+                        if "/" in match.group(0):
+                            parsed = datetime.strptime(match.group(0), "%Y/%m/%d").date()
+                            return parsed.isoformat()
+                    except Exception:
+                        continue
+            return None
+
+        def _to_list_text(value: object) -> list[str]:
+            if value is None:
+                return []
+            if isinstance(value, list):
+                return [str(v).strip() for v in value if str(v).strip()]
+            text = _as_str(value)
+            if not text:
+                return []
+            return [text]
+
+        def _extract_deadline(row: dict[str, object], text_fields: list[str]) -> str | None:
+            if not isinstance(row, dict):
+                return None
+            for field in ("deadline", "next_deadline", "review_deadline", "due", "due_date", "date"):
+                value = row.get(field) if isinstance(row, dict) else None
+                date_value = _to_date(value)
+                if date_value:
+                    return date_value
+            for text in text_fields:
+                date_value = _to_date(text)
+                if date_value:
+                    return date_value
+            return None
+
+        def _deadline_status(date_text: str | None) -> tuple[str, int]:
+            if not date_text:
+                return "no_deadline", 0
+            parsed = datetime.fromisoformat(date_text).date()
+            days = (parsed - today).days
+            if days < 0:
+                return "overdue", -days
+            if days <= 7:
+                return "due_within_7d", days
+            return "normal", days
+
+        def _to_record(
+            row: dict[str, object],
+            source_name: str,
+            commit: str,
+            date_text: str,
+            summary: str,
+            knowledge: list[str],
+            rules: list[str],
+            context: list[str],
+            risk: str,
+            raw: object,
+        ) -> dict[str, object] | None:
+            if not row:
+                return None
+            parsed_deadline = _extract_deadline(row, [summary] + knowledge + rules + context)
+            return {
+                "source": source_name,
+                "commit": commit,
+                "commit_short": commit[:8],
+                "date": date_text,
+                "summary": summary,
+                "knowledge": knowledge,
+                "rules": rules,
+                "context": context,
+                "risk": risk or "normal",
+                "deadline": parsed_deadline,
+                "raw": _as_str(raw),
+            }
+
+        def _read_index_records() -> list[dict[str, object]]:
+            if not index_path.exists():
+                return []
+            records: list[dict[str, object]] = []
+            for row in core._read_jsonl(index_path):
+                if not isinstance(row, dict):
+                    continue
+                commit = _as_str(row.get("commit") or row.get("commit_hash") or row.get("sha"))
+                if not commit:
+                    continue
+                date_text = _as_str(row.get("date") or row.get("created_at") or row.get("timestamp"))
+                date_norm = _to_date(date_text) or date_text or datetime.now().isoformat()[:10]
+                summary = _as_str(row.get("summary") or row.get("title") or row.get("message") or row.get("description"))
+                knowledge = _to_list_text(row.get("knowledge") or row.get("acquired_knowledge"))
+                rules = _to_list_text(row.get("rules") or row.get("guardrails"))
+                context = _to_list_text(row.get("context") or row.get("unresolved_context") or row.get("notes"))
+                if not summary and not knowledge and not rules and not context:
+                    raw = _as_str(row.get("raw") or row.get("text") or str(row))
+                    summary = raw if raw else "No summary extracted."
+                risk = _as_str(row.get("risk") or row.get("severity") or row.get("rule_level"))
+                record = _to_record(row, "index", commit, date_norm, summary, knowledge, rules, context, risk, row)
+                if record:
+                    records.append(record)
+            return records
+
+        def _read_markdown_records() -> list[dict[str, object]]:
+            if not markdown_path.exists():
+                return []
+            text = _safe_read_text(markdown_path)
+            if not text:
+                return []
+
+            records: list[dict[str, object]] = []
+            pattern = re.compile(
+                r"^##\s*\[(?P<date>\d{4}-\d{2}-\d{2})\]\s*Commit:\s*(?P<commit>.+?)(?:\r?\n(?P<body>.*?))?(?=^##\s*\[|\Z)",
+                re.M | re.S,
+            )
+            for match in pattern.finditer(text):
+                date_text = _as_str(match.group("date"))
+                commit = _as_str(match.group("commit"))
+                body = _as_str(match.group("body"))
+                lines = [line.strip() for line in body.splitlines()]
+                payload: dict[str, object] = {}
+                free_lines: list[str] = []
+                for line in lines:
+                    if not line:
+                        continue
+                    m = re.match(r"-\s*\*\*(?P<key>[^*]+)\*\*:\s*(?P<value>.*)", line)
+                    if m:
+                        key = _as_str(m.group("key"))
+                        value = _as_str(m.group("value"))
+                        if key:
+                            payload[key] = value
+                    else:
+                        free_lines.append(line)
+
+                summary = _as_str(payload.get("概要") or payload.get("Summary") or "AGENT_BRAIN snapshot")
+                knowledge = _to_list_text(payload.get("獲得した知識") or payload.get("Knowledge"))
+                rules = _to_list_text(payload.get("守るべきルール") or payload.get("Rules"))
+                context = _to_list_text(payload.get("未解決の文脈") or payload.get("Unresolved context"))
+                if not context and free_lines:
+                    context = free_lines[:3]
+                risk = _as_str(payload.get("リスク") or payload.get("Risk"))
+                record = _to_record(
+                    {
+                        "summary": summary,
+                        "notes": "\n".join(context),
+                        "date": date_text,
+                        "deadline": _as_str(payload.get("期限")),
+                    },
+                    "markdown",
+                    commit,
+                    date_text,
+                    summary,
+                    knowledge,
+                    rules,
+                    context,
+                    risk,
+                    body,
+                )
+                if record:
+                    records.append(record)
+            return records
+
+        def _dedupe_items(items: list[dict[str, object]]) -> list[dict[str, object]]:
+            out: list[dict[str, object]] = []
+            seen: set[str] = set()
+            for item in items:
+                if not isinstance(item, dict):
+                    continue
+                key = f"{item.get('source')}|{item.get('commit')}|{_as_str(item.get('summary'))[:60]}"
+                if key in seen:
+                    continue
+                seen.add(key)
+                out.append(item)
+            return out
+
+        index_records = _read_index_records()
+        markdown_records = _read_markdown_records()
+
+        if requested == "index":
+            selected_source = "index"
+            rows = index_records
+        elif requested == "markdown":
+            selected_source = "markdown"
+            rows = markdown_records
+        elif requested == "all":
+            selected_source = "all"
+            rows = _dedupe_items(index_records + markdown_records)
+        else:
+            if index_records:
+                selected_source = "index"
+                rows = index_records
+            elif markdown_records:
+                selected_source = "markdown"
+                rows = markdown_records
+            else:
+                selected_source = "none"
+                rows = []
+
+        rows.sort(
+            key=lambda item: _to_date(item.get("date")) or "",
+            reverse=True,
+        )
+        rows = rows[:requested_limit]
+
+        risk_counts: dict[str, int] = {}
+        review_status = {"overdue": 0, "due_within_7d": 0, "no_deadline": 0}
+        for item in rows:
+            risk_key = _as_str(item.get("risk") or "normal").lower()
+            risk_counts[risk_key] = risk_counts.get(risk_key, 0) + 1
+            status, _days = _deadline_status(_as_str(item.get("deadline")))
+            if status in review_status:
+                review_status[status] += 1
+
+        return JSONResponse(
+            {
+                "status": "ok",
+                "requested_source": requested,
+                "source_used": selected_source,
+                "source_counts": {
+                    "index": len(index_records),
+                    "markdown": len(markdown_records),
+                },
+                "count": len(rows),
+                "limit": requested_limit,
+                "items": rows,
+                "risk_counts": risk_counts,
+                "review": review_status,
+                "generated_at": datetime.now().isoformat(timespec="seconds"),
+                "data_files": {
+                    "index_exists": index_path.exists(),
+                    "markdown_exists": markdown_path.exists(),
+                    "index_path": str(index_path),
+                    "markdown_path": str(markdown_path),
+                },
+            },
+            headers={"Cache-Control": "no-store"},
+        )
+
     return router

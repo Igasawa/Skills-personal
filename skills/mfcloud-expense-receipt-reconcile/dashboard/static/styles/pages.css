@@ -841,3 +841,110 @@
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+.kil-review-grid {
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+}
+
+.kil-review-stat {
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px solid rgb(var(--semantic-field-border-default));
+  background: rgb(var(--surface-2));
+}
+
+.kil-review-stat .label {
+  display: block;
+  color: rgb(var(--text-secondary));
+  margin-bottom: 6px;
+  font-size: 12px;
+}
+
+.kil-review-stat .value {
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.kil-review-toolbar {
+  display: grid;
+  gap: 12px;
+}
+
+.kil-review-toolbar .section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.kil-review-toolbar-controls {
+  display: grid;
+  gap: 12px;
+  align-items: end;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+}
+
+.kil-review-risk-grid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+}
+
+.kil-review-items {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 10px;
+}
+
+.kil-review-item {
+  border: 1px solid rgb(var(--semantic-field-border-default));
+  border-radius: 12px;
+  padding: 10px;
+  background: rgb(var(--surface-2));
+}
+
+.kil-review-item-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.kil-review-item-title {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+}
+
+.kil-review-item-summary {
+  margin: 8px 0;
+}
+
+.kil-review-item-meta {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+
+.kil-review-chip {
+  min-height: 24px;
+  border-radius: 999px;
+  border: 1px solid rgb(var(--semantic-field-border-default));
+  background: rgb(var(--surface-1));
+  color: rgb(var(--text-secondary));
+  font-size: 11px;
+  padding: 4px 10px;
+  display: inline-flex;
+  align-items: center;
+}
+
+.kil-review-page .log {
+  margin-top: 8px;
+}
+
+@media (max-width: 900px) {
+  .kil-review-toolbar .section-header {
+    flex-direction: column;
+    align-items: start;
+  }
+}
