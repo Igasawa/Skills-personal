@@ -1,0 +1,11 @@
+{
+  "capture": {
+    "captured_at": "2026-02-17T02:49:23+00:00",
+    "script": "error_capture.py",
+    "run_id": "run_ui_smoke_20260217_114923",
+    "year": 2026,
+    "month": 13,
+    "step": "ui_smoke",
+    "failure_class": "smoke_test"
+  }
+}

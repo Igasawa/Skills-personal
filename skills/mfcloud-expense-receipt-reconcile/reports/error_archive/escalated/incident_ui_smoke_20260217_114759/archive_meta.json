@@ -1,0 +1,8 @@
+{
+  "incident_id": "incident_ui_smoke_20260217_114759",
+  "result": "escalated",
+  "archived_at": "2026-02-17T02:48:09+00:00",
+  "reason": "loop limit reached or repeated error",
+  "source": "C:\\Users\\Tatsuo-2023\\Projects\\PersonalSkills\\skills\\mfcloud-expense-receipt-reconcile\\reports\\error_inbox\\incident_ui_smoke_20260217_114759",
+  "destination": "C:\\Users\\Tatsuo-2023\\Projects\\PersonalSkills\\skills\\mfcloud-expense-receipt-reconcile\\reports\\error_archive\\escalated\\incident_ui_smoke_20260217_114759"
+}
