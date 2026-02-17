@@ -4,6 +4,60 @@
   margin-top: 14px;
 }
 
+.template-mode-summary {
+  display: grid;
+  gap: 10px;
+}
+
+.template-mode-summary-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.template-mode-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 30px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid rgb(var(--semantic-field-border-default));
+  background: rgb(var(--surface-1));
+  font-size: 12px;
+  font-weight: 700;
+  color: rgb(var(--text-secondary));
+}
+
+.template-copy-source {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border-radius: var(--radius-default);
+  border: 1px dashed rgb(var(--semantic-field-border-default));
+  background: rgb(var(--surface-2));
+}
+
+.template-copy-source-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: rgb(var(--text-secondary));
+  margin: 0;
+}
+
+.template-copy-source-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.template-copy-source-actions .secondary {
+  min-height: 34px;
+}
+
 .wizard-step {
   padding: 16px;
   border-radius: 16px;

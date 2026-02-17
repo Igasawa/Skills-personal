@@ -147,12 +147,14 @@ def create_pages_router(templates: Jinja2Templates) -> APIRouter:
         workflow_template = _lookup_workflow_template(resolved_template_id)
         template_mode = "new"
         page_template_id = ""
+        workflow_template_source_id = ""
         if workflow_template:
             template_mode = "edit"
+            workflow_template_source_id = str(workflow_template.get("id") or "")
             if str(mode or "").strip().lower() == "copy":
                 template_mode = "copy"
             else:
-                page_template_id = str(workflow_template.get("id") or "")
+                page_template_id = workflow_template_source_id
         if workflow_template:
             try:
                 defaults["year"] = int(workflow_template.get("year"))
@@ -172,6 +174,7 @@ def create_pages_router(templates: Jinja2Templates) -> APIRouter:
                 **_dashboard_context("wizard-copy"),
                 "defaults": defaults,
                 "template_id": page_template_id,
+                "template_source_id": workflow_template_source_id,
                 "template_mode": template_mode,
                 "template_updated_at": str(workflow_template.get("updated_at") or "") if workflow_template else "",
                 "workflow_template": workflow_template,

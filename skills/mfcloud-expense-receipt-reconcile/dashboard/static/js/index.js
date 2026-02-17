@@ -38,6 +38,34 @@
   const YM_STORAGE_KEY = "mfcloud.dashboard.selectedYm";
   const YM_PATTERN = /^(\d{4})-(\d{2})$/;
   const templateSaveState = { inFlight: false };
+  const TEMPLATE_MODE_CONFIG = {
+    new: {
+      chip: "Create",
+      saveLabel: "Save as new template",
+      description:
+        "Create a new workflow template. This template is also available from the sidebar after saving.",
+      summary: "Template form mode: create",
+      successMessage: "Template created.",
+      nameSeed: " (copy)",
+    },
+    edit: {
+      chip: "Edit",
+      saveLabel: "Save template",
+      description: "You are editing an existing workflow template. Changes will update the selected template.",
+      summary: "Template form mode: edit",
+      successMessage: "Template updated.",
+      nameSeed: "",
+    },
+    copy: {
+      chip: "Copy",
+      saveLabel: "Save as copied template",
+      description:
+        "This is copy mode. Saving creates a new template based on the selected source and adds it to the sidebar immediately.",
+      summary: "Template form mode: copy",
+      successMessage: "Template copied and ready.",
+      nameSeed: " (copy)",
+    },
+  };
 
   function normalizeYm(yearValue, monthValue) {
     const year = Number.parseInt(String(yearValue ?? "").trim(), 10);
@@ -76,6 +104,66 @@
   function getTemplateMode() {
     if (!form) return "edit";
     return String(form.querySelector("[name=template_mode]")?.value || "edit").trim().toLowerCase();
+  }
+
+  function getTemplateModeConfig(mode) {
+    return TEMPLATE_MODE_CONFIG[mode] || TEMPLATE_MODE_CONFIG.edit;
+  }
+
+  function maybeSeedCopyTemplateName(mode, template) {
+    if (!form || mode !== "copy") return;
+    const sourceName = String(template?.name || "").trim();
+    if (!sourceName) return;
+    const nameInput = form.querySelector("[name=template_name]");
+    if (!nameInput) return;
+    const currentName = String(nameInput.value || "").trim();
+    if (!currentName || currentName === sourceName) {
+      nameInput.value = `${sourceName}${getTemplateModeConfig("copy").nameSeed}`;
+    }
+  }
+
+  function applyTemplateModeUI() {
+    const mode = getTemplateMode();
+    const config = getTemplateModeConfig(mode);
+    const chipEl = document.getElementById("workflow-template-mode-chip");
+    const descEl = document.getElementById("workflow-template-mode-description");
+    const summaryEl = document.getElementById("workflow-template-mode-summary");
+    const saveButton = document.getElementById("workflow-template-save");
+    if (chipEl) chipEl.textContent = config.chip;
+    if (descEl) descEl.textContent = config.description;
+    if (summaryEl) summaryEl.textContent = config.summary;
+    if (saveButton) saveButton.textContent = config.saveLabel;
+
+    const sourceMeta = document.getElementById("workflow-template-source-meta");
+    const sourceNameEl = document.getElementById("workflow-template-source-name");
+    const sourceUpdatedEl = document.getElementById("workflow-template-source-updated");
+    const sourceEditLink = document.getElementById("workflow-template-edit-source");
+    const sourceCopyLink = document.getElementById("workflow-template-copy-source");
+
+    if (!sourceMeta || !sourceEditLink || !sourceCopyLink || !sourceNameEl || !sourceUpdatedEl) {
+      maybeSeedCopyTemplateName(mode, workflowTemplate);
+      return;
+    }
+
+    const sourceId = String(workflowTemplate?.id || "").trim();
+    const sourceUpdated = String(workflowTemplate?.updated_at || "").trim();
+    const sourceName = String(workflowTemplate?.name || "").trim();
+    if (sourceId && sourceName) {
+      sourceNameEl.textContent = sourceName;
+      sourceUpdatedEl.textContent = sourceUpdated || "-";
+      sourceEditLink.href = `/expense-workflow-copy?template=${encodeURIComponent(sourceId)}`;
+      sourceCopyLink.href = `/expense-workflow-copy?template=${encodeURIComponent(sourceId)}&mode=copy`;
+      sourceEditLink.hidden = false;
+      sourceCopyLink.hidden = false;
+      sourceMeta.classList.remove("hidden");
+      maybeSeedCopyTemplateName(mode, workflowTemplate);
+      return;
+    }
+
+    sourceMeta.classList.add("hidden");
+    sourceEditLink.hidden = true;
+    sourceCopyLink.hidden = true;
+    maybeSeedCopyTemplateName(mode, workflowTemplate);
   }
 
   function getTemplateIdFromForm() {
@@ -427,10 +515,12 @@
     }
 
     const saveButton = document.getElementById("workflow-template-save");
+    const mode = getTemplateMode();
+    const config = getTemplateModeConfig(mode);
     const templateIdInput = form.querySelector("[name=template_id]");
     const templateModeInput = form.querySelector("[name=template_mode]");
     const templateUpdatedAtInput = form.querySelector("[name=template_updated_at]");
-    const originalButtonLabel = saveButton ? String(saveButton.textContent || "").trim() : "Save template";
+    const originalButtonLabel = config.saveLabel || (saveButton ? String(saveButton.textContent || "").trim() : "Save template");
     templateSaveState.inFlight = true;
     if (saveButton) {
       saveButton.disabled = true;
@@ -461,12 +551,12 @@
         templateIdInput.value = templateId;
       }
       if (templateModeInput) {
-        templateModeInput.value = "edit";
+        templateModeInput.value = mode === "copy" ? "edit" : mode;
       }
       if (templateUpdatedAtInput && template) {
         templateUpdatedAtInput.value = String(template.updated_at || "");
       }
-      const successMessage = data.updated ? "Template updated." : "Template saved.";
+      const successMessage = config.successMessage;
       showToast(successMessage, "success");
       if (templateId && year && month) {
         window.location.href = `/expense-workflow-copy?template=${encodeURIComponent(templateId)}&year=${year}&month=${month}`;
@@ -2294,6 +2384,7 @@
       applyArchivePageLink(ym);
       refreshSteps();
     };
+    applyTemplateModeUI();
     form.querySelector("[name=year]")?.addEventListener("change", handleYmChanged);
     form.querySelector("[name=month]")?.addEventListener("change", handleYmChanged);
     const templateSaveButton = document.getElementById("workflow-template-save");

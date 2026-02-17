@@ -12,6 +12,8 @@
       data-active-tab="{{ active_tab | default('wizard-copy', true) }}"
       data-sidebar-links='{{ (sidebar_links | default([], true)) | tojson }}'
       data-workflow-template='{{ (workflow_template | default({}, true)) | tojson }}'
+      data-template-mode='{{ template_mode | default("new", true) }}'
+      data-template-source-id='{{ template_source_id | default("", true) }}'
     >
       <header class="hero">
         <div>
@@ -24,10 +26,28 @@
       </header>
 
       <section class="card">
+        <div class="template-mode-summary">
+          <div class="template-mode-summary-head">
+            <h2>Workflow template</h2>
+            <span id="workflow-template-mode-chip" class="template-mode-chip">Create</span>
+          </div>
+          <p class="muted" id="workflow-template-mode-description"></p>
+          <p class="muted" id="workflow-template-mode-summary"></p>
+          <div id="workflow-template-source-meta" class="template-copy-source hidden">
+            <p class="template-copy-source-title">Copy Source</p>
+            <p>Source: <span id="workflow-template-source-name">-</span></p>
+            <p>Updated: <span id="workflow-template-source-updated">-</span></p>
+            <div class="template-copy-source-actions">
+              <a id="workflow-template-edit-source" class="secondary" href="#" hidden>Edit source template</a>
+              <a id="workflow-template-copy-source" class="secondary" href="#" hidden>Open source in copy mode</a>
+            </div>
+          </div>
+        </div>
         <h2>workflowひな形設定</h2>
         <form id="run-form" class="form">
           <input type="hidden" name="template_id" value="{{ template_id | default('', true) }}" />
           <input type="hidden" name="template_mode" value="{{ template_mode | default('edit', true) }}" />
+          <input type="hidden" name="template_source_id" value="{{ template_source_id | default('', true) }}" />
           <input type="hidden" name="template_updated_at" value="{{ template_updated_at | default('', true) }}" />
           <div class="form-row">
             <label>
