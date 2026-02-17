@@ -30,6 +30,8 @@
   const itemsEl = document.getElementById("kil-review-items");
   const emptyEl = document.getElementById("kil-review-empty");
   const filesEl = document.getElementById("kil-review-data-files");
+  const KIL_REVIEW_API_PATH = "/api/kil-review";
+  const KIL_REVIEW_FALLBACK_PORTS = ["8765", "8000"];
 
   (function ensureReviewOnlyToggle() {
     if (reviewOnlySelect || !statusEl) {
@@ -72,6 +74,29 @@
     const parsed = Number(value);
     if (!Number.isFinite(parsed)) return "0%";
     return `${Math.round(parsed * 100)}%`;
+  }
+
+  function getApiBaseCandidates() {
+    const candidates = new Set();
+    const origin = (window && window.location ? window.location.origin : "").toLowerCase();
+    if (origin && origin !== "null") {
+      candidates.add(origin);
+    }
+
+    const isLocalHost = origin.includes("127.0.0.1") || origin.includes("localhost");
+    if (!isLocalHost) {
+      candidates.add("http://127.0.0.1");
+      candidates.add("http://localhost");
+    }
+
+    const endpoints = [];
+    for (const baseRaw of Array.from(candidates)) {
+      const base = String(baseRaw || "").replace(/\/$/, "");
+      endpoints.push(`${base}${KIL_REVIEW_API_PATH}`);
+      const hostOnly = base.replace(/:\d+$/, "");
+      for (const port of KIL_REVIEW_FALLBACK_PORTS) endpoints.push(`${hostOnly}:${port}${KIL_REVIEW_API_PATH}`);
+    }
+    return Array.from(new Set(endpoints));
   }
 
   function parseDate(value) {
@@ -399,12 +424,32 @@
     setText(summaryLineEl, "取得中...");
 
     try {
-      const res = await fetch(`/api/kil-review?${params}`, { cache: "no-store" });
-      if (!res.ok) {
-        const detail = await res.json().catch(() => ({}));
-        throw new Error(toFriendlyMessage(detail.detail || `HTTP ${res.status}`));
+      let lastError = "unknown";
+      let payload = null;
+      for (const base of getApiBaseCandidates()) {
+        const url = `${base}?${params}`;
+        try {
+          const res = await fetch(url, { cache: "no-store" });
+          if (!res.ok) {
+            const detail = await res.json().catch(() => ({}));
+            lastError = `${url} -> HTTP ${res.status}: ${toFriendlyMessage(detail.detail || "Request failed")}`;
+            continue;
+          }
+          payload = await res.json().catch(() => ({}));
+          if (payload) {
+            break;
+          }
+          lastError = `${url} -> 空レスポンス`;
+          break;
+        } catch (error) {
+          lastError = `${url} -> ${error?.message ? String(error.message) : "Request failed"}`;
+          continue;
+        }
       }
-      const payload = await res.json().catch(() => ({}));
+
+      if (!payload) {
+        throw new Error(`KIL Review API の取得に失敗しました。${lastError}`);
+      }
 
       renderSummary(payload || {});
       renderHealth(payload || {});
