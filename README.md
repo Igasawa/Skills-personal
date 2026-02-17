@@ -23,7 +23,7 @@
 
 ```powershell
 Set-Location c:\Users\TatsuoIgasawa\.vscode\Skillpersonal
-powershell -ExecutionPolicy Bypass -File .\scripts\install_git_hooks.ps1
+powershell -ExecutionPolicy Bypass -File .\scripts\bootstrap_kil.ps1
 ```
 
 ## 収録スキル
@@ -89,4 +89,3 @@ python -m pip install -r requirements-dev.txt
 python -m pytest -q
 npm run check:encoding
 ```
-
