@@ -118,6 +118,62 @@
   margin: 0;
 }
 
+.scheduler-panel {
+  margin-top: 14px;
+  padding: 14px;
+  border-radius: 12px;
+  border: 1px solid rgb(var(--semantic-field-border-default));
+  background: rgb(var(--surface-1));
+  display: grid;
+  gap: 12px;
+}
+
+.scheduler-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.scheduler-head h3 {
+  margin: 0;
+  font-size: 14px;
+}
+
+.scheduler-grid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+}
+
+.scheduler-grid label {
+  display: grid;
+  gap: 6px;
+  font-size: 12px;
+  color: rgb(var(--text-secondary));
+}
+
+.scheduler-grid input,
+.scheduler-grid select {
+  width: 100%;
+}
+
+.scheduler-toggle {
+  margin-left: auto;
+}
+
+.scheduler-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.scheduler-actions .muted {
+  margin: 0;
+  flex: 1 1 240px;
+}
+
 .wizard-task {
   display: grid;
   gap: 12px;
@@ -585,5 +641,149 @@
   .task-status {
     grid-column: 1 / -1;
     justify-self: start;
+  }
+}
+
+.errors-page .card h2 {
+  margin-top: 0;
+}
+
+.error-layout {
+  align-items: start;
+}
+
+.error-stats {
+  margin-bottom: 14px;
+}
+
+.errors-page .section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.errors-page .section-header h2 {
+  margin: 0;
+}
+
+.error-incidents-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+  max-height: min(62vh, 740px);
+  overflow: auto;
+}
+
+.error-incident-item {
+  width: 100%;
+  border: 1px solid rgb(var(--semantic-field-border-default));
+  background: rgb(var(--surface-2));
+  color: rgb(var(--text-default));
+  border-radius: 12px;
+  padding: 10px 12px;
+  cursor: pointer;
+  text-align: left;
+  display: grid;
+  gap: 8px;
+  transition: border-color var(--transition-fast), background var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.error-incident-item:hover {
+  border-color: rgb(var(--semantic-field-border-hover));
+  background: rgb(var(--semantic-interaction-hover-overlay));
+}
+
+.error-incident-item:focus-visible {
+  border-color: rgb(var(--semantic-field-border-focus));
+}
+
+.error-incident-item.selected {
+  border-color: rgb(var(--semantic-button-primary-bg));
+  box-shadow: 0 0 0 2px rgb(var(--semantic-button-primary-bg) / 0.24);
+  background: rgb(var(--semantic-button-primary-bg) / 0.08);
+}
+
+.error-incident-id {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size: 12px;
+  line-height: 1.3;
+  word-break: break-all;
+}
+
+.error-incident-meta {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.error-incident-meta span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 0 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  border: 1px solid rgb(var(--semantic-field-border-default));
+  background: rgb(var(--surface-1));
+  color: rgb(var(--text-secondary));
+}
+
+.error-meta-grid {
+  display: grid;
+  gap: 12px 16px;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  margin-bottom: 14px;
+}
+
+.value-text {
+  margin-top: 2px;
+  font-size: 13px;
+  line-height: 1.45;
+  color: rgb(var(--text-default));
+  word-break: break-word;
+}
+
+.error-options {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+}
+
+.error-options .inline-check {
+  min-height: 40px;
+}
+
+.error-options input[type="number"] {
+  width: 100%;
+}
+
+.error-log {
+  min-height: 170px;
+  max-height: min(32vh, 300px);
+}
+
+.error-box.success {
+  background: rgb(var(--semantic-feedback-success-surface) / 0.14);
+  border-color: rgb(var(--semantic-feedback-success-surface) / 0.4);
+  color: rgb(var(--semantic-feedback-warning-text));
+}
+
+.error-box.error {
+  background: rgb(var(--semantic-feedback-danger-surface) / 0.14);
+  border-color: rgb(var(--semantic-feedback-danger-surface) / 0.44);
+}
+
+@media (max-width: 720px) {
+  .error-incidents-list {
+    max-height: none;
+  }
+
+  .error-options {
+    grid-template-columns: minmax(0, 1fr);
   }
 }

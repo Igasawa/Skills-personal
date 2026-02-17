@@ -135,6 +135,17 @@ def test_index_page_shows_manual_archive_button(monkeypatch: pytest.MonkeyPatch,
     assert 'data-provider-action="download_provider_receipts"' not in res.text
     assert "/workspace" in res.text
     assert "data-mf-summary" not in res.text
+    assert 'id="scheduler-panel"' in res.text
+    assert 'id="scheduler-enabled"' in res.text
+    assert 'id="scheduler-run-date"' in res.text
+    assert 'id="scheduler-run-time"' in res.text
+    assert 'id="scheduler-mode"' in res.text
+    assert 'id="scheduler-catch-up"' in res.text
+    assert 'id="scheduler-auth-handoff"' in res.text
+    assert 'id="scheduler-autostart"' in res.text
+    assert 'id="scheduler-refresh"' in res.text
+    assert 'id="scheduler-save"' in res.text
+    assert "/static/js/scheduler.js" in res.text
 
 
 def test_index_page_shows_archive_history_links(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -213,6 +224,21 @@ def test_workspace_page_shows_core_link_and_prompt_tools(
     assert "data-workspace-link-details" in res.text
     assert 'id="workspace-prompt-active-label"' in res.text
     assert "/static/js/workspace.js" in res.text
+
+
+def test_errors_page_shows_incident_controls(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    client = _create_client(monkeypatch, tmp_path)
+    res = client.get("/errors")
+    assert res.status_code == 200
+    assert 'href="/errors"' in res.text
+    assert 'id="error-incidents-list"' in res.text
+    assert 'id="error-detail"' in res.text
+    assert 'id="errors-plan-all"' in res.text
+    assert 'id="errors-plan"' in res.text
+    assert 'id="errors-go"' in res.text
+    assert 'id="errors-archive-resolved"' in res.text
+    assert 'id="errors-archive-escalated"' in res.text
+    assert "/static/js/errors.js" in res.text
 
 
 def test_run_page_shows_detail_shortcut_when_pdf_missing(

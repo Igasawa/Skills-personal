@@ -1,0 +1,4 @@
+interface:
+  display_name: "Error Plan"
+  short_description: "Analyze incident logs and create remediation plans."
+  default_prompt: "Check error_inbox incidents and build a detailed remediation plan."

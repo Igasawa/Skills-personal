@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Error Center | Expense Dashboard</title>
+    <link rel="stylesheet" href="/static/styles.css" />
+  </head>
+  <body>
+    <div class="page errors-page">
+      <header class="hero">
+        <div>
+          <p class="eyebrow">Error Incident Management</p>
+          <h1>Error Center</h1>
+          <p class="subtitle">失敗ログの確認、修正計画、GO実行、アーカイブをこの画面で行います。</p>
+        </div>
+        <div class="hero-meta">
+          <div class="hero-tabs">
+            <a class="pill" href="/">ウィザード</a>
+            <a class="pill" href="/status">実行状況</a>
+            <a class="pill is-active" href="/errors">Errors</a>
+            <a class="pill" href="/workspace">Workspace</a>
+          </div>
+        </div>
+      </header>
+
+      <div id="errors-status" class="error-box hidden"></div>
+
+      <section class="grid two error-layout">
+        <div class="card">
+          <div class="section-header">
+            <h2>未解決 Incident</h2>
+            <button type="button" class="secondary" id="errors-refresh">再読み込み</button>
+          </div>
+
+          <div class="stats-grid error-stats">
+            <div class="stat">
+              <span class="label">Unresolved</span>
+              <span class="value" id="errors-stat-unresolved">0</span>
+            </div>
+            <div class="stat">
+              <span class="label">Resolved</span>
+              <span class="value" id="errors-stat-resolved">0</span>
+            </div>
+            <div class="stat">
+              <span class="label">Escalated</span>
+              <span class="value" id="errors-stat-escalated">0</span>
+            </div>
+          </div>
+
+          <ul id="error-incidents-list" class="error-incidents-list"></ul>
+          <p id="error-incidents-empty" class="muted">未解決の incident はありません。</p>
+        </div>
+
+        <div class="card">
+          <h2>Incident Detail</h2>
+
+          <div id="error-detail-empty" class="muted">左の一覧から incident を選択してください。</div>
+
+          <div id="error-detail" class="hidden">
+            <div class="error-meta-grid">
+              <div>
+                <span class="label">Incident ID</span>
+                <div class="value-text" id="error-detail-id">-</div>
+              </div>
+              <div>
+                <span class="label">Status</span>
+                <div class="value-text" id="error-detail-status">-</div>
+              </div>
+              <div>
+                <span class="label">Failure Class</span>
+                <div class="value-text" id="error-detail-class">-</div>
+              </div>
+              <div>
+                <span class="label">Step</span>
+                <div class="value-text" id="error-detail-step">-</div>
+              </div>
+              <div>
+                <span class="label">YM</span>
+                <div class="value-text" id="error-detail-ym">-</div>
+              </div>
+              <div>
+                <span class="label">Updated</span>
+                <div class="value-text" id="error-detail-updated">-</div>
+              </div>
+            </div>
+
+            <p class="muted" id="error-detail-message">-</p>
+
+            <div class="step-actions">
+              <button type="button" class="secondary" id="errors-plan-all" data-error-action-global>未解決を一括Plan</button>
+              <button type="button" class="primary" id="errors-plan" data-error-action>Plan 作成</button>
+              <button type="button" class="primary" id="errors-go" data-error-action>GO 実行</button>
+              <button type="button" class="secondary" id="errors-archive-resolved" data-error-action>Resolvedへ移動</button>
+              <button type="button" class="secondary" id="errors-archive-escalated" data-error-action>Escalatedへ移動</button>
+            </div>
+
+            <div class="error-options">
+              <label>
+                max_loops
+                <input type="number" id="errors-max-loops" min="1" max="99" value="8" />
+              </label>
+              <label>
+                max_runtime_minutes
+                <input type="number" id="errors-max-runtime" min="1" max="480" value="45" />
+              </label>
+              <label>
+                same_error_limit
+                <input type="number" id="errors-same-error-limit" min="1" max="20" value="3" />
+              </label>
+              <label class="inline-check">
+                <input type="checkbox" id="errors-single-iteration" />
+                single_iteration
+              </label>
+            </div>
+
+            <div class="section-divider">
+              <h3>Plan JSON</h3>
+            </div>
+            <pre id="errors-plan-json" class="log error-log"></pre>
+
+            <div class="section-divider">
+              <h3>Run Result JSON</h3>
+            </div>
+            <pre id="errors-run-result-json" class="log error-log"></pre>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <div id="toast" class="toast" aria-live="polite"></div>
+    <script src="/static/js/common.js"></script>
+    <script src="/static/js/errors.js"></script>
+  </body>
+</html>

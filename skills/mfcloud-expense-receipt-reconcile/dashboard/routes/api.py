@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import json
 import os
+import re
 import subprocess
 import sys
 from datetime import datetime
@@ -13,6 +15,7 @@ from fastapi.responses import JSONResponse
 from pypdf import PdfReader, PdfWriter
 
 from services import core
+from services import core_scheduler
 from services import core_shared
 
 
@@ -25,6 +28,7 @@ def create_api_router() -> APIRouter:
     WORKSPACE_MAX_NOTE_ENTRIES = 400
     WORKSPACE_MAX_NOTE_CHARS = 4000
     WORKSPACE_DEFAULT_PROMPT_KEY = "mf_expense_reports"
+    ERROR_INCIDENT_ID_RE = re.compile(r"^[A-Za-z0-9._-]+$")
 
     def _actor_from_request(request: Request) -> dict[str, str]:
         ip = request.client.host if request.client else ""
@@ -45,6 +49,82 @@ def create_api_router() -> APIRouter:
         if month < 1 or month > 12:
             return None
         return year, month
+
+    def _error_reports_root() -> Path:
+        return core.SKILL_ROOT / "reports"
+
+    def _safe_incident_id(incident_id: str) -> str:
+        value = str(incident_id or "").strip()
+        if not value or not ERROR_INCIDENT_ID_RE.fullmatch(value):
+            raise HTTPException(status_code=400, detail="Invalid incident id.")
+        return value
+
+    def _parse_ym(value: Any) -> tuple[int, int] | None:
+        text = str(value or "").strip()
+        match = re.match(r"^(\d{4})-(\d{2})$", text)
+        if not match:
+            return None
+        year = int(match.group(1))
+        month = int(match.group(2))
+        if month < 1 or month > 12:
+            return None
+        return year, month
+
+    def _extract_incident_year_month(payload: Any) -> tuple[int, int] | None:
+        if not isinstance(payload, dict):
+            return None
+        for candidate in (payload.get("incident"), payload):
+            if not isinstance(candidate, dict):
+                continue
+            ym = _parse_ym(candidate.get("ym"))
+            if ym:
+                return ym
+            try:
+                year = int(candidate.get("year"))
+                month = int(candidate.get("month"))
+            except Exception:
+                continue
+            if 1 <= month <= 12:
+                return year, month
+        return None
+
+    def _run_error_tool(script_name: str, args: list[str], *, timeout_seconds: int = 120) -> dict[str, Any]:
+        script_path = core.SKILL_ROOT / "scripts" / script_name
+        if not script_path.exists():
+            raise HTTPException(status_code=500, detail=f"Error tool missing: {script_name}")
+        cmd = [sys.executable, str(script_path), "--root", str(_error_reports_root()), *args]
+        try:
+            res = subprocess.run(
+                cmd,
+                cwd=str(core.SKILL_ROOT),
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=max(1, int(timeout_seconds)),
+            )
+        except subprocess.TimeoutExpired as exc:
+            raise HTTPException(
+                status_code=504,
+                detail=f"Error tool timeout: {script_name} ({exc.timeout}s)",
+            ) from exc
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail=f"Error tool execution failed: {exc}") from exc
+
+        stdout = str(res.stdout or "").strip()
+        stderr = str(res.stderr or "").strip()
+        if res.returncode != 0:
+            detail = stderr or stdout or f"exit={res.returncode}"
+            raise HTTPException(status_code=500, detail=f"{script_name} failed: {detail}")
+        try:
+            payload = json.loads(stdout or "{}")
+        except Exception as exc:
+            raise HTTPException(
+                status_code=500,
+                detail=f"{script_name} produced invalid JSON output.",
+            ) from exc
+        if not isinstance(payload, dict):
+            raise HTTPException(status_code=500, detail=f"{script_name} output must be a JSON object.")
+        return payload
 
     def _open_directory(path: Path) -> subprocess.CompletedProcess[str]:
         if sys.platform.startswith("win"):
@@ -1881,6 +1961,17 @@ def create_api_router() -> APIRouter:
             headers={"Cache-Control": "no-store"},
         )
 
+    @router.get("/api/scheduler/state")
+    def api_get_scheduler_state() -> JSONResponse:
+        state = core_scheduler.get_state()
+        return JSONResponse({"status": "ok", **state}, headers={"Cache-Control": "no-store"})
+
+    @router.post("/api/scheduler/state")
+    def api_set_scheduler_state(payload: dict[str, Any] | None = None) -> JSONResponse:
+        body = payload if isinstance(payload, dict) else {}
+        state = core_scheduler.update_state(body)
+        return JSONResponse({"status": "ok", **state}, headers={"Cache-Control": "no-store"})
+
     @router.post("/api/print-pdf/{ym}/{source}/{filename}")
     def api_print_pdf(ym: str, source: str, filename: str, request: Request) -> JSONResponse:
         ym = core._safe_ym(ym)
@@ -2005,5 +2096,186 @@ def create_api_router() -> APIRouter:
         year, month = core._split_ym(ym)
         payload = core._mf_draft_actions_summary_for_ym(year, month, limit_events=limit_events)
         return JSONResponse(payload, headers={"Cache-Control": "no-store"})
+
+    @router.get("/api/errors/incidents")
+    def api_get_error_incidents() -> JSONResponse:
+        payload = _run_error_tool("error_status.py", ["--json"], timeout_seconds=30)
+        return JSONResponse(payload, headers={"Cache-Control": "no-store"})
+
+    @router.post("/api/errors/incidents/plan-all")
+    def api_build_all_error_plans(payload: dict[str, Any] | None = None) -> JSONResponse:
+        body = payload if isinstance(payload, dict) else {}
+        force = bool(body.get("force"))
+        status_payload = _run_error_tool("error_status.py", ["--json"], timeout_seconds=30)
+        incidents = status_payload.get("incidents") if isinstance(status_payload.get("incidents"), list) else []
+
+        planned: list[dict[str, Any]] = []
+        failed: list[dict[str, str]] = []
+
+        for row in incidents:
+            if not isinstance(row, dict):
+                continue
+            raw_incident_id = str(row.get("incident_id") or "").strip()
+            if not raw_incident_id:
+                continue
+            try:
+                safe_incident_id = _safe_incident_id(raw_incident_id)
+            except HTTPException as exc:
+                failed.append({"incident_id": raw_incident_id, "detail": str(exc.detail)})
+                continue
+
+            args = ["--incident-id", safe_incident_id]
+            if force:
+                args.append("--force")
+            try:
+                result = _run_error_tool("error_plan_generate.py", args, timeout_seconds=60)
+                planned.append(
+                    {
+                        "incident_id": safe_incident_id,
+                        "plan_json": str(result.get("plan_json") or ""),
+                    }
+                )
+            except HTTPException as exc:
+                failed.append({"incident_id": safe_incident_id, "detail": str(exc.detail)})
+
+        return JSONResponse(
+            {
+                "status": "ok",
+                "target_count": len(incidents),
+                "planned_count": len(planned),
+                "failed_count": len(failed),
+                "planned": planned,
+                "failed": failed,
+            },
+            headers={"Cache-Control": "no-store"},
+        )
+
+    @router.get("/api/errors/incidents/{incident_id}")
+    def api_get_error_incident(incident_id: str) -> JSONResponse:
+        safe_incident_id = _safe_incident_id(incident_id)
+        payload = _run_error_tool(
+            "error_status.py",
+            ["--json", "--incident-id", safe_incident_id],
+            timeout_seconds=30,
+        )
+        plan_dir = _error_reports_root() / "error_plans" / safe_incident_id
+        plan_json = core._read_json(plan_dir / "plan.json")
+        if isinstance(plan_json, dict):
+            payload["plan"] = plan_json
+            payload["plan_json_path"] = str(plan_dir / "plan.json")
+            payload["plan_md_path"] = str(plan_dir / "plan.md")
+        run_result = core._read_json(_error_reports_root() / "error_runs" / safe_incident_id / "run_result.json")
+        if isinstance(run_result, dict):
+            payload["run_result"] = run_result
+        return JSONResponse(payload, headers={"Cache-Control": "no-store"})
+
+    @router.post("/api/errors/incidents/{incident_id}/plan")
+    def api_build_error_plan(incident_id: str, request: Request, payload: dict[str, Any] | None = None) -> JSONResponse:
+        safe_incident_id = _safe_incident_id(incident_id)
+        body = payload if isinstance(payload, dict) else {}
+        args = ["--incident-id", safe_incident_id]
+        if bool(body.get("force")):
+            args.append("--force")
+        result = _run_error_tool("error_plan_generate.py", args, timeout_seconds=60)
+
+        ym = _extract_incident_year_month(result)
+        if ym:
+            year, month = ym
+            core._append_audit_event(
+                year=year,
+                month=month,
+                event_type="error_incident",
+                action="plan",
+                status="success",
+                actor=_actor_from_request(request),
+                details={
+                    "incident_id": safe_incident_id,
+                    "plan_json": result.get("plan_json"),
+                },
+            )
+        return JSONResponse(result, headers={"Cache-Control": "no-store"})
+
+    @router.post("/api/errors/incidents/{incident_id}/go")
+    def api_execute_error_go(incident_id: str, request: Request, payload: dict[str, Any] | None = None) -> JSONResponse:
+        safe_incident_id = _safe_incident_id(incident_id)
+        body = payload if isinstance(payload, dict) else {}
+        max_loops = core._safe_non_negative_int(body.get("max_loops"), default=8) or 8
+        max_runtime = core._safe_non_negative_int(body.get("max_runtime_minutes"), default=45) or 45
+        same_error_limit = core._safe_non_negative_int(body.get("same_error_limit"), default=3) or 3
+        single_iteration = bool(body.get("single_iteration"))
+        archive_on_success = bool(body.get("archive_on_success", True))
+        archive_on_escalate = bool(body.get("archive_on_escalate", True))
+
+        args = [
+            "--incident-id",
+            safe_incident_id,
+            "--max-loops",
+            str(max_loops),
+            "--max-runtime-minutes",
+            str(max_runtime),
+            "--same-error-limit",
+            str(same_error_limit),
+        ]
+        if single_iteration:
+            args.append("--single-iteration")
+        if archive_on_success:
+            args.append("--archive-on-success")
+        if archive_on_escalate:
+            args.append("--archive-on-escalate")
+
+        timeout_seconds = max(60, max_runtime * 60 + 120)
+        result = _run_error_tool("error_exec_loop.py", args, timeout_seconds=timeout_seconds)
+
+        incident_view = _run_error_tool(
+            "error_status.py",
+            ["--json", "--incident-id", safe_incident_id],
+            timeout_seconds=30,
+        )
+        ym = _extract_incident_year_month(incident_view)
+        if ym:
+            year, month = ym
+            core._append_audit_event(
+                year=year,
+                month=month,
+                event_type="error_incident",
+                action="go_exec",
+                status=str(result.get("final_status") or "unknown"),
+                actor=_actor_from_request(request),
+                details={
+                    "incident_id": safe_incident_id,
+                    "loops_used": result.get("loops_used"),
+                    "runtime_minutes": result.get("runtime_minutes"),
+                    "same_error_repeats": result.get("same_error_repeats"),
+                },
+            )
+        return JSONResponse(result, headers={"Cache-Control": "no-store"})
+
+    @router.post("/api/errors/incidents/{incident_id}/archive")
+    def api_archive_error_incident(incident_id: str, request: Request, payload: dict[str, Any]) -> JSONResponse:
+        safe_incident_id = _safe_incident_id(incident_id)
+        body = payload if isinstance(payload, dict) else {}
+        result_value = str(body.get("result") or "").strip().lower()
+        if result_value not in {"resolved", "escalated"}:
+            raise HTTPException(status_code=400, detail="result must be resolved or escalated.")
+        reason = str(body.get("reason") or "").strip()
+        args = ["--incident-id", safe_incident_id, "--result", result_value]
+        if reason:
+            args += ["--reason", reason]
+        result = _run_error_tool("error_archive.py", args, timeout_seconds=30)
+
+        incident_view = _run_error_tool("error_status.py", ["--json"], timeout_seconds=30)
+        ym = _extract_incident_year_month(incident_view)
+        if ym:
+            year, month = ym
+            core._append_audit_event(
+                year=year,
+                month=month,
+                event_type="error_incident",
+                action="archive",
+                status=result_value,
+                actor=_actor_from_request(request),
+                details={"incident_id": safe_incident_id, "reason": reason},
+            )
+        return JSONResponse(result, headers={"Cache-Control": "no-store"})
 
     return router

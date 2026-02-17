@@ -13,6 +13,7 @@ if str(BASE_DIR) not in sys.path:
 
 from routes.api import create_api_router
 from routes.pages import create_pages_router
+from services import core_scheduler
 
 app = FastAPI()
 app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
@@ -20,3 +21,13 @@ app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="stat
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 app.include_router(create_pages_router(templates))
 app.include_router(create_api_router())
+
+
+@app.on_event("startup")
+def app_startup() -> None:
+    core_scheduler.start_worker()
+
+
+@app.on_event("shutdown")
+def app_shutdown() -> None:
+    core_scheduler.stop_worker()

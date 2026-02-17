@@ -20,6 +20,7 @@
           <div class="hero-tabs">
             <a class="pill is-active" href="/">ウィザード</a>
             <a class="pill" href="/status">実行状況</a>
+            <a class="pill" href="/errors">Errors</a>
             <a class="pill" href="/workspace" data-workspace-link>Workspace</a>
           </div>
         </div>
@@ -64,6 +65,57 @@
               <div class="muted">このフォームの年月・URLがウィザード実行に使われます。</div>
             </div>
           </form>
+          <div class="scheduler-panel" id="scheduler-panel">
+            <div class="scheduler-head">
+              <h3>タイマー自動実行</h3>
+              <label class="inline-check scheduler-toggle">
+                <input type="checkbox" id="scheduler-enabled" />
+                有効
+              </label>
+            </div>
+            <div class="scheduler-grid">
+              <label>
+                実行日
+                <input type="date" id="scheduler-run-date" />
+              </label>
+              <label>
+                実行時刻
+                <input type="time" id="scheduler-run-time" value="09:00" />
+              </label>
+              <label>
+                実行モード
+                <select id="scheduler-mode">
+                  <option value="preflight">手順0 準備</option>
+                  <option value="preflight_mf">手順0 MF再取得のみ</option>
+                  <option value="amazon_download">手順1 Amazon取得</option>
+                  <option value="rakuten_download">手順2 楽天取得</option>
+                  <option value="amazon_print">手順1 Amazon印刷準備</option>
+                  <option value="rakuten_print">手順2 楽天印刷準備</option>
+                  <option value="mf_reconcile">手順5 MF突合</option>
+                </select>
+              </label>
+              <label>
+                取りこぼし補完
+                <select id="scheduler-catch-up">
+                  <option value="run_on_startup">次回起動時に実行</option>
+                  <option value="skip">スキップして無効化</option>
+                </select>
+              </label>
+              <label class="inline-check">
+                <input type="checkbox" id="scheduler-auth-handoff" />
+                ログイン画面を開いて実行（有人）
+              </label>
+              <label class="inline-check">
+                <input type="checkbox" id="scheduler-autostart" />
+                Windowsログイン時にダッシュボード自動起動
+              </label>
+            </div>
+            <div class="scheduler-actions">
+              <button type="button" class="secondary" id="scheduler-refresh">状態更新</button>
+              <button type="button" class="primary" id="scheduler-save">設定を保存</button>
+              <span class="muted" id="scheduler-summary">未設定</span>
+            </div>
+          </div>
         </div>
         <div class="wizard-steps">
           <div id="step-preflight" class="wizard-step" data-step-id="preflight">
@@ -143,6 +195,9 @@
               <span class="step-status" data-step-status="provider_ingest">未実行</span>
             </div>
             <div class="step-actions">
+              <button type="button" class="secondary" data-provider-action="open_provider_source">
+                連携元フォルダを開く
+              </button>
               <button type="button" class="secondary" data-provider-action="open_shared_inbox">
                 共通フォルダを開く
               </button>
@@ -153,6 +208,10 @@
                 一括印刷（結合PDFを開く）
               </button>
               <span class="muted">自動取得されない領収書（Aqua Voice / Claude / ChatGPT / Gamma など）を共通フォルダの直下に入れて取り込みます。<a href="/workspace" target="_blank" rel="noopener noreferrer">ワークスペースを開く</a></span>
+              <span class="muted" data-provider-source-summary>Provider source folder status will appear here.</span>
+              <span class="muted" data-provider-source-setup-guide hidden>
+                `AX_MANUAL_RECEIPT_SOURCE_DIR` を設定してください。<a href="#" target="_blank" rel="noopener noreferrer">セットアップ手順</a>
+              </span>
             </div>
           </div>
           <div id="step-mf-bulk-upload-task" class="wizard-step" data-step-id="mf_bulk_upload_task">
@@ -224,5 +283,6 @@
     <div id="toast" class="toast" aria-live="polite"></div>
     <script src="/static/js/common.js"></script>
     <script src="/static/js/index.js"></script>
+    <script src="/static/js/scheduler.js"></script>
   </body>
 </html>

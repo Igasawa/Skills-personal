@@ -408,6 +408,129 @@ def _append_audit_event(
         handle.write(json.dumps(entry, ensure_ascii=False) + "\n")
 
 
+def _capture_failed_run_incident(
+    *,
+    meta_path: Path,
+    meta: dict[str, Any],
+    reason: str,
+    inferred_from: str = "",
+) -> None:
+    status = str(meta.get("status") or "").strip().lower()
+    if status != "failed":
+        return
+    if str(meta.get("error_incident_id") or "").strip():
+        return
+    if str(meta.get("error_capture_attempted_at") or "").strip():
+        return
+
+    script_path = SKILL_ROOT / "scripts" / "error_capture.py"
+    ts = datetime.now().isoformat(timespec="seconds")
+    meta["error_capture_attempted_at"] = ts
+    if not script_path.exists():
+        meta["error_capture_error"] = f"script_not_found: {script_path}"
+        _write_json(meta_path, meta)
+        return
+
+    params = meta.get("params") if isinstance(meta.get("params"), dict) else {}
+    year = _safe_int(params.get("year"))
+    month = _safe_int(params.get("month"))
+    mode = str(params.get("mode") or "").strip() or "unknown"
+    run_id = str(meta.get("run_id") or "").strip()
+    returncode = _safe_int(meta.get("returncode"))
+    log_path = str(meta.get("log_path") or "").strip()
+    message = (
+        f"Run failed: mode={mode} reason={reason} "
+        f"returncode={returncode if returncode is not None else -1}"
+    )
+
+    context_payload: dict[str, Any] = {
+        "source": "dashboard_run_capture",
+        "reason": reason,
+        "inferred_from": inferred_from,
+        "mode": mode,
+        "run_id": run_id,
+        "returncode": returncode if returncode is not None else -1,
+    }
+    cmd = [
+        sys.executable,
+        str(script_path),
+        "--run-id",
+        run_id,
+        "--step",
+        mode,
+        "--failure-class",
+        "run_failed",
+        "--message",
+        message,
+        "--status",
+        "new",
+        "--context-json",
+        json.dumps(context_payload, ensure_ascii=False),
+    ]
+    if year is not None and month is not None:
+        cmd += ["--year", str(year), "--month", str(month)]
+        audit_path = _audit_log_path(year, month)
+        if audit_path.exists():
+            cmd += ["--audit-path", str(audit_path)]
+    if log_path:
+        cmd += ["--log-path", log_path]
+
+    try:
+        res = subprocess.run(
+            cmd,
+            cwd=str(SKILL_ROOT),
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=30,
+        )
+    except Exception as exc:
+        meta["error_capture_error"] = f"capture_exception: {exc}"
+        _write_json(meta_path, meta)
+        return
+
+    if res.returncode != 0:
+        stderr = str(res.stderr or "").strip()
+        stdout = str(res.stdout or "").strip()
+        message_text = stderr or stdout or f"exit={res.returncode}"
+        meta["error_capture_error"] = f"capture_failed: {message_text[:500]}"
+        _write_json(meta_path, meta)
+        return
+
+    payload: dict[str, Any] = {}
+    try:
+        payload = json.loads(str(res.stdout or "{}"))
+    except Exception:
+        payload = {}
+
+    incident_id = str(payload.get("incident_id") or "").strip()
+    if incident_id:
+        meta["error_incident_id"] = incident_id
+        meta.pop("error_capture_error", None)
+    else:
+        meta["error_capture_error"] = "capture_succeeded_but_incident_id_missing"
+    _write_json(meta_path, meta)
+
+    if year is not None and month is not None:
+        details = {
+            "reason": reason,
+            "inferred_from": inferred_from,
+            "returncode": returncode if returncode is not None else -1,
+            "incident_id": incident_id,
+        }
+        _append_audit_event(
+            year=year,
+            month=month,
+            event_type="error_incident",
+            action="capture",
+            status="success" if incident_id else "failed",
+            actor=meta.get("actor"),
+            mode=mode,
+            run_id=run_id,
+            details=details,
+        )
+
+
 def _is_preflight_success(payload: Any, *, year: int, month: int) -> bool:
     if not isinstance(payload, dict):
         return False
@@ -1043,6 +1166,12 @@ def _reconcile_running_jobs() -> None:
                 "inferred_from": inferred_from,
             },
         )
+        _capture_failed_run_incident(
+            meta_path=p,
+            meta=data,
+            reason=reason,
+            inferred_from=inferred_from,
+        )
 
 
 def _scan_run_jobs() -> list[dict[str, Any]]:
@@ -1098,6 +1227,12 @@ def _run_worker(process: subprocess.Popen, meta_path: Path) -> None:
         mode=mode,
         run_id=str(meta.get("run_id") or ""),
         details={"returncode": exit_code},
+    )
+    _capture_failed_run_incident(
+        meta_path=meta_path,
+        meta=meta,
+        reason="worker_exit",
+        inferred_from="process_wait",
     )
 
 

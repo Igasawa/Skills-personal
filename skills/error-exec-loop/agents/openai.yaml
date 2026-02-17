@@ -1,0 +1,4 @@
+interface:
+  display_name: "Error Exec Loop"
+  short_description: "Execute approved remediation plans with verification loops."
+  default_prompt: "GO on the selected incident and execute the remediation plan until resolved or escalated."

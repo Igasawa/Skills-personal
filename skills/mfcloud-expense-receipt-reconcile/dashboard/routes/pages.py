@@ -71,6 +71,17 @@ def create_pages_router(templates: Jinja2Templates) -> APIRouter:
             },
         )
 
+    @router.get("/errors", response_class=HTMLResponse)
+    def errors(request: Request) -> HTMLResponse:
+        return templates.TemplateResponse(
+            request,
+            "errors.html",
+            {
+                "ax_home": str(core._ax_home()),
+                "active_tab": "errors",
+            },
+        )
+
     @router.get("/runs/{ym}", response_class=HTMLResponse)
     def run_detail(request: Request, ym: str) -> HTMLResponse:
         ym = core._safe_ym(ym)
