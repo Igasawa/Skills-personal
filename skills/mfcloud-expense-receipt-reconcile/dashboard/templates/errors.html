@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Error Center | Expense Dashboard</title>
+    <title>エラーセンター | Expense Dashboard</title>
     <link rel="stylesheet" href="/static/styles.css" />
   </head>
   <body>
@@ -14,67 +14,67 @@
     >
       <header class="hero">
         <div>
-          <p class="eyebrow">Error Incident Management</p>
-          <h1>Error Center</h1>
+          <p class="eyebrow">エラーインシデント管理</p>
+          <h1>エラーセンター</h1>
           <p class="subtitle">失敗ログの確認、修正計画、GO実行、アーカイブをこの画面で行います。</p>
         </div>
       </header>
 
       <div id="errors-status" class="error-box hidden"></div>
 
-      <div class="hero-tabs errors-tabs" role="tablist" aria-label="Error page tabs">
-        <button type="button" class="pill is-active" data-errors-tab="incidents" id="errors-tab-incidents">Incidents</button>
-        <button type="button" class="pill" data-errors-tab="document-update" id="errors-tab-document-update">Document Update</button>
+      <div class="hero-tabs errors-tabs" role="tablist" aria-label="エラーページタブ">
+        <button type="button" class="pill is-active" data-errors-tab="incidents" id="errors-tab-incidents">インシデント</button>
+            <button type="button" class="pill" data-errors-tab="document-update" id="errors-tab-document-update">ドキュメント更新</button>
       </div>
 
       <section class="errors-tab-panel" data-errors-tab-panel="incidents">
       <section class="grid two error-layout">
         <div class="card">
           <div class="section-header">
-            <h2>未解決 Incident</h2>
+            <h2>未解決インシデント</h2>
             <button type="button" class="secondary" id="errors-refresh">再読み込み</button>
           </div>
 
           <div class="stats-grid error-stats">
             <div class="stat">
-              <span class="label">Unresolved</span>
+              <span class="label">未解決</span>
               <span class="value" id="errors-stat-unresolved">0</span>
             </div>
             <div class="stat">
-              <span class="label">Resolved</span>
+              <span class="label">解決済み</span>
               <span class="value" id="errors-stat-resolved">0</span>
             </div>
             <div class="stat">
-              <span class="label">Escalated</span>
+              <span class="label">エスカレート</span>
               <span class="value" id="errors-stat-escalated">0</span>
             </div>
           </div>
 
           <ul id="error-incidents-list" class="error-incidents-list"></ul>
-          <p id="error-incidents-empty" class="muted">未解決の incident はありません。</p>
+          <p id="error-incidents-empty" class="muted">未解決のインシデントはありません。</p>
         </div>
 
         <div class="card">
-          <h2>Incident Detail</h2>
+          <h2>インシデント詳細</h2>
 
-          <div id="error-detail-empty" class="muted">左の一覧から incident を選択してください。</div>
+          <div id="error-detail-empty" class="muted">左の一覧からインシデントを選択してください。</div>
 
           <div id="error-detail" class="hidden">
             <div class="error-meta-grid">
               <div>
-                <span class="label">Incident ID</span>
+                <span class="label">インシデントID</span>
                 <div class="value-text" id="error-detail-id">-</div>
               </div>
               <div>
-                <span class="label">Status</span>
+                <span class="label">ステータス</span>
                 <div class="value-text" id="error-detail-status">-</div>
               </div>
               <div>
-                <span class="label">Failure Class</span>
+                <span class="label">失敗分類</span>
                 <div class="value-text" id="error-detail-class">-</div>
               </div>
               <div>
-                <span class="label">Step</span>
+                <span class="label">ステップ</span>
                 <div class="value-text" id="error-detail-step">-</div>
               </div>
               <div>
@@ -82,7 +82,7 @@
                 <div class="value-text" id="error-detail-ym">-</div>
               </div>
               <div>
-                <span class="label">Updated</span>
+                <span class="label">更新日時</span>
                 <div class="value-text" id="error-detail-updated">-</div>
               </div>
             </div>
@@ -93,8 +93,8 @@
               <button type="button" class="secondary" id="errors-plan-all" data-error-action-global>未解決を一括Plan</button>
               <button type="button" class="primary" id="errors-plan" data-error-action>Plan 作成</button>
               <button type="button" class="primary" id="errors-go" data-error-action>GO 実行</button>
-              <button type="button" class="secondary" id="errors-archive-resolved" data-error-action>Resolvedへ移動</button>
-              <button type="button" class="secondary" id="errors-archive-escalated" data-error-action>Escalatedへ移動</button>
+              <button type="button" class="secondary" id="errors-archive-resolved" data-error-action>解決済みに移動</button>
+              <button type="button" class="secondary" id="errors-archive-escalated" data-error-action>エスカレートへ移動</button>
             </div>
 
             <div class="error-options">
@@ -117,12 +117,12 @@
             </div>
 
             <div class="section-divider">
-              <h3>Plan JSON</h3>
+              <h3>計画JSON</h3>
             </div>
             <pre id="errors-plan-json" class="log error-log"></pre>
 
             <div class="section-divider">
-              <h3>Run Result JSON</h3>
+              <h3>実行結果JSON</h3>
             </div>
             <pre id="errors-run-result-json" class="log error-log"></pre>
           </div>
@@ -133,21 +133,21 @@
       <section class="errors-tab-panel hidden" data-errors-tab-panel="document-update">
         <section class="card">
           <div class="section-header">
-            <h2>Document Update</h2>
+            <h2>ドキュメント更新</h2>
             <div class="step-actions">
-              <button type="button" class="secondary" id="errors-doc-refresh">Refresh status</button>
-              <button type="button" class="primary" id="errors-doc-run">Run document update</button>
+              <button type="button" class="secondary" id="errors-doc-refresh">ステータスを更新</button>
+              <button type="button" class="primary" id="errors-doc-run">ドキュメント更新を実行</button>
             </div>
           </div>
-          <p id="errors-doc-summary" class="muted">Loading document update status...</p>
+          <p id="errors-doc-summary" class="muted">ドキュメント更新ステータスを読み込み中...</p>
 
           <div class="grid two errors-doc-grid">
             <div class="errors-doc-stat">
-              <span class="label">Source Used</span>
+              <span class="label">使用ソース</span>
               <span class="value" id="errors-doc-source-used">-</span>
             </div>
             <div class="errors-doc-stat">
-              <span class="label">Index entries</span>
+              <span class="label">インデックス件数</span>
               <span class="value" id="errors-doc-index-count">0</span>
             </div>
             <div class="errors-doc-stat">
@@ -155,15 +155,15 @@
               <span class="value" id="errors-doc-markdown-state">-</span>
             </div>
             <div class="errors-doc-stat">
-              <span class="label">Review file</span>
+              <span class="label">レビュー更新ファイル</span>
               <span class="value" id="errors-doc-review-state">-</span>
             </div>
             <div class="errors-doc-stat">
-              <span class="label">Latest AGENT_BRAIN update</span>
+              <span class="label">AGENT_BRAIN 最終更新</span>
               <span class="value" id="errors-doc-index-updated-at">-</span>
             </div>
             <div class="errors-doc-stat">
-              <span class="label">Latest review update</span>
+              <span class="label">レビュー最終更新</span>
               <span class="value" id="errors-doc-review-updated-at">-</span>
             </div>
           </div>
@@ -173,7 +173,7 @@
 
         <section class="card">
           <div class="section-header">
-            <h2>Document update result</h2>
+            <h2>ドキュメント更新結果</h2>
           </div>
           <pre id="errors-doc-run-result" class="log error-log">-</pre>
         </section>

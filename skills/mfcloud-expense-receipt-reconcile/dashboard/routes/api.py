@@ -49,6 +49,22 @@ def create_api_router() -> APIRouter:
     WORKFLOW_TEMPLATE_MAX_NAME_CHARS = 80
     WORKFLOW_TEMPLATE_MAX_URL_CHARS = 2048
     WORKFLOW_TEMPLATE_MAX_SOURCE_URLS = 10
+    WORKFLOW_TEMPLATE_MAX_STEPS = 30
+    WORKFLOW_TEMPLATE_MAX_STEP_TITLE_CHARS = 80
+    WORKFLOW_TEMPLATE_MAX_STEP_ACTION_CHARS = 48
+    WORKFLOW_TEMPLATE_STEP_DEFAULT_ACTION = "preflight"
+    # Canonical source for workflow template step action validation/persistence.
+    # Keep in sync with frontend action options (`static/js/index.js`/`static/js/scheduler.js`);
+    # the API side is the single source of truth for accepted action identifiers.
+    WORKFLOW_TEMPLATE_ALLOWED_STEP_ACTIONS = (
+        "preflight",
+        "preflight_mf",
+        "amazon_download",
+        "rakuten_download",
+        "amazon_print",
+        "rakuten_print",
+        "mf_reconcile",
+    )
     WORKFLOW_TEMPLATE_MAX_NOTES_CHARS = 4000
     WORKFLOW_TEMPLATE_MAX_SUBHEADING_CHARS = 120
     WORKFLOW_TEMPLATE_MAX_SEARCH_CHARS = 200
@@ -94,6 +110,17 @@ def create_api_router() -> APIRouter:
 
     def _error_reports_root() -> Path:
         return core.SKILL_ROOT / "reports"
+
+    def _review_kil_script_path() -> Path:
+        candidates = [
+            core.SKILL_ROOT / "scripts" / "review_kil_brain.py",
+            core.SKILL_ROOT.parent.parent / "scripts" / "review_kil_brain.py",
+            Path.cwd() / "scripts" / "review_kil_brain.py",
+        ]
+        for candidate in candidates:
+            if candidate.exists():
+                return candidate
+        raise HTTPException(status_code=500, detail="review_kil_brain.py not found.")
 
     def _safe_incident_id(incident_id: str) -> str:
         value = str(incident_id or "").strip()
@@ -2130,7 +2157,7 @@ def create_api_router() -> APIRouter:
         return mode if mode in WORKFLOW_TEMPLATE_MODES else "new"
 
     def _normalize_workflow_template_name(value: Any) -> str:
-        return " ".join(str(value or "").strip().split())[:WORKFLOW_TEMPLATE_MAX_NAME_CHARS] or "ワークフローテンプレート"
+        return " ".join(str(value or "").strip().split())[:WORKFLOW_TEMPLATE_MAX_NAME_CHARS] or "Workflow template"
 
     def _normalize_workflow_template_url(value: Any) -> str:
         raw = str(value or "").strip()
@@ -2159,6 +2186,68 @@ def create_api_router() -> APIRouter:
             if len(normalized) >= WORKFLOW_TEMPLATE_MAX_SOURCE_URLS:
                 break
         return normalized
+
+    def _normalize_workflow_template_steps(value: Any) -> list[dict[str, str]]:
+        raw_values = value if isinstance(value, list) else []
+        normalized: list[dict[str, str]] = []
+        seen_ids: set[str] = set()
+        for row in raw_values:
+            has_id_field = False
+            has_action_field = False
+            raw_id = ""
+            raw_title = ""
+            raw_action = ""
+            if isinstance(row, dict):
+                has_id_field = "id" in row
+                has_action_field = "action" in row
+                raw_id = str(row.get("id") or "").strip()
+                if "title" in row:
+                    raw_title = row.get("title")
+                elif "name" in row:
+                    raw_title = row.get("name")
+                raw_action = str(row.get("action") or "").strip()
+            else:
+                raw_title = row
+            title = " ".join(str(raw_title or "").strip().split())
+            if not title:
+                continue
+            title = title[:WORKFLOW_TEMPLATE_MAX_STEP_TITLE_CHARS]
+            normalized_row: dict[str, str] = {"title": title}
+
+            if has_action_field:
+                action = str(raw_action or WORKFLOW_TEMPLATE_STEP_DEFAULT_ACTION).strip()
+                if action not in WORKFLOW_TEMPLATE_ALLOWED_STEP_ACTIONS:
+                    action = WORKFLOW_TEMPLATE_STEP_DEFAULT_ACTION
+                normalized_row["action"] = action[:WORKFLOW_TEMPLATE_MAX_STEP_ACTION_CHARS]
+
+            if has_id_field:
+                step_id = raw_id[:24]
+                if not step_id:
+                    step_id = uuid4().hex
+                if len(step_id) < 8:
+                    step_id = f"{step_id}-{uuid4().hex}"
+                if step_id in seen_ids:
+                    while step_id in seen_ids:
+                        step_id = uuid4().hex
+                seen_ids.add(step_id)
+                normalized_row["id"] = step_id
+
+            normalized.append(normalized_row)
+            if len(normalized) >= WORKFLOW_TEMPLATE_MAX_STEPS:
+                break
+        return normalized
+
+    def _normalize_workflow_template_year(value: Any) -> int:
+        year = core._safe_non_negative_int(value, default=0)
+        if year and not 2000 <= year <= 3000:
+            return 0
+        return year
+
+    def _normalize_workflow_template_month(value: Any) -> int:
+        month = core._safe_non_negative_int(value, default=0)
+        if month and not 1 <= month <= 12:
+            return 0
+        return month
 
     def _normalize_workflow_template_notes(value: Any) -> str:
         return " ".join(str(value or "").strip().split())[:WORKFLOW_TEMPLATE_MAX_NOTES_CHARS]
@@ -2211,10 +2300,8 @@ def create_api_router() -> APIRouter:
                 source_urls = [mfcloud_url]
             if source_urls:
                 mfcloud_url = source_urls[0]
-            year_raw = core._safe_non_negative_int(row.get("year"), default=0)
-            month_raw = core._safe_non_negative_int(row.get("month"), default=0)
-            if not 2000 <= year_raw <= 3000 or month_raw < 1 or month_raw > 12:
-                continue
+            year_raw = _normalize_workflow_template_year(row.get("year"))
+            month_raw = _normalize_workflow_template_month(row.get("month"))
             name = _normalize_workflow_template_name(row.get("name"))
             if not name:
                 continue
@@ -2226,6 +2313,7 @@ def create_api_router() -> APIRouter:
                     "month": month_raw,
                     "mfcloud_url": mfcloud_url,
                     "source_urls": source_urls,
+                    "steps": _normalize_workflow_template_steps(row.get("steps")),
                     "notes": _normalize_workflow_template_notes(row.get("notes")),
                     "subheading": _normalize_workflow_template_subheading(row.get("subheading")),
                     "rakuten_orders_url": _normalize_workflow_template_url(row.get("rakuten_orders_url")) or "",
@@ -2252,16 +2340,14 @@ def create_api_router() -> APIRouter:
             template_id = _normalize_workflow_template_id(row.get("id"))
             if not template_id:
                 continue
-            year = core._safe_non_negative_int(row.get("year"), default=0)
-            month = core._safe_non_negative_int(row.get("month"), default=0)
+            year = _normalize_workflow_template_year(row.get("year"))
+            month = _normalize_workflow_template_month(row.get("month"))
             mfcloud_url = _normalize_workflow_template_url(row.get("mfcloud_url"))
             source_urls = _normalize_workflow_template_source_urls(row.get("source_urls"))
             if not source_urls and mfcloud_url:
                 source_urls = [mfcloud_url]
             if source_urls:
                 mfcloud_url = source_urls[0]
-            if not template_id or not (2000 <= year <= 3000 and 1 <= month <= 12):
-                continue
             normalized.append(
                 {
                     "id": template_id,
@@ -2270,6 +2356,7 @@ def create_api_router() -> APIRouter:
                     "month": month,
                     "mfcloud_url": mfcloud_url,
                     "source_urls": source_urls,
+                    "steps": _normalize_workflow_template_steps(row.get("steps")),
                     "notes": _normalize_workflow_template_notes(row.get("notes")),
                     "subheading": _normalize_workflow_template_subheading(row.get("subheading")),
                     "rakuten_orders_url": _normalize_workflow_template_url(row.get("rakuten_orders_url")),
@@ -2321,25 +2408,22 @@ def create_api_router() -> APIRouter:
         if template_mode == "copy" and not source_template_id:
             raise HTTPException(status_code=400, detail="template_source_id is required for copy mode.")
         if template_mode == "edit" and template_mode_requested and template_id and not base_updated_at:
-            raise HTTPException(status_code=400, detail="編集時はベース更新日時が必要です。")
+            raise HTTPException(status_code=400, detail="edit mode requires base_updated_at.")
 
         name = _normalize_workflow_template_name(payload.get("name"))
         if not name:
-            raise HTTPException(status_code=400, detail="テンプレート名を入力してください。")
+            raise HTTPException(status_code=400, detail="template name is required.")
         source_urls = _normalize_workflow_template_source_urls(payload.get("source_urls"))
         mfcloud_url = _normalize_workflow_template_url(payload.get("mfcloud_url"))
+        steps = _normalize_workflow_template_steps(payload.get("steps"))
         if not source_urls and mfcloud_url:
             source_urls = [mfcloud_url]
         if source_urls:
             mfcloud_url = source_urls[0]
         else:
             mfcloud_url = ""
-        year = core._safe_non_negative_int(payload.get("year"), default=0)
-        month = core._safe_non_negative_int(payload.get("month"), default=0)
-        if not 1 <= month <= 12:
-            raise HTTPException(status_code=400, detail="年月が正しくありません。")
-        if year < 2000 or year > 3000:
-            raise HTTPException(status_code=400, detail="年月が正しくありません。")
+        year = _normalize_workflow_template_year(payload.get("year"))
+        month = _normalize_workflow_template_month(payload.get("month"))
 
         normalized = {
             "id": template_id or uuid4().hex[:24],
@@ -2348,6 +2432,7 @@ def create_api_router() -> APIRouter:
             "month": month,
             "mfcloud_url": mfcloud_url,
             "source_urls": source_urls,
+            "steps": steps,
             "notes": _normalize_workflow_template_notes(payload.get("notes")),
             "subheading": _normalize_workflow_template_subheading(payload.get("subheading")),
             "rakuten_orders_url": _normalize_workflow_template_url(payload.get("rakuten_orders_url")) or "",
@@ -2498,10 +2583,6 @@ def create_api_router() -> APIRouter:
             raise HTTPException(status_code=400, detail="Workflow page name is required.")
         year = core._safe_non_negative_int(payload.get("year"), default=0)
         month = core._safe_non_negative_int(payload.get("month"), default=0)
-        if not 1 <= month <= 12:
-            raise HTTPException(status_code=400, detail="Invalid year/month.")
-        if year < 2000 or year > 3000:
-            raise HTTPException(status_code=400, detail="Invalid year/month.")
 
         source_urls = _normalize_workflow_template_source_urls(payload.get("source_urls"))
         mfcloud_url = _normalize_workflow_template_url(payload.get("mfcloud_url"))
@@ -2547,13 +2628,9 @@ def create_api_router() -> APIRouter:
             updates["rakuten_orders_url"] = _normalize_workflow_template_url(payload.get("rakuten_orders_url")) or ""
         if "year" in payload:
             year = core._safe_non_negative_int(payload.get("year"), default=0)
-            if year < 2000 or year > 3000:
-                raise HTTPException(status_code=400, detail="Invalid year/month.")
             updates["year"] = year
         if "month" in payload:
             month = core._safe_non_negative_int(payload.get("month"), default=0)
-            if not 1 <= month <= 12:
-                raise HTTPException(status_code=400, detail="Invalid year/month.")
             updates["month"] = month
         if "archived" in payload:
             updates["archived"] = bool(payload.get("archived"))
@@ -3162,8 +3239,55 @@ def create_api_router() -> APIRouter:
                 status=result_value,
                 actor=_actor_from_request(request),
                 details={"incident_id": safe_incident_id, "reason": reason},
-            )
+        )
         return JSONResponse(result, headers={"Cache-Control": "no-store"})
+
+    @router.post("/api/errors/doc-update/run")
+    def api_run_doc_update(request: Request) -> JSONResponse:
+        _ = request
+        script_path = _review_kil_script_path()
+        started_at = datetime.now()
+        try:
+            process = subprocess.run(
+                [sys.executable, str(script_path)],
+                cwd=str(script_path.parent),
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=180,
+            )
+        except subprocess.TimeoutExpired as exc:
+            raise HTTPException(
+                status_code=504,
+                detail=f"Document update tool timeout: review_kil_brain.py ({exc.timeout}s)",
+            ) from exc
+        except Exception as exc:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Document update tool failed to start: {exc}",
+            ) from exc
+
+        if process.returncode != 0:
+            detail = (process.stderr or process.stdout or "").strip() or f"exit={process.returncode}"
+            raise HTTPException(
+                status_code=500,
+                detail=f"Document update tool failed: {detail}",
+            )
+
+        duration = (datetime.now() - started_at).total_seconds()
+        return JSONResponse(
+            {
+                "status": "ok",
+                "tool": "review_kil_brain.py",
+                "script": str(script_path),
+                "returncode": int(process.returncode),
+                "stdout": process.stdout.strip() if process.stdout else "",
+                "stderr": process.stderr.strip() if process.stderr else "",
+                "duration_seconds": round(float(duration), 2),
+                "ran_at": datetime.now().isoformat(timespec="seconds"),
+            },
+            headers={"Cache-Control": "no-store"},
+        )
 
     @router.get("/api/kil-review")
     def api_get_kil_review(
@@ -3249,6 +3373,14 @@ def create_api_router() -> APIRouter:
         review_path = docs_dir / "AGENT_BRAIN_REVIEW.jsonl"
         today = datetime.now().date()
 
+        def _read_file_iso_mtime(path: Path) -> str | None:
+            if not path.exists():
+                return None
+            try:
+                return datetime.fromtimestamp(path.stat().st_mtime).isoformat(timespec="seconds")
+            except Exception:
+                return None
+
         def _safe_read_text(path: Path) -> str:
             if not path.exists():
                 return ""
@@ -3262,29 +3394,53 @@ def create_api_router() -> APIRouter:
             return text
 
         def _to_date(value: object) -> str | None:
+
             raw = _as_str(value)
+
             if not raw:
+
                 return None
+
             for pattern in (
-                r"\b(20\d{2}-\d{2}-\d{2})\b",
+
+                r"\b(20\d{2}-\d{1,2}-\d{1,2})\b",
+
                 r"\b(20\d{2}/\d{1,2}/\d{1,2})\b",
-                r"\b(20\d{2})年(\d{1,2})月(\d{1,2})日\b",
+
+                r"\b(20\d{2})\s*\u5e74\s*(\d{1,2})\s*\u6708\s*(\d{1,2})\s*\u65e5\b",
+
             ):
+
                 match = re.search(pattern, raw)
+
                 if not match:
+
                     continue
+
                 try:
+
                     if len(match.groups()) == 3:
+
                         return f"{int(match.group(1)):04d}-{int(match.group(2)):02d}-{int(match.group(3)):02d}"
+
                     parsed = datetime.strptime(match.group(0), "%Y-%m-%d").date()
+
                     return parsed.isoformat()
+
                 except Exception:
+
                     try:
+
                         if "/" in match.group(0):
+
                             parsed = datetime.strptime(match.group(0), "%Y/%m/%d").date()
+
                             return parsed.isoformat()
+
                     except Exception:
+
                         continue
+
             return None
 
         def _to_list_text(value: object) -> list[str]:
@@ -3450,29 +3606,28 @@ def create_api_router() -> APIRouter:
                         free_lines.append(line)
 
                 summary = _as_str(
-                    payload.get("要約")
+                    payload.get("Summary")
                     or payload.get("Summary")
                     or "AGENT_BRAIN snapshot"
                 )
                 knowledge = _to_list_text(
-                    payload.get("獲得した知識")
+                    payload.get("Acquired knowledge")
                     or payload.get("Acquired knowledge")
                     or payload.get("Knowledge")
                 )
                 rules = _to_list_text(
-                    payload.get("守るべきルール")
-                    or payload.get("Rules")
+                    payload.get("Rules")
+                    or payload.get("rules")
                 )
                 context = _to_list_text(
-                    payload.get("未解決の文脈")
+                    payload.get("Unresolved context")
                     or payload.get("Unresolved context")
                     or payload.get("Notes")
                 )
                 if not context and free_lines:
                     context = free_lines[:3]
                 risk = _as_str(
-                    payload.get("重要度")
-                    or payload.get("Severity")
+                    payload.get("Severity")
                     or payload.get("Risk")
                 )
                 record = _to_record(
@@ -3481,8 +3636,7 @@ def create_api_router() -> APIRouter:
                         "notes": "\n".join(context),
                         "date": date_text,
                         "deadline": _as_str(
-                            payload.get("レビュー期限")
-                            or payload.get("Review deadline")
+                            payload.get("Review deadline")
                             or payload.get("Deadline")
                         ),
                     },
@@ -3728,56 +3882,56 @@ def create_api_router() -> APIRouter:
         health_alerts: list[str] = []
         if not index_records and not markdown_records:
             health_score = 0
-            health_alerts.append("知識データが見つかりません。post-commit実行履歴を確認してください。")
+            health_alerts.append("Knowledge data not found. Please check post-commit execution history.")
         else:
             if not latest_record_date:
                 health_score -= 35
-                health_alerts.append("最新コミット解析結果を特定できません。")
+                health_alerts.append("Unable to determine latest commit analysis result.")
             else:
                 if lag_days is None:
                     health_score -= 15
-                    health_alerts.append("最終解析日時の取得に失敗しました。")
+                    health_alerts.append("Failed to read latest analysis timestamp.")
                 elif lag_days >= 7:
                     health_score -= min(40, lag_days * 2)
-                    health_alerts.append(f"最新解析から{lag_days}日経過しています。")
+                    health_alerts.append(f"{lag_days} days elapsed since latest analysis.")
 
             if head_commit and latest_commit and latest_commit != head_commit:
                 if lag_commits is None:
                     health_score -= 15
-                    health_alerts.append("HEADコミットとの差分件数を取得できません。")
+                    health_alerts.append("Unable to read commit drift from HEAD.")
                 else:
                     health_score -= min(40, max(0, lag_commits))
                     if lag_commits > 0:
-                        health_alerts.append(f"HEADとの差分が{lag_commits}コミットあります。")
+                        health_alerts.append(f"HEAD is {lag_commits} commits behind.")
 
             if not index_records:
                 health_score -= 20
-                health_alerts.append("AGENT_BRAIN_INDEX.jsonlが未作成です。")
+                health_alerts.append("AGENT_BRAIN_INDEX.jsonl is missing.")
 
             if fallback_ratio >= 0.6:
                 health_score -= 10
-                health_alerts.append("表示中の知識データがMarkdown由来が多いです。")
+                health_alerts.append("Most knowledge rows are from markdown source.")
 
             if review_status["overdue"] > 0:
                 overdue_penalty = min(20, review_status["overdue"] * 2)
                 health_score -= overdue_penalty
-                health_alerts.append(f"期限超過が{review_status['overdue']}件あります。")
+                health_alerts.append(f"{review_status['overdue']} overdue review items found.")
 
         health_score = max(0, min(100, health_score))
         if health_score >= 85:
             health_status = "ok"
-            health_status_label = "順調"
+            health_status_label = "healthy"
         elif health_score >= 65:
             health_status = "warning"
-            health_status_label = "要確認"
+            health_status_label = "warning"
         elif health_score >= 35:
             health_status = "stale"
-            health_status_label = "遅れあり"
+            health_status_label = "stale"
         else:
             health_status = "stale_critical"
-            health_status_label = "要緊急対応"
+            health_status_label = "critical"
 
-        health_message = "学習は最新コミットへ追従しています。"
+        health_message = "Knowledge data is aligned with latest commit."
         if health_alerts:
             health_message = " / ".join(health_alerts[:3])
 
@@ -3821,8 +3975,13 @@ def create_api_router() -> APIRouter:
                 "data_files": {
                     "index_exists": index_path.exists(),
                     "markdown_exists": markdown_path.exists(),
+                    "review_exists": review_path.exists(),
                     "index_path": str(index_path),
                     "markdown_path": str(markdown_path),
+                    "review_path": str(review_path),
+                    "index_updated_at": _read_file_iso_mtime(index_path),
+                    "markdown_updated_at": _read_file_iso_mtime(markdown_path),
+                    "review_updated_at": _read_file_iso_mtime(review_path),
                     "docs_dir_candidates": docs_dir_candidates,
                     "docs_dir_diagnostics": docs_dir_diagnostics,
                 },

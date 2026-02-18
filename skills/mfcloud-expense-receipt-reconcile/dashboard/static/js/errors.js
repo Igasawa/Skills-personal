@@ -263,19 +263,19 @@
     const reviewUpdatedAt = dataFiles.review_updated_at || "-";
     const indexCount = toInt(payload?.source_counts?.index, 0);
 
-    setText(docSummaryEl, `Source: ${sourceUsed} / generated: ${payload?.generated_at || "unknown"}`);
+    setText(docSummaryEl, `情報源: ${sourceUsed} / 生成日時: ${payload?.generated_at || "不明"}`);
     setText(docSourceUsedEl, sourceUsed);
     setText(docIndexCountEl, indexCount);
-    setText(docMarkdownStateEl, markdownExists ? "Yes" : "No");
-    setText(docReviewStateEl, reviewExists ? "Yes" : "No");
+    setText(docMarkdownStateEl, markdownExists ? "あり" : "なし");
+    setText(docReviewStateEl, reviewExists ? "あり" : "なし");
     setText(docIndexUpdatedAtEl, indexUpdatedAt);
     setText(docReviewUpdatedAtEl, reviewUpdatedAt);
 
     if (docFilesEl) {
       const entries = [
-        { label: "AGENT_BRAIN_INDEX.jsonl", path: dataFiles.index_path, state: indexExists ? "present" : "missing" },
-        { label: "AGENT_BRAIN.md", path: dataFiles.markdown_path, state: markdownExists ? "present" : "missing" },
-        { label: "AGENT_BRAIN_REVIEW.jsonl", path: dataFiles.review_path, state: reviewExists ? "present" : "missing" },
+        { label: "AGENT_BRAIN_INDEX.jsonl", path: dataFiles.index_path, state: indexExists ? "あり" : "なし" },
+        { label: "AGENT_BRAIN.md", path: dataFiles.markdown_path, state: markdownExists ? "あり" : "なし" },
+        { label: "AGENT_BRAIN_REVIEW.jsonl", path: dataFiles.review_path, state: reviewExists ? "あり" : "なし" },
       ];
       docFilesEl.innerHTML = "";
       entries.forEach((entry) => {
@@ -413,7 +413,7 @@
     docRefreshButton.addEventListener("click", () => {
       runDocAction(async () => {
         await refreshDocumentStatus();
-        showToast("Document status refreshed", "success");
+        showToast("ドキュメント更新ステータスを更新しました", "success");
       });
     });
   }
@@ -426,9 +426,9 @@
           docRunResultEl.textContent = pretty(data);
         }
         const duration = Number.isFinite(Number(data.duration_seconds)) ? Number(data.duration_seconds) : 0;
-        const message = `Document update completed in ${duration}s`;
+        const message = `ドキュメント更新を完了しました（${duration}秒）`;
         setStatus(message, "success");
-        showToast("Document update completed", "success");
+        showToast("ドキュメント更新を完了しました", "success");
       });
     });
   }
