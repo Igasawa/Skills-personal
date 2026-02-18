@@ -23,6 +23,11 @@ def register_api_workspace_routes(
     merge_workspace_prompts: Callable[[dict[str, str], dict[str, str]], dict[str, str]],
     sanitize_workspace_link_notes: Callable[[Any], dict[str, str]],
     merge_workspace_link_notes: Callable[[dict[str, str], dict[str, str]], dict[str, str]],
+    sanitize_workspace_link_profiles: Callable[[Any], dict[str, dict[str, str]]],
+    merge_workspace_link_profiles: Callable[
+        [dict[str, dict[str, str]], dict[str, dict[str, str]]],
+        dict[str, dict[str, str]],
+    ],
     sanitize_workspace_active_prompt_key: Callable[[Any], str],
     read_workflow_pages: Callable[..., list[dict[str, Any]]],
     write_workflow_pages: Callable[[list[dict[str, Any]]], None],
@@ -82,6 +87,15 @@ def register_api_workspace_routes(
                 )
             else:
                 current["link_notes"] = notes_payload
+        if "link_profiles" in payload:
+            profiles_payload = sanitize_workspace_link_profiles(payload.get("link_profiles"))
+            if revision_conflict:
+                current["link_profiles"] = merge_workspace_link_profiles(
+                    profiles_payload,
+                    sanitize_workspace_link_profiles(current.get("link_profiles")),
+                )
+            else:
+                current["link_profiles"] = profiles_payload
         if "active_prompt_key" in payload:
             current["active_prompt_key"] = sanitize_workspace_active_prompt_key(payload.get("active_prompt_key"))
         saved = write_workspace_state(current, revision=current_revision + 1)
@@ -130,6 +144,9 @@ def register_api_workspace_routes(
             raise HTTPException(status_code=400, detail="Invalid workflow page id.")
         payload = payload if isinstance(payload, dict) else {}
         base_updated_at = normalize_workflow_template_timestamp(payload.get("base_updated_at"))
+        base_step_version_raw = payload.get("base_step_version")
+        has_base_step_version = base_step_version_raw is not None
+        base_step_version = core._safe_non_negative_int(base_step_version_raw, default=0)
         updates = normalize_workflow_page_update_payload(payload)
         if not updates:
             raise HTTPException(status_code=400, detail="No updates.")
@@ -145,6 +162,14 @@ def register_api_workspace_routes(
                     status_code=409,
                     detail="Workflow page was updated by another action. Reload and try again.",
                 )
+            current_step_version = core._safe_non_negative_int(page.get("step_version"), default=1)
+            if current_step_version < 1:
+                current_step_version = 1
+            if has_base_step_version and base_step_version != current_step_version:
+                raise HTTPException(
+                    status_code=409,
+                    detail="Workflow steps were updated by another action. Reload and try again.",
+                )
             next_name = str(updates.get("name") or page.get("name") or "").strip().lower()
             if next_name:
                 for other in existing:
@@ -154,9 +179,56 @@ def register_api_workspace_routes(
                     if str(other.get("name") or "").strip().lower() == next_name:
                         raise HTTPException(status_code=409, detail="Workflow page name already exists.")
             merged = dict(page, **updates)
+            updated_at = workflow_template_timestamp_now()
+            if "steps" in updates:
+                current_steps = page.get("steps") if isinstance(page.get("steps"), list) else []
+                next_steps = updates.get("steps") if isinstance(updates.get("steps"), list) else []
+                if current_steps != next_steps:
+                    next_step_version = current_step_version + 1
+                    raw_versions = page.get("step_versions") if isinstance(page.get("step_versions"), list) else []
+                    versions: list[dict[str, Any]] = []
+                    seen_versions: set[int] = set()
+                    for row in raw_versions:
+                        if not isinstance(row, dict):
+                            continue
+                        version = core._safe_non_negative_int(row.get("version"), default=0)
+                        if version < 1 or version in seen_versions:
+                            continue
+                        seen_versions.add(version)
+                        versions.append(
+                            {
+                                "version": version,
+                                "steps": row.get("steps") if isinstance(row.get("steps"), list) else [],
+                                "updated_at": normalize_workflow_template_timestamp(row.get("updated_at"))
+                                or normalize_workflow_template_timestamp(page.get("updated_at"))
+                                or updated_at,
+                            }
+                        )
+                    if current_step_version not in seen_versions:
+                        versions.append(
+                            {
+                                "version": current_step_version,
+                                "steps": current_steps,
+                                "updated_at": normalize_workflow_template_timestamp(page.get("updated_at")) or updated_at,
+                            }
+                        )
+                    versions.append(
+                        {
+                            "version": next_step_version,
+                            "steps": next_steps,
+                            "updated_at": updated_at,
+                        }
+                    )
+                    versions.sort(key=lambda row: int(row.get("version") or 0))
+                    if len(versions) > 30:
+                        versions = versions[-30:]
+                    merged["step_version"] = next_step_version
+                    merged["step_versions"] = versions
+                else:
+                    merged["step_version"] = current_step_version
             if "archived" in updates:
                 merged["archived_at"] = workflow_template_timestamp_now() if bool(updates.get("archived")) else ""
-            merged["updated_at"] = workflow_template_timestamp_now()
+            merged["updated_at"] = updated_at
             existing[index] = merged
             saved = dict(merged)
             updated = True

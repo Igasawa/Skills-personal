@@ -3,6 +3,15 @@
   const showToast = Common.showToast || (() => {});
   const toFriendlyMessage = Common.toFriendlyMessage || ((text) => String(text || ""));
   const DEFAULT_SCHEDULER_MODE = "preflight";
+  const SCHEDULER_MODE_ACTIONS = new Set([
+    "preflight",
+    "preflight_mf",
+    "amazon_download",
+    "rakuten_download",
+    "amazon_print",
+    "rakuten_print",
+    "mf_reconcile",
+  ]);
 
   const form = document.getElementById("run-form");
   const enabledEl = document.getElementById("scheduler-enabled");
@@ -125,16 +134,17 @@
       unique.push(value);
     });
 
-    if (!unique.includes(DEFAULT_SCHEDULER_MODE)) {
-      unique.unshift(DEFAULT_SCHEDULER_MODE);
+    const schedulerActions = unique.filter((action) => SCHEDULER_MODE_ACTIONS.has(action));
+    if (!schedulerActions.includes(DEFAULT_SCHEDULER_MODE)) {
+      schedulerActions.unshift(DEFAULT_SCHEDULER_MODE);
     }
 
     const labelByAction = collectTemplateStepActionLabelMap();
     const selectedMode = String(modeEl.value || "").trim() || DEFAULT_SCHEDULER_MODE;
-    const selected = unique.includes(selectedMode) ? selectedMode : DEFAULT_SCHEDULER_MODE;
+    const selected = schedulerActions.includes(selectedMode) ? selectedMode : DEFAULT_SCHEDULER_MODE;
 
     modeEl.innerHTML = "";
-    unique.forEach((action) => {
+    schedulerActions.forEach((action) => {
       const option = document.createElement("option");
       option.value = action;
       option.textContent = schedulerModeLabel(action, labelByAction);
@@ -350,6 +360,9 @@
   } else {
     document.addEventListener("template-steps-changed", onTemplateStepsChanged);
   }
+  document.addEventListener("scheduler-state-updated", () => {
+    refreshState();
+  });
 
   if (!runDateEl.value) {
     runDateEl.value = todayDateString();

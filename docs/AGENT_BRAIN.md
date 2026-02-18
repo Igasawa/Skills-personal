@@ -151,3 +151,47 @@
 - **レビュー期限**: -
 - **ソース**: llm
 
+## [2026-02-18] Commit: 5b32cadfe24a1b629baa69ab27360f4d1a74d728
+- **要約**: ワークフローテンプレートのUX改善およびアーカイブ済みワークフロー管理画面の分離
+- **獲得した知識**: ワークフローのステップ情報やノート情報は、APIレスポンス返却前に `_normalize_workflow_template_steps` 等の正規化関数を必ず通すこと。, アーカイブ済みワークフローの管理ロジックは `workflow-archive-pages.js` に集約し、メインのダッシュボードロジックから分離すること。, サイドバーのリンク情報は HTML の `data-sidebar-links` 属性を介して JSON 形式でフロントエンドに渡す設計を維持する。
+- **守るべきルール**: アクティブなワークフローとアーカイブ済みワークフローの表示・操作ロジックを同一の JS ファイルやテンプレートに混在させること。, API レスポンスにおいて、正規化されていない生の DB 行データをそのままフロントエンドに返却すること。
+- **未解決の文脈**: 正規化ロジック（_normalize_workflow_template_steps 等）が複数の API エンドポイントで重複定義されている可能性があるため、共通ユーティリティへの集約が必要か確認が必要。, フロントエンドのトースト通知や共通処理が `common.js` に依存しているが、ページ分割に伴い依存関係の整理が必要になる可能性がある。
+- **対象範囲**: skills/mfcloud-expense-receipt-reconcile/dashboard/routes, skills/mfcloud-expense-receipt-reconcile/dashboard/static/js, skills/mfcloud-expense-receipt-reconcile/dashboard/templates
+- **確度**: 0.9
+- **重要度**: low
+- **レビュー期限**: -
+- **ソース**: llm
+
+## [2026-02-18] Commit: 004e2c56e3df3e5fc6f6695a952d3eb78abeda3b
+- **要約**: ワークフロー作成画面の簡素化と年月処理の自動補完ロジックの導入
+- **獲得した知識**: 年月の入力値は `resolveFormYearMonth` を通じて取得し、未入力や不正値（2000年未満、1-12月以外）の場合は現在の年月をデフォルトとして適用する。, UI上の「小見出し」という表記は「補足説明」に統一する。, ワークフロー作成時の確認ダイアログには、ユーザーが直接変更できない内部的な詳細情報（ソースURL件数など）を含めず、簡潔な内容にする。
+- **守るべきルール**: フロントエンドのイベントハンドラ内で個別に年月の必須チェックバリデーションを実装すること（リゾルバによる自動補完に任せる）。, ワークフロー作成のメインフローにおいて、頻繁に変更しない高度な設定（複数URLの追加等）を露出させ、UIを複雑化させること。
+- **未解決の文脈**: サーバーサイド（Python）でのデフォルト値設定と、フロントエンド（JS）での `resolveFormYearMonth` によるデフォルト値決定ロジックが二重管理になっている可能性がある。
+- **対象範囲**: skills/mfcloud-expense-receipt-reconcile/dashboard/static/js/index.js, skills/mfcloud-expense-receipt-reconcile/dashboard/templates/expense_workflow_copy.html
+- **確度**: 0.9
+- **重要度**: low
+- **レビュー期限**: -
+- **ソース**: llm
+
+## [2026-02-18] Commit: b311521df2b7e94d78eef2d04cfaf3126991038e
+- **要約**: 管理センター（Error Center）へのWFアーカイブ管理およびKIL Review機能の統合と、ワークフロー設定制約の導入
+- **獲得した知識**: ワークフローテンプレートには 'preflight' と 'mf_reconcile' のステップを必須とする。, ワークフローのステップタイマーはデフォルト5分、最大10,080分（1週間）の範囲で設定する。, WFアーカイブおよびKIL Reviewへのアクセスは、独立したパスではなく '/errors?tab=workflow-archive' および '/errors?tab=kil-review' を使用する。, ワークフローの各ステップには、定義された標準タイトル（WORKFLOW_TEMPLATE_REQUIRED_STEP_TITLES）を適用する。
+- **守るべきルール**: 管理センター外に独立した管理用ページを新設すること。, 1週間（10,080分）を超えるワークフロータイマーの設定。, 必須ステップ（preflight, mf_reconcile）を欠いたワークフローテンプレートの定義。
+- **未解決の文脈**: 旧パス（/workflow-pages/archived, /kil-review）からのリダイレクト処理が残存しているため、フロントエンドのリンクを直接タブ指定形式に完全移行した後に削除を検討する必要がある。
+- **対象範囲**: skills/mfcloud-expense-receipt-reconcile/dashboard/routes/pages.py, skills/mfcloud-expense-receipt-reconcile/dashboard/static/js/, ワークフローテンプレート定義
+- **確度**: 0.9
+- **重要度**: low
+- **レビュー期限**: -
+- **ソース**: llm
+
+## [2026-02-18] Commit: b8ec49d7c8b5cd579defec61d942f88f7e6ce90f
+- **要約**: ワークスペースの定義を「エージェントの作業場」から「人間による自動化準備・管理ハブ」へ変更し、運用管理用のメタデータ項目を追加しました。
+- **獲得した知識**: ワークスペース（Automation Hub）は、エージェントが直接操作する場所ではなく、人間が自動化運用を準備・管理する画面として定義する。, 各自動化リンクには「担当者」「推奨エージェント」「最終見直し日」のメタデータを付与し、運用の透明性と鮮度を維持する。, エージェントへの指示出しは、URL・目的・プロンプトをパッケージ化した「実行指示セット」をコピーして利用する運用を推奨する。
+- **守るべきルール**: エージェントが直接この管理画面を操作することを前提とした設計やプロンプトの作成。, 担当者や見直し日を更新せず、プロンプトやリンクの有効性を放置すること。
+- **未解決の文脈**: 推奨エージェントの選択肢（Codex, ChatGPT, Claude, Gemini等）がHTMLにハードコードされており、新しいモデルへの対応にコード修正が必要。, 削除された「ステータスページ」へのリンクの代替確認手段が定義されていない。
+- **対象範囲**: skills/mfcloud-expense-receipt-reconcile/dashboard/templates/workspace.html, skills/mfcloud-expense-receipt-reconcile/tests/test_dashboard_pages.py
+- **確度**: 0.9
+- **重要度**: low
+- **レビュー期限**: -
+- **ソース**: llm
+

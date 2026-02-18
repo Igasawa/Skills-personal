@@ -44,6 +44,10 @@ def create_api_router() -> APIRouter:
     WORKSPACE_MAX_PROMPT_CHARS = 50000
     WORKSPACE_MAX_NOTE_ENTRIES = 400
     WORKSPACE_MAX_NOTE_CHARS = 4000
+    WORKSPACE_MAX_PROFILE_ENTRIES = 400
+    WORKSPACE_MAX_PROFILE_OWNER_CHARS = 80
+    WORKSPACE_MAX_PROFILE_AGENT_CHARS = 32
+    WORKSPACE_ALLOWED_PROFILE_AGENTS = {"codex", "chatgpt", "claude", "gemini", "other"}
     WORKSPACE_DEFAULT_PROMPT_KEY = "mf_expense_reports"
     WORKFLOW_TEMPLATE_MAX_ITEMS = 30
     WORKFLOW_TEMPLATE_MAX_NAME_CHARS = 80
@@ -52,7 +56,28 @@ def create_api_router() -> APIRouter:
     WORKFLOW_TEMPLATE_MAX_STEPS = 30
     WORKFLOW_TEMPLATE_MAX_STEP_TITLE_CHARS = 80
     WORKFLOW_TEMPLATE_MAX_STEP_ACTION_CHARS = 48
+    WORKFLOW_TEMPLATE_MAX_STEP_TIMER_MINUTES = 7 * 24 * 60
     WORKFLOW_TEMPLATE_STEP_DEFAULT_ACTION = "preflight"
+    WORKFLOW_TEMPLATE_REQUIRED_STEP_ACTIONS = (
+        "preflight",
+        "mf_reconcile",
+    )
+    WORKFLOW_TEMPLATE_REQUIRED_STEP_TITLES = {
+        "preflight": "手順0 準備（ログイン確認・MF連携更新）",
+        "mf_reconcile": "手順5 MF突合・下書き作成",
+    }
+    WORKFLOW_TEMPLATE_FALLBACK_ACTION_ORDER = (
+        "preflight",
+        "amazon_download",
+        "amazon_print",
+        "rakuten_download",
+        "rakuten_print",
+        "provider_ingest",
+        "mf_bulk_upload_task",
+        "mf_reconcile",
+        "month_close",
+        "preflight_mf",
+    )
     # Canonical source for workflow template step action validation/persistence.
     # Keep in sync with frontend action options (`static/js/index.js`/`static/js/scheduler.js`);
     # the API side is the single source of truth for accepted action identifiers.
@@ -63,7 +88,10 @@ def create_api_router() -> APIRouter:
         "rakuten_download",
         "amazon_print",
         "rakuten_print",
+        "provider_ingest",
+        "mf_bulk_upload_task",
         "mf_reconcile",
+        "month_close",
     )
     WORKFLOW_TEMPLATE_MAX_NOTES_CHARS = 4000
     WORKFLOW_TEMPLATE_MAX_SUBHEADING_CHARS = 120
@@ -71,6 +99,7 @@ def create_api_router() -> APIRouter:
     WORKFLOW_PAGE_MAX_ITEMS = 60
     WORKFLOW_PAGE_MAX_NAME_CHARS = 80
     WORKFLOW_PAGE_MAX_SUBHEADING_CHARS = 120
+    WORKFLOW_PAGE_MAX_STEP_VERSIONS = 30
     WORKFLOW_TEMPLATE_MODES = {"new", "edit", "copy"}
     WORKFLOW_TEMPLATE_SORT_OPTIONS = {
         "updated_desc",
@@ -407,6 +436,7 @@ def create_api_router() -> APIRouter:
             "links": [],
             "prompts": {},
             "link_notes": {},
+            "link_profiles": {},
             "active_prompt_key": WORKSPACE_DEFAULT_PROMPT_KEY,
             "revision": 0,
             "updated_at": None,
@@ -489,6 +519,52 @@ def create_api_router() -> APIRouter:
                 break
         return out
 
+    def _sanitize_workspace_profile_owner(value: Any) -> str:
+        return " ".join(str(value or "").strip().split())[:WORKSPACE_MAX_PROFILE_OWNER_CHARS]
+
+    def _sanitize_workspace_profile_agent(value: Any) -> str:
+        text = str(value or "").strip().lower()[:WORKSPACE_MAX_PROFILE_AGENT_CHARS]
+        if not text:
+            return ""
+        if text in WORKSPACE_ALLOWED_PROFILE_AGENTS:
+            return text
+        return ""
+
+    def _sanitize_workspace_profile_reviewed_on(value: Any) -> str:
+        text = str(value or "").strip()
+        if not text:
+            return ""
+        if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", text):
+            return ""
+        try:
+            datetime.strptime(text, "%Y-%m-%d")
+        except ValueError:
+            return ""
+        return text
+
+    def _sanitize_workspace_link_profiles(value: Any) -> dict[str, dict[str, str]]:
+        if not isinstance(value, dict):
+            return {}
+        out: dict[str, dict[str, str]] = {}
+        for key, raw in value.items():
+            profile_key = str(key or "").strip()
+            if not _is_valid_prompt_key(profile_key):
+                continue
+            row = raw if isinstance(raw, dict) else {}
+            owner = _sanitize_workspace_profile_owner(row.get("owner"))
+            agent = _sanitize_workspace_profile_agent(row.get("agent"))
+            reviewed_on = _sanitize_workspace_profile_reviewed_on(row.get("reviewed_on"))
+            if not owner and not agent and not reviewed_on:
+                continue
+            out[profile_key] = {
+                "owner": owner,
+                "agent": agent,
+                "reviewed_on": reviewed_on,
+            }
+            if len(out) >= WORKSPACE_MAX_PROFILE_ENTRIES:
+                break
+        return out
+
     def _sanitize_workspace_active_prompt_key(value: Any) -> str:
         key = str(value or "").strip()
         if _is_valid_prompt_key(key):
@@ -501,6 +577,7 @@ def create_api_router() -> APIRouter:
         links = _sanitize_workspace_links(payload.get("links"))
         prompts = _sanitize_workspace_prompts(payload.get("prompts"))
         link_notes = _sanitize_workspace_link_notes(payload.get("link_notes"))
+        link_profiles = _sanitize_workspace_link_profiles(payload.get("link_profiles"))
         active_prompt_key = _sanitize_workspace_active_prompt_key(payload.get("active_prompt_key"))
         revision = core._safe_non_negative_int(payload.get("revision"), default=0)
         updated_at = str(payload.get("updated_at") or "").strip() or None
@@ -508,6 +585,7 @@ def create_api_router() -> APIRouter:
             "links": links,
             "prompts": prompts,
             "link_notes": link_notes,
+            "link_profiles": link_profiles,
             "active_prompt_key": active_prompt_key,
             "revision": int(revision),
             "updated_at": updated_at,
@@ -568,6 +646,14 @@ def create_api_router() -> APIRouter:
         merged = dict(server_notes)
         merged.update(client_notes)
         return _sanitize_workspace_link_notes(merged)
+
+    def _merge_workspace_link_profiles(
+        client_profiles: dict[str, dict[str, str]],
+        server_profiles: dict[str, dict[str, str]],
+    ) -> dict[str, dict[str, str]]:
+        merged = dict(server_profiles)
+        merged.update(client_profiles)
+        return _sanitize_workspace_link_profiles(merged)
 
     def _extract_print_file_paths(manifest: dict[str, Any] | None) -> list[str]:
         if not isinstance(manifest, dict):
@@ -2187,54 +2273,123 @@ def create_api_router() -> APIRouter:
                 break
         return normalized
 
-    def _normalize_workflow_template_steps(value: Any) -> list[dict[str, str]]:
+    def _normalize_workflow_template_step_timer_minutes(value: Any) -> int:
+        timer_minutes = core._safe_non_negative_int(value, default=0)
+        if timer_minutes < 0:
+            return 0
+        if timer_minutes > WORKFLOW_TEMPLATE_MAX_STEP_TIMER_MINUTES:
+            return WORKFLOW_TEMPLATE_MAX_STEP_TIMER_MINUTES
+        return timer_minutes
+
+    def _default_workflow_template_step_title(action: str) -> str:
+        action_key = str(action or "").strip()
+        defaults = {
+            "preflight": "手順0 準備（ログイン確認・MF連携更新）",
+            "preflight_mf": "手順0 MF再取得のみ",
+            "amazon_download": "手順1 Amazon領収書取得",
+            "amazon_print": "手順1 Amazon除外判断・印刷",
+            "rakuten_download": "手順2 楽天領収書取得",
+            "rakuten_print": "手順2 楽天除外判断・印刷",
+            "provider_ingest": "手順3 共通フォルダ取り込み",
+            "mf_bulk_upload_task": "手順4 MF一括アップロード",
+            "mf_reconcile": "手順5 MF突合・下書き作成",
+            "month_close": "手順6 月次クローズ",
+        }
+        default_title = defaults.get(action_key) or WORKFLOW_TEMPLATE_REQUIRED_STEP_TITLES.get(action_key) or action_key
+        return default_title[:WORKFLOW_TEMPLATE_MAX_STEP_TITLE_CHARS]
+
+    def _next_available_step_action(used_actions: set[str]) -> str:
+        for action in WORKFLOW_TEMPLATE_FALLBACK_ACTION_ORDER:
+            if action in WORKFLOW_TEMPLATE_ALLOWED_STEP_ACTIONS and action not in used_actions:
+                return action
+        return WORKFLOW_TEMPLATE_STEP_DEFAULT_ACTION
+
+    def _normalize_workflow_template_steps(value: Any) -> list[dict[str, Any]]:
         raw_values = value if isinstance(value, list) else []
-        normalized: list[dict[str, str]] = []
+        normalized: list[dict[str, Any]] = []
         seen_ids: set[str] = set()
+        used_actions: set[str] = set()
         for row in raw_values:
-            has_id_field = False
-            has_action_field = False
+            has_timer_field = False
             raw_id = ""
             raw_title = ""
             raw_action = ""
+            raw_timer_minutes: Any = 0
             if isinstance(row, dict):
-                has_id_field = "id" in row
-                has_action_field = "action" in row
+                has_timer_field = "timer_minutes" in row or "timer" in row
                 raw_id = str(row.get("id") or "").strip()
                 if "title" in row:
                     raw_title = row.get("title")
                 elif "name" in row:
                     raw_title = row.get("name")
                 raw_action = str(row.get("action") or "").strip()
+                if "timer_minutes" in row:
+                    raw_timer_minutes = row.get("timer_minutes")
+                elif "timer" in row:
+                    raw_timer_minutes = row.get("timer")
             else:
                 raw_title = row
+
+            action = str(raw_action or "").strip()
+            if action not in WORKFLOW_TEMPLATE_ALLOWED_STEP_ACTIONS:
+                action = _next_available_step_action(used_actions)
+            if action in used_actions:
+                continue
+
             title = " ".join(str(raw_title or "").strip().split())
             if not title:
-                continue
-            title = title[:WORKFLOW_TEMPLATE_MAX_STEP_TITLE_CHARS]
-            normalized_row: dict[str, str] = {"title": title}
+                title = _default_workflow_template_step_title(action)
+            normalized_row: dict[str, Any] = {
+                "title": title[:WORKFLOW_TEMPLATE_MAX_STEP_TITLE_CHARS],
+                "action": action[:WORKFLOW_TEMPLATE_MAX_STEP_ACTION_CHARS],
+            }
+            if has_timer_field:
+                normalized_row["timer_minutes"] = _normalize_workflow_template_step_timer_minutes(raw_timer_minutes)
 
-            if has_action_field:
-                action = str(raw_action or WORKFLOW_TEMPLATE_STEP_DEFAULT_ACTION).strip()
-                if action not in WORKFLOW_TEMPLATE_ALLOWED_STEP_ACTIONS:
-                    action = WORKFLOW_TEMPLATE_STEP_DEFAULT_ACTION
-                normalized_row["action"] = action[:WORKFLOW_TEMPLATE_MAX_STEP_ACTION_CHARS]
-
-            if has_id_field:
-                step_id = raw_id[:24]
-                if not step_id:
-                    step_id = uuid4().hex
-                if len(step_id) < 8:
-                    step_id = f"{step_id}-{uuid4().hex}"
-                if step_id in seen_ids:
-                    while step_id in seen_ids:
-                        step_id = uuid4().hex
-                seen_ids.add(step_id)
-                normalized_row["id"] = step_id
+            step_id = raw_id[:24]
+            if not step_id:
+                step_id = uuid4().hex[:24]
+            if len(step_id) < 8:
+                step_id = f"{step_id}-{uuid4().hex}"[:24]
+            if step_id in seen_ids:
+                while step_id in seen_ids:
+                    step_id = uuid4().hex[:24]
+            seen_ids.add(step_id)
+            normalized_row["id"] = step_id
 
             normalized.append(normalized_row)
+            used_actions.add(action)
             if len(normalized) >= WORKFLOW_TEMPLATE_MAX_STEPS:
                 break
+
+        required_actions = set(WORKFLOW_TEMPLATE_REQUIRED_STEP_ACTIONS)
+        for required_action in WORKFLOW_TEMPLATE_REQUIRED_STEP_ACTIONS:
+            if required_action in used_actions:
+                continue
+            if len(normalized) >= WORKFLOW_TEMPLATE_MAX_STEPS:
+                removed = False
+                for index in range(len(normalized) - 1, -1, -1):
+                    action = str(normalized[index].get("action") or "").strip()
+                    if action in required_actions:
+                        continue
+                    normalized.pop(index)
+                    used_actions.discard(action)
+                    removed = True
+                    break
+                if not removed:
+                    break
+            step_id = uuid4().hex[:24]
+            while step_id in seen_ids:
+                step_id = uuid4().hex[:24]
+            seen_ids.add(step_id)
+            normalized.append(
+                {
+                    "id": step_id,
+                    "title": _default_workflow_template_step_title(required_action),
+                    "action": required_action,
+                }
+            )
+            used_actions.add(required_action)
         return normalized
 
     def _normalize_workflow_template_year(value: Any) -> int:
@@ -2461,6 +2616,51 @@ def create_api_router() -> APIRouter:
     def _normalize_workflow_page_subheading(value: Any) -> str:
         return " ".join(str(value or "").strip().split())[:WORKFLOW_PAGE_MAX_SUBHEADING_CHARS]
 
+    def _normalize_workflow_page_step_version(value: Any) -> int:
+        version = core._safe_non_negative_int(value, default=1)
+        return version if version >= 1 else 1
+
+    def _normalize_workflow_page_step_versions(
+        value: Any,
+        *,
+        fallback_steps: list[dict[str, Any]],
+        fallback_version: int,
+        fallback_updated_at: str,
+    ) -> list[dict[str, Any]]:
+        raw_values = value if isinstance(value, list) else []
+        by_version: dict[int, dict[str, Any]] = {}
+        for row in raw_values:
+            if not isinstance(row, dict):
+                continue
+            version = _normalize_workflow_page_step_version(row.get("version"))
+            steps = _normalize_workflow_template_steps(row.get("steps"))
+            if not steps:
+                continue
+            updated_at = (
+                _normalize_workflow_template_timestamp(row.get("updated_at"))
+                or fallback_updated_at
+                or _workflow_template_timestamp_now()
+            )
+            by_version[version] = {
+                "version": version,
+                "steps": steps,
+                "updated_at": updated_at,
+            }
+
+        normalized_fallback_steps = _normalize_workflow_template_steps(fallback_steps)
+        fallback_version = _normalize_workflow_page_step_version(fallback_version)
+        if normalized_fallback_steps:
+            by_version[fallback_version] = {
+                "version": fallback_version,
+                "steps": normalized_fallback_steps,
+                "updated_at": fallback_updated_at or _workflow_template_timestamp_now(),
+            }
+
+        normalized = sorted(by_version.values(), key=lambda row: int(row.get("version") or 0))
+        if len(normalized) > WORKFLOW_PAGE_MAX_STEP_VERSIONS:
+            normalized = normalized[-WORKFLOW_PAGE_MAX_STEP_VERSIONS:]
+        return normalized
+
     def _read_workflow_pages(*, include_archived: bool = True) -> list[dict[str, Any]]:
         raw = core._read_json(_workflow_pages_path())
         if not isinstance(raw, list):
@@ -2488,10 +2688,41 @@ def create_api_router() -> APIRouter:
                 mfcloud_url = source_urls[0]
             else:
                 mfcloud_url = ""
+            steps = _normalize_workflow_template_steps(row.get("steps"))
             archived = bool(row.get("archived"))
             archived_at = _normalize_workflow_template_timestamp(row.get("archived_at")) if archived else ""
             if archived and not include_archived:
                 continue
+            created_at = (
+                _normalize_workflow_template_timestamp(row.get("created_at"))
+                or _workflow_template_timestamp_now()
+            )
+            updated_at = (
+                _normalize_workflow_template_timestamp(row.get("updated_at"))
+                or _workflow_template_timestamp_now()
+            )
+            step_version = _normalize_workflow_page_step_version(row.get("step_version"))
+            step_versions = _normalize_workflow_page_step_versions(
+                row.get("step_versions"),
+                fallback_steps=steps,
+                fallback_version=step_version,
+                fallback_updated_at=updated_at,
+            )
+            if step_versions:
+                by_version = {
+                    _normalize_workflow_page_step_version(item.get("version")): item
+                    for item in step_versions
+                    if isinstance(item, dict)
+                }
+                selected_step_version = _normalize_workflow_page_step_version(step_version)
+                selected_steps_row = by_version.get(selected_step_version)
+                if selected_steps_row is None:
+                    selected_steps_row = step_versions[-1]
+                    selected_step_version = _normalize_workflow_page_step_version(
+                        selected_steps_row.get("version")
+                    )
+                steps = _normalize_workflow_template_steps(selected_steps_row.get("steps"))
+                step_version = selected_step_version
             rows.append(
                 {
                     "id": page_id,
@@ -2501,16 +2732,16 @@ def create_api_router() -> APIRouter:
                     "month": month,
                     "mfcloud_url": mfcloud_url,
                     "source_urls": source_urls,
-                    "steps": _normalize_workflow_template_steps(row.get("steps")),
+                    "steps": steps,
                     "notes": _normalize_workflow_template_notes(row.get("notes")),
                     "rakuten_orders_url": _normalize_workflow_template_url(row.get("rakuten_orders_url")) or "",
                     "source_template_id": _normalize_workflow_template_id(row.get("source_template_id")),
+                    "step_version": step_version,
+                    "step_versions": step_versions,
                     "archived": archived,
                     "archived_at": archived_at,
-                    "created_at": _normalize_workflow_template_timestamp(row.get("created_at"))
-                    or _workflow_template_timestamp_now(),
-                    "updated_at": _normalize_workflow_template_timestamp(row.get("updated_at"))
-                    or _workflow_template_timestamp_now(),
+                    "created_at": created_at,
+                    "updated_at": updated_at,
                 }
             )
             seen.add(page_id)
@@ -2547,6 +2778,31 @@ def create_api_router() -> APIRouter:
                 mfcloud_url = source_urls[0]
             else:
                 mfcloud_url = ""
+            steps = _normalize_workflow_template_steps(row.get("steps"))
+            created_at = str(row.get("created_at") or _workflow_template_timestamp_now())
+            updated_at = str(row.get("updated_at") or _workflow_template_timestamp_now())
+            step_version = _normalize_workflow_page_step_version(row.get("step_version"))
+            step_versions = _normalize_workflow_page_step_versions(
+                row.get("step_versions"),
+                fallback_steps=steps,
+                fallback_version=step_version,
+                fallback_updated_at=updated_at,
+            )
+            if step_versions:
+                by_version = {
+                    _normalize_workflow_page_step_version(item.get("version")): item
+                    for item in step_versions
+                    if isinstance(item, dict)
+                }
+                selected_step_version = _normalize_workflow_page_step_version(step_version)
+                selected_steps_row = by_version.get(selected_step_version)
+                if selected_steps_row is None:
+                    selected_steps_row = step_versions[-1]
+                    selected_step_version = _normalize_workflow_page_step_version(
+                        selected_steps_row.get("version")
+                    )
+                steps = _normalize_workflow_template_steps(selected_steps_row.get("steps"))
+                step_version = selected_step_version
             normalized.append(
                 {
                     "id": page_id,
@@ -2556,14 +2812,16 @@ def create_api_router() -> APIRouter:
                     "month": month,
                     "mfcloud_url": mfcloud_url,
                     "source_urls": source_urls,
-                    "steps": _normalize_workflow_template_steps(row.get("steps")),
+                    "steps": steps,
                     "notes": _normalize_workflow_template_notes(row.get("notes")),
                     "rakuten_orders_url": _normalize_workflow_template_url(row.get("rakuten_orders_url")) or "",
                     "source_template_id": _normalize_workflow_template_id(row.get("source_template_id")),
+                    "step_version": step_version,
+                    "step_versions": step_versions,
                     "archived": bool(row.get("archived")),
                     "archived_at": _normalize_workflow_template_timestamp(row.get("archived_at")) if bool(row.get("archived")) else "",
-                    "created_at": str(row.get("created_at") or _workflow_template_timestamp_now()),
-                    "updated_at": str(row.get("updated_at") or _workflow_template_timestamp_now()),
+                    "created_at": created_at,
+                    "updated_at": updated_at,
                 }
             )
         core._write_json(_workflow_pages_path(), normalized)
@@ -2595,6 +2853,16 @@ def create_api_router() -> APIRouter:
         else:
             mfcloud_url = ""
 
+        created_at = _workflow_template_timestamp_now()
+        steps = _normalize_workflow_template_steps(payload.get("steps"))
+        step_version = 1
+        step_versions = _normalize_workflow_page_step_versions(
+            payload.get("step_versions"),
+            fallback_steps=steps,
+            fallback_version=step_version,
+            fallback_updated_at=created_at,
+        )
+
         return {
             "id": uuid4().hex[:24],
             "name": name,
@@ -2603,14 +2871,16 @@ def create_api_router() -> APIRouter:
             "month": month,
             "mfcloud_url": mfcloud_url,
             "source_urls": source_urls,
-            "steps": _normalize_workflow_template_steps(payload.get("steps")),
+            "steps": steps,
             "notes": _normalize_workflow_template_notes(payload.get("notes")),
             "rakuten_orders_url": _normalize_workflow_template_url(payload.get("rakuten_orders_url")) or "",
             "source_template_id": _normalize_workflow_template_id(payload.get("source_template_id")),
+            "step_version": step_version,
+            "step_versions": step_versions,
             "archived": False,
             "archived_at": "",
-            "created_at": _workflow_template_timestamp_now(),
-            "updated_at": _workflow_template_timestamp_now(),
+            "created_at": created_at,
+            "updated_at": created_at,
         }
 
     def _normalize_workflow_page_update_payload(payload: Any) -> dict[str, Any]:
@@ -2670,6 +2940,8 @@ def create_api_router() -> APIRouter:
         merge_workspace_prompts=_merge_workspace_prompts,
         sanitize_workspace_link_notes=_sanitize_workspace_link_notes,
         merge_workspace_link_notes=_merge_workspace_link_notes,
+        sanitize_workspace_link_profiles=_sanitize_workspace_link_profiles,
+        merge_workspace_link_profiles=_merge_workspace_link_profiles,
         sanitize_workspace_active_prompt_key=_sanitize_workspace_active_prompt_key,
         read_workflow_pages=_read_workflow_pages,
         write_workflow_pages=_write_workflow_pages,
@@ -2709,4 +2981,3 @@ def create_api_router() -> APIRouter:
         router=router,
     )
     return router
-

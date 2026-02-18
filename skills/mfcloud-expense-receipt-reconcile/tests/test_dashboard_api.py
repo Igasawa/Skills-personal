@@ -1849,6 +1849,7 @@ def test_api_workspace_state_get_returns_default(monkeypatch: pytest.MonkeyPatch
     assert body["links"] == []
     assert body["prompts"] == {}
     assert body["link_notes"] == {}
+    assert body["link_profiles"] == {}
     assert body["active_prompt_key"] == "mf_expense_reports"
     assert body["revision"] == 0
     assert body["updated_at"] is None
@@ -1875,6 +1876,19 @@ def test_api_workspace_state_post_persists_and_sanitizes(monkeypatch: pytest.Mon
                 "custom:https%3A%2F%2Fexample.com": "custom note",
                 "invalid": "ignored note",
             },
+            "link_profiles": {
+                "mf_expense_reports": {
+                    "owner": " 経理 田中 ",
+                    "agent": "codex",
+                    "reviewed_on": "2026-02-18",
+                },
+                "custom:https%3A%2F%2Fexample.com": {
+                    "owner": "B Team",
+                    "agent": "unsupported-agent",
+                    "reviewed_on": "2026-99-99",
+                },
+                "invalid": {"owner": "ignored"},
+            },
             "active_prompt_key": "invalid",
         },
     )
@@ -1890,6 +1904,10 @@ def test_api_workspace_state_post_persists_and_sanitizes(monkeypatch: pytest.Mon
         "mf_expense_reports": "core note",
         "custom:https%3A%2F%2Fexample.com": "custom note",
     }
+    assert body["link_profiles"] == {
+        "mf_expense_reports": {"owner": "経理 田中", "agent": "codex", "reviewed_on": "2026-02-18"},
+        "custom:https%3A%2F%2Fexample.com": {"owner": "B Team", "agent": "", "reviewed_on": ""},
+    }
     assert body["active_prompt_key"] == "mf_expense_reports"
     assert body["revision"] == 1
     assert body["conflict_resolved"] is False
@@ -1902,6 +1920,7 @@ def test_api_workspace_state_post_persists_and_sanitizes(monkeypatch: pytest.Mon
     assert persisted["links"] == body["links"]
     assert persisted["prompts"] == body["prompts"]
     assert persisted["link_notes"] == body["link_notes"]
+    assert persisted["link_profiles"] == body["link_profiles"]
     assert persisted["active_prompt_key"] == body["active_prompt_key"]
     assert persisted["revision"] == body["revision"]
 
@@ -1914,6 +1933,7 @@ def test_api_workspace_state_post_persists_and_sanitizes(monkeypatch: pytest.Mon
     assert body_partial["links"] == body["links"]
     assert body_partial["prompts"] == body["prompts"]
     assert body_partial["link_notes"] == body["link_notes"]
+    assert body_partial["link_profiles"] == body["link_profiles"]
     assert body_partial["active_prompt_key"] == "custom:https%3A%2F%2Fexample.com"
     assert body_partial["revision"] == body["revision"] + 1
     assert body_partial["conflict_resolved"] is False
@@ -1930,6 +1950,9 @@ def test_api_workspace_state_post_merges_on_revision_conflict(
             "links": [{"label": "A", "url": "https://a.example.com/"}],
             "prompts": {"mf_expense_reports": "first"},
             "link_notes": {"mf_expense_reports": "first_note"},
+            "link_profiles": {
+                "mf_expense_reports": {"owner": "A team", "agent": "codex", "reviewed_on": "2026-02-10"}
+            },
             "active_prompt_key": "mf_expense_reports",
         },
     )
@@ -1945,6 +1968,13 @@ def test_api_workspace_state_post_merges_on_revision_conflict(
             "links": [{"label": "B", "url": "https://b.example.com/"}],
             "prompts": {"custom:https%3A%2F%2Fb.example.com%2F": "second"},
             "link_notes": {"custom:https%3A%2F%2Fb.example.com%2F": "second_note"},
+            "link_profiles": {
+                "custom:https%3A%2F%2Fb.example.com%2F": {
+                    "owner": "B team",
+                    "agent": "chatgpt",
+                    "reviewed_on": "2026-02-11",
+                }
+            },
             "active_prompt_key": "custom:https%3A%2F%2Fb.example.com%2F",
         },
     )
@@ -1961,6 +1991,9 @@ def test_api_workspace_state_post_merges_on_revision_conflict(
             "links": [{"label": "A2", "url": "https://a.example.com/"}],
             "prompts": {"mf_expense_reports": "third"},
             "link_notes": {"mf_expense_reports": "third_note"},
+            "link_profiles": {
+                "mf_expense_reports": {"owner": "A2 team", "agent": "claude", "reviewed_on": "2026-02-12"}
+            },
             "active_prompt_key": "mf_expense_reports",
         },
     )
@@ -1973,6 +2006,16 @@ def test_api_workspace_state_post_merges_on_revision_conflict(
     assert third_body["prompts"]["custom:https%3A%2F%2Fb.example.com%2F"] == "second"
     assert third_body["link_notes"]["mf_expense_reports"] == "third_note"
     assert third_body["link_notes"]["custom:https%3A%2F%2Fb.example.com%2F"] == "second_note"
+    assert third_body["link_profiles"]["mf_expense_reports"] == {
+        "owner": "A2 team",
+        "agent": "claude",
+        "reviewed_on": "2026-02-12",
+    }
+    assert third_body["link_profiles"]["custom:https%3A%2F%2Fb.example.com%2F"] == {
+        "owner": "B team",
+        "agent": "chatgpt",
+        "reviewed_on": "2026-02-11",
+    }
     urls = [row.get("url") for row in third_body["links"]]
     assert "https://a.example.com/" in urls
     assert "https://b.example.com/" in urls
@@ -2247,6 +2290,80 @@ def test_api_save_workflow_template_allows_empty_year_month(monkeypatch: pytest.
     assert rows[0]["year"] == 0
     assert rows[0]["month"] == 0
     assert rows[0]["steps"] == [{"title": "Step 1"}, {"title": "Step 2"}]
+
+
+def test_api_save_workflow_template_persists_step_timer_minutes(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    client = _create_client(monkeypatch, tmp_path)
+    _write_json(
+        _workflow_template_store(tmp_path),
+        [
+            {
+                "id": "timer-template",
+                "name": "Timer Template",
+                "year": 2026,
+                "month": 2,
+                "mfcloud_url": "https://example.com/timer",
+                "source_urls": ["https://example.com/timer"],
+                "steps": [{"title": "Initial"}],
+                "notes": "",
+                "subheading": "",
+                "rakuten_orders_url": "",
+                "created_at": "2026-02-01T00:00:00",
+                "updated_at": "2026-02-01T00:00:00",
+            },
+        ],
+    )
+    res = client.post(
+        "/api/workflow-templates",
+        json={
+            "template_id": "timer-template",
+            "template_mode": "edit",
+            "base_updated_at": "2026-02-01T00:00:00",
+            "name": "Timer Template",
+            "year": 2026,
+            "month": 2,
+            "mfcloud_url": "https://example.com/timer",
+            "steps": [
+                {"title": "Step 1", "action": "preflight", "timer_minutes": 15},
+                {"title": "Step 2", "timer_minutes": 999999},
+            ],
+        },
+    )
+    assert res.status_code == 200
+    template = res.json()["template"]
+    steps = template["steps"]
+    assert any(
+        str(step.get("title") or "") == "Step 1"
+        and str(step.get("action") or "") == "preflight"
+        and int(step.get("timer_minutes") or 0) == 15
+        for step in steps
+        if isinstance(step, dict)
+    )
+    assert any(
+        str(step.get("title") or "") == "Step 2"
+        and int(step.get("timer_minutes") or 0) == 10080
+        for step in steps
+        if isinstance(step, dict)
+    )
+
+    rows = json.loads(_workflow_template_store(tmp_path).read_text(encoding="utf-8"))
+    assert isinstance(rows, list) and rows
+    stored_steps = rows[0]["steps"]
+    assert any(
+        str(step.get("title") or "") == "Step 1"
+        and str(step.get("action") or "") == "preflight"
+        and int(step.get("timer_minutes") or 0) == 15
+        for step in stored_steps
+        if isinstance(step, dict)
+    )
+    assert any(
+        str(step.get("title") or "") == "Step 2"
+        and int(step.get("timer_minutes") or 0) == 10080
+        for step in stored_steps
+        if isinstance(step, dict)
+    )
 
 
 def test_api_save_workflow_template_copy_mode_creates_new_template(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

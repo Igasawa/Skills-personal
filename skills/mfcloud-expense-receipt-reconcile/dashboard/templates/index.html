@@ -25,6 +25,9 @@
           <div class="step-actions">
             {% if workflow_page and workflow_page.id %}
               <button type="button" class="secondary" id="workflow-page-edit">ページ設定</button>
+              <button type="button" class="secondary" id="workflow-page-edit-steps">手順編集</button>
+              <button type="button" class="secondary" id="workflow-page-rollback-steps">前版に戻す</button>
+              <span class="muted" id="workflow-page-step-version"></span>
               <button type="button" class="secondary" id="workflow-page-archive">アーカイブ</button>
             {% endif %}
             <a class="secondary" href="/status">ステータスページを開く</a>
@@ -66,6 +69,22 @@
               <input type="text" name="notes" value="{{ defaults.notes }}" placeholder="税理士提出用の補足や例外対応など" />
             </label>
             <input type="hidden" name="rakuten_orders_url" value="{{ defaults.rakuten_orders_url }}" />
+            {% if workflow_page and workflow_page.steps %}
+              <div class="hidden" aria-hidden="true" id="workflow-page-step-model">
+                <div data-template-steps-list>
+                  {% for step in workflow_page.steps %}
+                    <div data-template-step-row>
+                      <input type="text" data-template-step-title value="{{ step.title | default('', true) }}" />
+                      <select data-template-step-action>
+                        <option value="{{ step.action | default('preflight', true) }}" selected>
+                          {{ step.title | default(step.action, true) }}
+                        </option>
+                      </select>
+                    </div>
+                  {% endfor %}
+                </div>
+              </div>
+            {% endif %}
             <div class="form-row">
               <div class="muted">このフォームの年月・URLがウィザード実行に使われます。</div>
             </div>

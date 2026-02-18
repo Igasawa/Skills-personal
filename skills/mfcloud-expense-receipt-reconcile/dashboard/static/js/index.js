@@ -47,8 +47,69 @@
     { value: "rakuten_download", label: "手順2（楽天取得）" },
     { value: "amazon_print", label: "Amazon除外判断・印刷" },
     { value: "rakuten_print", label: "楽天除外判断・印刷" },
+    { value: "provider_ingest", label: "手順3（共通フォルダ取り込み）" },
+    { value: "mf_bulk_upload_task", label: "手順4（MF一括アップロード）" },
     { value: "mf_reconcile", label: "MF突合" },
+    { value: "month_close", label: "手順6（月次クローズ）" },
   ];
+  const TEMPLATE_STEP_ACTION_LABELS = Object.fromEntries(TEMPLATE_STEP_ACTIONS.map((item) => [item.value, item.label]));
+  const TEMPLATE_REQUIRED_STEPS = [
+    { action: "preflight", title: "手順0 準備（ログイン確認・MF連携更新）" },
+    { action: "mf_reconcile", title: "手順5 MF突合・下書き作成" },
+  ];
+  const TEMPLATE_REQUIRED_STEP_ACTION_SET = new Set(TEMPLATE_REQUIRED_STEPS.map((row) => row.action));
+  const TEMPLATE_STEP_DEFAULT_TITLES = {
+    preflight: "手順0 準備（ログイン確認・MF連携更新）",
+    preflight_mf: "手順0 MF再取得のみ",
+    amazon_download: "手順1 Amazon領収書取得",
+    amazon_print: "手順1 Amazon除外判断・印刷",
+    rakuten_download: "手順2 楽天領収書取得",
+    rakuten_print: "手順2 楽天除外判断・印刷",
+    provider_ingest: "手順3 共通フォルダ取り込み",
+    mf_bulk_upload_task: "手順4 MF一括アップロード",
+    mf_reconcile: "手順5 MF突合・下書き作成",
+    month_close: "手順6 月次クローズ",
+  };
+  const WORKFLOW_STEP_BLOCK_KEYS_BY_ACTION = {
+    preflight: "preflight",
+    preflight_mf: "preflight",
+    amazon_download: "amazon",
+    amazon_print: "amazon",
+    rakuten_download: "rakuten",
+    rakuten_print: "rakuten",
+    provider_ingest: "provider_ingest",
+    mf_bulk_upload_task: "mf_bulk_upload_task",
+    mf_reconcile: "mf_reconcile",
+    month_close: "month_close",
+  };
+  const WORKFLOW_STEP_BLOCK_SELECTORS = {
+    preflight: "#step-preflight",
+    amazon: "#step-amazon-task",
+    rakuten: "#step-rakuten-task",
+    provider_ingest: "#step-provider-ingest",
+    mf_bulk_upload_task: "#step-mf-bulk-upload-task",
+    mf_reconcile: "#step-mf-reconcile",
+    month_close: "#step-month-close",
+  };
+  const WORKFLOW_ACTIONS_BY_BLOCK_KEY = {
+    preflight: ["preflight", "preflight_mf"],
+    amazon: ["amazon_download", "amazon_print"],
+    rakuten: ["rakuten_download", "rakuten_print"],
+    provider_ingest: ["provider_ingest"],
+    mf_bulk_upload_task: ["mf_bulk_upload_task"],
+    mf_reconcile: ["mf_reconcile"],
+    month_close: ["month_close"],
+  };
+  const WORKFLOW_STEP_BLOCK_ORDER = [
+    "preflight",
+    "amazon",
+    "rakuten",
+    "provider_ingest",
+    "mf_bulk_upload_task",
+    "mf_reconcile",
+    "month_close",
+  ];
+  const TEMPLATE_STEP_ACTION_VALUES = new Set(TEMPLATE_STEP_ACTIONS.map((item) => item.value));
   const templateSaveState = { inFlight: false };
   const workflowPageCreateState = { inFlight: false };
   const TEMPLATE_MODE_CONFIG = {
@@ -108,6 +169,94 @@
 
   const workflowTemplate = parseWorkflowTemplate(pageEl);
   const workflowPage = parseWorkflowPage(pageEl);
+
+  function defaultTitleForStepAction(action, fallback = "") {
+    const normalizedAction = String(action || "").trim();
+    const fallbackTitle = String(fallback || "").trim();
+    if (fallbackTitle) return fallbackTitle;
+    return TEMPLATE_STEP_DEFAULT_TITLES[normalizedAction] || TEMPLATE_STEP_ACTION_LABELS[normalizedAction] || "手順";
+  }
+
+  function normalizeWorkflowStepRows(rawRows, options = {}) {
+    const rows = Array.isArray(rawRows) ? rawRows : [];
+    const ensureRequired = options.ensureRequired !== false;
+    const includeTimer = options.includeTimer !== false;
+    const seen = new Set();
+    const normalized = [];
+
+    rows.forEach((row, index) => {
+      const raw = row && typeof row === "object" ? row : {};
+      const action = normalizeTemplateStepAction(raw.action);
+      if (!action || seen.has(action)) return;
+      const title = String(raw.title || "").trim() || defaultTitleForStepAction(action, `手順${index + 1}`);
+      const id = String(raw.id || "").trim() || generateTemplateStepId();
+      const timerMinutes = normalizeTemplateStepTimerMinutes(raw.timer_minutes ?? raw.timer, TEMPLATE_STEP_TIMER_DEFAULT_MINUTES);
+      seen.add(action);
+      const nextRow = { id, title, action };
+      if (includeTimer) {
+        nextRow.timer_minutes = timerMinutes;
+      }
+      normalized.push(nextRow);
+    });
+
+    if (ensureRequired) {
+      const byAction = new Map(normalized.map((row) => [String(row.action || "").trim(), row]));
+      const requiredRows = TEMPLATE_REQUIRED_STEPS.map((requiredStep) => {
+        const existing = byAction.get(requiredStep.action);
+        if (existing) return existing;
+        const nextRow = {
+          id: generateTemplateStepId(),
+          title: defaultTitleForStepAction(requiredStep.action, requiredStep.title),
+          action: requiredStep.action,
+        };
+        if (includeTimer) {
+          nextRow.timer_minutes = TEMPLATE_STEP_TIMER_DEFAULT_MINUTES;
+        }
+        return nextRow;
+      });
+      const optionalRows = normalized.filter((row) => !isRequiredTemplateStepAction(row.action));
+      normalized.splice(0, normalized.length, ...requiredRows, ...optionalRows);
+    }
+
+    const limited = normalized.filter((row) => TEMPLATE_STEP_ACTION_VALUES.has(String(row.action || "").trim()));
+    if (limited.length === 0) {
+      const fallbackAction = TEMPLATE_REQUIRED_STEPS[0]?.action || TEMPLATE_STEP_DEFAULT_ACTION;
+      const nextRow = {
+        id: generateTemplateStepId(),
+        title: defaultTitleForStepAction(fallbackAction),
+        action: fallbackAction,
+      };
+      if (includeTimer) {
+        nextRow.timer_minutes = TEMPLATE_STEP_TIMER_DEFAULT_MINUTES;
+      }
+      limited.push(nextRow);
+    }
+    return limited;
+  }
+
+  function isRequiredTemplateStepAction(action) {
+    return TEMPLATE_REQUIRED_STEP_ACTION_SET.has(String(action || "").trim());
+  }
+
+  function actionToWorkflowBlockKey(action) {
+    const normalized = String(action || "").trim();
+    return WORKFLOW_STEP_BLOCK_KEYS_BY_ACTION[normalized] || "";
+  }
+
+  function nextAvailableTemplateStepAction(usedActions = new Set()) {
+    const used = usedActions instanceof Set ? usedActions : new Set();
+    for (const row of TEMPLATE_STEP_ACTIONS) {
+      const action = String(row?.value || "").trim();
+      if (!action || used.has(action) || isRequiredTemplateStepAction(action)) continue;
+      return action;
+    }
+    for (const row of TEMPLATE_STEP_ACTIONS) {
+      const action = String(row?.value || "").trim();
+      if (!action || used.has(action)) continue;
+      return action;
+    }
+    return TEMPLATE_STEP_DEFAULT_ACTION;
+  }
 
   function getTemplateMode() {
     return "edit";
@@ -447,7 +596,11 @@
   }
 
   function getTemplateStepsListEl() {
-    return form ? form.querySelector("[data-template-steps-list]") : null;
+    if (form) {
+      const inForm = form.querySelector("[data-template-steps-list]");
+      if (inForm) return inForm;
+    }
+    return document.querySelector("[data-template-steps-list]");
   }
 
   function getTemplateStepRows() {
@@ -483,6 +636,33 @@
     );
   }
 
+  const TEMPLATE_STEP_TIMER_DEFAULT_MINUTES = 5;
+  const TEMPLATE_STEP_TIMER_MIN_MINUTES = 0;
+  const TEMPLATE_STEP_TIMER_MAX_MINUTES = 7 * 24 * 60;
+
+  function normalizeTemplateStepTimerMinutes(value, fallback = TEMPLATE_STEP_TIMER_DEFAULT_MINUTES) {
+    const parsed = Number.parseInt(String(value ?? "").trim(), 10);
+    if (!Number.isInteger(parsed)) return fallback;
+    if (parsed < TEMPLATE_STEP_TIMER_MIN_MINUTES) return TEMPLATE_STEP_TIMER_MIN_MINUTES;
+    if (parsed > TEMPLATE_STEP_TIMER_MAX_MINUTES) return TEMPLATE_STEP_TIMER_MAX_MINUTES;
+    return parsed;
+  }
+
+  function parseTemplateStepRow(row, index = 0) {
+    const rowId = String(row?.dataset?.templateStepId || "").trim();
+    const action = normalizeTemplateStepAction(row?.querySelector("[data-template-step-action]")?.value);
+    const title =
+      String(row?.querySelector("[data-template-step-title]")?.value || "").trim() ||
+      defaultTitleForStepAction(action, `手順${index + 1}`);
+    const timerMinutes = normalizeTemplateStepTimerMinutes(row?.querySelector("[data-template-step-timer]")?.value);
+    return {
+      id: rowId || generateTemplateStepId(),
+      title,
+      action,
+      timer_minutes: timerMinutes,
+    };
+  }
+
   function refreshTemplateStepRows() {
     const listEl = getTemplateStepsListEl();
     if (!listEl) return;
@@ -491,8 +671,25 @@
       return;
     }
 
-    const hideRemove = rows.length <= 1;
+    const parsedRows = rows.map((row, index) => parseTemplateStepRow(row, index));
+    const actionCounts = new Map();
+    parsedRows.forEach((step) => {
+      const action = String(step.action || "").trim();
+      if (!action) return;
+      actionCounts.set(action, (actionCounts.get(action) || 0) + 1);
+    });
+    const optionalRowsCount = parsedRows.filter((row) => !isRequiredTemplateStepAction(row.action)).length;
+    let hasDuplicates = false;
+
     rows.forEach((row, index) => {
+      const parsed = parsedRows[index] || {
+        action: TEMPLATE_STEP_DEFAULT_ACTION,
+        title: "",
+        timer_minutes: TEMPLATE_STEP_TIMER_DEFAULT_MINUTES,
+      };
+      const action = normalizeTemplateStepAction(parsed.action);
+      const requiredAction = isRequiredTemplateStepAction(action) ? action : "";
+
       let indexEl = row.querySelector("[data-template-step-index]");
       if (!indexEl) {
         indexEl = document.createElement("span");
@@ -500,39 +697,80 @@
         indexEl.dataset.templateStepIndex = "1";
         row.insertBefore(indexEl, row.firstChild);
       }
-      indexEl.textContent = `手順${index}`;
+      indexEl.textContent = `手順${index + 1}`;
 
       const titleEl = row.querySelector("[data-template-step-title]");
       if (titleEl) {
         if (!String(titleEl.value || "").trim()) {
-          titleEl.value = `手順${index}`;
+          titleEl.value = defaultTitleForStepAction(action, `手順${index + 1}`);
         }
-        titleEl.setAttribute("aria-label", `手順${index}のタイトル`);
+        titleEl.setAttribute("aria-label", `手順${index + 1}のタイトル`);
+      }
+
+      const actionEl = row.querySelector("[data-template-step-action]");
+      if (actionEl) {
+        if (requiredAction) {
+          row.dataset.requiredAction = requiredAction;
+          actionEl.value = requiredAction;
+          actionEl.disabled = true;
+          actionEl.title = "必須手順は変更できません。";
+        } else {
+          delete row.dataset.requiredAction;
+          actionEl.disabled = false;
+          actionEl.title = "";
+        }
+        const duplicated = (actionCounts.get(action) || 0) > 1;
+        hasDuplicates = hasDuplicates || duplicated;
+        actionEl.classList.toggle("is-invalid", duplicated);
+        actionEl.setCustomValidity(duplicated ? "同じ処理は1回だけ追加できます。" : "");
+      }
+
+      const timerEl = row.querySelector("[data-template-step-timer]");
+      if (timerEl) {
+        timerEl.value = String(normalizeTemplateStepTimerMinutes(timerEl.value, parsed.timer_minutes));
       }
 
       const removeButton = row.querySelector("[data-template-step-remove]");
       if (removeButton) {
-        removeButton.hidden = hideRemove;
-        removeButton.disabled = hideRemove;
+        const locked = Boolean(requiredAction) || optionalRowsCount <= 0;
+        removeButton.hidden = locked;
+        removeButton.disabled = locked;
+        removeButton.title = requiredAction ? "必須手順は削除できません。" : "";
       }
     });
 
+    listEl.dataset.stepHasDuplicates = hasDuplicates ? "1" : "0";
     emitTemplateStepsChanged();
   }
 
   function collectTemplateSteps() {
-    return getTemplateStepRows()
-      .map((row, index) => {
-        const title = String(row.querySelector("[data-template-step-title]")?.value || "").trim() || `手順${index}`;
-        const action = normalizeTemplateStepAction(row.querySelector("[data-template-step-action]")?.value);
-        const rowId = String(row.dataset.templateStepId || "").trim();
-        return {
-          id: rowId || generateTemplateStepId(),
-          title,
-          action,
-        };
-      })
+    const parsedRows = getTemplateStepRows()
+      .map((row, index) => parseTemplateStepRow(row, index))
       .filter((row) => Boolean(row.title));
+    return normalizeWorkflowStepRows(parsedRows, {
+      ensureRequired: true,
+      includeTimer: true,
+    });
+  }
+
+  function addTemplateStepFromDefaultCard(options = {}) {
+    const usedActions = new Set(
+      getTemplateStepRows().map((row) => normalizeTemplateStepAction(row?.querySelector("[data-template-step-action]")?.value)),
+    );
+    let action = "amazon_download";
+    if (usedActions.has(action)) {
+      action = nextAvailableTemplateStepAction(usedActions);
+    }
+    const nextIndex = getTemplateStepRows().length + 1;
+    addTemplateStepRow(
+      {
+        id: "",
+        title: defaultTitleForStepAction(action, `手順${nextIndex}`),
+        action,
+        timer_minutes: TEMPLATE_STEP_TIMER_DEFAULT_MINUTES,
+      },
+      options,
+    );
   }
 
   function addTemplateStepRow(rawStep = {}, options = {}) {
@@ -541,11 +779,16 @@
     const shouldFocus = options.focus !== false;
     const title = String(rawStep?.title || "").trim();
     const action = normalizeTemplateStepAction(rawStep?.action);
+    const requiredAction = isRequiredTemplateStepAction(action) ? action : "";
 
     const row = document.createElement("div");
     row.className = "template-step-row";
     row.dataset.templateStepRow = "1";
     row.dataset.templateStepId = String(rawStep?.id || generateTemplateStepId()).trim();
+    row.dataset.lastAction = action;
+    if (requiredAction) {
+      row.dataset.requiredAction = requiredAction;
+    }
 
     const indexEl = document.createElement("span");
     indexEl.className = "muted";
@@ -555,7 +798,7 @@
     titleEl.type = "text";
     titleEl.className = "template-step-title";
     titleEl.value = title;
-    titleEl.placeholder = "手順名を入力";
+    titleEl.placeholder = "手順名";
     titleEl.dataset.templateStepTitle = "1";
     titleEl.required = true;
 
@@ -571,6 +814,10 @@
     removeButton.setAttribute("aria-label", "この手順を削除");
     removeButton.textContent = "-";
     removeButton.addEventListener("click", () => {
+      if (row.dataset.requiredAction) {
+        showToast("必須手順は削除できません。", "error");
+        return;
+      }
       row.remove();
       refreshTemplateStepRows();
     });
@@ -582,12 +829,35 @@
     listEl.appendChild(row);
 
     titleEl.addEventListener("input", refreshTemplateStepRows);
-    actionEl.addEventListener("change", refreshTemplateStepRows);
+    actionEl.addEventListener("change", () => {
+      const lockedAction = String(row.dataset.requiredAction || "").trim();
+      const previousAction = String(row.dataset.lastAction || "").trim() || action;
+      const nextAction = normalizeTemplateStepAction(actionEl.value);
+      if (lockedAction) {
+        actionEl.value = lockedAction;
+        refreshTemplateStepRows();
+        return;
+      }
+      const duplicated = getTemplateStepRows().some((otherRow) => {
+        if (!otherRow || otherRow === row) return false;
+        const otherAction = normalizeTemplateStepAction(
+          otherRow.querySelector("[data-template-step-action]")?.value,
+        );
+        return otherAction === nextAction;
+      });
+      if (duplicated) {
+        actionEl.value = previousAction;
+        showToast("同じ処理は1回だけ追加できます。", "error");
+        refreshTemplateStepRows();
+        return;
+      }
+      row.dataset.lastAction = nextAction;
+      refreshTemplateStepRows();
+    });
+    refreshTemplateStepRows();
     if (shouldFocus) {
       titleEl.focus();
       titleEl.select();
-    } else {
-      refreshTemplateStepRows();
     }
   }
 
@@ -595,14 +865,23 @@
     const listEl = getTemplateStepsListEl();
     if (!listEl) return;
 
+    const workflowPageSteps = Array.isArray(workflowPage?.steps) ? workflowPage.steps : [];
     const templateSteps = Array.isArray(workflowTemplate?.steps) ? workflowTemplate.steps : [];
-    const rawRows = templateSteps.length
-      ? templateSteps
-      : [{ id: "", title: "手順0", action: TEMPLATE_STEP_DEFAULT_ACTION }];
-    listEl.innerHTML = "";
+    const initialRows = normalizeWorkflowStepRows(
+      workflowPageSteps.length > 0 ? workflowPageSteps : templateSteps,
+      { ensureRequired: true, includeTimer: true },
+    );
 
-    rawRows.forEach((row, index) => {
-      const title = String(row?.title || "").trim() || `手順${index}`;
+    listEl.innerHTML = "";
+    const rowsToRender =
+      initialRows.length > 0
+        ? initialRows
+        : normalizeWorkflowStepRows([{ action: TEMPLATE_STEP_DEFAULT_ACTION }], {
+            ensureRequired: true,
+            includeTimer: true,
+          });
+    rowsToRender.forEach((row, index) => {
+      const title = String(row?.title || "").trim() || defaultTitleForStepAction(row?.action, `手順${index + 1}`);
       const action = normalizeTemplateStepAction(row?.action);
       addTemplateStepRow({ id: row?.id, title, action }, { focus: false });
     });
@@ -1056,6 +1335,42 @@
     };
   }
 
+  function buildWorkflowStepPreviewLines(steps) {
+    const rows = normalizeWorkflowStepRows(Array.isArray(steps) ? steps : [], {
+      ensureRequired: true,
+      includeTimer: true,
+    });
+    return rows.map((row, index) => {
+      const action = String(row.action || "").trim();
+      const actionLabel = TEMPLATE_STEP_ACTION_LABELS[action] || action || "(未設定)";
+      const title = String(row.title || "").trim() || defaultTitleForStepAction(action, `手順${index + 1}`);
+      const timer = normalizeTemplateStepTimerMinutes(row.timer_minutes);
+      return `${index + 1}. ${title} / ${actionLabel} / ${timer}分`;
+    });
+  }
+
+  function renderWorkflowCreatePreview(payload = null) {
+    const listEl = document.getElementById("workflow-create-preview-list");
+    if (!listEl) return;
+    const currentPayload = payload || buildWorkflowPagePayload() || {};
+    const name = String(currentPayload.name || "").trim() || "(未入力)";
+    const subheading = String(currentPayload.subheading || "").trim() || "(なし)";
+    const stepLines = buildWorkflowStepPreviewLines(currentPayload.steps);
+    const lines = [`ワークフロー名: ${name}`, `補足説明: ${subheading}`, "作成される手順:"];
+    if (stepLines.length > 0) {
+      lines.push(...stepLines.map((line) => `  ${line}`));
+    } else {
+      lines.push("  (手順なし)");
+    }
+    listEl.innerHTML = "";
+    lines.forEach((line) => {
+      const item = document.createElement("li");
+      item.className = "muted";
+      item.textContent = line;
+      listEl.appendChild(item);
+    });
+  }
+
   async function createWorkflowPage() {
     if (!form || workflowPageCreateState.inFlight) return;
     if (!validateTemplateSourceUrls()) return;
@@ -1073,6 +1388,7 @@
         "新しいワークフローページを作成します。",
         `ページ名: ${payload.name}`,
         `補足説明: ${payload.subheading || "(なし)"}`,
+        ...buildWorkflowStepPreviewLines(payload.steps).map((line) => `手順: ${line}`),
         "テンプレートの手順定義と自動実行設定を引き継ぎます。",
       ],
       confirmLabel: "作成して開く",
@@ -1112,7 +1428,7 @@
         showToast("ワークフローページを作成しました。", "success");
       }
       if (workflowPageId) {
-        window.location.href = `/workflow/${encodeURIComponent(workflowPageId)}?year=${payload.year}&month=${payload.month}`;
+        window.location.href = `/workflow/${encodeURIComponent(workflowPageId)}`;
         return;
       }
       const message = "作成は完了しましたが、遷移先が見つかりませんでした。";
@@ -1217,6 +1533,409 @@
       const message = "アーカイブに失敗しました。";
       showError(message);
       showToast(message, "error");
+    }
+  }
+
+  function getWorkflowPageStepModelListEl() {
+    return document.querySelector("#workflow-page-step-model [data-template-steps-list]");
+  }
+
+  function syncWorkflowPageStepModelRows(stepRows) {
+    const modelListEl = getWorkflowPageStepModelListEl();
+    if (!modelListEl) return;
+    const rows = normalizeWorkflowStepRows(stepRows, {
+      ensureRequired: true,
+      includeTimer: true,
+    });
+    modelListEl.innerHTML = "";
+    rows.forEach((row, index) => {
+      const rowEl = document.createElement("div");
+      rowEl.dataset.templateStepRow = "1";
+      rowEl.dataset.templateStepId = String(row.id || generateTemplateStepId()).trim();
+      const titleEl = document.createElement("input");
+      titleEl.type = "text";
+      titleEl.dataset.templateStepTitle = "1";
+      titleEl.value = String(row.title || "").trim() || defaultTitleForStepAction(row.action, `手順${index + 1}`);
+      const actionEl = document.createElement("select");
+      actionEl.dataset.templateStepAction = "1";
+      actionEl.innerHTML = getTemplateStepActionOptionsHtml(row.action);
+      rowEl.appendChild(titleEl);
+      rowEl.appendChild(actionEl);
+      modelListEl.appendChild(rowEl);
+    });
+    modelListEl.dispatchEvent(
+      new CustomEvent("template-steps-changed", {
+        bubbles: true,
+      }),
+    );
+  }
+
+  function renderWorkflowPageStepVersionLabel() {
+    const labelEl = document.getElementById("workflow-page-step-version");
+    if (!labelEl) return;
+    const currentVersion = Number.parseInt(String(workflowPage?.step_version || 1), 10);
+    const safeVersion = Number.isInteger(currentVersion) && currentVersion > 0 ? currentVersion : 1;
+    const versions = Array.isArray(workflowPage?.step_versions) ? workflowPage.step_versions : [];
+    const currentRow = versions.find((row) => Number.parseInt(String(row?.version || 0), 10) === safeVersion);
+    const updatedAt = String(currentRow?.updated_at || "").trim();
+    labelEl.textContent = updatedAt ? `手順版 v${safeVersion} (${updatedAt})` : `手順版 v${safeVersion}`;
+  }
+
+  function applyWorkflowPageStepLayout(stepRowsInput = null) {
+    const workflowPageId = String(workflowPage?.id || "").trim();
+    if (!workflowPageId) return;
+    const containerEl = document.querySelector("#wizard .wizard-steps");
+    if (!containerEl) return;
+    const rows = normalizeWorkflowStepRows(
+      Array.isArray(stepRowsInput) ? stepRowsInput : workflowPage?.steps,
+      { ensureRequired: true, includeTimer: true },
+    );
+    const rowByAction = new Map(rows.map((row) => [String(row.action || "").trim(), row]));
+    const visibleBlockSet = new Set();
+    rows.forEach((row) => {
+      const key = actionToWorkflowBlockKey(row.action);
+      if (key) visibleBlockSet.add(key);
+    });
+    const orderedBlockKeys = WORKFLOW_STEP_BLOCK_ORDER.filter((key) => visibleBlockSet.has(key));
+
+    const processConfigs = [
+      { elementId: "step-amazon-download", action: "amazon_download" },
+      { elementId: "step-amazon-decide-print", action: "amazon_print" },
+      { elementId: "step-rakuten-download", action: "rakuten_download" },
+      { elementId: "step-rakuten-decide-print", action: "rakuten_print" },
+    ];
+    processConfigs.forEach((config) => {
+      const processEl = document.getElementById(config.elementId);
+      if (!processEl) return;
+      const row = rowByAction.get(config.action);
+      processEl.hidden = !row;
+      processEl.classList.toggle("hidden", !row);
+      processEl.style.display = row ? "" : "none";
+      if (!row) return;
+      processEl.classList.remove("hidden");
+      processEl.style.display = "";
+      const titleEl = processEl.querySelector(".process-title");
+      if (titleEl) {
+        titleEl.textContent = String(row.title || "").trim() || defaultTitleForStepAction(row.action);
+      }
+    });
+
+    WORKFLOW_STEP_BLOCK_ORDER.forEach((key) => {
+      const selector = WORKFLOW_STEP_BLOCK_SELECTORS[key];
+      if (!selector) return;
+      const blockEl = document.querySelector(selector);
+      if (!blockEl) return;
+      const shouldHide = !visibleBlockSet.has(key);
+      blockEl.hidden = shouldHide;
+      blockEl.classList.toggle("hidden", shouldHide);
+      blockEl.style.display = shouldHide ? "none" : "";
+    });
+
+    orderedBlockKeys.forEach((key, index) => {
+      const selector = WORKFLOW_STEP_BLOCK_SELECTORS[key];
+      if (!selector) return;
+      const blockEl = document.querySelector(selector);
+      if (!blockEl) return;
+      blockEl.hidden = false;
+      blockEl.classList.remove("hidden");
+      blockEl.style.display = "";
+      containerEl.appendChild(blockEl);
+      const numberEl = blockEl.querySelector(".step-head .step-num, .task-head .step-num");
+      if (numberEl) {
+        numberEl.textContent = String(index + 1);
+      }
+      const actions = WORKFLOW_ACTIONS_BY_BLOCK_KEY[key] || [];
+      const step = rows.find((row) => actions.includes(String(row.action || "").trim()));
+      if (!step) return;
+      const titleEl = blockEl.querySelector(".step-head .step-title, .task-head .step-title");
+      if (titleEl) {
+        titleEl.textContent = String(step.title || "").trim() || defaultTitleForStepAction(step.action);
+      }
+    });
+
+    workflowPage.steps = rows;
+    syncWorkflowPageStepModelRows(rows);
+  }
+
+  function applyWorkflowPageSnapshot(nextPage) {
+    if (!workflowPage || !nextPage || typeof nextPage !== "object") return;
+    Object.keys(workflowPage).forEach((key) => {
+      delete workflowPage[key];
+    });
+    Object.assign(workflowPage, nextPage);
+    if (pageEl) {
+      try {
+        pageEl.dataset.workflowPage = JSON.stringify(workflowPage);
+      } catch {
+        // Best-effort only.
+      }
+    }
+    applyWorkflowPageStepLayout(workflowPage.steps);
+    renderWorkflowPageStepVersionLabel();
+  }
+
+  function showWorkflowPageStepEditorModal(initialSteps = []) {
+    return new Promise((resolve) => {
+      const { overlay, modal, panel } = createModalShell("手順編集");
+      const body = document.createElement("div");
+      body.className = "dialog-body";
+      const note = document.createElement("p");
+      note.className = "muted";
+      note.textContent = "必須手順（preflight / mf_reconcile）は削除・変更できません。";
+      body.appendChild(note);
+
+      const listEl = document.createElement("div");
+      listEl.className = "template-steps";
+      body.appendChild(listEl);
+
+      const addWrap = document.createElement("div");
+      addWrap.className = "form-row";
+      const addButton = document.createElement("button");
+      addButton.type = "button";
+      addButton.className = "secondary";
+      addButton.textContent = "+ 手順を追加";
+      addWrap.appendChild(addButton);
+      body.appendChild(addWrap);
+      panel.appendChild(body);
+
+      const actionBar = document.createElement("div");
+      actionBar.className = "dialog-actions";
+      const cancelButton = document.createElement("button");
+      cancelButton.type = "button";
+      cancelButton.className = "secondary";
+      cancelButton.textContent = "キャンセル";
+      const saveButton = document.createElement("button");
+      saveButton.type = "button";
+      saveButton.className = "primary";
+      saveButton.textContent = "保存";
+      actionBar.appendChild(cancelButton);
+      actionBar.appendChild(saveButton);
+      panel.appendChild(actionBar);
+
+      const close = bindModalDismiss(overlay, modal, resolve);
+      const state = normalizeWorkflowStepRows(initialSteps, {
+        ensureRequired: true,
+        includeTimer: true,
+      }).map((row) => ({ ...row }));
+
+      const normalizeState = () => {
+        const normalized = normalizeWorkflowStepRows(state, {
+          ensureRequired: true,
+          includeTimer: true,
+        });
+        state.splice(0, state.length, ...normalized.map((row) => ({ ...row })));
+      };
+
+      const renderState = (focusIndex = -1) => {
+        normalizeState();
+        listEl.innerHTML = "";
+        const optionalCount = state.filter((row) => !isRequiredTemplateStepAction(row.action)).length;
+        state.forEach((row, index) => {
+          const rowEl = document.createElement("div");
+          rowEl.className = "template-step-row";
+
+          const indexEl = document.createElement("span");
+          indexEl.className = "muted";
+          indexEl.textContent = `手順${index + 1}`;
+
+          const titleEl = document.createElement("input");
+          titleEl.type = "text";
+          titleEl.required = true;
+          titleEl.value = String(row.title || "").trim() || defaultTitleForStepAction(row.action, `手順${index + 1}`);
+          titleEl.addEventListener("input", () => {
+            state[index].title = String(titleEl.value || "").trim() || defaultTitleForStepAction(state[index].action);
+          });
+
+          const actionEl = document.createElement("select");
+          actionEl.innerHTML = getTemplateStepActionOptionsHtml(row.action);
+          const requiredAction = isRequiredTemplateStepAction(row.action);
+          actionEl.disabled = requiredAction;
+          actionEl.title = requiredAction ? "必須手順は変更できません。" : "";
+          actionEl.addEventListener("change", () => {
+            const nextAction = normalizeTemplateStepAction(actionEl.value);
+            const duplicated = state.some((step, stepIndex) => stepIndex !== index && step.action === nextAction);
+            if (duplicated) {
+              actionEl.value = state[index].action;
+              showToast("同じ処理は1回だけ追加できます。", "error");
+              return;
+            }
+            state[index].action = nextAction;
+            if (!String(state[index].title || "").trim()) {
+              state[index].title = defaultTitleForStepAction(nextAction);
+            }
+            renderState(index);
+          });
+
+          const timerEl = document.createElement("input");
+          timerEl.type = "number";
+          timerEl.min = String(TEMPLATE_STEP_TIMER_MIN_MINUTES);
+          timerEl.max = String(TEMPLATE_STEP_TIMER_MAX_MINUTES);
+          timerEl.step = "1";
+          timerEl.value = String(normalizeTemplateStepTimerMinutes(row.timer_minutes));
+          timerEl.title = "タイマー（分）";
+          timerEl.addEventListener("change", () => {
+            state[index].timer_minutes = normalizeTemplateStepTimerMinutes(timerEl.value);
+            timerEl.value = String(state[index].timer_minutes);
+          });
+
+          const removeButton = document.createElement("button");
+          removeButton.type = "button";
+          removeButton.className = "secondary";
+          removeButton.textContent = "-";
+          removeButton.hidden = requiredAction || optionalCount <= 0;
+          removeButton.disabled = requiredAction || optionalCount <= 0;
+          removeButton.title = requiredAction ? "必須手順は削除できません。" : "";
+          removeButton.addEventListener("click", () => {
+            if (requiredAction) return;
+            state.splice(index, 1);
+            renderState(Math.max(0, index - 1));
+          });
+
+          rowEl.appendChild(indexEl);
+          rowEl.appendChild(titleEl);
+          rowEl.appendChild(actionEl);
+          rowEl.appendChild(timerEl);
+          rowEl.appendChild(removeButton);
+          listEl.appendChild(rowEl);
+
+          if (index === focusIndex) {
+            titleEl.focus();
+            titleEl.select();
+          }
+        });
+      };
+
+      addButton.addEventListener("click", () => {
+        const usedActions = new Set(state.map((row) => String(row.action || "").trim()));
+        const action = nextAvailableTemplateStepAction(usedActions);
+        state.push({
+          id: generateTemplateStepId(),
+          title: defaultTitleForStepAction(action),
+          action,
+          timer_minutes: TEMPLATE_STEP_TIMER_DEFAULT_MINUTES,
+        });
+        renderState(state.length - 1);
+      });
+
+      cancelButton.addEventListener("click", () => close(null));
+      saveButton.addEventListener("click", () => {
+        normalizeState();
+        close(state.map((row) => ({ ...row })));
+      });
+
+      renderState();
+    });
+  }
+
+  async function saveWorkflowPageSteps(nextSteps, { successMessage = "手順を更新しました。" } = {}) {
+    const workflowPageId = String(workflowPage?.id || "").trim();
+    if (!workflowPageId) return false;
+    const payload = {
+      steps: normalizeWorkflowStepRows(nextSteps, {
+        ensureRequired: true,
+        includeTimer: true,
+      }),
+      base_updated_at: String(workflowPage?.updated_at || ""),
+      base_step_version: Number.parseInt(String(workflowPage?.step_version || 1), 10) || 1,
+    };
+    try {
+      const res = await fetch(`/api/workflow-pages/${encodeURIComponent(workflowPageId)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const message = toFriendlyMessage(data.detail) || "手順の更新に失敗しました。";
+        showError(message);
+        showToast(message, "error");
+        return false;
+      }
+      const updatedPage = data.workflow_page && typeof data.workflow_page === "object" ? data.workflow_page : null;
+      if (updatedPage) {
+        applyWorkflowPageSnapshot(updatedPage);
+      }
+      showToast(successMessage, "success");
+      return true;
+    } catch {
+      const message = "手順の更新に失敗しました。";
+      showError(message);
+      showToast(message, "error");
+      return false;
+    }
+  }
+
+  async function editWorkflowPageSteps() {
+    const workflowPageId = String(workflowPage?.id || "").trim();
+    if (!workflowPageId) return;
+    const currentSteps = normalizeWorkflowStepRows(workflowPage?.steps, {
+      ensureRequired: true,
+      includeTimer: true,
+    });
+    const nextSteps = await showWorkflowPageStepEditorModal(currentSteps);
+    if (!nextSteps) return;
+    const normalizedNext = normalizeWorkflowStepRows(nextSteps, {
+      ensureRequired: true,
+      includeTimer: true,
+    });
+    if (JSON.stringify(currentSteps) === JSON.stringify(normalizedNext)) {
+      showToast("変更はありません。", "info");
+      return;
+    }
+    const saved = await saveWorkflowPageSteps(normalizedNext, {
+      successMessage: "手順を更新しました。",
+    });
+    if (saved) {
+      refreshSteps({ force: true });
+    }
+  }
+
+  async function rollbackWorkflowPageSteps() {
+    const workflowPageId = String(workflowPage?.id || "").trim();
+    if (!workflowPageId) return;
+    const versions = Array.isArray(workflowPage?.step_versions) ? workflowPage.step_versions : [];
+    if (versions.length < 2) {
+      showToast("戻せる前版がありません。", "info");
+      return;
+    }
+    const currentVersion = Number.parseInt(String(workflowPage?.step_version || 1), 10) || 1;
+    let targetRow = null;
+    for (let i = versions.length - 1; i >= 0; i -= 1) {
+      const row = versions[i];
+      const version = Number.parseInt(String(row?.version || 0), 10);
+      if (version > 0 && version < currentVersion) {
+        targetRow = row;
+        break;
+      }
+    }
+    if (!targetRow) {
+      targetRow = versions.length >= 2 ? versions[versions.length - 2] : null;
+    }
+    if (!targetRow) {
+      showToast("戻せる前版がありません。", "info");
+      return;
+    }
+    const targetVersion = Number.parseInt(String(targetRow.version || 0), 10) || 1;
+    const targetSteps = normalizeWorkflowStepRows(targetRow.steps, {
+      ensureRequired: true,
+      includeTimer: true,
+    });
+    const confirmed = await showConfirmModal({
+      title: "手順を前版に戻す",
+      lines: [
+        `現在版: v${currentVersion}`,
+        `戻し先: v${targetVersion}`,
+        ...buildWorkflowStepPreviewLines(targetSteps).map((line) => `手順: ${line}`),
+      ],
+      confirmLabel: "前版を反映",
+      cancelLabel: "キャンセル",
+    });
+    if (!confirmed) return;
+    const saved = await saveWorkflowPageSteps(targetSteps, {
+      successMessage: `手順を前版(v${targetVersion})の内容で復元しました。`,
+    });
+    if (saved) {
+      refreshSteps({ force: true });
     }
   }
 
@@ -3124,7 +3843,7 @@
     const templateStepAddButton = document.getElementById("template-step-add");
     templateStepAddButton?.addEventListener("click", (event) => {
       event.preventDefault();
-      addTemplateStepRow({}, {});
+      addTemplateStepFromDefaultCard({});
     });
     const workflowPageCreateButton = document.getElementById("workflow-page-create");
     workflowPageCreateButton?.addEventListener("click", (event) => {
@@ -3141,8 +3860,22 @@
       event.preventDefault();
       archiveCurrentWorkflowPage();
     });
-    form.querySelector("[name=template_name]")?.addEventListener("input", syncTemplatePageHeader);
-    form.querySelector("[name=template_subheading]")?.addEventListener("input", syncTemplatePageHeader);
+    const workflowPageEditStepsButton = document.getElementById("workflow-page-edit-steps");
+    workflowPageEditStepsButton?.addEventListener("click", (event) => {
+      event.preventDefault();
+      editWorkflowPageSteps();
+    });
+    const workflowPageRollbackButton = document.getElementById("workflow-page-rollback-steps");
+    workflowPageRollbackButton?.addEventListener("click", (event) => {
+      event.preventDefault();
+      rollbackWorkflowPageSteps();
+    });
+    const onTemplateHeaderChanged = () => {
+      syncTemplatePageHeader();
+      renderWorkflowCreatePreview();
+    };
+    form.querySelector("[name=template_name]")?.addEventListener("input", onTemplateHeaderChanged);
+    form.querySelector("[name=template_subheading]")?.addEventListener("input", onTemplateHeaderChanged);
     form.querySelector("[name=year]")?.addEventListener("change", handleYmChanged);
     form.querySelector("[name=month]")?.addEventListener("change", handleYmChanged);
     const templateSaveButton = document.getElementById("workflow-template-save");
@@ -3150,8 +3883,15 @@
       event.preventDefault();
       saveWorkflowTemplate();
     });
+    const templateStepsListEl = getTemplateStepsListEl();
+    templateStepsListEl?.addEventListener("template-steps-changed", () => {
+      renderWorkflowCreatePreview();
+    });
 
     hydrateTemplateSteps();
+    renderWorkflowCreatePreview();
+    applyWorkflowPageStepLayout(workflowPage?.steps);
+    renderWorkflowPageStepVersionLabel();
     restoreYmSelection();
     const initialYm = getYmFromForm();
     applyArchivePageLink(initialYm);

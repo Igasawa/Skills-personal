@@ -7,10 +7,22 @@
   const STORAGE_PROMPTS_KEY = "mf-dashboard-workspace-prompts-v1";
   const STORAGE_PROMPT_ACTIVE_KEY = "mf-dashboard-workspace-prompt-active-v1";
   const STORAGE_LINK_NOTES_KEY = "mf-dashboard-workspace-link-notes-v1";
+  const STORAGE_LINK_PROFILES_KEY = "mf-dashboard-workspace-link-profiles-v1";
   const MAX_LINKS = 100;
   const MAX_LINK_NOTE_CHARS = 4000;
   const LINK_NOTE_SAVE_DEBOUNCE_MS = 300;
+  const MAX_PROFILE_OWNER_CHARS = 80;
+  const MAX_PROFILE_AGENT_CHARS = 32;
+  const REVIEW_STALE_DAYS = 45;
+  const PROFILE_SAVE_DEBOUNCE_MS = 300;
   const PROMPT_KEY_MF_EXPENSE_REPORTS = "mf_expense_reports";
+  const LINK_PROFILE_AGENT_LABELS = Object.freeze({
+    codex: "Codex",
+    chatgpt: "ChatGPT",
+    claude: "Claude",
+    gemini: "Gemini",
+    other: "その他",
+  });
   const WORKSPACE_STATE_ENDPOINT = "/api/workspace/state";
   const WORKSPACE_SYNC_DEBOUNCE_MS = 300;
   let workspaceSyncTimer = null;
@@ -69,6 +81,9 @@
   const linkLabelInput = document.getElementById("workspace-link-label");
   const linkUrlInput = document.getElementById("workspace-link-url");
   const linkPurposeInput = document.getElementById("workspace-link-purpose");
+  const linkOwnerInput = document.getElementById("workspace-link-owner");
+  const linkAgentInput = document.getElementById("workspace-link-agent");
+  const linkReviewedOnInput = document.getElementById("workspace-link-reviewed-on");
   const clearLinksButton = document.getElementById("workspace-clear-links");
   const customLinksList = document.getElementById("workspace-custom-links");
   const customLinksEmpty = document.getElementById("workspace-custom-links-empty");
@@ -77,6 +92,7 @@
   const promptStatus = document.getElementById("workspace-prompt-status");
   const promptCount = document.getElementById("workspace-prompt-count");
   const savePromptButton = document.getElementById("workspace-save-prompt");
+  const copyHandoffButton = document.getElementById("workspace-copy-handoff");
   const promptActiveLabel = document.getElementById("workspace-prompt-active-label");
 
   function isObject(value) {
@@ -153,6 +169,77 @@
     return String(value ?? "").slice(0, MAX_LINK_NOTE_CHARS);
   }
 
+  function normalizeProfileOwner(value) {
+    return normalizeText(value, MAX_PROFILE_OWNER_CHARS);
+  }
+
+  function normalizeProfileAgent(value) {
+    const candidate = String(value || "").trim().toLowerCase().slice(0, MAX_PROFILE_AGENT_CHARS);
+    if (!candidate) return "";
+    return Object.prototype.hasOwnProperty.call(LINK_PROFILE_AGENT_LABELS, candidate) ? candidate : "";
+  }
+
+  function normalizeReviewedOn(value) {
+    const text = String(value || "").trim();
+    if (!text) return "";
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) return "";
+    const date = new Date(`${text}T00:00:00`);
+    if (Number.isNaN(date.getTime())) return "";
+    return text;
+  }
+
+  function normalizeLinkProfile(value) {
+    const row = isObject(value) ? value : {};
+    return {
+      owner: normalizeProfileOwner(row.owner),
+      agent: normalizeProfileAgent(row.agent),
+      reviewed_on: normalizeReviewedOn(row.reviewed_on),
+    };
+  }
+
+  function isEmptyLinkProfile(profile) {
+    return !String(profile.owner || "").trim() && !String(profile.agent || "").trim() && !String(profile.reviewed_on || "").trim();
+  }
+
+  function readLinkProfileMap() {
+    try {
+      const raw = window.localStorage.getItem(STORAGE_LINK_PROFILES_KEY);
+      if (!raw) return {};
+      const parsed = JSON.parse(raw);
+      if (!isObject(parsed)) return {};
+      const out = {};
+      Object.keys(parsed).forEach((k) => {
+        const safeKey = String(k || "").trim();
+        if (!isValidPromptKey(safeKey)) return;
+        const normalized = normalizeLinkProfile(parsed[k]);
+        if (isEmptyLinkProfile(normalized)) return;
+        out[safeKey] = normalized;
+      });
+      return out;
+    } catch {
+      return {};
+    }
+  }
+
+  function saveLinkProfileMap(map) {
+    const rawMap = isObject(map) ? map : {};
+    const safeMap = {};
+    Object.keys(rawMap).forEach((k) => {
+      const safeKey = String(k || "").trim();
+      if (!isValidPromptKey(safeKey)) return;
+      const normalized = normalizeLinkProfile(rawMap[safeKey]);
+      if (isEmptyLinkProfile(normalized)) return;
+      safeMap[safeKey] = normalized;
+    });
+    try {
+      window.localStorage.setItem(STORAGE_LINK_PROFILES_KEY, JSON.stringify(safeMap));
+      scheduleWorkspaceSync();
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   function readLinkNoteMap() {
     try {
       const raw = window.localStorage.getItem(STORAGE_LINK_NOTES_KEY);
@@ -204,11 +291,39 @@
     return saveLinkNoteMap(map);
   }
 
+  let linkProfileMapCache = null;
+  function getLinkProfileMapCached() {
+    if (linkProfileMapCache) return linkProfileMapCache;
+    linkProfileMapCache = readLinkProfileMap();
+    return linkProfileMapCache;
+  }
+
+  function getLinkProfileForKey(key) {
+    const safeKey = String(key || "").trim();
+    if (!isValidPromptKey(safeKey)) return normalizeLinkProfile({});
+    const map = getLinkProfileMapCached();
+    return normalizeLinkProfile(map[safeKey]);
+  }
+
+  function saveLinkProfileForKey(key, profile) {
+    const safeKey = String(key || "").trim();
+    if (!isValidPromptKey(safeKey)) return false;
+    const map = getLinkProfileMapCached();
+    const normalized = normalizeLinkProfile(profile);
+    if (isEmptyLinkProfile(normalized)) {
+      delete map[safeKey];
+    } else {
+      map[safeKey] = normalized;
+    }
+    return saveLinkProfileMap(map);
+  }
+
   function collectLocalWorkspaceState() {
     return {
       links: readCustomLinks(),
       prompts: readPromptMap(),
       link_notes: readLinkNoteMap(),
+      link_profiles: readLinkProfileMap(),
       active_prompt_key: readActivePromptKey() || PROMPT_KEY_MF_EXPENSE_REPORTS,
     };
   }
@@ -218,13 +333,20 @@
     const links = Array.isArray(state.links) ? state.links : [];
     const prompts = isObject(state.prompts) ? state.prompts : {};
     const linkNotes = isObject(state.link_notes) ? state.link_notes : {};
-    return links.length > 0 || Object.keys(prompts).length > 0 || Object.keys(linkNotes).length > 0;
+    const linkProfiles = isObject(state.link_profiles) ? state.link_profiles : {};
+    return (
+      links.length > 0 ||
+      Object.keys(prompts).length > 0 ||
+      Object.keys(linkNotes).length > 0 ||
+      Object.keys(linkProfiles).length > 0
+    );
   }
 
   function applyWorkspaceStateToLocalStorage(state) {
     const links = Array.isArray(state?.links) ? state.links : [];
     const prompts = isObject(state?.prompts) ? state.prompts : {};
     const linkNotes = isObject(state?.link_notes) ? state.link_notes : {};
+    const linkProfiles = isObject(state?.link_profiles) ? state.link_profiles : {};
     const activePromptKey = isValidPromptKey(state?.active_prompt_key)
       ? String(state.active_prompt_key)
       : PROMPT_KEY_MF_EXPENSE_REPORTS;
@@ -232,11 +354,13 @@
       window.localStorage.setItem(STORAGE_LINKS_KEY, JSON.stringify(links));
       window.localStorage.setItem(STORAGE_PROMPTS_KEY, JSON.stringify(prompts));
       window.localStorage.setItem(STORAGE_LINK_NOTES_KEY, JSON.stringify(linkNotes));
+      window.localStorage.setItem(STORAGE_LINK_PROFILES_KEY, JSON.stringify(linkProfiles));
       window.localStorage.setItem(STORAGE_PROMPT_ACTIVE_KEY, activePromptKey);
       const revision = Number.parseInt(String(state?.revision ?? "0"), 10);
       workspaceStateRevision = Number.isFinite(revision) && revision >= 0 ? revision : 0;
       promptMapCache = null;
       linkNoteMapCache = null;
+      linkProfileMapCache = null;
     } catch {
       // ignore
     }
@@ -252,6 +376,7 @@
         links: Array.isArray(data.links) ? data.links : [],
         prompts: isObject(data.prompts) ? data.prompts : {},
         link_notes: isObject(data.link_notes) ? data.link_notes : {},
+        link_profiles: isObject(data.link_profiles) ? data.link_profiles : {},
         active_prompt_key: isValidPromptKey(data.active_prompt_key)
           ? String(data.active_prompt_key)
           : PROMPT_KEY_MF_EXPENSE_REPORTS,
@@ -283,6 +408,7 @@
           links: Array.isArray(data.links) ? data.links : [],
           prompts: isObject(data.prompts) ? data.prompts : {},
           link_notes: isObject(data.link_notes) ? data.link_notes : {},
+          link_profiles: isObject(data.link_profiles) ? data.link_profiles : {},
           active_prompt_key: isValidPromptKey(data.active_prompt_key)
             ? String(data.active_prompt_key)
             : PROMPT_KEY_MF_EXPENSE_REPORTS,
@@ -577,6 +703,39 @@
     else showToast("プロンプトのコピーに失敗しました。", "error");
   }
 
+  async function copyHandoffSetForKey(key, context = {}) {
+    const safeKey = String(key || "").trim();
+    if (!isValidPromptKey(safeKey)) return;
+    const label = resolvePromptLabel(safeKey, context);
+    const url = resolvePromptUrl(safeKey, context);
+    const purpose = getLinkNoteForKey(safeKey).trim();
+    const profile = getLinkProfileForKey(safeKey);
+    const promptText =
+      promptEditor && safeKey === activePromptKey
+        ? String(promptEditor.value || "")
+        : getPromptTextForKey(safeKey, context);
+    if (!promptText.trim()) {
+      showToast("プロンプトが空です。", "error");
+      return;
+    }
+
+    const lines = [
+      "自動化実行指示セット",
+      `対象リンク: ${label || "-"}`,
+      `URL: ${url || "-"}`,
+      `目的: ${purpose || "-"}`,
+      `担当者: ${profile.owner || "-"}`,
+      `推奨エージェント: ${resolveAgentLabel(profile.agent)}`,
+      `最終見直し日: ${profile.reviewed_on || "-"}`,
+      "",
+      "プロンプト:",
+      promptText,
+    ];
+    const ok = await copyToClipboard(lines.join("\n"));
+    if (ok) showToast("実行指示セットをコピーしました。", "success");
+    else showToast("実行指示セットのコピーに失敗しました。", "error");
+  }
+
   function activatePromptEditorForKey(key, context = {}) {
     if (!promptEditor) return;
     const safeKey = String(key || "").trim();
@@ -697,6 +856,148 @@
     });
   }
 
+  function resolveAgentLabel(agent) {
+    const key = normalizeProfileAgent(agent);
+    return key ? LINK_PROFILE_AGENT_LABELS[key] : "未設定";
+  }
+
+  function daysSinceReviewedOn(reviewedOn) {
+    const normalized = normalizeReviewedOn(reviewedOn);
+    if (!normalized) return null;
+    const reviewedDate = new Date(`${normalized}T00:00:00`);
+    if (Number.isNaN(reviewedDate.getTime())) return null;
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const diff = Math.floor((today.getTime() - reviewedDate.getTime()) / (24 * 60 * 60 * 1000));
+    return diff < 0 ? 0 : diff;
+  }
+
+  function buildReviewStatusState(profile) {
+    const safeProfile = normalizeLinkProfile(profile);
+    const ownerText = safeProfile.owner ? `担当: ${safeProfile.owner}` : "担当: 未設定";
+    const agentText = `推奨: ${resolveAgentLabel(safeProfile.agent)}`;
+    const ageDays = daysSinceReviewedOn(safeProfile.reviewed_on);
+
+    if (!safeProfile.reviewed_on) {
+      return {
+        className: "is-missing",
+        text: `${ownerText} / ${agentText} / 最終見直し日: 未設定`,
+      };
+    }
+
+    if (ageDays !== null && ageDays > REVIEW_STALE_DAYS) {
+      return {
+        className: "is-stale",
+        text: `${ownerText} / ${agentText} / 最終見直し: ${safeProfile.reviewed_on}（${ageDays}日前・更新推奨）`,
+      };
+    }
+
+    const ageLabel = ageDays === null ? "" : `（${ageDays}日前）`;
+    return {
+      className: "is-fresh",
+      text: `${ownerText} / ${agentText} / 最終見直し: ${safeProfile.reviewed_on}${ageLabel}`,
+    };
+  }
+
+  function renderProfileStatusForKey(key, root = document) {
+    const safeKey = String(key || "").trim();
+    if (!isValidPromptKey(safeKey)) return;
+    if (!root || typeof root.querySelectorAll !== "function") return;
+    const profile = getLinkProfileForKey(safeKey);
+    const status = buildReviewStatusState(profile);
+    root.querySelectorAll("[data-workspace-link-review-status][data-profile-key]").forEach((node) => {
+      if (!(node instanceof HTMLElement)) return;
+      if (String(node.dataset.profileKey || "").trim() !== safeKey) return;
+      node.textContent = status.text;
+      node.classList.remove("is-fresh", "is-stale", "is-missing");
+      node.classList.add(status.className);
+    });
+  }
+
+  function bindLinkProfileOwnerInput(input) {
+    if (!(input instanceof HTMLInputElement)) return;
+    const key = String(input.dataset.profileKey || "").trim();
+    if (!isValidPromptKey(key)) return;
+    const profile = getLinkProfileForKey(key);
+    input.value = profile.owner;
+    if (input.dataset.profileBound === "1") {
+      renderProfileStatusForKey(key);
+      return;
+    }
+    input.dataset.profileBound = "1";
+    let timer = null;
+    input.addEventListener("input", () => {
+      const owner = normalizeProfileOwner(input.value);
+      if (owner !== input.value) input.value = owner;
+      if (timer) window.clearTimeout(timer);
+      timer = window.setTimeout(() => {
+        const latest = getLinkProfileForKey(key);
+        void saveLinkProfileForKey(key, { ...latest, owner });
+        renderProfileStatusForKey(key);
+      }, PROFILE_SAVE_DEBOUNCE_MS);
+    });
+    renderProfileStatusForKey(key);
+  }
+
+  function bindLinkProfileAgentSelect(select) {
+    if (!(select instanceof HTMLSelectElement)) return;
+    const key = String(select.dataset.profileKey || "").trim();
+    if (!isValidPromptKey(key)) return;
+    const profile = getLinkProfileForKey(key);
+    select.value = normalizeProfileAgent(profile.agent);
+    if (select.dataset.profileBound === "1") {
+      renderProfileStatusForKey(key);
+      return;
+    }
+    select.dataset.profileBound = "1";
+    select.addEventListener("change", () => {
+      const latest = getLinkProfileForKey(key);
+      const agent = normalizeProfileAgent(select.value);
+      void saveLinkProfileForKey(key, { ...latest, agent });
+      renderProfileStatusForKey(key);
+    });
+    renderProfileStatusForKey(key);
+  }
+
+  function bindLinkProfileReviewedOnInput(input) {
+    if (!(input instanceof HTMLInputElement)) return;
+    const key = String(input.dataset.profileKey || "").trim();
+    if (!isValidPromptKey(key)) return;
+    const profile = getLinkProfileForKey(key);
+    input.value = normalizeReviewedOn(profile.reviewed_on);
+    if (input.dataset.profileBound === "1") {
+      renderProfileStatusForKey(key);
+      return;
+    }
+    input.dataset.profileBound = "1";
+    input.addEventListener("change", () => {
+      const latest = getLinkProfileForKey(key);
+      const reviewed_on = normalizeReviewedOn(input.value);
+      void saveLinkProfileForKey(key, { ...latest, reviewed_on });
+      renderProfileStatusForKey(key);
+    });
+    renderProfileStatusForKey(key);
+  }
+
+  function bindLinkProfileEditors(root = document) {
+    if (!root || typeof root.querySelectorAll !== "function") return;
+    root.querySelectorAll("[data-workspace-link-owner][data-profile-key]").forEach((input) => {
+      bindLinkProfileOwnerInput(input);
+    });
+    root.querySelectorAll("[data-workspace-link-agent][data-profile-key]").forEach((select) => {
+      bindLinkProfileAgentSelect(select);
+    });
+    root.querySelectorAll("[data-workspace-link-reviewed-on][data-profile-key]").forEach((input) => {
+      bindLinkProfileReviewedOnInput(input);
+    });
+    root.querySelectorAll("[data-workspace-link-review-status][data-profile-key]").forEach((statusNode) => {
+      if (!(statusNode instanceof HTMLElement)) return;
+      const key = String(statusNode.dataset.profileKey || "").trim();
+      if (!isValidPromptKey(key)) return;
+      renderProfileStatusForKey(key, root);
+    });
+  }
+
   function createLinkNode(link, index, links) {
     const item = document.createElement("li");
     item.className = "workspace-link-item";
@@ -769,6 +1070,60 @@
     details.appendChild(noteWrap);
     bindLinkNoteEditor(noteEditor);
 
+    const profileGrid = document.createElement("div");
+    profileGrid.className = "workspace-link-profile-grid";
+
+    const ownerLabel = document.createElement("label");
+    ownerLabel.textContent = "担当者";
+    const ownerInput = document.createElement("input");
+    ownerInput.type = "text";
+    ownerInput.maxLength = MAX_PROFILE_OWNER_CHARS;
+    ownerInput.placeholder = "例: 経理 田中";
+    ownerInput.setAttribute("data-workspace-link-owner", "");
+    ownerInput.dataset.profileKey = promptKey;
+    ownerLabel.appendChild(ownerInput);
+    profileGrid.appendChild(ownerLabel);
+
+    const agentLabel = document.createElement("label");
+    agentLabel.textContent = "推奨エージェント";
+    const agentSelect = document.createElement("select");
+    agentSelect.setAttribute("data-workspace-link-agent", "");
+    agentSelect.dataset.profileKey = promptKey;
+    [
+      { value: "", label: "未設定" },
+      { value: "codex", label: "Codex" },
+      { value: "chatgpt", label: "ChatGPT" },
+      { value: "claude", label: "Claude" },
+      { value: "gemini", label: "Gemini" },
+      { value: "other", label: "その他" },
+    ].forEach((itemOption) => {
+      const option = document.createElement("option");
+      option.value = itemOption.value;
+      option.textContent = itemOption.label;
+      agentSelect.appendChild(option);
+    });
+    agentLabel.appendChild(agentSelect);
+    profileGrid.appendChild(agentLabel);
+
+    const reviewedLabel = document.createElement("label");
+    reviewedLabel.textContent = "最終見直し日";
+    const reviewedInput = document.createElement("input");
+    reviewedInput.type = "date";
+    reviewedInput.setAttribute("data-workspace-link-reviewed-on", "");
+    reviewedInput.dataset.profileKey = promptKey;
+    reviewedLabel.appendChild(reviewedInput);
+    profileGrid.appendChild(reviewedLabel);
+
+    details.appendChild(profileGrid);
+
+    const reviewStatus = document.createElement("p");
+    reviewStatus.className = "workspace-link-review-status";
+    reviewStatus.setAttribute("data-workspace-link-review-status", "");
+    reviewStatus.dataset.profileKey = promptKey;
+    details.appendChild(reviewStatus);
+
+    bindLinkProfileEditors(details);
+
     const actions = document.createElement("div");
     actions.className = "workspace-link-actions";
 
@@ -801,9 +1156,8 @@
     const editLinkButton = document.createElement("button");
     editLinkButton.type = "button";
     editLinkButton.className = "secondary workspace-edit-link";
-    editLinkButton.textContent = "名称/目的を編集";
+    editLinkButton.textContent = "名称を編集";
     editLinkButton.addEventListener("click", () => {
-      const currentPurpose = getLinkNoteForKey(promptKey);
       const nextLabelRaw = window.prompt("リンク名を編集してください。", String(link.label || ""));
       if (nextLabelRaw === null) return;
       const fallbackLabel = formatUrlHost(link.url) || String(link.url || "");
@@ -813,16 +1167,11 @@
         return;
       }
 
-      const nextPurposeRaw = window.prompt("目的を編集してください（空欄可）。", String(currentPurpose || ""));
-      if (nextPurposeRaw === null) return;
-      const nextPurpose = normalizeLinkNoteText(nextPurposeRaw);
-
       const next = links.slice();
       next[index] = { label: nextLabel, url: String(link.url || "") };
       const linksSaved = saveCustomLinks(next);
-      const purposeSaved = saveLinkNoteForKey(promptKey, nextPurpose);
-      if (!linksSaved || !purposeSaved) {
-        showToast("リンク名/目的を更新できませんでした。", "error");
+      if (!linksSaved) {
+        showToast("リンク名を更新できませんでした。", "error");
         return;
       }
 
@@ -832,7 +1181,7 @@
       }
 
       renderCustomLinks(next);
-      showToast("リンク名/目的を更新しました。", "success");
+      showToast("リンク名を更新しました。", "success");
     });
 
     const removeButton = document.createElement("button");
@@ -940,6 +1289,7 @@
     renderCustomLinks(links);
     bindStaticCopyButtons();
     bindLinkNoteEditors(document);
+    bindLinkProfileEditors(document);
 
     if (linkForm && linkLabelInput && linkUrlInput) {
       linkForm.addEventListener("submit", (event) => {
@@ -953,6 +1303,9 @@
         const fallback = new URL(url).hostname;
         const label = normalizeText(linkLabelInput.value, 80) || fallback;
         const purpose = normalizeLinkNoteText(linkPurposeInput ? linkPurposeInput.value : "");
+        const owner = normalizeProfileOwner(linkOwnerInput ? linkOwnerInput.value : "");
+        const agent = normalizeProfileAgent(linkAgentInput ? linkAgentInput.value : "");
+        const reviewed_on = normalizeReviewedOn(linkReviewedOnInput ? linkReviewedOnInput.value : "");
 
         const current = readCustomLinks();
         const duplicate = current.some((item) => String(item.url).toLowerCase() === String(url).toLowerCase());
@@ -969,9 +1322,15 @@
         if (!saveLinkNoteForKey(buildCustomPromptKey(url), purpose)) {
           showToast("リンクは保存しましたが、目的の保存に失敗しました。", "error");
         }
+        if (!saveLinkProfileForKey(buildCustomPromptKey(url), { owner, agent, reviewed_on })) {
+          showToast("リンクは保存しましたが、担当情報の保存に失敗しました。", "error");
+        }
         renderCustomLinks(next);
         linkForm.reset();
         if (linkPurposeInput) linkPurposeInput.value = "";
+        if (linkOwnerInput) linkOwnerInput.value = "";
+        if (linkAgentInput) linkAgentInput.value = "";
+        if (linkReviewedOnInput) linkReviewedOnInput.value = "";
         linkLabelInput.focus();
         showToast("追加リンクを保存しました。", "success");
       });
@@ -1023,6 +1382,12 @@
         }
         updatePromptMeta(text, "保存できませんでした（ストレージ利用不可）。");
         showToast("プロンプトを登録できませんでした。", "error");
+      });
+    }
+
+    if (copyHandoffButton) {
+      copyHandoffButton.addEventListener("click", () => {
+        void copyHandoffSetForKey(activePromptKey, activePromptContext);
       });
     }
   }
