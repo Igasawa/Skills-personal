@@ -956,6 +956,20 @@
   margin-bottom: 8px;
 }
 
+.kil-review-item-details {
+  margin: 2px 0 6px;
+}
+
+.kil-review-item-details ul {
+  margin: 6px 0 0;
+  padding-left: 18px;
+}
+
+.kil-review-item-details li {
+  margin-bottom: 4px;
+  line-height: 1.4;
+}
+
 .kil-review-chip {
   min-height: 24px;
   border-radius: 999px;

@@ -5,6 +5,7 @@
 
   const sourceSelect = document.getElementById("kil-review-source");
   const limitSelect = document.getElementById("kil-review-limit");
+  const onlyReviewSelect = document.getElementById("kil-review-only-review");
   const refreshButton = document.getElementById("kil-review-refresh");
   const statusEl = document.getElementById("kil-review-status");
   const summaryLineEl = document.getElementById("kil-review-summary-line");
@@ -47,6 +48,30 @@
     return String(value || "")
       .trim()
       .toLowerCase();
+  }
+
+  function toTextList(value) {
+    if (value == null) return [];
+    if (Array.isArray(value)) {
+      return value
+        .map((row) => String(row || "").trim())
+        .filter((row) => row.length > 0);
+    }
+    const text = String(value).trim();
+    return text ? [text] : [];
+  }
+
+  function uniqueTextList(values) {
+    const normalized = values.map((value) => String(value).trim()).filter((value) => value.length > 0);
+    const seen = new Set();
+    const out = [];
+    normalized.forEach((value) => {
+      const key = value.toLowerCase();
+      if (seen.has(key)) return;
+      seen.add(key);
+      out.push(value);
+    });
+    return out;
   }
 
   function toPercent(value) {
@@ -132,16 +157,74 @@
     return "期限内";
   }
 
-  function isReviewTarget(item) {
+  function buildReviewReasons(item) {
+    const reasons = [];
+
+    if (Boolean(item?.needs_human_review)) {
+      reasons.push("AI判定で人間レビュー必要");
+    }
+
+    const reviewIssues = toTextList(item?.review_issues);
+    if (reviewIssues.length) {
+      reviewIssues.forEach((issue) => {
+        reasons.push(`指摘: ${issue}`);
+      });
+    }
+
+    const severity = toLowerSafe(item?.review_severity || item?.risk);
+    if (severity === "critical" || severity === "high") {
+      reasons.push(`重要度: ${severity === "critical" ? "高（critical）" : "高（high）"}`);
+    }
+    if (severity === "medium") {
+      reasons.push("重要度: medium");
+    }
+
     const status = deadlineStatus(item?.deadline);
-    const risk = toLowerSafe(item?.risk);
-    return status === "overdue" || status === "due_within_7d" || (risk && ![
-      "normal",
-      "low",
-      "info",
-      "none",
-      "",
-    ].includes(risk));
+    if (status === "overdue") reasons.push("期限超過");
+    if (status === "due_within_7d") reasons.push("期限が7日以内");
+    if (Boolean(item?.needs_soon)) reasons.push("レビュー期限が設定されています");
+
+    return uniqueTextList(reasons);
+  }
+
+  function buildReviewActions(item) {
+    const actions = [];
+    if (Boolean(item?.needs_human_review)) {
+      actions.push("該当コミットの差分とAGENT_BRAIN.md同期内容を確認し、誤判定なら再学習対象を見直す");
+    }
+
+    const recommendations = toTextList(item?.review_recommendations);
+    if (recommendations.length) {
+      recommendations.forEach((recommendation) => {
+        actions.push(`提案: ${recommendation}`);
+      });
+    }
+
+    if (!actions.length) {
+      const reasons = buildReviewReasons(item);
+      if (!reasons.length) {
+        actions.push("差分の内容を確認し、必要な場合のみルールを追加");
+      } else if (reasons.some((reason) => reason.includes("重要度"))) {
+        actions.push("影響範囲が大きくなる前に原因コミットの再現手順を確認");
+      } else {
+        actions.push("次回コミットで同種変更のレビュー条件を補強する");
+      }
+    }
+
+    return uniqueTextList(actions).slice(0, 5);
+  }
+
+  function isReviewTarget(item) {
+    if (Boolean(item?.needs_human_review) || Boolean(item?.needs_soon)) {
+      return true;
+    }
+    const status = deadlineStatus(item?.deadline);
+    const risk = toLowerSafe(item?.review_severity || item?.risk);
+    return status === "overdue"
+      || status === "due_within_7d"
+      || risk === "critical"
+      || risk === "high"
+      || risk === "urgent";
   }
 
   function renderSummary(payload) {
@@ -150,7 +233,12 @@
     const dueSoon = toInt(review.due_within_7d, 0);
     const noDeadline = toInt(review.no_deadline, 0);
     const total = toInt(payload.count, 0);
-    const reviewNeeded = overdue + dueSoon;
+    const reviewCounts = payload.review_counts || {};
+    const hasReviewCount = Object.prototype.hasOwnProperty.call(reviewCounts, "human_review_required");
+    const reviewNeeded = hasReviewCount
+      ? toInt(reviewCounts.human_review_required, 0)
+      : overdue + dueSoon;
+    const reviewSoon = toInt(reviewCounts.human_review_soon, 0);
 
     setText(sourceUsedEl, payload.source_used || payload.requested_source || "-");
     setText(countEl, total);
@@ -163,7 +251,8 @@
     setText(generatedAtEl, payload.generated_at ? String(payload.generated_at) : "-");
 
     if (summaryLineEl) {
-      const line = `要レビュー: ${reviewNeeded}件（期限超過 ${overdue}件 / 7日以内 ${dueSoon}件） / 合計 ${total}件`;
+      const reviewCondition = onlyReviewSelect?.checked ? "レビュー対象を絞り込み中" : "全件表示中";
+      const line = `要レビュー: ${reviewNeeded}件（期限超過 ${overdue}件 / 7日以内 ${dueSoon}件 / レビュー期限 ${reviewSoon}件 / ${reviewCondition}） / 合計 ${total}件`;
       setText(summaryLineEl, line);
     }
   }
@@ -250,6 +339,8 @@
     if (!itemsEl || !emptyEl) return;
     const items = Array.isArray(payload.items) ? payload.items : [];
     const reviewItems = items.filter(isReviewTarget);
+    const showOnlyReview = Boolean(onlyReviewSelect?.checked);
+    const displayItems = showOnlyReview ? reviewItems : items;
 
     itemsEl.innerHTML = "";
     if (!items.length) {
@@ -257,14 +348,17 @@
       setText(emptyEl, "データがありません。")
       return;
     }
-    if (!reviewItems.length) {
+    if (!displayItems.length) {
       emptyEl.classList.remove("hidden");
-      setText(emptyEl, "今回の対象ではレビュー対象の項目はありません。")
+      setText(emptyEl, showOnlyReview
+        ? "レビュー条件に該当する項目はありません。"
+        : "表示対象のデータがありません。"
+      );
       return;
     }
     emptyEl.classList.add("hidden");
 
-    reviewItems.forEach((item) => {
+    displayItems.forEach((item) => {
       const row = document.createElement("li");
       row.className = "kil-review-item";
 
@@ -294,7 +388,7 @@
 
       const risk = document.createElement("span");
       risk.className = "kil-review-chip";
-      risk.textContent = `リスク: ${String(item.risk || "normal")}`;
+      risk.textContent = `リスク: ${String(item.review_severity || item.risk || "normal")}`;
 
       const deadline = document.createElement("span");
       deadline.className = "kil-review-chip";
@@ -302,11 +396,26 @@
 
       const action = document.createElement("span");
       action.className = "kil-review-chip";
-      action.textContent = "要レビュー";
+      action.textContent = isReviewTarget(item) ? "レビュー対象" : "通常";
+
+      const reasons = buildReviewReasons(item);
+      const reasonsSection = document.createElement("div");
+      reasonsSection.className = "kil-review-item-details";
+
+      if (reasons.length > 0) {
+        reasonsSection.innerHTML = `<ul>${reasons.map((reason) => `<li>${reason}</li>`).join("")}</ul>`;
+      } else {
+        reasonsSection.innerHTML = "<div class=\"muted\">レビュー対象理由なし</div>";
+      }
+
+      const reviewActions = buildReviewActions(item);
+      const actionSection = document.createElement("div");
+      actionSection.className = "kil-review-item-details";
+      actionSection.innerHTML = `<ul>${reviewActions.map((reviewAction) => `<li>${reviewAction}</li>`).join("")}</ul>`;
 
       const details = document.createElement("details");
       const detailSummary = document.createElement("summary");
-      detailSummary.textContent = "詳細（必要なときのみ）";
+      detailSummary.textContent = "レビュー用詳細（必要時）";
       const body = document.createElement("pre");
       body.className = "log";
       const detailPayload = {
@@ -314,12 +423,21 @@
         knowledge: item.knowledge || [],
         rules: item.rules || [],
         context: item.context || [],
+        review_issues: toTextList(item.review_issues),
+        review_recommendations: toTextList(item.review_recommendations),
+        review: {
+          severity: item.review_severity || item.risk || "low",
+          needs_human_review: Boolean(item.needs_human_review),
+          needs_soon: Boolean(item.needs_soon),
+        },
       };
       body.textContent = JSON.stringify(detailPayload, null, 2);
 
       meta.appendChild(risk);
       meta.appendChild(deadline);
       meta.appendChild(action);
+      meta.appendChild(reasonsSection);
+      meta.appendChild(actionSection);
 
       details.appendChild(detailSummary);
       details.appendChild(body);
@@ -366,7 +484,13 @@
 
     const source = sourceSelect.value || "auto";
     const limit = Number.parseInt(String(limitSelect.value || "20"), 10) || 20;
-    const params = new URLSearchParams({ source, limit: String(limit) });
+    const params = new URLSearchParams({
+      source,
+      limit: String(limit),
+    });
+    if (onlyReviewSelect?.checked) {
+      params.set("only_review", "true");
+    }
     const candidates = getApiBaseCandidates();
 
     setBusy(true);
@@ -433,6 +557,12 @@
 
   if (limitSelect) {
     limitSelect.addEventListener("change", () => {
+      void fetchKilReview();
+    });
+  }
+
+  if (onlyReviewSelect) {
+    onlyReviewSelect.addEventListener("change", () => {
       void fetchKilReview();
     });
   }
