@@ -3,4 +3,9 @@ set -euo pipefail
 
 echo "Running UTF-8/BOM/mojibake guard..."
 python scripts/check_text_encoding.py --scope tracked --path scripts --path skills/mfcloud-expense-receipt-reconcile/dashboard/templates --path skills/mfcloud-expense-receipt-reconcile/dashboard/static
-python -m pytest -q skills/mfcloud-expense-receipt-reconcile/tests/test_text_encoding_policy.py
+
+if command -v pytest >/dev/null 2>&1; then
+  python -m pytest -q skills/mfcloud-expense-receipt-reconcile/tests/test_text_encoding_policy.py
+else
+  echo "[skip] pytest not installed; encoding policy tests were skipped."
+fi
