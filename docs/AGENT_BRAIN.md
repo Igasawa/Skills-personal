@@ -195,3 +195,14 @@
 - **レビュー期限**: -
 - **ソース**: llm
 
+## [2026-02-18] Commit: d7581456e185355a7eee7d77d3e91aa5224c7721
+- **要約**: ダッシュボードにおけるワークフロー管理機能の改善（タイマー設定の追加、正規化処理の徹底、アーカイブ管理の分離）
+- **獲得した知識**: ワークフローのステップ情報（タイトル、アクション、タイマー等）は、API返却前に必ず _normalize_workflow_template_steps 等の正規化関数を通すこと。, サイドバーのリンク情報は HTML の data-sidebar-links 属性を介した JSON 形式での受け渡しを維持する。, ワークフローのステップタイマー設定（timer_minutes）を適切に処理・保存し、テストコードで検証すること。
+- **守るべきルール**: アクティブなワークフローとアーカイブ済みワークフローの表示・操作ロジックを同一の JS ファイルやテンプレートに混在させること。, API レスポンスにおいて、正規化されていない生の DB 行データをそのままフロントエンドに返却すること。
+- **未解決の文脈**: 正規化ロジック（_normalize_workflow_template_steps 等）が複数の API エンドポイントで重複定義されている可能性があるため、共通ユーティリティへの集約が必要。
+- **対象範囲**: skills/mfcloud-expense-receipt-reconcile/dashboard/routes/, skills/mfcloud-expense-receipt-reconcile/dashboard/static/js/, skills/mfcloud-expense-receipt-reconcile/dashboard/templates/
+- **確度**: 0.9
+- **重要度**: medium
+- **レビュー期限**: -
+- **ソース**: llm
+
