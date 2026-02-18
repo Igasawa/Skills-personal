@@ -2221,6 +2221,34 @@ def test_api_save_workflow_template_duplicate_name_and_update_conflict(monkeypat
     assert "Template was updated by another action." in str(stale_conflict_res.json().get("detail"))
 
 
+def test_api_save_workflow_template_allows_empty_year_month(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    client = _create_client(monkeypatch, tmp_path)
+    res = client.post(
+        "/api/workflow-templates",
+        json={
+            "name": "No Ym",
+            "mfcloud_url": "https://example.com/no-ym",
+            "notes": "no year/month",
+            "steps": [
+                {"title": "  Step 1  "},
+                {"name": "Step 2"},
+                {},
+            ],
+        },
+    )
+    assert res.status_code == 200
+    template = res.json()["template"]
+    assert template["year"] == 0
+    assert template["month"] == 0
+    assert template["steps"] == [{"title": "Step 1"}, {"title": "Step 2"}]
+
+    rows = json.loads(_workflow_template_store(tmp_path).read_text(encoding="utf-8"))
+    assert isinstance(rows, list) and rows
+    assert rows[0]["year"] == 0
+    assert rows[0]["month"] == 0
+    assert rows[0]["steps"] == [{"title": "Step 1"}, {"title": "Step 2"}]
+
+
 def test_api_save_workflow_template_copy_mode_creates_new_template(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     client = _create_client(monkeypatch, tmp_path)
     create_payload = {

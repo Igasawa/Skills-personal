@@ -22,6 +22,12 @@
 
       <div id="errors-status" class="error-box hidden"></div>
 
+      <div class="hero-tabs errors-tabs" role="tablist" aria-label="Error page tabs">
+        <button type="button" class="pill is-active" data-errors-tab="incidents" id="errors-tab-incidents">Incidents</button>
+        <button type="button" class="pill" data-errors-tab="document-update" id="errors-tab-document-update">Document Update</button>
+      </div>
+
+      <section class="errors-tab-panel" data-errors-tab-panel="incidents">
       <section class="grid two error-layout">
         <div class="card">
           <div class="section-header">
@@ -121,6 +127,56 @@
             <pre id="errors-run-result-json" class="log error-log"></pre>
           </div>
         </div>
+      </section>
+    </section>
+
+      <section class="errors-tab-panel hidden" data-errors-tab-panel="document-update">
+        <section class="card">
+          <div class="section-header">
+            <h2>Document Update</h2>
+            <div class="step-actions">
+              <button type="button" class="secondary" id="errors-doc-refresh">Refresh status</button>
+              <button type="button" class="primary" id="errors-doc-run">Run document update</button>
+            </div>
+          </div>
+          <p id="errors-doc-summary" class="muted">Loading document update status...</p>
+
+          <div class="grid two errors-doc-grid">
+            <div class="errors-doc-stat">
+              <span class="label">Source Used</span>
+              <span class="value" id="errors-doc-source-used">-</span>
+            </div>
+            <div class="errors-doc-stat">
+              <span class="label">Index entries</span>
+              <span class="value" id="errors-doc-index-count">0</span>
+            </div>
+            <div class="errors-doc-stat">
+              <span class="label">Markdown</span>
+              <span class="value" id="errors-doc-markdown-state">-</span>
+            </div>
+            <div class="errors-doc-stat">
+              <span class="label">Review file</span>
+              <span class="value" id="errors-doc-review-state">-</span>
+            </div>
+            <div class="errors-doc-stat">
+              <span class="label">Latest AGENT_BRAIN update</span>
+              <span class="value" id="errors-doc-index-updated-at">-</span>
+            </div>
+            <div class="errors-doc-stat">
+              <span class="label">Latest review update</span>
+              <span class="value" id="errors-doc-review-updated-at">-</span>
+            </div>
+          </div>
+
+          <ul id="errors-doc-files" class="muted"></ul>
+        </section>
+
+        <section class="card">
+          <div class="section-header">
+            <h2>Document update result</h2>
+          </div>
+          <pre id="errors-doc-run-result" class="log error-log">-</pre>
+        </section>
       </section>
     </div>
 

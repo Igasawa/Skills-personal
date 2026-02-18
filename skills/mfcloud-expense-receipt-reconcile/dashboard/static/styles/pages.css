@@ -82,6 +82,65 @@
   justify-content: center;
 }
 
+.template-step-row {
+  display: grid;
+  grid-template-columns: 56px 1fr 1.4fr auto;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid rgb(var(--semantic-field-border-default));
+  background: rgb(var(--surface-2));
+}
+
+.template-step-row [data-template-step-index] {
+  min-width: 56px;
+  font-weight: 600;
+}
+
+.template-step-row [data-template-step-title] {
+  flex: 1 1 320px;
+  min-width: min(420px, 100%);
+  min-height: 36px;
+}
+
+.template-step-row [data-template-step-remove] {
+  min-width: 42px;
+  justify-content: center;
+}
+
+.template-step-row [data-template-step-action],
+.template-step-action {
+  min-width: 0;
+  max-width: 290px;
+}
+
+@media (max-width: 820px) {
+  .template-step-row {
+    grid-template-columns: auto 1fr;
+  }
+
+  .template-step-row [data-template-step-index] {
+    grid-column: 1 / -1;
+  }
+
+  .template-step-row [data-template-step-title] {
+    grid-column: 1 / -1;
+    min-width: 100%;
+  }
+
+  .template-step-row [data-template-step-action],
+  .template-step-action {
+    grid-column: 1 / 2;
+    min-width: 100%;
+  }
+
+  .template-step-row [data-template-step-remove] {
+    grid-column: 2 / 3;
+    justify-self: end;
+  }
+}
+
 .workflow-archive-list {
   display: grid;
   gap: 10px;
@@ -258,6 +317,82 @@
   gap: 6px;
   font-size: 12px;
   color: rgb(var(--text-secondary));
+}
+
+.scheduler-grid label[data-tooltip],
+.scheduler-head label[data-tooltip] {
+  position: relative;
+  cursor: help;
+}
+
+.scheduler-grid label[data-tooltip]::after,
+.scheduler-grid label[data-tooltip]::before,
+.scheduler-head label[data-tooltip]::after,
+.scheduler-head label[data-tooltip]::before {
+  position: absolute;
+  left: 0;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity var(--transition-fast), transform var(--transition-fast), visibility var(--transition-fast);
+  z-index: var(--z-tooltip);
+}
+
+.scheduler-grid label[data-tooltip]::after,
+.scheduler-head label[data-tooltip]::after {
+  content: attr(data-tooltip);
+  top: 100%;
+  margin-top: 8px;
+  max-width: 280px;
+  white-space: normal;
+  word-break: break-word;
+  font-size: 11px;
+  line-height: 1.45;
+  padding: 6px 8px;
+  border-radius: 8px;
+  border: 1px solid rgb(var(--semantic-field-border-default));
+  background: rgb(var(--surface-2));
+  color: rgb(var(--text-default));
+  box-shadow: var(--shadow-sm);
+  transform: translateY(2px);
+}
+
+.scheduler-grid label[data-tooltip]::before,
+.scheduler-head label[data-tooltip]::before {
+  content: "";
+  top: 100%;
+  margin-top: 1px;
+  border-width: 0 6px 6px 6px;
+  border-style: solid;
+  border-color: transparent transparent rgb(var(--surface-2)) transparent;
+  transform: translateY(2px);
+}
+
+.scheduler-grid label[data-tooltip]:hover::after,
+.scheduler-grid label[data-tooltip]:focus-within::after,
+.scheduler-head label[data-tooltip]:hover::after,
+.scheduler-head label[data-tooltip]:focus-within::after,
+.scheduler-grid label[data-tooltip]:hover::before,
+.scheduler-grid label[data-tooltip]:focus-within::before,
+.scheduler-head label[data-tooltip]:hover::before,
+.scheduler-head label[data-tooltip]:focus-within::before {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
+}
+
+.scheduler-grid .inline-check,
+.scheduler-head .inline-check.scheduler-toggle {
+  display: inline-flex;
+  flex-direction: row-reverse;
+  align-items: center;
+  gap: 6px;
+}
+
+.scheduler-grid .inline-check input[type="checkbox"],
+.scheduler-head .inline-check.scheduler-toggle input[type="checkbox"] {
+  width: auto;
+  margin: 0;
 }
 
 .scheduler-grid input,
@@ -755,6 +890,37 @@
   margin-top: 0;
 }
 
+.errors-page .errors-tabs {
+  margin-bottom: 10px;
+}
+
+.errors-tab-panel {
+  margin: 0;
+}
+
+.errors-doc-grid {
+  margin-top: 14px;
+}
+
+.errors-doc-stat {
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px solid rgb(var(--semantic-field-border-default));
+  background: rgb(var(--surface-2));
+  display: grid;
+  gap: 6px;
+}
+
+.errors-doc-stat .label {
+  color: rgb(var(--text-secondary));
+  font-size: 12px;
+}
+
+.errors-doc-stat .value {
+  font-size: 16px;
+  font-weight: 700;
+}
+
 .error-layout {
   align-items: start;
 }
@@ -891,6 +1057,10 @@
   }
 
   .error-options {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .errors-doc-grid {
     grid-template-columns: minmax(0, 1fr);
   }
 }

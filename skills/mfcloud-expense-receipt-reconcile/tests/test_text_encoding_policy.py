@@ -34,7 +34,7 @@ TEXT_EXTENSIONS = {
 }
 TEXT_FILENAMES = {".editorconfig", ".gitattributes", ".gitignore", "README.md"}
 KNOWN_MOJIBAKE_MARKERS = {
-    "�",
+    "\ufffd",
     # Common corruption patterns (UTF-8 decoding artifacts) observed in repository checks.
     "\u3041E",
     "\ufffdE",
@@ -47,7 +47,24 @@ KNOWN_MOJIBAKE_MARKERS = {
     "\u5931\u6551E",
     "\u30a2\u30c1E",
 }
-
+REPO_DASHBOARD_ROOT = REPO_ROOT / "skills" / "mfcloud-expense-receipt-reconcile" / "dashboard"
+DASHBOARD_MOJIBAKE_MARKERS = {
+    "\u30fb\uff7d",
+    "\u30fb\uff6c",
+    "\u30fb\uff63",
+    "\u30fb\uff6d",
+    "\u7e67",
+    "\u7e5d",
+    "\u7e3a",
+    "\u90e2",
+    "\u873f",
+    "\u83eb",
+    "\u9b06",
+    "\uf8f0",
+    "\uf8f1",
+    "\u7e56",
+    "\u8c8e",
+}
 
 def _iter_text_files(root: Path):
     for dirpath, dirnames, filenames in os.walk(root):
@@ -96,3 +113,22 @@ def test_repository_text_files_have_no_known_mojibake_markers() -> None:
                     break
 
     assert not findings, f"mojibake markers found: {findings}"
+
+
+def test_dashboard_text_files_have_no_obvious_mojibake_markers() -> None:
+    findings: list[str] = []
+    self_path = Path(__file__).resolve()
+
+    for path in _iter_text_files(REPO_DASHBOARD_ROOT):
+        if path.resolve() == self_path:
+            continue
+        relative = path.relative_to(REPO_ROOT).as_posix()
+        text = path.read_text(encoding="utf-8")
+        for lineno, line in enumerate(text.splitlines(), start=1):
+            for marker in DASHBOARD_MOJIBAKE_MARKERS:
+                if marker in line:
+                    findings.append(f"{relative}:{lineno}: contains marker {marker!r}")
+                    break
+
+    assert not findings, f"dashboard mojibake markers found: {findings}"
+

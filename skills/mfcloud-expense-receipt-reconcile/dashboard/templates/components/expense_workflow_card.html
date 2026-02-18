@@ -27,7 +27,7 @@
               </label>
               <label>
                 実行モード
-                <select id="scheduler-mode">
+                <select id="scheduler-mode" data-bound-step-list="template-steps-list">
                   <option value="preflight">手順0</option>
                   <option value="preflight_mf">手順0（MFのみ）</option>
                   <option value="amazon_download">手順1</option>
@@ -73,47 +73,16 @@
             </div>
           </div>
         </div>
-        <div class="wizard-steps">
-          <div id="step-0" class="wizard-step">
-            <div class="step-head">
-              <span class="step-num">0</span>
-              <span class="step-title">手順0</span>
-              <span class="step-status">未実行</span>
-            </div>
+        <div class="wizard-step">
+          <div class="step-head">
+            <span class="step-num">-</span>
+            <span class="step-title">手順定義</span>
+            <span class="step-status pending">未実行</span>
           </div>
-          <div id="step-1" class="wizard-step">
-            <div class="step-head">
-              <span class="step-num">1</span>
-              <span class="step-title">手順1</span>
-              <span class="step-status">未実行</span>
-            </div>
-          </div>
-          <div id="step-2" class="wizard-step">
-            <div class="step-head">
-              <span class="step-num">2</span>
-              <span class="step-title">手順2</span>
-              <span class="step-status">未実行</span>
-            </div>
-          </div>
-          <div id="step-3" class="wizard-step">
-            <div class="step-head">
-              <span class="step-num">3</span>
-              <span class="step-title">手順3</span>
-              <span class="step-status">未実行</span>
-            </div>
-          </div>
-          <div id="step-4" class="wizard-step">
-            <div class="step-head">
-              <span class="step-num">4</span>
-              <span class="step-title">手順4</span>
-              <span class="step-status">未実行</span>
-            </div>
-          </div>
-          <div id="step-5" class="wizard-step">
-            <div class="step-head">
-              <span class="step-num">5</span>
-              <span class="step-title">手順5</span>
-              <span class="step-status">未実行</span>
+          <div class="template-steps-list-wrap">
+            <div id="template-steps-list" class="template-steps" data-template-steps-list></div>
+            <div class="form-row">
+              <button type="button" id="template-step-add" class="secondary">+ 手順を追加</button>
             </div>
           </div>
         </div>

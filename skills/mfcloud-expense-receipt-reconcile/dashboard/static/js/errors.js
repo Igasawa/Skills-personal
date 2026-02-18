@@ -3,7 +3,10 @@
   const showToast = Common.showToast || (() => {});
   const toFriendlyMessage = Common.toFriendlyMessage || ((text) => String(text || ""));
 
+  const tabButtons = document.querySelectorAll("[data-errors-tab]");
+  const tabPanels = document.querySelectorAll("[data-errors-tab-panel]");
   const statusBox = document.getElementById("errors-status");
+
   const refreshButton = document.getElementById("errors-refresh");
   const listEl = document.getElementById("error-incidents-list");
   const emptyEl = document.getElementById("error-incidents-empty");
@@ -35,10 +38,29 @@
   const planJsonEl = document.getElementById("errors-plan-json");
   const runResultJsonEl = document.getElementById("errors-run-result-json");
 
+  const docRefreshButton = document.getElementById("errors-doc-refresh");
+  const docRunButton = document.getElementById("errors-doc-run");
+  const docSummaryEl = document.getElementById("errors-doc-summary");
+  const docSourceUsedEl = document.getElementById("errors-doc-source-used");
+  const docIndexCountEl = document.getElementById("errors-doc-index-count");
+  const docMarkdownStateEl = document.getElementById("errors-doc-markdown-state");
+  const docReviewStateEl = document.getElementById("errors-doc-review-state");
+  const docIndexUpdatedAtEl = document.getElementById("errors-doc-index-updated-at");
+  const docReviewUpdatedAtEl = document.getElementById("errors-doc-review-updated-at");
+  const docFilesEl = document.getElementById("errors-doc-files");
+  const docRunResultEl = document.getElementById("errors-doc-run-result");
+
   let incidents = [];
   let selectedIncidentId = "";
   let selectedDetail = null;
   let busy = false;
+  let docStatusLoaded = false;
+
+  function setText(el, value) {
+    if (!el) return;
+    const text = String(value == null ? "-" : value);
+    el.textContent = text;
+  }
 
   function setStatus(message, kind = "") {
     if (!statusBox) return;
@@ -68,10 +90,31 @@
     }
   }
 
+  function setActiveTab(tabName) {
+    if (!tabName) return;
+    tabButtons.forEach((button) => {
+      const isActive = button.dataset.errorsTab === tabName;
+      button.classList.toggle("is-active", isActive);
+      button.setAttribute("aria-selected", String(isActive));
+    });
+    tabPanels.forEach((panel) => {
+      const isActive = panel.dataset.errorsTabPanel === tabName;
+      panel.classList.toggle("hidden", !isActive);
+      if (isActive) {
+        panel.removeAttribute("hidden");
+      } else {
+        panel.setAttribute("hidden", "");
+      }
+    });
+  }
+
   function setBusy(isBusy) {
     busy = Boolean(isBusy);
     if (refreshButton) refreshButton.disabled = busy;
     if (planAllButton) planAllButton.disabled = busy;
+    if (docRefreshButton) docRefreshButton.disabled = busy;
+    if (docRunButton) docRunButton.disabled = busy;
+
     document.querySelectorAll("[data-error-action]").forEach((button) => {
       button.disabled = busy || !selectedIncidentId;
     });
@@ -189,6 +232,7 @@
       selectedIncidentId = incidents.length ? String(incidents[0].incident_id || "") : "";
       selectedDetail = null;
     }
+
     renderList();
     if (selectedIncidentId) {
       await loadIncidentDetail(selectedIncidentId);
@@ -209,6 +253,46 @@
     renderDetail();
   }
 
+  function renderDocumentStatus(payload) {
+    const dataFiles = payload?.data_files || {};
+    const sourceUsed = payload?.source_used || payload?.requested_source || "-";
+    const indexExists = Boolean(dataFiles.index_exists);
+    const markdownExists = Boolean(dataFiles.markdown_exists);
+    const reviewExists = Boolean(dataFiles.review_exists);
+    const indexUpdatedAt = dataFiles.index_updated_at || "-";
+    const reviewUpdatedAt = dataFiles.review_updated_at || "-";
+    const indexCount = toInt(payload?.source_counts?.index, 0);
+
+    setText(docSummaryEl, `Source: ${sourceUsed} / generated: ${payload?.generated_at || "unknown"}`);
+    setText(docSourceUsedEl, sourceUsed);
+    setText(docIndexCountEl, indexCount);
+    setText(docMarkdownStateEl, markdownExists ? "Yes" : "No");
+    setText(docReviewStateEl, reviewExists ? "Yes" : "No");
+    setText(docIndexUpdatedAtEl, indexUpdatedAt);
+    setText(docReviewUpdatedAtEl, reviewUpdatedAt);
+
+    if (docFilesEl) {
+      const entries = [
+        { label: "AGENT_BRAIN_INDEX.jsonl", path: dataFiles.index_path, state: indexExists ? "present" : "missing" },
+        { label: "AGENT_BRAIN.md", path: dataFiles.markdown_path, state: markdownExists ? "present" : "missing" },
+        { label: "AGENT_BRAIN_REVIEW.jsonl", path: dataFiles.review_path, state: reviewExists ? "present" : "missing" },
+      ];
+      docFilesEl.innerHTML = "";
+      entries.forEach((entry) => {
+        const item = document.createElement("li");
+        item.textContent = `${entry.label}: ${entry.state} (${entry.path || "-"})`;
+        docFilesEl.appendChild(item);
+      });
+    }
+  }
+
+  async function refreshDocumentStatus() {
+    const payload = await apiGetJson("/api/kil-review?source=all&limit=1");
+    renderDocumentStatus(payload);
+    docStatusLoaded = true;
+    return payload;
+  }
+
   async function runAction(fn) {
     if (!selectedIncidentId || busy) return;
     setBusy(true);
@@ -223,6 +307,24 @@
       setBusy(false);
       renderDetail();
       renderList();
+    }
+  }
+
+  async function runDocAction(fn) {
+    if (busy) return;
+    setBusy(true);
+    try {
+      await fn();
+      await refreshDocumentStatus();
+    } catch (error) {
+      const message = toFriendlyMessage(error?.message || "action failed");
+      setStatus(message, "error");
+      showToast(message, "error");
+      if (docRunResultEl) {
+        docRunResultEl.textContent = pretty({ error: message });
+      }
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -307,12 +409,57 @@
     );
   }
 
+  if (docRefreshButton) {
+    docRefreshButton.addEventListener("click", () => {
+      runDocAction(async () => {
+        await refreshDocumentStatus();
+        showToast("Document status refreshed", "success");
+      });
+    });
+  }
+
+  if (docRunButton) {
+    docRunButton.addEventListener("click", () => {
+      runDocAction(async () => {
+        const data = await apiPostJson("/api/errors/doc-update/run", {});
+        if (docRunResultEl) {
+          docRunResultEl.textContent = pretty(data);
+        }
+        const duration = Number.isFinite(Number(data.duration_seconds)) ? Number(data.duration_seconds) : 0;
+        const message = `Document update completed in ${duration}s`;
+        setStatus(message, "success");
+        showToast("Document update completed", "success");
+      });
+    });
+  }
+
+  tabButtons.forEach((button) => {
+    button.addEventListener("click", () => {
+      const target = button.dataset.errorsTab;
+      if (!target) return;
+      setActiveTab(target);
+      if (target === "document-update" && !docStatusLoaded) {
+        void refreshDocumentStatus();
+      }
+    });
+  });
+
+  setActiveTab("incidents");
+
   (async function init() {
     setBusy(true);
     try {
-      await refreshIncidents({ keepSelection: false });
+      await Promise.all([
+        refreshIncidents({ keepSelection: false }),
+        refreshDocumentStatus(),
+      ]);
+      if (!selectedIncidentId) {
+        setStatus("", "");
+      } else {
+        showToast("Incident list updated", "success");
+      }
     } catch (error) {
-      const message = toFriendlyMessage(error?.message || "failed to load incidents");
+      const message = toFriendlyMessage(error?.message || "failed to load");
       setStatus(message, "error");
       showToast(message, "error");
     } finally {

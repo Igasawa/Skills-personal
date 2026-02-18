@@ -37,6 +37,18 @@
   const monthCloseChecklistKeys = ["expense_submission", "document_printout", "mf_accounting_link"];
   const YM_STORAGE_KEY = "mfcloud.dashboard.selectedYm";
   const YM_PATTERN = /^(\d{4})-(\d{2})$/;
+  const TEMPLATE_STEP_DEFAULT_ACTION = "preflight";
+  // Canonical action list is mirror of API validation (`WORKFLOW_TEMPLATE_ALLOWED_STEP_ACTIONS`)
+  // and scheduler mode whitelist (`SCHEDULER_ALLOWED_MODES`).
+  const TEMPLATE_STEP_ACTIONS = [
+    { value: "preflight", label: "手順0（準備）" },
+    { value: "preflight_mf", label: "手順0（MFのみ）" },
+    { value: "amazon_download", label: "手順1（Amazon取得）" },
+    { value: "rakuten_download", label: "手順2（楽天取得）" },
+    { value: "amazon_print", label: "Amazon除外判断・印刷" },
+    { value: "rakuten_print", label: "楽天除外判断・印刷" },
+    { value: "mf_reconcile", label: "MF突合" },
+  ];
   const templateSaveState = { inFlight: false };
   const workflowPageCreateState = { inFlight: false };
   const TEMPLATE_MODE_CONFIG = {
@@ -547,6 +559,170 @@
     if (shouldFocus) input.focus();
   }
 
+  function getTemplateStepsListEl() {
+    return form ? form.querySelector("[data-template-steps-list]") : null;
+  }
+
+  function getTemplateStepRows() {
+    const listEl = getTemplateStepsListEl();
+    if (!listEl) return [];
+    return Array.from(listEl.querySelectorAll("[data-template-step-row]"));
+  }
+
+  function getTemplateStepActionOptionsHtml(selectedAction) {
+    const normalizedAction = normalizeTemplateStepAction(selectedAction);
+    return TEMPLATE_STEP_ACTIONS.map(
+      (item) =>
+        `<option value="${item.value}"${item.value === normalizedAction ? " selected" : ""}>${item.label}</option>`,
+    ).join("");
+  }
+
+  function normalizeTemplateStepAction(value) {
+    const action = String(value || TEMPLATE_STEP_DEFAULT_ACTION).trim();
+    return TEMPLATE_STEP_ACTIONS.some((item) => item.value === action) ? action : TEMPLATE_STEP_DEFAULT_ACTION;
+  }
+
+  function generateTemplateStepId() {
+    return `step-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+  }
+
+  function emitTemplateStepsChanged() {
+    const listEl = getTemplateStepsListEl();
+    if (!listEl) return;
+    listEl.dispatchEvent(
+      new CustomEvent("template-steps-changed", {
+        bubbles: true,
+      }),
+    );
+  }
+
+  function refreshTemplateStepRows() {
+    const listEl = getTemplateStepsListEl();
+    if (!listEl) return;
+    const rows = getTemplateStepRows();
+    if (rows.length === 0) {
+      return;
+    }
+
+    const hideRemove = rows.length <= 1;
+    rows.forEach((row, index) => {
+      let indexEl = row.querySelector("[data-template-step-index]");
+      if (!indexEl) {
+        indexEl = document.createElement("span");
+        indexEl.className = "muted";
+        indexEl.dataset.templateStepIndex = "1";
+        row.insertBefore(indexEl, row.firstChild);
+      }
+      indexEl.textContent = `手順${index}`;
+
+      const titleEl = row.querySelector("[data-template-step-title]");
+      if (titleEl) {
+        if (!String(titleEl.value || "").trim()) {
+          titleEl.value = `手順${index}`;
+        }
+        titleEl.setAttribute("aria-label", `手順${index}のタイトル`);
+      }
+
+      const removeButton = row.querySelector("[data-template-step-remove]");
+      if (removeButton) {
+        removeButton.hidden = hideRemove;
+        removeButton.disabled = hideRemove;
+      }
+    });
+
+    emitTemplateStepsChanged();
+  }
+
+  function collectTemplateSteps() {
+    return getTemplateStepRows()
+      .map((row, index) => {
+        const title = String(row.querySelector("[data-template-step-title]")?.value || "").trim() || `手順${index}`;
+        const action = normalizeTemplateStepAction(row.querySelector("[data-template-step-action]")?.value);
+        const rowId = String(row.dataset.templateStepId || "").trim();
+        return {
+          id: rowId || generateTemplateStepId(),
+          title,
+          action,
+        };
+      })
+      .filter((row) => Boolean(row.title));
+  }
+
+  function addTemplateStepRow(rawStep = {}, options = {}) {
+    const listEl = getTemplateStepsListEl();
+    if (!listEl) return;
+    const shouldFocus = options.focus !== false;
+    const title = String(rawStep?.title || "").trim();
+    const action = normalizeTemplateStepAction(rawStep?.action);
+
+    const row = document.createElement("div");
+    row.className = "template-step-row";
+    row.dataset.templateStepRow = "1";
+    row.dataset.templateStepId = String(rawStep?.id || generateTemplateStepId()).trim();
+
+    const indexEl = document.createElement("span");
+    indexEl.className = "muted";
+    indexEl.dataset.templateStepIndex = "1";
+
+    const titleEl = document.createElement("input");
+    titleEl.type = "text";
+    titleEl.className = "template-step-title";
+    titleEl.value = title;
+    titleEl.placeholder = "手順名を入力";
+    titleEl.dataset.templateStepTitle = "1";
+    titleEl.required = true;
+
+    const actionEl = document.createElement("select");
+    actionEl.className = "template-step-action";
+    actionEl.dataset.templateStepAction = "1";
+    actionEl.innerHTML = getTemplateStepActionOptionsHtml(action);
+
+    const removeButton = document.createElement("button");
+    removeButton.type = "button";
+    removeButton.className = "secondary";
+    removeButton.dataset.templateStepRemove = "1";
+    removeButton.setAttribute("aria-label", "この手順を削除");
+    removeButton.textContent = "-";
+    removeButton.addEventListener("click", () => {
+      row.remove();
+      refreshTemplateStepRows();
+    });
+
+    row.appendChild(indexEl);
+    row.appendChild(titleEl);
+    row.appendChild(actionEl);
+    row.appendChild(removeButton);
+    listEl.appendChild(row);
+
+    titleEl.addEventListener("input", refreshTemplateStepRows);
+    actionEl.addEventListener("change", refreshTemplateStepRows);
+    if (shouldFocus) {
+      titleEl.focus();
+      titleEl.select();
+    } else {
+      refreshTemplateStepRows();
+    }
+  }
+
+  function hydrateTemplateSteps() {
+    const listEl = getTemplateStepsListEl();
+    if (!listEl) return;
+
+    const templateSteps = Array.isArray(workflowTemplate?.steps) ? workflowTemplate.steps : [];
+    const rawRows = templateSteps.length
+      ? templateSteps
+      : [{ id: "", title: "手順0", action: TEMPLATE_STEP_DEFAULT_ACTION }];
+    listEl.innerHTML = "";
+
+    rawRows.forEach((row, index) => {
+      const title = String(row?.title || "").trim() || `手順${index}`;
+      const action = normalizeTemplateStepAction(row?.action);
+      addTemplateStepRow({ id: row?.id, title, action }, { focus: false });
+    });
+
+    refreshTemplateStepRows();
+  }
+
   function hydrateTemplateSourceUrls() {
     const listEl = getTemplateSourceUrlListEl();
     if (!listEl) return;
@@ -954,6 +1130,7 @@
       source_urls: sourceUrls,
       notes: String(notesEl?.value || "").trim(),
       rakuten_orders_url: String(rakutenOrdersEl?.value || "").trim(),
+      steps: collectTemplateSteps(),
       allow_duplicate_name: false,
       base_updated_at:
         templateMode === "copy" ? "" : getTemplateUpdatedAtFromForm() || String(workflowTemplate?.updated_at || ""),
@@ -3042,6 +3219,11 @@
       event.preventDefault();
       addTemplateSourceUrlRow("");
     });
+    const templateStepAddButton = document.getElementById("template-step-add");
+    templateStepAddButton?.addEventListener("click", (event) => {
+      event.preventDefault();
+      addTemplateStepRow({}, {});
+    });
     const workflowPageCreateButton = document.getElementById("workflow-page-create");
     workflowPageCreateButton?.addEventListener("click", (event) => {
       event.preventDefault();
@@ -3067,6 +3249,7 @@
       saveWorkflowTemplate();
     });
 
+    hydrateTemplateSteps();
     restoreYmSelection();
     loadArchivedWorkflowPages();
     const initialYm = getYmFromForm();
@@ -3149,3 +3332,4 @@
     });
   });
 })();
+

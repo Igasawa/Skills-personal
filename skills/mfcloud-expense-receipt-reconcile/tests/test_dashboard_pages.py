@@ -208,16 +208,13 @@ def test_expense_workflow_copy_page_shows_shared_wizard(monkeypatch: pytest.Monk
     assert 'name="template_id"' in res.text
     assert 'id="workflow-template-save"' in res.text
     assert "data-workflow-template" in res.text
-    assert 'id="step-0"' in res.text
-    assert 'id="step-1"' in res.text
-    assert 'id="step-2"' in res.text
-    assert 'id="step-3"' in res.text
-    assert 'id="step-4"' in res.text
-    assert 'id="step-5"' in res.text
-    assert 'id="step-6"' not in res.text
+    assert 'data-template-steps-list' in res.text
+    assert 'id="template-step-add"' in res.text
     assert 'id="scheduler-recurrence"' in res.text
+    assert 'id="template-steps-list"' in res.text
     assert "/static/js/index.js" in res.text
     assert "/static/js/scheduler.js" in res.text
+    assert 'data-bound-step-list="template-steps-list"' in res.text
 
     match = re.search(r"data-sidebar-links='(.*?)'", res.text)
     assert match is not None
@@ -229,6 +226,50 @@ def test_expense_workflow_copy_page_shows_shared_wizard(monkeypatch: pytest.Monk
         and link.get("section") == "admin"
         for link in links
     )
+
+
+def test_expense_workflow_copy_scheduler_mode_rebuilds_from_template_step_actions(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _write_json(
+        _workflow_template_store(tmp_path),
+        [
+            {
+                "id": "scheduler-mode-template",
+                "name": "Action Driven Template",
+                "year": 2026,
+                "month": 3,
+                "mfcloud_url": "https://example.com/mf",
+                "notes": "for scheduler mode test",
+                "rakuten_orders_url": "https://example.com/orders",
+                "steps": [
+                    {"id": "step-1", "title": "Amazon 取得", "action": "amazon_download"},
+                    {"id": "step-2", "title": "MF 突合", "action": "mf_reconcile"},
+                ],
+                "created_at": "2026-02-01T00:00:00",
+                "updated_at": "2026-02-01T00:00:00",
+            },
+        ],
+    )
+    client = _create_client(monkeypatch, tmp_path)
+    res = client.get("/expense-workflow-copy?template=scheduler-mode-template")
+    assert res.status_code == 200
+    assert 'id="template-steps-list"' in res.text
+    assert 'id="scheduler-mode"' in res.text
+    assert 'data-bound-step-list="template-steps-list"' in res.text
+
+    scheduler_js = (
+        Path(__file__).resolve().parents[1]
+        / "dashboard"
+        / "static"
+        / "js"
+        / "scheduler.js"
+    ).read_text(encoding="utf-16")
+    assert "collectTemplateStepActions()" in scheduler_js
+    assert "ensureSchedulerModeOptionList" in scheduler_js
+    assert "Array.from(listEl.querySelectorAll(\"[data-template-step-action]\"))" in scheduler_js
+    assert "const dedupedActions = actions.length ? actions : [DEFAULT_SCHEDULER_MODE];" in scheduler_js
 
 
 def test_index_page_exposes_latest_run_status_hooks(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

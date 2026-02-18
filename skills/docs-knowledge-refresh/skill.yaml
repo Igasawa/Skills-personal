@@ -20,6 +20,9 @@ defaults:
     max_age_days: 30
     warn_within_days: 7
     fail_on_stale: false
+    bootstrap_missing_review_date: false
+    strict_bootstrap: false
+    bootstrap_review_source: knowledge_refresh_weekly
   config:
     dry_run: true
     targets:

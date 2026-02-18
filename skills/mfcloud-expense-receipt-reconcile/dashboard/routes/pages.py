@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 import re
+from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
@@ -14,12 +15,22 @@ WORKFLOW_TEMPLATE_SIDEBAR_LABEL_LIMIT = 38
 WORKFLOW_TEMPLATE_SIDEBAR_LINK_LIMIT = 30
 WORKFLOW_PAGE_SIDEBAR_LABEL_LIMIT = 38
 WORKFLOW_PAGE_SIDEBAR_LINK_LIMIT = 60
+WORKFLOW_TEMPLATE_STEP_DEFAULT_ACTION = "preflight"
+WORKFLOW_TEMPLATE_ALLOWED_STEP_ACTIONS = (
+    "preflight",
+    "preflight_mf",
+    "amazon_download",
+    "rakuten_download",
+    "amazon_print",
+    "rakuten_print",
+    "mf_reconcile",
+)
 DEFAULT_SIDEBAR_LINKS = [
     {"href": "/workspace", "label": "HOME", "tab": "workspace", "section": "home"},
     {"href": "/", "label": "WorkFlow：経費精算", "tab": "wizard", "section": "workflow"},
     {"href": "/expense-workflow-copy", "label": "WFテンプレート", "tab": "wizard-copy", "section": "admin"},
     {"href": "/kil-review", "label": "KIL Review", "tab": "kil-review", "section": "admin"},
-    {"href": "/errors", "label": "エラー", "tab": "errors", "section": "admin"},
+    {"href": "/errors", "label": "\u7ba1\u7406", "tab": "errors", "section": "admin"},
 ]
 
 
@@ -103,6 +114,30 @@ def _read_workflow_pages(*, include_archived: bool = False) -> list[dict[str, ob
     return pages
 
 
+def _normalize_template_steps_for_view(value: Any) -> list[dict[str, str]]:
+    raw_values = value if isinstance(value, list) else []
+    normalized: list[dict[str, str]] = []
+    for index, row in enumerate(raw_values):
+        raw_id = ""
+        raw_title = ""
+        raw_action = ""
+        if isinstance(row, dict):
+            raw_id = str(row.get("id") or "").strip()
+            raw_title = row.get("title") or row.get("name")
+            raw_action = str(row.get("action") or "").strip()
+        else:
+            raw_title = row
+        title = str(raw_title or "").strip()
+        if not title:
+            continue
+        action = raw_action if raw_action in WORKFLOW_TEMPLATE_ALLOWED_STEP_ACTIONS else WORKFLOW_TEMPLATE_STEP_DEFAULT_ACTION
+        step_id = raw_id.strip()
+        if not step_id:
+            step_id = f"step-{index + 1}"
+        normalized.append({"id": step_id, "title": title, "action": action})
+    return normalized
+
+
 def _read_workflow_templates() -> list[dict[str, object]]:
     raw = core._read_json(_workflow_template_store())
     if not isinstance(raw, list):
@@ -118,11 +153,12 @@ def _read_workflow_templates() -> list[dict[str, object]]:
             continue
         try:
             year = int(row.get("year"))
+        except Exception:
+            year = 0
+        try:
             month = int(row.get("month"))
         except Exception:
-            continue
-        if not 2000 <= year <= 3000 or not 1 <= month <= 12:
-            continue
+            month = 0
         source_urls = []
         seen_urls: set[str] = set()
         raw_source_urls = row.get("source_urls") if isinstance(row.get("source_urls"), list) else []
@@ -148,6 +184,7 @@ def _read_workflow_templates() -> list[dict[str, object]]:
                 "month": month,
                 "mfcloud_url": mfcloud_url,
                 "source_urls": source_urls,
+                "steps": _normalize_template_steps_for_view(row.get("steps")),
                 "notes": str(row.get("notes") or ""),
                 "subheading": str(row.get("subheading") or "").strip(),
                 "rakuten_orders_url": str(row.get("rakuten_orders_url") or ""),

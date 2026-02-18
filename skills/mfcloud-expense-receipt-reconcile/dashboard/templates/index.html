@@ -74,40 +74,38 @@
           <div class="scheduler-panel" id="scheduler-panel">
             <div class="scheduler-head">
               <h3>タイマー自動実行</h3>
-              <label class="inline-check scheduler-toggle">
-                <input type="checkbox" id="scheduler-enabled" />
+              <label
+                class="inline-check scheduler-toggle"
+                data-tooltip="有効時のみ、タイマー自動実行の保存内容が実行対象になります。"
+              >
                 有効
+                <input type="checkbox" id="scheduler-enabled" />
               </label>
             </div>
             <div class="scheduler-grid">
-              <label>
+              <label data-tooltip="実行対象日。指定日付にタイマーは起動します。">
                 実行日
                 <input type="date" id="scheduler-run-date" />
               </label>
-              <label>
+              <label data-tooltip="実行時刻。指定時間に1回目の実行を開始します。">
                 実行時刻
                 <input type="time" id="scheduler-run-time" value="09:00" />
               </label>
-              <label>
+              <label data-tooltip="手順0（準備タスク）を実行するモードを選択します。">
                 実行モード
-                <select id="scheduler-mode">
+                <select id="scheduler-mode" data-bound-step-id="step-preflight">
                   <option value="preflight">手順0 準備</option>
                   <option value="preflight_mf">手順0 MF再取得のみ</option>
-                  <option value="amazon_download">手順1 Amazon取得</option>
-                  <option value="rakuten_download">手順2 楽天取得</option>
-                  <option value="amazon_print">手順1 Amazon印刷準備</option>
-                  <option value="rakuten_print">手順2 楽天印刷準備</option>
-                  <option value="mf_reconcile">手順5 MF突合</option>
                 </select>
               </label>
-              <label>
+              <label data-tooltip="Windows起動時やサービス停止時など、未実行時の振る舞いを指定します。">
                 取りこぼし補完
                 <select id="scheduler-catch-up">
                   <option value="run_on_startup">次回起動時に実行</option>
                   <option value="skip">スキップして無効化</option>
                 </select>
               </label>
-              <label>
+              <label data-tooltip="実行を1回のみ、毎日、毎週、毎月で繰り返すかを設定します。">
                 繰り返し
                 <select id="scheduler-recurrence">
                   <option value="once">1回だけ</option>
@@ -116,13 +114,13 @@
                   <option value="monthly">毎月（同日）</option>
                 </select>
               </label>
-              <label class="inline-check">
-                <input type="checkbox" id="scheduler-auth-handoff" />
+              <label class="inline-check" data-tooltip="ログイン画面操作が必要なタスクを含む場合のみ手動で本人確認を介入します。">
                 ログイン画面を開いて実行（有人）
+                <input type="checkbox" id="scheduler-auth-handoff" />
               </label>
-              <label class="inline-check">
-                <input type="checkbox" id="scheduler-autostart" />
+              <label class="inline-check" data-tooltip="PC起動時にダッシュボード自動実行を立ち上げます。">
                 Windowsログイン時にダッシュボード自動起動
+                <input type="checkbox" id="scheduler-autostart" />
               </label>
             </div>
             <div class="scheduler-actions">
@@ -302,3 +300,4 @@
     <script src="/static/js/scheduler.js"></script>
   </body>
 </html>
+

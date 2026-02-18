@@ -16,18 +16,15 @@
     >
       <header class="hero">
         <div>
-          <p
-            id="workflow-template-page-subheading"
-            class="eyebrow"
-            {% if not workflow_template or not workflow_template.subheading %}hidden{% endif %}
-          >
-            {{ workflow_template.subheading | default('', true) }}
-          </p>
           <h1 id="workflow-template-page-title" data-default-title="ワークフローテンプレート">
             {{ workflow_template.name | default('ワークフローテンプレート', true) }}
           </h1>
-          <p class="subtitle">
-            テンプレートを複製して、将来のワークフロー起動時に再利用できる形で保存します。
+          <p
+            id="workflow-template-page-subheading"
+            class="subtitle"
+            {% if not workflow_template or not workflow_template.subheading %}hidden{% endif %}
+          >
+            {{ workflow_template.subheading | default('', true) }}
           </p>
         </div>
       </header>
@@ -67,13 +64,13 @@
                 required
               />
             </label>
-            <label>
-              年
-              <input type="number" name="year" value="{{ defaults.year }}" min="2000" max="2100" required />
+          <label>
+            年
+              <input type="number" name="year" value="{{ defaults.year }}" min="2000" max="2100" />
             </label>
             <label>
               月
-              <input type="number" name="month" value="{{ defaults.month }}" min="1" max="12" required />
+              <input type="number" name="month" value="{{ defaults.month }}" min="1" max="12" />
             </label>
           </div>
           <label>
