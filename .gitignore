@@ -20,6 +20,8 @@ output/
 artifacts/
 skills/mfcloud-expense-receipt-reconcile/references/review_logs/
 skills/mfcloud-expense-receipt-reconcile/reports/error_inbox/
+tmp_*
+**/tmp_*
 
 # Secrets (keep out of repo)
 *.env

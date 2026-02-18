@@ -122,7 +122,7 @@
 
   async function apiGetJson(url) {
     const res = await fetch(url, { cache: "no-store" }).catch(() => null);
-    if (!res) throw new Error("network error");
+    if (!res) throw new Error("ネットワークエラー");
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.detail || `HTTP ${res.status}`);
     return data;
@@ -134,7 +134,7 @@
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload || {}),
     }).catch(() => null);
-    if (!res) throw new Error("network error");
+    if (!res) throw new Error("ネットワークエラー");
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.detail || `HTTP ${res.status}`);
     return data;
@@ -300,7 +300,7 @@
       await fn();
       setStatus("", "");
     } catch (error) {
-      const message = toFriendlyMessage(error?.message || "action failed");
+      const message = toFriendlyMessage(error?.message || "処理に失敗しました");
       setStatus(message, "error");
       showToast(message, "error");
     } finally {
@@ -317,7 +317,7 @@
       await fn();
       await refreshDocumentStatus();
     } catch (error) {
-      const message = toFriendlyMessage(error?.message || "action failed");
+      const message = toFriendlyMessage(error?.message || "処理に失敗しました");
       setStatus(message, "error");
       showToast(message, "error");
       if (docRunResultEl) {
@@ -332,7 +332,7 @@
     refreshButton.addEventListener("click", () =>
       runAction(async () => {
         await refreshIncidents({ keepSelection: true });
-        showToast("Incident list updated", "success");
+        showToast("インシデント一覧を更新しました", "success");
       })
     );
   }
@@ -344,7 +344,7 @@
         await refreshIncidents({ keepSelection: true });
         const planned = Number.parseInt(String(data.planned_count ?? 0), 10) || 0;
         const failed = Number.parseInt(String(data.failed_count ?? 0), 10) || 0;
-        const message = `Plan all finished: planned=${planned}, failed=${failed}`;
+        const message = `一括計画完了: 計画=${planned}件、失敗=${failed}件`;
         setStatus(message, failed > 0 ? "error" : "success");
         showToast(message, failed > 0 ? "error" : "success");
       })
@@ -356,9 +356,9 @@
       runAction(async () => {
         const data = await apiPostJson(`/api/errors/incidents/${encodeURIComponent(selectedIncidentId)}/plan`, {});
         await refreshIncidents({ keepSelection: true });
-        const message = `Plan generated: ${String(data.plan_json || selectedIncidentId)}`;
+        const message = `計画を生成しました: ${String(data.plan_json || selectedIncidentId)}`;
         setStatus(message, "success");
-        showToast("Plan generated", "success");
+        showToast("計画を生成しました", "success");
       })
     );
   }
@@ -376,7 +376,7 @@
         };
         const data = await apiPostJson(`/api/errors/incidents/${encodeURIComponent(selectedIncidentId)}/go`, payload);
         await refreshIncidents({ keepSelection: true });
-        const message = `GO finished: ${String(data.final_status || "unknown")}`;
+        const message = `実行完了: ${String(data.final_status || "不明")}`;
         setStatus(message, "success");
         showToast(message, "success");
       })
@@ -391,7 +391,7 @@
           reason: "manual archive from errors page",
         });
         await refreshIncidents({ keepSelection: false });
-        showToast("Archived to resolved", "success");
+        showToast("解決済みに移動しました", "success");
       })
     );
   }
@@ -404,7 +404,7 @@
           reason: "manual archive from errors page",
         });
         await refreshIncidents({ keepSelection: false });
-        showToast("Archived to escalated", "success");
+        showToast("エスカレートへ移動しました", "success");
       })
     );
   }
@@ -456,10 +456,10 @@
       if (!selectedIncidentId) {
         setStatus("", "");
       } else {
-        showToast("Incident list updated", "success");
+        showToast("インシデント一覧を更新しました", "success");
       }
     } catch (error) {
-      const message = toFriendlyMessage(error?.message || "failed to load");
+      const message = toFriendlyMessage(error?.message || "読み込みに失敗しました");
       setStatus(message, "error");
       showToast(message, "error");
     } finally {
