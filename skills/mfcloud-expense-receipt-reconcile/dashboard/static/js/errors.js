@@ -388,7 +388,7 @@
       runAction(async () => {
         await apiPostJson(`/api/errors/incidents/${encodeURIComponent(selectedIncidentId)}/archive`, {
           result: "resolved",
-          reason: "manual archive from errors page",
+          reason: "エラー管理画面から手動で解決済みにアーカイブ",
         });
         await refreshIncidents({ keepSelection: false });
         showToast("解決済みに移動しました", "success");
@@ -401,7 +401,7 @@
       runAction(async () => {
         await apiPostJson(`/api/errors/incidents/${encodeURIComponent(selectedIncidentId)}/archive`, {
           result: "escalated",
-          reason: "manual archive from errors page",
+          reason: "エラー管理画面から手動でエスカレートにアーカイブ",
         });
         await refreshIncidents({ keepSelection: false });
         showToast("エスカレートへ移動しました", "success");
