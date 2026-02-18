@@ -131,6 +131,7 @@ def test_index_page_shows_manual_archive_button(monkeypatch: pytest.MonkeyPatch,
     assert 'data-provider-action="open_shared_inbox"' in res.text
     assert 'data-provider-action="import_provider_receipts"' in res.text
     assert 'data-provider-action="print_provider_receipts"' in res.text
+    assert 'href="/status"' in res.text
     assert 'data-provider-source-summary' in res.text
     assert 'data-provider-source-setup-guide' in res.text
     assert "/workspace" in res.text
@@ -147,6 +148,25 @@ def test_index_page_shows_manual_archive_button(monkeypatch: pytest.MonkeyPatch,
     assert 'id="scheduler-refresh"' in res.text
     assert 'id="scheduler-save"' in res.text
     assert "/static/js/scheduler.js" in res.text
+
+    match = re.search(r"data-sidebar-links='(.*?)'", res.text)
+    assert match is not None
+    links = json.loads(match.group(1))
+    assert links[0].get("href") == "/workspace"
+    assert links[0].get("label") == "HOME"
+    assert links[0].get("section") == "home"
+    assert any(
+        link.get("href") == "/" and link.get("label") == "WorkFlow：経費精算" and link.get("section") == "workflow"
+        for link in links
+    )
+    assert any(link.get("href") == "/kil-review" and link.get("section") == "admin" for link in links)
+    assert any(link.get("href") == "/errors" and link.get("section") == "admin" for link in links)
+    assert any(
+        link.get("href") == "/expense-workflow-copy"
+        and link.get("label") == "WFテンプレート"
+        and link.get("section") == "admin"
+        for link in links
+    )
 
 
 def test_index_page_shows_archive_history_links(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -175,6 +195,7 @@ def test_index_page_shows_archive_history_links(monkeypatch: pytest.MonkeyPatch,
     assert 'class="archive-history"' in res.text
     assert 'data-archive-history-list' in res.text
     assert f"/runs/{ym}/archived-receipts" in res.text
+    assert "経費精算ページへ戻る" in res.text
 
 
 def test_expense_workflow_copy_page_shows_shared_wizard(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -203,8 +224,9 @@ def test_expense_workflow_copy_page_shows_shared_wizard(monkeypatch: pytest.Monk
     links = json.loads(match.group(1))
     assert any(
         link.get("href") == "/expense-workflow-copy"
+        and link.get("label") == "WFテンプレート"
         and link.get("tab") == "wizard-copy"
-        and "ワークフロー" in str(link.get("label", ""))
+        and link.get("section") == "admin"
         for link in links
     )
 
@@ -441,6 +463,7 @@ def test_expense_workflow_copy_page_prefills_template_and_sidebar_link(monkeypat
         "href": "/expense-workflow-copy?template=copy-source",
         "label": "Monthly Copy Source (2026-02)",
         "tab": "wizard-copy",
+        "section": "admin",
     } in links
 
 

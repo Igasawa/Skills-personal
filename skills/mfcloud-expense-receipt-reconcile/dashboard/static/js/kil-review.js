@@ -50,6 +50,17 @@
       .toLowerCase();
   }
 
+  function resolveReviewDecision(item) {
+    const explicit = String(item?.review_decision || item?.decision || "").trim().toUpperCase();
+    if (explicit === "GO" || explicit === "NOGO") {
+      return explicit;
+    }
+    if (Boolean(item?.needs_human_review) || Boolean(item?.needs_soon)) {
+      return "NOGO";
+    }
+    return "GO";
+  }
+
   function toTextList(value) {
     if (value == null) return [];
     if (Array.isArray(value)) {
@@ -159,24 +170,12 @@
 
   function buildReviewReasons(item) {
     const reasons = [];
-
-    if (Boolean(item?.needs_human_review)) {
-      reasons.push("AI判定で人間レビュー必要");
-    }
+    const decision = resolveReviewDecision(item);
+    reasons.push(`判定: ${decision}`);
 
     const reviewIssues = toTextList(item?.review_issues);
-    if (reviewIssues.length) {
-      reviewIssues.forEach((issue) => {
-        reasons.push(`指摘: ${issue}`);
-      });
-    }
-
-    const severity = toLowerSafe(item?.review_severity || item?.risk);
-    if (severity === "critical" || severity === "high") {
-      reasons.push(`重要度: ${severity === "critical" ? "高（critical）" : "高（high）"}`);
-    }
-    if (severity === "medium") {
-      reasons.push("重要度: medium");
+    if (decision === "NOGO" && reviewIssues.length) {
+      reviewIssues.forEach((issue) => reasons.push(`指摘: ${issue}`));
     }
 
     const status = deadlineStatus(item?.deadline);
@@ -189,12 +188,15 @@
 
   function buildReviewActions(item) {
     const actions = [];
-    if (Boolean(item?.needs_human_review)) {
-      actions.push("該当コミットの差分とAGENT_BRAIN.md同期内容を確認し、誤判定なら再学習対象を見直す");
+    const decision = resolveReviewDecision(item);
+    if (decision === "NOGO") {
+      actions.push("該当コミットを停止し、影響範囲を確認してください");
+    } else {
+      actions.push("GO: 自動進行で問題ありません");
     }
 
     const recommendations = toTextList(item?.review_recommendations);
-    if (recommendations.length) {
+    if (decision === "NOGO" && recommendations.length) {
       recommendations.forEach((recommendation) => {
         actions.push(`提案: ${recommendation}`);
       });
@@ -215,16 +217,7 @@
   }
 
   function isReviewTarget(item) {
-    if (Boolean(item?.needs_human_review) || Boolean(item?.needs_soon)) {
-      return true;
-    }
-    const status = deadlineStatus(item?.deadline);
-    const risk = toLowerSafe(item?.review_severity || item?.risk);
-    return status === "overdue"
-      || status === "due_within_7d"
-      || risk === "critical"
-      || risk === "high"
-      || risk === "urgent";
+    return resolveReviewDecision(item) === "NOGO";
   }
 
   function renderSummary(payload) {
@@ -238,6 +231,8 @@
     const reviewNeeded = hasReviewCount
       ? toInt(reviewCounts.human_review_required, 0)
       : overdue + dueSoon;
+    const reviewGo = toInt(reviewCounts.go, 0);
+    const reviewNoGo = toInt(reviewCounts.nogo, reviewNeeded);
     const reviewSoon = toInt(reviewCounts.human_review_soon, 0);
 
     setText(sourceUsedEl, payload.source_used || payload.requested_source || "-");
@@ -252,7 +247,7 @@
 
     if (summaryLineEl) {
       const reviewCondition = onlyReviewSelect?.checked ? "レビュー対象を絞り込み中" : "全件表示中";
-      const line = `要レビュー: ${reviewNeeded}件（期限超過 ${overdue}件 / 7日以内 ${dueSoon}件 / レビュー期限 ${reviewSoon}件 / ${reviewCondition}） / 合計 ${total}件`;
+      const line = `判定: NOGO ${reviewNoGo}件 / GO ${reviewGo}件（期限超過 ${overdue}件 / 7日以内 ${dueSoon}件 / レビュー期限 ${reviewSoon}件 / ${reviewCondition}） / 合計 ${total}件`;
       setText(summaryLineEl, line);
     }
   }
@@ -396,7 +391,7 @@
 
       const action = document.createElement("span");
       action.className = "kil-review-chip";
-      action.textContent = isReviewTarget(item) ? "レビュー対象" : "通常";
+      action.textContent = `判定: ${resolveReviewDecision(item)}`;
 
       const reasons = buildReviewReasons(item);
       const reasonsSection = document.createElement("div");

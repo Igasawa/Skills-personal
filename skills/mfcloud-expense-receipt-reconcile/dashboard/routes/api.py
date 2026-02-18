@@ -48,8 +48,13 @@ def create_api_router() -> APIRouter:
     WORKFLOW_TEMPLATE_MAX_ITEMS = 30
     WORKFLOW_TEMPLATE_MAX_NAME_CHARS = 80
     WORKFLOW_TEMPLATE_MAX_URL_CHARS = 2048
+    WORKFLOW_TEMPLATE_MAX_SOURCE_URLS = 10
     WORKFLOW_TEMPLATE_MAX_NOTES_CHARS = 4000
+    WORKFLOW_TEMPLATE_MAX_SUBHEADING_CHARS = 120
     WORKFLOW_TEMPLATE_MAX_SEARCH_CHARS = 200
+    WORKFLOW_PAGE_MAX_ITEMS = 60
+    WORKFLOW_PAGE_MAX_NAME_CHARS = 80
+    WORKFLOW_PAGE_MAX_SUBHEADING_CHARS = 120
     WORKFLOW_TEMPLATE_MODES = {"new", "edit", "copy"}
     WORKFLOW_TEMPLATE_SORT_OPTIONS = {
         "updated_desc",
@@ -62,6 +67,7 @@ def create_api_router() -> APIRouter:
         "year_asc",
     }
     WORKFLOW_TEMPLATE_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
+    WORKFLOW_PAGE_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
     ERROR_INCIDENT_ID_RE = re.compile(r"^[A-Za-z0-9._-]+$")
     GAS_WEBHOOK_TOKEN_ENV = "AX_PROVIDER_IMPORT_WEBHOOK_TOKEN"
     GAS_WEBHOOK_TOKEN_HEADER = "x-provider-import-token"
@@ -2137,8 +2143,28 @@ def create_api_router() -> APIRouter:
             return ""
         return raw
 
+    def _normalize_workflow_template_source_urls(value: Any) -> list[str]:
+        raw_values = value if isinstance(value, list) else []
+        normalized: list[str] = []
+        seen: set[str] = set()
+        for row in raw_values:
+            url = _normalize_workflow_template_url(row)
+            if not url:
+                continue
+            key = url.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            normalized.append(url)
+            if len(normalized) >= WORKFLOW_TEMPLATE_MAX_SOURCE_URLS:
+                break
+        return normalized
+
     def _normalize_workflow_template_notes(value: Any) -> str:
         return " ".join(str(value or "").strip().split())[:WORKFLOW_TEMPLATE_MAX_NOTES_CHARS]
+
+    def _normalize_workflow_template_subheading(value: Any) -> str:
+        return " ".join(str(value or "").strip().split())[:WORKFLOW_TEMPLATE_MAX_SUBHEADING_CHARS]
 
     def _workflow_template_timestamp_now() -> str:
         return datetime.now().isoformat(timespec="seconds")
@@ -2180,8 +2206,11 @@ def create_api_router() -> APIRouter:
             if not template_id or template_id in seen:
                 continue
             mfcloud_url = _normalize_workflow_template_url(row.get("mfcloud_url"))
-            if not mfcloud_url:
-                continue
+            source_urls = _normalize_workflow_template_source_urls(row.get("source_urls"))
+            if not source_urls and mfcloud_url:
+                source_urls = [mfcloud_url]
+            if source_urls:
+                mfcloud_url = source_urls[0]
             year_raw = core._safe_non_negative_int(row.get("year"), default=0)
             month_raw = core._safe_non_negative_int(row.get("month"), default=0)
             if not 2000 <= year_raw <= 3000 or month_raw < 1 or month_raw > 12:
@@ -2196,7 +2225,9 @@ def create_api_router() -> APIRouter:
                     "year": year_raw,
                     "month": month_raw,
                     "mfcloud_url": mfcloud_url,
+                    "source_urls": source_urls,
                     "notes": _normalize_workflow_template_notes(row.get("notes")),
+                    "subheading": _normalize_workflow_template_subheading(row.get("subheading")),
                     "rakuten_orders_url": _normalize_workflow_template_url(row.get("rakuten_orders_url")) or "",
                     "source_template_id": _normalize_workflow_template_id(row.get("source_template_id")),
                     "created_at": _normalize_workflow_template_timestamp(row.get("created_at"))
@@ -2224,7 +2255,12 @@ def create_api_router() -> APIRouter:
             year = core._safe_non_negative_int(row.get("year"), default=0)
             month = core._safe_non_negative_int(row.get("month"), default=0)
             mfcloud_url = _normalize_workflow_template_url(row.get("mfcloud_url"))
-            if not template_id or not mfcloud_url or not (2000 <= year <= 3000 and 1 <= month <= 12):
+            source_urls = _normalize_workflow_template_source_urls(row.get("source_urls"))
+            if not source_urls and mfcloud_url:
+                source_urls = [mfcloud_url]
+            if source_urls:
+                mfcloud_url = source_urls[0]
+            if not template_id or not (2000 <= year <= 3000 and 1 <= month <= 12):
                 continue
             normalized.append(
                 {
@@ -2233,7 +2269,9 @@ def create_api_router() -> APIRouter:
                     "year": year,
                     "month": month,
                     "mfcloud_url": mfcloud_url,
+                    "source_urls": source_urls,
                     "notes": _normalize_workflow_template_notes(row.get("notes")),
+                    "subheading": _normalize_workflow_template_subheading(row.get("subheading")),
                     "rakuten_orders_url": _normalize_workflow_template_url(row.get("rakuten_orders_url")),
                     "source_template_id": _normalize_workflow_template_id(row.get("source_template_id")),
                     "created_at": str(row.get("created_at") or _workflow_template_timestamp_now()),
@@ -2288,9 +2326,14 @@ def create_api_router() -> APIRouter:
         name = _normalize_workflow_template_name(payload.get("name"))
         if not name:
             raise HTTPException(status_code=400, detail="テンプレート名を入力してください。")
+        source_urls = _normalize_workflow_template_source_urls(payload.get("source_urls"))
         mfcloud_url = _normalize_workflow_template_url(payload.get("mfcloud_url"))
-        if not mfcloud_url:
-            raise HTTPException(status_code=400, detail="ソースURLを入力してください。")
+        if not source_urls and mfcloud_url:
+            source_urls = [mfcloud_url]
+        if source_urls:
+            mfcloud_url = source_urls[0]
+        else:
+            mfcloud_url = ""
         year = core._safe_non_negative_int(payload.get("year"), default=0)
         month = core._safe_non_negative_int(payload.get("month"), default=0)
         if not 1 <= month <= 12:
@@ -2304,7 +2347,9 @@ def create_api_router() -> APIRouter:
             "year": year,
             "month": month,
             "mfcloud_url": mfcloud_url,
+            "source_urls": source_urls,
             "notes": _normalize_workflow_template_notes(payload.get("notes")),
+            "subheading": _normalize_workflow_template_subheading(payload.get("subheading")),
             "rakuten_orders_url": _normalize_workflow_template_url(payload.get("rakuten_orders_url")) or "",
             "template_mode": template_mode,
             "allow_duplicate_name": bool(payload.get("allow_duplicate_name")),
@@ -2315,6 +2360,206 @@ def create_api_router() -> APIRouter:
         if source_template_id:
             normalized["source_template_id"] = source_template_id
         return normalized
+
+    def _workflow_pages_path() -> Path:
+        return core._artifact_root() / "_workflow_pages" / "workflow_pages.json"
+
+    def _normalize_workflow_page_id(value: Any) -> str:
+        raw = str(value or "").strip()
+        if not raw or not WORKFLOW_PAGE_ID_RE.fullmatch(raw):
+            return ""
+        return raw
+
+    def _normalize_workflow_page_name(value: Any) -> str:
+        return " ".join(str(value or "").strip().split())[:WORKFLOW_PAGE_MAX_NAME_CHARS]
+
+    def _normalize_workflow_page_subheading(value: Any) -> str:
+        return " ".join(str(value or "").strip().split())[:WORKFLOW_PAGE_MAX_SUBHEADING_CHARS]
+
+    def _read_workflow_pages() -> list[dict[str, Any]]:
+        raw = core._read_json(_workflow_pages_path())
+        if not isinstance(raw, list):
+            return []
+        rows: list[dict[str, Any]] = []
+        seen: set[str] = set()
+        for row in raw:
+            if not isinstance(row, dict):
+                continue
+            page_id = _normalize_workflow_page_id(row.get("id"))
+            if not page_id or page_id in seen:
+                continue
+            name = _normalize_workflow_page_name(row.get("name"))
+            if not name:
+                continue
+            year = core._safe_non_negative_int(row.get("year"), default=0)
+            month = core._safe_non_negative_int(row.get("month"), default=0)
+            if not 2000 <= year <= 3000 or not 1 <= month <= 12:
+                continue
+            source_urls = _normalize_workflow_template_source_urls(row.get("source_urls"))
+            mfcloud_url = _normalize_workflow_template_url(row.get("mfcloud_url"))
+            if not source_urls and mfcloud_url:
+                source_urls = [mfcloud_url]
+            if source_urls:
+                mfcloud_url = source_urls[0]
+            else:
+                mfcloud_url = ""
+            rows.append(
+                {
+                    "id": page_id,
+                    "name": name,
+                    "subheading": _normalize_workflow_page_subheading(row.get("subheading")),
+                    "year": year,
+                    "month": month,
+                    "mfcloud_url": mfcloud_url,
+                    "source_urls": source_urls,
+                    "notes": _normalize_workflow_template_notes(row.get("notes")),
+                    "rakuten_orders_url": _normalize_workflow_template_url(row.get("rakuten_orders_url")) or "",
+                    "source_template_id": _normalize_workflow_template_id(row.get("source_template_id")),
+                    "created_at": _normalize_workflow_template_timestamp(row.get("created_at"))
+                    or _workflow_template_timestamp_now(),
+                    "updated_at": _normalize_workflow_template_timestamp(row.get("updated_at"))
+                    or _workflow_template_timestamp_now(),
+                }
+            )
+            seen.add(page_id)
+        rows.sort(
+            key=lambda item: str(item.get("updated_at") or item.get("created_at") or ""),
+            reverse=True,
+        )
+        if len(rows) > WORKFLOW_PAGE_MAX_ITEMS:
+            rows = rows[:WORKFLOW_PAGE_MAX_ITEMS]
+        return rows
+
+    def _write_workflow_pages(rows: list[dict[str, Any]]) -> None:
+        if len(rows) > WORKFLOW_PAGE_MAX_ITEMS:
+            rows = rows[:WORKFLOW_PAGE_MAX_ITEMS]
+        normalized: list[dict[str, Any]] = []
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            page_id = _normalize_workflow_page_id(row.get("id"))
+            if not page_id:
+                continue
+            name = _normalize_workflow_page_name(row.get("name"))
+            if not name:
+                continue
+            year = core._safe_non_negative_int(row.get("year"), default=0)
+            month = core._safe_non_negative_int(row.get("month"), default=0)
+            if not 2000 <= year <= 3000 or not 1 <= month <= 12:
+                continue
+            source_urls = _normalize_workflow_template_source_urls(row.get("source_urls"))
+            mfcloud_url = _normalize_workflow_template_url(row.get("mfcloud_url"))
+            if not source_urls and mfcloud_url:
+                source_urls = [mfcloud_url]
+            if source_urls:
+                mfcloud_url = source_urls[0]
+            else:
+                mfcloud_url = ""
+            normalized.append(
+                {
+                    "id": page_id,
+                    "name": name,
+                    "subheading": _normalize_workflow_page_subheading(row.get("subheading")),
+                    "year": year,
+                    "month": month,
+                    "mfcloud_url": mfcloud_url,
+                    "source_urls": source_urls,
+                    "notes": _normalize_workflow_template_notes(row.get("notes")),
+                    "rakuten_orders_url": _normalize_workflow_template_url(row.get("rakuten_orders_url")) or "",
+                    "source_template_id": _normalize_workflow_template_id(row.get("source_template_id")),
+                    "created_at": str(row.get("created_at") or _workflow_template_timestamp_now()),
+                    "updated_at": str(row.get("updated_at") or _workflow_template_timestamp_now()),
+                }
+            )
+        core._write_json(_workflow_pages_path(), normalized)
+
+    def _workflow_page_name_taken(rows: list[dict[str, Any]], name: str) -> bool:
+        normalized_name = str(name or "").strip().lower()
+        if not normalized_name:
+            return False
+        for row in rows:
+            if str(row.get("name") or "").strip().lower() == normalized_name:
+                return True
+        return False
+
+    def _normalize_workflow_page_payload(payload: Any) -> dict[str, Any]:
+        if not isinstance(payload, dict):
+            raise HTTPException(status_code=400, detail="Request body must be a JSON object.")
+        name = _normalize_workflow_page_name(payload.get("name"))
+        if not name:
+            raise HTTPException(status_code=400, detail="Workflow page name is required.")
+        year = core._safe_non_negative_int(payload.get("year"), default=0)
+        month = core._safe_non_negative_int(payload.get("month"), default=0)
+        if not 1 <= month <= 12:
+            raise HTTPException(status_code=400, detail="Invalid year/month.")
+        if year < 2000 or year > 3000:
+            raise HTTPException(status_code=400, detail="Invalid year/month.")
+
+        source_urls = _normalize_workflow_template_source_urls(payload.get("source_urls"))
+        mfcloud_url = _normalize_workflow_template_url(payload.get("mfcloud_url"))
+        if not source_urls and mfcloud_url:
+            source_urls = [mfcloud_url]
+        if source_urls:
+            mfcloud_url = source_urls[0]
+        else:
+            mfcloud_url = ""
+
+        return {
+            "id": uuid4().hex[:24],
+            "name": name,
+            "subheading": _normalize_workflow_page_subheading(payload.get("subheading")),
+            "year": year,
+            "month": month,
+            "mfcloud_url": mfcloud_url,
+            "source_urls": source_urls,
+            "notes": _normalize_workflow_template_notes(payload.get("notes")),
+            "rakuten_orders_url": _normalize_workflow_template_url(payload.get("rakuten_orders_url")) or "",
+            "source_template_id": _normalize_workflow_template_id(payload.get("source_template_id")),
+            "created_at": _workflow_template_timestamp_now(),
+            "updated_at": _workflow_template_timestamp_now(),
+        }
+
+    def _normalize_workflow_page_update_payload(payload: Any) -> dict[str, Any]:
+        if not isinstance(payload, dict):
+            raise HTTPException(status_code=400, detail="Request body must be a JSON object.")
+
+        updates: dict[str, Any] = {}
+        if "name" in payload:
+            name = _normalize_workflow_page_name(payload.get("name"))
+            if not name:
+                raise HTTPException(status_code=400, detail="Workflow page name is required.")
+            updates["name"] = name
+        if "subheading" in payload:
+            updates["subheading"] = _normalize_workflow_page_subheading(payload.get("subheading"))
+        if "notes" in payload:
+            updates["notes"] = _normalize_workflow_template_notes(payload.get("notes"))
+        if "rakuten_orders_url" in payload:
+            updates["rakuten_orders_url"] = _normalize_workflow_template_url(payload.get("rakuten_orders_url")) or ""
+        if "year" in payload:
+            year = core._safe_non_negative_int(payload.get("year"), default=0)
+            if year < 2000 or year > 3000:
+                raise HTTPException(status_code=400, detail="Invalid year/month.")
+            updates["year"] = year
+        if "month" in payload:
+            month = core._safe_non_negative_int(payload.get("month"), default=0)
+            if not 1 <= month <= 12:
+                raise HTTPException(status_code=400, detail="Invalid year/month.")
+            updates["month"] = month
+
+        source_urls = None
+        if "source_urls" in payload:
+            source_urls = _normalize_workflow_template_source_urls(payload.get("source_urls"))
+        mfcloud_url_in_payload = "mfcloud_url" in payload
+        mfcloud_url = _normalize_workflow_template_url(payload.get("mfcloud_url")) if mfcloud_url_in_payload else None
+        if source_urls is not None:
+            if not source_urls and mfcloud_url:
+                source_urls = [mfcloud_url]
+            updates["source_urls"] = source_urls
+            updates["mfcloud_url"] = source_urls[0] if source_urls else ""
+        elif mfcloud_url_in_payload:
+            updates["mfcloud_url"] = mfcloud_url or ""
+
+        return updates
 
     @router.get("/api/workspace/state")
     def api_get_workspace_state() -> JSONResponse:
@@ -2360,6 +2605,77 @@ def create_api_router() -> APIRouter:
         saved = _write_workspace_state(current, revision=current_revision + 1)
         return JSONResponse(
             {"status": "ok", **saved, "conflict_resolved": revision_conflict},
+            headers={"Cache-Control": "no-store"},
+        )
+
+    @router.get("/api/workflow-pages")
+    def api_get_workflow_pages() -> JSONResponse:
+        pages = _read_workflow_pages()
+        return JSONResponse(
+            {"status": "ok", "workflow_pages": pages, "count": len(pages)},
+            headers={"Cache-Control": "no-store"},
+        )
+
+    @router.post("/api/workflow-pages")
+    def api_create_workflow_page(payload: dict[str, Any]) -> JSONResponse:
+        page = _normalize_workflow_page_payload(payload)
+        existing = _read_workflow_pages()
+        if _workflow_page_name_taken(existing, str(page.get("name") or "")):
+            raise HTTPException(status_code=409, detail="Workflow page name already exists.")
+        if len(existing) >= WORKFLOW_PAGE_MAX_ITEMS:
+            raise HTTPException(status_code=409, detail="Workflow page limit reached. Remove one and create again.")
+        existing.append(page)
+        existing.sort(key=lambda row: str(row.get("updated_at") or row.get("created_at") or ""), reverse=True)
+        _write_workflow_pages(existing)
+        return JSONResponse(
+            {"status": "ok", "workflow_page": page, "count": len(existing)},
+            headers={"Cache-Control": "no-store"},
+        )
+
+    @router.patch("/api/workflow-pages/{workflow_page_id}")
+    def api_update_workflow_page(workflow_page_id: str, payload: dict[str, Any]) -> JSONResponse:
+        normalized_id = _normalize_workflow_page_id(workflow_page_id)
+        if not normalized_id:
+            raise HTTPException(status_code=400, detail="Invalid workflow page id.")
+        payload = payload if isinstance(payload, dict) else {}
+        base_updated_at = _normalize_workflow_template_timestamp(payload.get("base_updated_at"))
+        updates = _normalize_workflow_page_update_payload(payload)
+        if not updates:
+            raise HTTPException(status_code=400, detail="No updates.")
+
+        existing = _read_workflow_pages()
+        saved: dict[str, Any] = {}
+        updated = False
+        for index, page in enumerate(existing):
+            if str(page.get("id") or "") != normalized_id:
+                continue
+            if base_updated_at and str(page.get("updated_at") or "") != base_updated_at:
+                raise HTTPException(
+                    status_code=409,
+                    detail="Workflow page was updated by another action. Reload and try again.",
+                )
+            next_name = str(updates.get("name") or page.get("name") or "").strip().lower()
+            if next_name:
+                for other in existing:
+                    other_id = str(other.get("id") or "")
+                    if other_id == normalized_id:
+                        continue
+                    if str(other.get("name") or "").strip().lower() == next_name:
+                        raise HTTPException(status_code=409, detail="Workflow page name already exists.")
+            merged = dict(page, **updates)
+            merged["updated_at"] = _workflow_template_timestamp_now()
+            existing[index] = merged
+            saved = dict(merged)
+            updated = True
+            break
+
+        if not updated:
+            raise HTTPException(status_code=404, detail="Workflow page not found.")
+
+        existing.sort(key=lambda row: str(row.get("updated_at") or row.get("created_at") or ""), reverse=True)
+        _write_workflow_pages(existing)
+        return JSONResponse(
+            {"status": "ok", "workflow_page": saved, "count": len(existing), "updated": True},
             headers={"Cache-Control": "no-store"},
         )
 
@@ -3175,13 +3491,26 @@ def create_api_router() -> APIRouter:
                 return {}
 
             review_by_commit: dict[str, dict[str, object]] = {}
+
+            def _coerce_review_decision(row_data: dict[str, object]) -> str:
+                explicit = _as_str(
+                    row_data.get("review_decision") or row_data.get("decision") or row_data.get("decision_status")
+                ).upper()
+                if explicit in {"GO", "NOGO"}:
+                    return explicit
+                needs_human_review = bool(row_data.get("needs_human_review", False))
+                needs_soon = bool(row_data.get("needs_soon", False))
+                return "NOGO" if (needs_human_review or needs_soon) else "GO"
+
             for row in core._read_jsonl(review_path):
                 if not isinstance(row, dict):
                     continue
                 commit = _as_str(row.get("commit"))
                 if not commit:
                     continue
+                row_data = dict(row)
                 review_by_commit[commit] = {
+                    "review_decision": _coerce_review_decision(row_data),
                     "needs_human_review": bool(row.get("needs_human_review", False)),
                     "needs_soon": bool(row.get("needs_soon", False)),
                     "review_severity": _as_str(
@@ -3212,11 +3541,15 @@ def create_api_router() -> APIRouter:
             review = review_by_commit.get(commit)
             if not isinstance(review, dict):
                 return
+            review_decision = _as_str(review.get("review_decision")).upper()
+            if review_decision not in {"GO", "NOGO"}:
+                review_decision = "NOGO" if bool(review.get("needs_human_review", False)) or bool(review.get("needs_soon", False)) else "GO"
             row["needs_human_review"] = review.get("needs_human_review", False)
             row["needs_soon"] = review.get("needs_soon", False)
             row["review_severity"] = review.get("review_severity", "")
             row["review_issues"] = review.get("review_issues", [])
             row["review_recommendations"] = review.get("review_recommendations", [])
+            row["review_decision"] = review_decision
 
         def _run_git_command(args: list[str], *, timeout_seconds: int = 3) -> tuple[str | None, int]:
             cmd = ["git", *args]
@@ -3341,7 +3674,7 @@ def create_api_router() -> APIRouter:
                 rows = []
 
         if only_review:
-            rows = [row for row in rows if bool(row.get("needs_human_review", False))]
+            rows = [row for row in rows if _as_str(row.get("review_decision")).upper() == "NOGO"]
 
         rows.sort(
             key=lambda item: _to_date(item.get("date")) or "",
@@ -3351,7 +3684,7 @@ def create_api_router() -> APIRouter:
 
         risk_counts: dict[str, int] = {}
         review_status = {"overdue": 0, "due_within_7d": 0, "no_deadline": 0}
-        human_review_count = 0
+        review_decisions = {"GO": 0, "NOGO": 0}
         human_review_soon_count = 0
         for item in rows:
             risk_key = _as_str(item.get("risk") or "normal").lower()
@@ -3359,8 +3692,10 @@ def create_api_router() -> APIRouter:
             status, _days = _deadline_status(_as_str(item.get("deadline")))
             if status in review_status:
                 review_status[status] += 1
-            if bool(item.get("needs_human_review", False)):
-                human_review_count += 1
+            decision = _as_str(item.get("review_decision")).upper()
+            if decision not in {"GO", "NOGO"}:
+                decision = "NOGO" if bool(item.get("needs_human_review", False)) or bool(item.get("needs_soon", False)) else "GO"
+            review_decisions[decision] = review_decisions.get(decision, 0) + 1
             if bool(item.get("needs_soon", False)):
                 human_review_soon_count += 1
 
@@ -3447,7 +3782,9 @@ def create_api_router() -> APIRouter:
                 "risk_counts": risk_counts,
                 "review": review_status,
                 "review_counts": {
-                    "human_review_required": human_review_count,
+                    "human_review_required": review_decisions["NOGO"],
+                    "go": review_decisions["GO"],
+                    "nogo": review_decisions["NOGO"],
                     "human_review_soon": human_review_soon_count,
                 },
                 "health": {

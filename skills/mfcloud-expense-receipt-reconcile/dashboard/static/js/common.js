@@ -8,11 +8,11 @@
   const THEME_VALUES = new Set([THEME_LIGHT, THEME_DARK]);
   const THEME_SELECTION_VALUES = new Set([THEME_LIGHT, THEME_DARK, THEME_SYSTEM]);
 const DEFAULT_DASHBOARD_SIDEBAR_LINKS = Object.freeze([
-    { href: "/", label: "ワークフロー", tab: "wizard" },
-    { href: "/expense-workflow-copy", label: "ワークフロー（複製）", tab: "wizard-copy" },
-    { href: "/kil-review", label: "KIL Review", tab: "kil-review" },
-    { href: "/errors", label: "エラー", tab: "errors" },
-    { href: "/workspace", label: "ワークスペース", tab: "workspace" },
+    { href: "/workspace", label: "HOME", tab: "workspace", section: "home" },
+    { href: "/", label: "WorkFlow：経費精算", tab: "wizard", section: "workflow" },
+    { href: "/expense-workflow-copy", label: "WFテンプレート", tab: "wizard-copy", section: "admin" },
+    { href: "/kil-review", label: "KIL Review", tab: "kil-review", section: "admin" },
+    { href: "/errors", label: "エラー", tab: "errors", section: "admin" },
   ]);
   let currentThemeSelection = THEME_SYSTEM;
 
@@ -52,6 +52,12 @@ const DEFAULT_DASHBOARD_SIDEBAR_LINKS = Object.freeze([
     if (text.includes("Another run is already in progress")) return "すでに実行中の処理があります。完了してから再度お試しください。";
     if (text.includes("Template base timestamp is required for edit mode.")) return "編集時はベース更新日時が必要です。";
     if (text.includes("Template name is required.")) return "テンプレート名を入力してください。";
+    if (text.includes("Workflow page name is required.")) return "ワークフロー名を入力してください。";
+    if (text.includes("Workflow page name already exists.")) return "同名のワークフローが既に存在します。";
+    if (text.includes("Workflow page limit reached.")) return "ワークフローの上限に達しました。不要なページを整理してください。";
+    if (text.includes("Workflow page was updated by another action.")) return "ページ設定が他の操作で更新されました。再読み込みしてやり直してください。";
+    if (text.includes("Workflow page not found.")) return "対象のワークフローページが見つかりません。";
+    if (text.includes("No updates.")) return "変更内容がありません。";
     if (text.includes("MF Cloud expense list URL is required.")) return "ソースURLを入力してください。";
     if (text.includes("Invalid year/month")) return "年月が正しくありません。";
     if (text.includes("MF Cloud expense list URL is required")) return "ソースURLを入力してください。";
@@ -204,34 +210,124 @@ const DEFAULT_DASHBOARD_SIDEBAR_LINKS = Object.freeze([
     return "wizard";
   }
 
-  function buildDashboardSidebar() {
-    const page = document.querySelector(".page");
-    const activeTab = page?.dataset?.activeTab || getActiveDashboardTab(window.location.pathname);
-    const links = getSidebarConfig();
+  function splitSidebarLinks(links) {
+    const homeLinks = [];
+    const workflowLinks = [];
+    const adminLinks = [];
 
-    const sidebar = document.createElement("aside");
-    sidebar.className = "dashboard-sidebar";
-    sidebar.setAttribute("aria-label", "ワークフロー");
+    links.forEach((linkConfig) => {
+      const section = String(linkConfig?.section || "").toLowerCase();
+      if (section === "home") {
+        homeLinks.push(linkConfig);
+        return;
+      }
+      if (section === "admin") {
+        adminLinks.push(linkConfig);
+        return;
+      }
+      workflowLinks.push(linkConfig);
+    });
 
+    return { homeLinks, workflowLinks, adminLinks };
+  }
+
+  function buildSidebarNav(links, activeTab) {
+    const normalizePath = (value) => {
+      const text = String(value || "").trim();
+      if (!text) return "/";
+      const normalized = text.replace(/\/+$/, "");
+      return normalized || "/";
+    };
+    const currentPath = normalizePath(window.location.pathname);
+    const hasExactActive = links.some((linkConfig) => {
+      try {
+        const url = new URL(String(linkConfig?.href || ""), window.location.origin);
+        return normalizePath(url.pathname) === currentPath;
+      } catch {
+        return false;
+      }
+    });
     const nav = document.createElement("nav");
     nav.className = "dashboard-sidebar-nav";
-    const title = document.createElement("div");
-    title.className = "dashboard-sidebar-title";
-    title.textContent = "ワークフロー";
-    sidebar.appendChild(title);
 
     links.forEach((linkConfig) => {
       const item = document.createElement("a");
       item.href = linkConfig.href;
       item.className = "dashboard-sidebar-link";
       item.textContent = linkConfig.label;
-      if (linkConfig.tab === activeTab) {
+      let isActive = linkConfig.tab === activeTab;
+      try {
+        const url = new URL(String(linkConfig?.href || ""), window.location.origin);
+        const samePath = normalizePath(url.pathname) === currentPath;
+        isActive = hasExactActive ? samePath : isActive;
+      } catch {
+        // Keep fallback tab match.
+      }
+      if (isActive) {
         item.classList.add("is-active");
         item.setAttribute("aria-current", "page");
       }
       nav.appendChild(item);
     });
-    sidebar.appendChild(nav);
+
+    return nav;
+  }
+
+  function buildSidebarSection(titleText, links, activeTab, options = {}) {
+    if (!Array.isArray(links) || links.length === 0) return null;
+    const section = document.createElement("div");
+    section.className = "dashboard-sidebar-section";
+
+    const heading = document.createElement("div");
+    heading.className = "dashboard-sidebar-section-title";
+    heading.textContent = titleText;
+    section.appendChild(heading);
+    const nav = buildSidebarNav(links, activeTab);
+    if (options.searchable && links.length >= 4) {
+      const searchInput = document.createElement("input");
+      searchInput.type = "search";
+      searchInput.className = "dashboard-sidebar-search";
+      searchInput.placeholder = "ワークフロー検索";
+      searchInput.setAttribute("aria-label", "ワークフロー検索");
+      searchInput.addEventListener("input", () => {
+        const query = normalizeSearchText(searchInput.value);
+        nav.querySelectorAll(".dashboard-sidebar-link").forEach((link) => {
+          const text = normalizeSearchText(link.textContent || "");
+          const visible = !query || text.includes(query);
+          link.hidden = !visible;
+        });
+      });
+      section.appendChild(searchInput);
+    }
+    section.appendChild(nav);
+    return section;
+  }
+
+  function buildDashboardSidebar() {
+    const page = document.querySelector(".page");
+    const activeTab = page?.dataset?.activeTab || getActiveDashboardTab(window.location.pathname);
+    const links = getSidebarConfig();
+    const { homeLinks, workflowLinks, adminLinks } = splitSidebarLinks(links);
+
+    const sidebar = document.createElement("aside");
+    sidebar.className = "dashboard-sidebar";
+    sidebar.setAttribute("aria-label", "ワークフロー");
+
+    const title = document.createElement("div");
+    title.className = "dashboard-sidebar-title";
+    title.textContent = "ホーム";
+    sidebar.appendChild(title);
+    sidebar.appendChild(buildSidebarNav(homeLinks, activeTab));
+
+    const workflowSection = buildSidebarSection("ワークフロー系", workflowLinks, activeTab, { searchable: true });
+    if (workflowSection) {
+      sidebar.appendChild(workflowSection);
+    }
+
+    const adminSection = buildSidebarSection("管理系", adminLinks, activeTab);
+    if (adminSection) {
+      sidebar.appendChild(adminSection);
+    }
     return sidebar;
   }
 

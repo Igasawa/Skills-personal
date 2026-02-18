@@ -12,17 +12,89 @@ from services import core
 ARCHIVE_SNAPSHOT_RE = re.compile(r"^\d{8}_\d{6}$")
 WORKFLOW_TEMPLATE_SIDEBAR_LABEL_LIMIT = 38
 WORKFLOW_TEMPLATE_SIDEBAR_LINK_LIMIT = 30
+WORKFLOW_PAGE_SIDEBAR_LABEL_LIMIT = 38
+WORKFLOW_PAGE_SIDEBAR_LINK_LIMIT = 60
 DEFAULT_SIDEBAR_LINKS = [
-    {"href": "/", "label": "ワークフロー", "tab": "wizard"},
-    {"href": "/expense-workflow-copy", "label": "ワークフロー（複製）", "tab": "wizard-copy"},
-    {"href": "/kil-review", "label": "KIL Review", "tab": "kil-review"},
-    {"href": "/errors", "label": "エラー", "tab": "errors"},
-    {"href": "/workspace", "label": "ワークスペース", "tab": "workspace"},
+    {"href": "/workspace", "label": "HOME", "tab": "workspace", "section": "home"},
+    {"href": "/", "label": "WorkFlow：経費精算", "tab": "wizard", "section": "workflow"},
+    {"href": "/expense-workflow-copy", "label": "WFテンプレート", "tab": "wizard-copy", "section": "admin"},
+    {"href": "/kil-review", "label": "KIL Review", "tab": "kil-review", "section": "admin"},
+    {"href": "/errors", "label": "エラー", "tab": "errors", "section": "admin"},
 ]
 
 
 def _workflow_template_store() -> Path:
     return core._artifact_root() / "_workflow_templates" / "workflow_templates.json"
+
+
+def _workflow_pages_store() -> Path:
+    return core._artifact_root() / "_workflow_pages" / "workflow_pages.json"
+
+
+def _read_workflow_pages() -> list[dict[str, object]]:
+    raw = core._read_json(_workflow_pages_store())
+    if not isinstance(raw, list):
+        return []
+
+    pages: list[dict[str, object]] = []
+    seen: set[str] = set()
+    for row in raw:
+        if not isinstance(row, dict):
+            continue
+        page_id = str(row.get("id") or "").strip()
+        if not page_id or page_id in seen:
+            continue
+        try:
+            year = int(row.get("year"))
+            month = int(row.get("month"))
+        except Exception:
+            continue
+        if not 2000 <= year <= 3000 or not 1 <= month <= 12:
+            continue
+        name = str(row.get("name") or "").strip()
+        if not name:
+            continue
+        source_urls: list[str] = []
+        seen_urls: set[str] = set()
+        raw_source_urls = row.get("source_urls") if isinstance(row.get("source_urls"), list) else []
+        for source_url in raw_source_urls:
+            url = str(source_url or "").strip()
+            if not url:
+                continue
+            key = url.lower()
+            if key in seen_urls:
+                continue
+            seen_urls.add(key)
+            source_urls.append(url)
+        mfcloud_url = str(row.get("mfcloud_url") or "").strip()
+        if not source_urls and mfcloud_url:
+            source_urls = [mfcloud_url]
+        if source_urls:
+            mfcloud_url = source_urls[0]
+
+        pages.append(
+            {
+                "id": page_id,
+                "name": name,
+                "subheading": str(row.get("subheading") or "").strip(),
+                "year": year,
+                "month": month,
+                "mfcloud_url": mfcloud_url,
+                "source_urls": source_urls,
+                "notes": str(row.get("notes") or ""),
+                "rakuten_orders_url": str(row.get("rakuten_orders_url") or ""),
+                "source_template_id": str(row.get("source_template_id") or "").strip(),
+                "created_at": str(row.get("created_at") or ""),
+                "updated_at": str(row.get("updated_at") or ""),
+            }
+        )
+        seen.add(page_id)
+
+    pages.sort(
+        key=lambda row: str(row.get("updated_at") or row.get("created_at") or ""),
+        reverse=True,
+    )
+    return pages
 
 
 def _read_workflow_templates() -> list[dict[str, object]]:
@@ -45,14 +117,33 @@ def _read_workflow_templates() -> list[dict[str, object]]:
             continue
         if not 2000 <= year <= 3000 or not 1 <= month <= 12:
             continue
+        source_urls = []
+        seen_urls: set[str] = set()
+        raw_source_urls = row.get("source_urls") if isinstance(row.get("source_urls"), list) else []
+        for source_url in raw_source_urls:
+            url = str(source_url or "").strip()
+            if not url:
+                continue
+            key = url.lower()
+            if key in seen_urls:
+                continue
+            seen_urls.add(key)
+            source_urls.append(url)
+        mfcloud_url = str(row.get("mfcloud_url") or "").strip()
+        if not source_urls and mfcloud_url:
+            source_urls = [mfcloud_url]
+        if source_urls:
+            mfcloud_url = source_urls[0]
         templates.append(
             {
                 "id": template_id,
                 "name": str(row.get("name") or "").strip()[:WORKFLOW_TEMPLATE_SIDEBAR_LABEL_LIMIT],
                 "year": year,
                 "month": month,
-                "mfcloud_url": str(row.get("mfcloud_url") or ""),
+                "mfcloud_url": mfcloud_url,
+                "source_urls": source_urls,
                 "notes": str(row.get("notes") or ""),
+                "subheading": str(row.get("subheading") or "").strip(),
                 "rakuten_orders_url": str(row.get("rakuten_orders_url") or ""),
                 "created_at": str(row.get("created_at") or ""),
                 "updated_at": str(row.get("updated_at") or ""),
@@ -83,9 +174,32 @@ def _workflow_template_sidebar_links() -> list[dict[str, object]]:
                 "href": f"/expense-workflow-copy?template={template_id}",
                 "label": label,
                 "tab": "wizard-copy",
+                "section": "admin",
             }
         )
 
+    return links
+
+
+def _workflow_page_sidebar_links() -> list[dict[str, object]]:
+    links: list[dict[str, object]] = []
+    for page in _read_workflow_pages()[:WORKFLOW_PAGE_SIDEBAR_LINK_LIMIT]:
+        page_id = str(page.get("id") or "").strip()
+        label = str(page.get("name") or "WorkFlow").strip()[:WORKFLOW_PAGE_SIDEBAR_LABEL_LIMIT]
+        if not page_id:
+            continue
+        year = int(page.get("year") or 0)
+        month = int(page.get("month") or 0)
+        if 1 <= month <= 12 and 2000 <= year <= 3000:
+            label = f"{label} ({year:04d}-{month:02d})"
+        links.append(
+            {
+                "href": f"/workflow/{page_id}",
+                "label": label,
+                "tab": "wizard",
+                "section": "workflow",
+            }
+        )
     return links
 
 
@@ -101,8 +215,22 @@ def _lookup_workflow_template(template_id: str | None) -> dict[str, object] | No
     return None
 
 
+def _lookup_workflow_page(workflow_id: str | None) -> dict[str, object] | None:
+    if not workflow_id:
+        return None
+    wanted = str(workflow_id).strip()
+    if not wanted:
+        return None
+    for workflow_page in _read_workflow_pages():
+        if str(workflow_page.get("id")) == wanted:
+            return workflow_page
+    return None
+
+
 def _dashboard_context(active_tab: str) -> dict[str, object]:
     links = list(DEFAULT_SIDEBAR_LINKS)
+    for link in _workflow_page_sidebar_links():
+        links.append(link)
     for link in _workflow_template_sidebar_links():
         links.append(link)
     deduped = []
@@ -131,6 +259,34 @@ def create_pages_router(templates: Jinja2Templates) -> APIRouter:
             {
                 **_dashboard_context("wizard"),
                 "defaults": defaults,
+                "ax_home": str(core._ax_home()),
+            },
+        )
+
+    @router.get("/workflow/{workflow_id}", response_class=HTMLResponse)
+    def workflow_page(request: Request, workflow_id: str) -> HTMLResponse:
+        page_config = _lookup_workflow_page(workflow_id)
+        if page_config is None:
+            raise HTTPException(status_code=404, detail="Workflow page not found.")
+        defaults = core._resolve_form_defaults()
+        try:
+            defaults["year"] = int(page_config.get("year"))
+        except Exception:
+            pass
+        try:
+            defaults["month"] = int(page_config.get("month"))
+        except Exception:
+            pass
+        defaults["mfcloud_url"] = str(page_config.get("mfcloud_url") or "")
+        defaults["notes"] = str(page_config.get("notes") or "")
+        defaults["rakuten_orders_url"] = str(page_config.get("rakuten_orders_url") or "")
+        return templates.TemplateResponse(
+            request,
+            "index.html",
+            {
+                **_dashboard_context("wizard"),
+                "defaults": defaults,
+                "workflow_page": page_config,
                 "ax_home": str(core._ax_home()),
             },
         )
@@ -164,7 +320,7 @@ def create_pages_router(templates: Jinja2Templates) -> APIRouter:
                 defaults["month"] = int(workflow_template.get("month"))
             except Exception:
                 pass
-            defaults["mfcloud_url"] = str(workflow_template.get("mfcloud_url") or defaults["mfcloud_url"])
+            defaults["mfcloud_url"] = str(workflow_template.get("mfcloud_url") or "")
             defaults["notes"] = str(workflow_template.get("notes") or defaults["notes"])
             defaults["rakuten_orders_url"] = str(workflow_template.get("rakuten_orders_url") or "")
         return templates.TemplateResponse(

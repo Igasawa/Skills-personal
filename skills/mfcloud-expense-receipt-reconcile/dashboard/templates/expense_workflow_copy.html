@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>ワークフローテンプレート</title>
+    <title>{{ workflow_template.name | default('ワークフローテンプレート', true) }}</title>
     <link rel="stylesheet" href="/static/styles.css" />
   </head>
   <body>
@@ -16,8 +16,16 @@
     >
       <header class="hero">
         <div>
-          <p class="eyebrow">Amazon / 楽天 / その他</p>
-          <h1>ワークフローテンプレート</h1>
+          <p
+            id="workflow-template-page-subheading"
+            class="eyebrow"
+            {% if not workflow_template or not workflow_template.subheading %}hidden{% endif %}
+          >
+            {{ workflow_template.subheading | default('', true) }}
+          </p>
+          <h1 id="workflow-template-page-title" data-default-title="ワークフローテンプレート">
+            {{ workflow_template.name | default('ワークフローテンプレート', true) }}
+          </h1>
           <p class="subtitle">
             テンプレートを複製して、将来のワークフロー起動時に再利用できる形で保存します。
           </p>
@@ -69,9 +77,31 @@
             </label>
           </div>
           <label>
-            ソースURL
-            <input type="url" name="mfcloud_url" value="{{ defaults.mfcloud_url }}" required />
+            小見出し（任意）
+            <input
+              type="text"
+              name="template_subheading"
+              value="{{ workflow_template.subheading | default('', true) }}"
+              placeholder="例: Amazon / 楽天 / その他"
+            />
           </label>
+          <label for="template-source-url-primary">ソースURL（任意）</label>
+          <div id="template-source-url-list" class="template-source-url-list" data-source-url-list>
+            <div class="form-row template-source-url-row" data-source-url-row>
+              <input
+                id="template-source-url-primary"
+                type="url"
+                name="mfcloud_url"
+                value="{{ defaults.mfcloud_url }}"
+                data-source-url-input
+                placeholder="https://example.com/path"
+              />
+              <button type="button" class="secondary" data-source-url-remove aria-label="このURL行を削除">-</button>
+            </div>
+          </div>
+          <div class="form-row">
+            <button type="button" id="template-source-url-add" class="secondary">+ URLを追加</button>
+          </div>
           <label>
             メモ
             <input
@@ -83,8 +113,9 @@
           </label>
           <input type="hidden" name="rakuten_orders_url" value="{{ defaults.rakuten_orders_url }}" />
           <div class="form-row">
+            <button type="button" id="workflow-page-create" class="primary">ワークフローを作成</button>
             <button type="button" id="workflow-template-save" class="secondary">テンプレートを保存</button>
-            <span class="muted">保存すると、サイドバーにリンクが追加され再利用できます。</span>
+            <span class="muted">「ワークフローを作成」は新しいページを追加します。「テンプレートを保存」は雛形を更新します。</span>
           </div>
         </form>
       </section>

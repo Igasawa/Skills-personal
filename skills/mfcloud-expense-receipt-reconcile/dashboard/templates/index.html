@@ -1,9 +1,11 @@
 <!DOCTYPE html>
 <html lang="ja">
   <head>
+    {% set page_title = workflow_page.name if workflow_page and workflow_page.name else "workflow：経費精算" %}
+    {% set page_subheading = workflow_page.subheading if workflow_page and workflow_page.subheading else "MF経費精算 / Amazon / 楽天" %}
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>workflow：経費精算</title>
+    <title>{{ page_title }}</title>
     <link rel="stylesheet" href="/static/styles.css" />
   </head>
   <body>
@@ -11,14 +13,21 @@
       class="page"
       data-active-tab="{{ active_tab | default('wizard', true) }}"
       data-sidebar-links='{{ (sidebar_links | default([], true)) | tojson }}'
+      data-workflow-page='{{ (workflow_page | default({}, true)) | tojson }}'
     >
       <header class="hero">
         <div>
-          <p class="eyebrow">MF経費精算 / Amazon / 楽天</p>
-          <h1>workflow：経費精算</h1>
+          <p class="eyebrow" {% if not page_subheading %}hidden{% endif %}>{{ page_subheading }}</p>
+          <h1>{{ page_title }}</h1>
           <p class="subtitle">
             成果物の確認と実行をまとめて管理します。ローカル専用（127.0.0.1）。
           </p>
+          <div class="step-actions">
+            {% if workflow_page and workflow_page.id %}
+              <button type="button" class="secondary" id="workflow-page-edit">ページ設定</button>
+            {% endif %}
+            <a class="secondary" href="/status">ステータスページを開く</a>
+          </div>
         </div>
       </header>
 

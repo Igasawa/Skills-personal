@@ -38,6 +38,7 @@
   const YM_STORAGE_KEY = "mfcloud.dashboard.selectedYm";
   const YM_PATTERN = /^(\d{4})-(\d{2})$/;
   const templateSaveState = { inFlight: false };
+  const workflowPageCreateState = { inFlight: false };
   const TEMPLATE_MODE_CONFIG = {
     new: {
       chip: "新規",
@@ -99,7 +100,21 @@
     return null;
   }
 
+  function parseWorkflowPage(page) {
+    if (!page) return null;
+    const raw = String(page.dataset.workflowPage || "").trim();
+    if (!raw) return null;
+    try {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === "object") return parsed;
+    } catch {
+      // Ignore malformed metadata.
+    }
+    return null;
+  }
+
   const workflowTemplate = parseWorkflowTemplate(pageEl);
+  const workflowPage = parseWorkflowPage(pageEl);
 
   function getTemplateMode() {
     if (!form) return "edit";
@@ -122,6 +137,204 @@
     }
   }
 
+  function syncTemplatePageHeader() {
+    const titleEl = document.getElementById("workflow-template-page-title");
+    const subheadingEl = document.getElementById("workflow-template-page-subheading");
+    const nameInput = form?.querySelector("[name=template_name]");
+    const subheadingInput = form?.querySelector("[name=template_subheading]");
+    if (!titleEl && !subheadingEl && !nameInput && !subheadingInput) return;
+    const fallbackTitle = String(titleEl?.dataset.defaultTitle || "").trim() || "ワークフローテンプレート";
+    const title = String(nameInput?.value || workflowTemplate?.name || "").trim() || fallbackTitle;
+    const subheading = String(subheadingInput?.value || workflowTemplate?.subheading || "").trim();
+
+    if (titleEl) {
+      titleEl.textContent = title;
+    }
+    if (subheadingEl) {
+      subheadingEl.textContent = subheading;
+      subheadingEl.hidden = !subheading;
+    }
+    if (titleEl || nameInput) {
+      document.title = title;
+    }
+  }
+
+  function normalizeTemplateSourceUrls(rawValues) {
+    const values = Array.isArray(rawValues) ? rawValues : [];
+    const urls = [];
+    const seen = new Set();
+    values.forEach((value) => {
+      const url = String(value || "").trim();
+      if (!url) return;
+      const key = url.toLowerCase();
+      if (seen.has(key)) return;
+      seen.add(key);
+      urls.push(url);
+    });
+    return urls;
+  }
+
+  function isValidHttpUrl(value) {
+    const text = String(value || "").trim();
+    if (!text) return true;
+    try {
+      const parsed = new URL(text);
+      return parsed.protocol === "http:" || parsed.protocol === "https:";
+    } catch {
+      return false;
+    }
+  }
+
+  function getTemplateSourceUrlListEl() {
+    return form ? form.querySelector("[data-source-url-list]") : null;
+  }
+
+  function getTemplateSourceUrlRows() {
+    if (!form) return [];
+    return Array.from(form.querySelectorAll("[data-source-url-row]"));
+  }
+
+  function getTemplateSourceUrlInputs() {
+    if (!form) return [];
+    return Array.from(form.querySelectorAll("[data-source-url-input]"));
+  }
+
+  function collectTemplateSourceUrls() {
+    return normalizeTemplateSourceUrls(
+      getTemplateSourceUrlInputs().map((input) => String(input?.value || "").trim()),
+    );
+  }
+
+  function getPrimaryTemplateSourceUrl() {
+    const urls = collectTemplateSourceUrls();
+    return urls[0] || "";
+  }
+
+  function setTemplateSourceUrlInputNames() {
+    getTemplateSourceUrlInputs().forEach((input, index) => {
+      input.name = index === 0 ? "mfcloud_url" : `mfcloud_url_${index + 1}`;
+      if (index === 0) {
+        input.id = "template-source-url-primary";
+      } else if (input.id === "template-source-url-primary") {
+        input.removeAttribute("id");
+      }
+    });
+  }
+
+  function refreshTemplateSourceUrlRowMeta() {
+    const rows = getTemplateSourceUrlRows();
+    rows.forEach((row, index) => {
+      let labelEl = row.querySelector("[data-source-url-index]");
+      if (!labelEl) {
+        labelEl = document.createElement("span");
+        labelEl.className = "muted";
+        labelEl.dataset.sourceUrlIndex = "1";
+        row.insertBefore(labelEl, row.firstChild);
+      }
+      labelEl.textContent = `URL ${index + 1}`;
+      const input = row.querySelector("[data-source-url-input]");
+      if (input) {
+        input.setAttribute("aria-label", `ソースURL ${index + 1}`);
+      }
+    });
+  }
+
+  function validateTemplateSourceUrls() {
+    const inputs = getTemplateSourceUrlInputs();
+    let firstInvalid = null;
+    inputs.forEach((input) => {
+      if (!input) return;
+      const value = String(input.value || "").trim();
+      const valid = isValidHttpUrl(value);
+      input.classList.toggle("is-invalid", !valid);
+      input.setCustomValidity(valid ? "" : "http:// もしくは https:// のURLを入力してください。");
+      if (!valid && !firstInvalid) {
+        firstInvalid = input;
+      }
+    });
+    if (firstInvalid) {
+      firstInvalid.focus();
+      firstInvalid.reportValidity();
+      return false;
+    }
+    return true;
+  }
+
+  function ensureTemplateSourceUrlRows() {
+    const listEl = getTemplateSourceUrlListEl();
+    if (!listEl) return;
+    const rows = getTemplateSourceUrlRows();
+    if (rows.length === 0) {
+      addTemplateSourceUrlRow("", { focus: false });
+      return;
+    }
+    const hideRemove = rows.length <= 1;
+    rows.forEach((row) => {
+      const removeButton = row.querySelector("[data-source-url-remove]");
+      if (!removeButton) return;
+      removeButton.hidden = hideRemove;
+      removeButton.disabled = hideRemove;
+    });
+    refreshTemplateSourceUrlRowMeta();
+    setTemplateSourceUrlInputNames();
+  }
+
+  function addTemplateSourceUrlRow(initialValue = "", options = {}) {
+    const listEl = getTemplateSourceUrlListEl();
+    if (!listEl) return;
+    const shouldFocus = options.focus !== false;
+    const row = document.createElement("div");
+    row.className = "form-row template-source-url-row";
+    row.dataset.sourceUrlRow = "1";
+
+    const input = document.createElement("input");
+    input.type = "url";
+    input.value = String(initialValue || "").trim();
+    input.placeholder = "https://example.com/path";
+    input.dataset.sourceUrlInput = "1";
+
+    const removeButton = document.createElement("button");
+    removeButton.type = "button";
+    removeButton.className = "secondary";
+    removeButton.dataset.sourceUrlRemove = "1";
+    removeButton.setAttribute("aria-label", "このURL行を削除");
+    removeButton.textContent = "-";
+    removeButton.addEventListener("click", () => {
+      row.remove();
+      ensureTemplateSourceUrlRows();
+    });
+
+    row.appendChild(input);
+    row.appendChild(removeButton);
+    listEl.appendChild(row);
+    ensureTemplateSourceUrlRows();
+    if (shouldFocus) input.focus();
+  }
+
+  function hydrateTemplateSourceUrls() {
+    const listEl = getTemplateSourceUrlListEl();
+    if (!listEl) return;
+    const templateUrls = normalizeTemplateSourceUrls(workflowTemplate?.source_urls);
+    const fallbackUrl = String(workflowTemplate?.mfcloud_url || "").trim();
+    const initialInput = form?.querySelector("[name=mfcloud_url]");
+    const initialValue = String(initialInput?.value || "").trim();
+
+    let sourceUrls = templateUrls;
+    if (sourceUrls.length === 0 && fallbackUrl) {
+      sourceUrls = [fallbackUrl];
+    }
+    if (sourceUrls.length === 0 && initialValue) {
+      sourceUrls = [initialValue];
+    }
+    if (sourceUrls.length === 0) {
+      sourceUrls = [""];
+    }
+
+    listEl.innerHTML = "";
+    sourceUrls.forEach((url) => addTemplateSourceUrlRow(url, { focus: false }));
+    ensureTemplateSourceUrlRows();
+  }
+
   function applyTemplateModeUI() {
     const mode = getTemplateMode();
     const config = getTemplateModeConfig(mode);
@@ -142,6 +355,7 @@
 
     if (!sourceMeta || !sourceEditLink || !sourceCopyLink || !sourceNameEl || !sourceUpdatedEl) {
       maybeSeedCopyTemplateName(mode, workflowTemplate);
+      syncTemplatePageHeader();
       return;
     }
 
@@ -157,6 +371,7 @@
       sourceCopyLink.hidden = false;
       sourceMeta.classList.remove("hidden");
       maybeSeedCopyTemplateName(mode, workflowTemplate);
+      syncTemplatePageHeader();
       return;
     }
 
@@ -164,6 +379,7 @@
     sourceEditLink.hidden = true;
     sourceCopyLink.hidden = true;
     maybeSeedCopyTemplateName(mode, workflowTemplate);
+    syncTemplatePageHeader();
   }
 
   function getTemplateIdFromForm() {
@@ -462,13 +678,12 @@
     if (!form) return null;
     const yearEl = form.querySelector("[name=year]");
     const monthEl = form.querySelector("[name=month]");
-    const mfcloudEl = form.querySelector("[name=mfcloud_url]");
     const notesEl = form.querySelector("[name=notes]");
     const rakutenOrdersEl = form.querySelector("[name=rakuten_orders_url]");
     return {
       year: Number(yearEl?.value || 0),
       month: Number(monthEl?.value || 0),
-      mfcloud_url: (mfcloudEl?.value || "").trim(),
+      mfcloud_url: getPrimaryTemplateSourceUrl(),
       notes: (notesEl?.value || "").trim(),
       rakuten_orders_url: (rakutenOrdersEl?.value || "").trim(),
       auth_handoff: true,
@@ -480,11 +695,13 @@
   function buildTemplatePayload() {
     if (!form) return null;
     const nameEl = form.querySelector("[name=template_name]");
+    const subheadingEl = form.querySelector("[name=template_subheading]");
     const yearEl = form.querySelector("[name=year]");
     const monthEl = form.querySelector("[name=month]");
-    const mfcloudEl = form.querySelector("[name=mfcloud_url]");
     const notesEl = form.querySelector("[name=notes]");
     const rakutenOrdersEl = form.querySelector("[name=rakuten_orders_url]");
+    const sourceUrls = collectTemplateSourceUrls();
+    const primarySourceUrl = sourceUrls[0] || "";
     const templateMode = getTemplateMode();
     const templateId = templateMode === "copy" ? "" : getTemplateIdFromForm();
     const templateSourceId = templateMode === "copy" ? getTemplateSourceIdFromForm() || String(workflowTemplate?.id || "").trim() : "";
@@ -494,9 +711,11 @@
       template_mode: templateMode,
       template_source_id: templateSourceId,
       name,
+      subheading: String(subheadingEl?.value || "").trim(),
       year: Number(yearEl?.value || 0),
       month: Number(monthEl?.value || 0),
-      mfcloud_url: String(mfcloudEl?.value || "").trim(),
+      mfcloud_url: primarySourceUrl,
+      source_urls: sourceUrls,
       notes: String(notesEl?.value || "").trim(),
       rakuten_orders_url: String(rakutenOrdersEl?.value || "").trim(),
       allow_duplicate_name: false,
@@ -505,8 +724,156 @@
     };
   }
 
+  function buildWorkflowPagePayload() {
+    const payload = buildTemplatePayload();
+    if (!payload) return null;
+    const sourceTemplateId =
+      getTemplateSourceIdFromForm() || getTemplateIdFromForm() || String(workflowTemplate?.id || "").trim();
+    return {
+      name: payload.name,
+      subheading: payload.subheading,
+      year: payload.year,
+      month: payload.month,
+      mfcloud_url: payload.mfcloud_url,
+      source_urls: Array.isArray(payload.source_urls) ? payload.source_urls : [],
+      notes: payload.notes,
+      rakuten_orders_url: payload.rakuten_orders_url,
+      source_template_id: sourceTemplateId,
+    };
+  }
+
+  async function createWorkflowPage() {
+    if (!form || workflowPageCreateState.inFlight) return;
+    if (!validateTemplateSourceUrls()) return;
+    const payload = buildWorkflowPagePayload();
+    if (!payload) return;
+    if (!payload.name) {
+      const message = "ワークフロー名を入力してください。";
+      showError(message);
+      showToast(message, "error");
+      return;
+    }
+    if (!payload.year || !payload.month) {
+      const message = "年月を入力してください。";
+      showError(message);
+      showToast(message, "error");
+      return;
+    }
+    const sourceCount = Array.isArray(payload.source_urls) ? payload.source_urls.length : 0;
+    const confirmed = window.confirm(
+      [
+        "新しいワークフローページを作成します。",
+        `ページ名: ${payload.name}`,
+        `小見出し: ${payload.subheading || "(なし)"}`,
+        `年月: ${payload.year}-${String(payload.month).padStart(2, "0")}`,
+        `ソースURL件数: ${sourceCount}`,
+      ].join("\n"),
+    );
+    if (!confirmed) return;
+
+    const createButton = document.getElementById("workflow-page-create");
+    const originalLabel = createButton ? String(createButton.textContent || "").trim() : "ワークフローを作成";
+    workflowPageCreateState.inFlight = true;
+    if (createButton) {
+      createButton.disabled = true;
+      createButton.textContent = "作成中...";
+      createButton.dataset.busy = "1";
+    }
+    clearError();
+
+    try {
+      const res = await fetch("/api/workflow-pages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const message = toFriendlyMessage(data.detail) || "ワークフローページの作成に失敗しました。";
+        showError(message);
+        showToast(message, "error");
+        return;
+      }
+
+      const workflowPage = data.workflow_page || null;
+      const workflowPageId = String(workflowPage?.id || "").trim();
+      showToast("ワークフローページを作成しました。", "success");
+      if (workflowPageId) {
+        window.location.href = `/workflow/${encodeURIComponent(workflowPageId)}?year=${payload.year}&month=${payload.month}`;
+        return;
+      }
+      const message = "作成は完了しましたが、遷移先が見つかりませんでした。";
+      showError(message);
+      showToast(message, "error");
+    } catch {
+      const message = "ワークフローページの作成に失敗しました。";
+      showError(message);
+      showToast(message, "error");
+    } finally {
+      if (createButton) {
+        createButton.disabled = false;
+        createButton.textContent = originalLabel;
+        if (createButton.dataset) {
+          delete createButton.dataset.busy;
+        }
+      }
+      workflowPageCreateState.inFlight = false;
+    }
+  }
+
+  async function editWorkflowPageSettings() {
+    const workflowPageId = String(workflowPage?.id || "").trim();
+    if (!workflowPageId) return;
+    const heroTitleEl = document.querySelector(".hero h1");
+    const heroSubheadingEl = document.querySelector(".hero .eyebrow");
+    const currentName = String(workflowPage?.name || heroTitleEl?.textContent || "").trim();
+    const currentSubheading = String(workflowPage?.subheading || heroSubheadingEl?.textContent || "").trim();
+    const nextNameRaw = window.prompt("ワークフロー名", currentName);
+    if (nextNameRaw === null) return;
+    const nextName = String(nextNameRaw || "").trim();
+    if (!nextName) {
+      const message = "ワークフロー名を入力してください。";
+      showError(message);
+      showToast(message, "error");
+      return;
+    }
+    const nextSubheadingRaw = window.prompt("小見出し（任意）", currentSubheading);
+    if (nextSubheadingRaw === null) return;
+    const nextSubheading = String(nextSubheadingRaw || "").trim();
+    if (nextName === currentName && nextSubheading === currentSubheading) {
+      showToast("変更はありません。", "info");
+      return;
+    }
+    const updates = {
+      name: nextName,
+      subheading: nextSubheading,
+      base_updated_at: String(workflowPage?.updated_at || ""),
+    };
+    try {
+      const res = await fetch(`/api/workflow-pages/${encodeURIComponent(workflowPageId)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(updates),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const message = toFriendlyMessage(data.detail) || "ページ設定の更新に失敗しました。";
+        showError(message);
+        showToast(message, "error");
+        return;
+      }
+      showToast("ページ設定を更新しました。", "success");
+      window.location.reload();
+    } catch {
+      const message = "ページ設定の更新に失敗しました。";
+      showError(message);
+      showToast(message, "error");
+    }
+  }
+
   async function saveWorkflowTemplate() {
     if (!form || templateSaveState.inFlight) return;
+    if (!validateTemplateSourceUrls()) return;
     const payload = buildTemplatePayload();
     if (!payload) return;
     if (!payload.name) {
@@ -515,8 +882,8 @@
       showToast(message, "error");
       return;
     }
-    if (!payload.year || !payload.month || !payload.mfcloud_url) {
-      const message = "URLを入力してください。";
+    if (!payload.year || !payload.month) {
+      const message = "年月を入力してください。";
       showError(message);
       showToast(message, "error");
       return;
@@ -2392,7 +2759,25 @@
       applyArchivePageLink(ym);
       refreshSteps();
     };
+    hydrateTemplateSourceUrls();
     applyTemplateModeUI();
+    const templateSourceUrlAddButton = document.getElementById("template-source-url-add");
+    templateSourceUrlAddButton?.addEventListener("click", (event) => {
+      event.preventDefault();
+      addTemplateSourceUrlRow("");
+    });
+    const workflowPageCreateButton = document.getElementById("workflow-page-create");
+    workflowPageCreateButton?.addEventListener("click", (event) => {
+      event.preventDefault();
+      createWorkflowPage();
+    });
+    const workflowPageEditButton = document.getElementById("workflow-page-edit");
+    workflowPageEditButton?.addEventListener("click", (event) => {
+      event.preventDefault();
+      editWorkflowPageSettings();
+    });
+    form.querySelector("[name=template_name]")?.addEventListener("input", syncTemplatePageHeader);
+    form.querySelector("[name=template_subheading]")?.addEventListener("input", syncTemplatePageHeader);
     form.querySelector("[name=year]")?.addEventListener("change", handleYmChanged);
     form.querySelector("[name=month]")?.addEventListener("change", handleYmChanged);
     const templateSaveButton = document.getElementById("workflow-template-save");
