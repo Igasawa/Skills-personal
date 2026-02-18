@@ -111,10 +111,13 @@ npm run check:encoding
 
 - `-NoPush` : commit のみ
 - `-DryRun` : チェックまで実施し、commit/push を行わない
+- `-AllowNoStage` : ステージング前でも、ワークツリー差分を対象に文字化けチェックまで実行
+- `-CheckOnly` : ワークツリー差分を対象に文字化けチェックのみ実行（commit/push をしない）
 - `-SkipScopeCheck` : 追加スコープの再帰チェックを省略
 - `-Remote <name>` : push先を明示（既定 `origin`）
 
 ### 注意
 
-- `-DryRun` でもステージ有無は判定されます。未ステージのまま実行しても失敗します。
+- `-DryRun` はコミット/プッシュを行いません。`-AllowNoStage` はチェック対象をワークツリー差分に広げるのみで、未ステージでは commit は実行されません（コミットするには `git add` が必要です）。
+- 文字化け防止のため、`-CheckOnly` や `-DryRun` で内容を確認した後に、`git add` → commit を行う運用を推奨します。
 - この運用は pre-commit/pre-push の両方で文字エンコーディングチェックを行うため、文字化けの再発を抑制します。

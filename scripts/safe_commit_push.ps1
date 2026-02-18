@@ -3,6 +3,8 @@ param(
     [string]$Remote = "origin",
     [switch]$NoPush,
     [switch]$DryRun,
+    [switch]$AllowNoStage,
+    [switch]$CheckOnly,
     [switch]$SkipScopeCheck
 )
 
@@ -37,8 +39,53 @@ function Get-CurrentBranch {
 }
 
 function Get-StagedFiles {
-    $files = (git diff --cached --name-only --diff-filter=ACMR)
-    return @($files | Where-Object { $_ -and $_.Trim() -ne "" })
+    $files = @()
+    git diff --cached --name-only --diff-filter=ACMR | ForEach-Object {
+        $line = $_.Trim()
+        if ($line) {
+            $files += $line
+        }
+    }
+    return $files
+}
+
+function Get-WorkingTreeFiles {
+    $files = @()
+    git diff --name-only HEAD | ForEach-Object {
+        $line = $_.Trim()
+        if ($line) {
+            $files += $line
+        }
+    }
+    git ls-files --others --exclude-standard | ForEach-Object {
+        $line = $_.Trim()
+        if ($line) {
+            $files += $line
+        }
+    }
+    return ($files | Select-Object -Unique)
+}
+
+function Invoke-EncodingCheck {
+    param(
+        [string]$Mode,
+        [string[]]$Paths
+    )
+    if ($Paths.Count -eq 0) {
+        Write-Host "$Mode check target is empty. Skipped."
+        return
+    }
+
+    Write-Host "Encoding check ($Mode)..."
+    $args = @("scripts/check_text_encoding.py")
+    foreach ($path in $Paths) {
+        $args += "--path"
+        $args += $path
+    }
+    & $script:PythonCmd @args
+    if ($LASTEXITCODE -ne 0) {
+        throw "check_text_encoding.py failed ($Mode)."
+    }
 }
 
 function Test-Python {
@@ -65,8 +112,24 @@ try {
     Write-Host "Remote: $Remote"
 
     $staged = Get-StagedFiles
-    if ($staged.Count -eq 0) {
-        throw "No staged changes found. Run `git add ...` first."
+    if (-not $staged -or $staged.Count -eq 0) {
+        if (-not $AllowNoStage) {
+            if ($DryRun -or $CheckOnly) {
+                throw "No staged changes found and no --AllowNoStage flag. Use -CheckOnly for repository checks only, or stage files first."
+            }
+            throw "No staged changes found. Run `git add ...` first."
+        }
+
+        Write-Host "No staged changes found. Running checks on working-tree files only with --AllowNoStage."
+        $worktree = Get-WorkingTreeFiles
+        Invoke-EncodingCheck "working tree" $worktree
+
+        if ($CheckOnly -or $DryRun) {
+            Write-Host "CheckOnly/DryRun: commit/push skipped."
+            exit 0
+        }
+
+        throw "No staged files for commit. Stage files after checks, or rerun with -CheckOnly."
     }
 
     Write-Host "Staged files:"
