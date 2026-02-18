@@ -2501,6 +2501,7 @@ def create_api_router() -> APIRouter:
                     "month": month,
                     "mfcloud_url": mfcloud_url,
                     "source_urls": source_urls,
+                    "steps": _normalize_workflow_template_steps(row.get("steps")),
                     "notes": _normalize_workflow_template_notes(row.get("notes")),
                     "rakuten_orders_url": _normalize_workflow_template_url(row.get("rakuten_orders_url")) or "",
                     "source_template_id": _normalize_workflow_template_id(row.get("source_template_id")),
@@ -2555,6 +2556,7 @@ def create_api_router() -> APIRouter:
                     "month": month,
                     "mfcloud_url": mfcloud_url,
                     "source_urls": source_urls,
+                    "steps": _normalize_workflow_template_steps(row.get("steps")),
                     "notes": _normalize_workflow_template_notes(row.get("notes")),
                     "rakuten_orders_url": _normalize_workflow_template_url(row.get("rakuten_orders_url")) or "",
                     "source_template_id": _normalize_workflow_template_id(row.get("source_template_id")),
@@ -2601,6 +2603,7 @@ def create_api_router() -> APIRouter:
             "month": month,
             "mfcloud_url": mfcloud_url,
             "source_urls": source_urls,
+            "steps": _normalize_workflow_template_steps(payload.get("steps")),
             "notes": _normalize_workflow_template_notes(payload.get("notes")),
             "rakuten_orders_url": _normalize_workflow_template_url(payload.get("rakuten_orders_url")) or "",
             "source_template_id": _normalize_workflow_template_id(payload.get("source_template_id")),
@@ -2634,6 +2637,8 @@ def create_api_router() -> APIRouter:
             updates["month"] = month
         if "archived" in payload:
             updates["archived"] = bool(payload.get("archived"))
+        if "steps" in payload:
+            updates["steps"] = _normalize_workflow_template_steps(payload.get("steps"))
 
         source_urls = None
         if "source_urls" in payload:
@@ -2704,5 +2709,4 @@ def create_api_router() -> APIRouter:
         router=router,
     )
     return router
-
 

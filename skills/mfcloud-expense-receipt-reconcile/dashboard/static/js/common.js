@@ -10,7 +10,8 @@
 const DEFAULT_DASHBOARD_SIDEBAR_LINKS = Object.freeze([
     { href: "/workspace", label: "HOME", tab: "workspace", section: "home" },
     { href: "/", label: "WorkFlow：経費精算", tab: "wizard", section: "workflow" },
-    { href: "/expense-workflow-copy", label: "WFテンプレート", tab: "wizard-copy", section: "admin" },
+    { href: "/expense-workflow-copy", label: "WF作成テンプレート", tab: "wizard-copy", section: "admin" },
+    { href: "/workflow-pages/archived", label: "WFアーカイブ管理", tab: "workflow-archive", section: "admin" },
     { href: "/kil-review", label: "KIL Review", tab: "kil-review", section: "admin" },
     { href: "/errors", label: "\u7ba1\u7406\u30bb\u30f3\u30bf\u30fc", tab: "errors", section: "admin" },
   ]);
@@ -51,7 +52,10 @@ const DEFAULT_DASHBOARD_SIDEBAR_LINKS = Object.freeze([
     const text = String(detail || "");
     if (text.includes("Another run is already in progress")) return "すでに実行中の処理があります。完了してから再度お試しください。";
     if (text.includes("Template base timestamp is required for edit mode.")) return "編集時はベース更新日時が必要です。";
-    if (text.includes("Template name is required.")) return "テンプレート名を入力してください。";
+    if (text.includes("Template create/copy is disabled. Use edit mode only.")) return "テンプレートの新規作成・複製は無効です。既存テンプレートの更新のみ可能です。";
+    if (text.includes("Template id is required. Creating new templates is disabled.")) return "新規テンプレート作成は無効です。既存テンプレートを選択してください。";
+    if (text.includes("Template not found.")) return "対象テンプレートが見つかりません。画面を再読み込みして選び直してください。";
+    if (text.includes("Template name is required.")) return "ワークフロー名を入力してください。";
     if (text.includes("Workflow page name is required.")) return "ワークフロー名を入力してください。";
     if (text.includes("Workflow page name already exists.")) return "同名のワークフローが既に存在します。";
     if (text.includes("Workflow page limit reached.")) return "ワークフローの上限に達しました。不要なページを整理してください。";
@@ -202,6 +206,7 @@ const DEFAULT_DASHBOARD_SIDEBAR_LINKS = Object.freeze([
     const normalized = (pathname || "").replace(/\/+$/, "");
     if (!normalized || normalized === "/") return "wizard";
     if (normalized === "/expense-workflow-copy") return "wizard-copy";
+    if (normalized === "/workflow-pages/archived") return "workflow-archive";
     if (normalized === "/status") return "status";
     if (normalized === "/kil-review") return "kil-review";
     if (normalized === "/errors") return "errors";

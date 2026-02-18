@@ -28,7 +28,8 @@ WORKFLOW_TEMPLATE_ALLOWED_STEP_ACTIONS = (
 DEFAULT_SIDEBAR_LINKS = [
     {"href": "/workspace", "label": "HOME", "tab": "workspace", "section": "home"},
     {"href": "/", "label": "WorkFlow：経費精算", "tab": "wizard", "section": "workflow"},
-    {"href": "/expense-workflow-copy", "label": "WFテンプレート", "tab": "wizard-copy", "section": "admin"},
+    {"href": "/expense-workflow-copy", "label": "WF作成テンプレート", "tab": "wizard-copy", "section": "admin"},
+    {"href": "/workflow-pages/archived", "label": "WFアーカイブ管理", "tab": "workflow-archive", "section": "admin"},
     {"href": "/kil-review", "label": "KIL Review", "tab": "kil-review", "section": "admin"},
     {"href": "/errors", "label": "\u7ba1\u7406\u30bb\u30f3\u30bf\u30fc", "tab": "errors", "section": "admin"},
 ]
@@ -96,6 +97,7 @@ def _read_workflow_pages(*, include_archived: bool = False) -> list[dict[str, ob
                 "month": month,
                 "mfcloud_url": mfcloud_url,
                 "source_urls": source_urls,
+                "steps": _normalize_template_steps_for_view(row.get("steps")),
                 "notes": str(row.get("notes") or ""),
                 "rakuten_orders_url": str(row.get("rakuten_orders_url") or ""),
                 "source_template_id": str(row.get("source_template_id") or "").strip(),
@@ -179,7 +181,7 @@ def _read_workflow_templates() -> list[dict[str, object]]:
         templates.append(
             {
                 "id": template_id,
-                "name": str(row.get("name") or "").strip()[:WORKFLOW_TEMPLATE_SIDEBAR_LABEL_LIMIT],
+                "name": str(row.get("name") or "").strip(),
                 "year": year,
                 "month": month,
                 "mfcloud_url": mfcloud_url,
@@ -205,7 +207,7 @@ def _workflow_template_sidebar_links() -> list[dict[str, object]]:
     links: list[dict[str, object]] = []
     for template in _read_workflow_templates()[:WORKFLOW_TEMPLATE_SIDEBAR_LINK_LIMIT]:
         template_id = str(template.get("id") or "").strip()
-        label = str(template.get("name") or "ワークフローテンプレート").strip()[:WORKFLOW_TEMPLATE_SIDEBAR_LABEL_LIMIT]
+        label = str(template.get("name") or "ワークフロー作成テンプレート").strip()[:WORKFLOW_TEMPLATE_SIDEBAR_LABEL_LIMIT]
         if not template_id:
             continue
         year = int(template.get("year") or 0)
@@ -274,8 +276,6 @@ def _dashboard_context(active_tab: str) -> dict[str, object]:
     links = list(DEFAULT_SIDEBAR_LINKS)
     for link in _workflow_page_sidebar_links():
         links.append(link)
-    for link in _workflow_template_sidebar_links():
-        links.append(link)
     deduped = []
     seen = set()
     for link in links:
@@ -343,21 +343,17 @@ def create_pages_router(templates: Jinja2Templates) -> APIRouter:
         request: Request,
         template: str | None = Query(default=None),
         template_id: str | None = Query(default=None),
-        mode: str | None = Query(default=None),
     ) -> HTMLResponse:
         defaults = core._resolve_form_defaults()
         resolved_template_id = template or template_id
         workflow_template = _lookup_workflow_template(resolved_template_id)
-        template_mode = "new"
-        page_template_id = ""
-        workflow_template_source_id = ""
-        if workflow_template:
-            template_mode = "edit"
-            workflow_template_source_id = str(workflow_template.get("id") or "")
-            if str(mode or "").strip().lower() == "copy":
-                template_mode = "copy"
-            else:
-                page_template_id = workflow_template_source_id
+        if workflow_template is None:
+            templates = _read_workflow_templates()
+            workflow_template = templates[0] if templates else None
+
+        template_mode = "edit"
+        workflow_template_source_id = str(workflow_template.get("id") or "") if workflow_template else ""
+        page_template_id = workflow_template_source_id
         if workflow_template:
             try:
                 defaults["year"] = int(workflow_template.get("year"))
@@ -381,6 +377,17 @@ def create_pages_router(templates: Jinja2Templates) -> APIRouter:
                 "template_mode": template_mode,
                 "template_updated_at": str(workflow_template.get("updated_at") or "") if workflow_template else "",
                 "workflow_template": workflow_template,
+                "ax_home": str(core._ax_home()),
+            },
+        )
+
+    @router.get("/workflow-pages/archived", response_class=HTMLResponse)
+    def workflow_pages_archived(request: Request) -> HTMLResponse:
+        return templates.TemplateResponse(
+            request,
+            "workflow_pages_archive.html",
+            {
+                **_dashboard_context("workflow-archive"),
                 "ax_home": str(core._ax_home()),
             },
         )

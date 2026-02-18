@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>{{ workflow_template.name | default('ワークフローテンプレート', true) }}</title>
+    <title>{{ workflow_template.name | default('ワークフロー作成テンプレート', true) }}</title>
     <link rel="stylesheet" href="/static/styles.css" />
   </head>
   <body>
@@ -12,12 +12,12 @@
       data-active-tab="{{ active_tab | default('wizard-copy', true) }}"
       data-sidebar-links='{{ (sidebar_links | default([], true)) | tojson }}'
       data-workflow-template='{{ (workflow_template | default({}, true)) | tojson }}'
-      data-template-mode='{{ template_mode | default("new", true) }}'
+      data-template-mode='{{ template_mode | default("edit", true) }}'
     >
       <header class="hero">
         <div>
-          <h1 id="workflow-template-page-title" data-default-title="ワークフローテンプレート">
-            {{ workflow_template.name | default('ワークフローテンプレート', true) }}
+          <h1 id="workflow-template-page-title" data-default-title="ワークフロー作成テンプレート">
+            {{ workflow_template.name | default('ワークフロー作成テンプレート', true) }}
           </h1>
           <p
             id="workflow-template-page-subheading"
@@ -30,37 +30,20 @@
       </header>
 
       <section class="card">
-          <div class="template-mode-summary">
-          <div class="template-mode-summary-head">
-            <h2>ワークフローテンプレート</h2>
-            <span id="workflow-template-mode-chip" class="template-mode-chip">新規</span>
-          </div>
-          <p class="muted" id="workflow-template-mode-description"></p>
-          <p class="muted" id="workflow-template-mode-summary"></p>
-          <div id="workflow-template-source-meta" class="template-copy-source hidden">
-            <p class="template-copy-source-title">複製元情報</p>
-            <p>複製元: <span id="workflow-template-source-name">-</span></p>
-            <p>更新日時: <span id="workflow-template-source-updated">-</span></p>
-            <div class="template-copy-source-actions">
-              <a id="workflow-template-edit-source" class="secondary" href="#" hidden>複製元テンプレートを開く</a>
-              <a id="workflow-template-copy-source" class="secondary" href="#" hidden>複製元から複製する</a>
-            </div>
-          </div>
-        </div>
-        <h2>テンプレート設定</h2>
+        <h2>新規ワークフロー設定</h2>
         <form id="run-form" class="form">
           <input type="hidden" name="template_id" value="{{ template_id | default('', true) }}" />
-          <input type="hidden" name="template_mode" value="{{ template_mode | default('new', true) }}" />
+          <input type="hidden" name="template_mode" value="{{ template_mode | default('edit', true) }}" />
           <input type="hidden" name="template_source_id" value="{{ template_source_id | default('', true) }}" />
           <input type="hidden" name="template_updated_at" value="{{ template_updated_at | default('', true) }}" />
           <div class="form-row">
             <label>
-              テンプレート名
+              ワークフロー名
               <input
                 type="text"
                 name="template_name"
                 value="{{ workflow_template.name | default('', true) }}"
-                placeholder="例: 12月分"
+                placeholder="例: 2026-02 経費精算"
                 required
               />
             </label>
@@ -89,7 +72,7 @@
                 id="template-source-url-primary"
                 type="url"
                 name="mfcloud_url"
-                value="{{ defaults.mfcloud_url }}"
+                value="{{ workflow_template.mfcloud_url | default('', true) }}"
                 data-source-url-input
                 placeholder="https://example.com/path"
               />
@@ -105,23 +88,17 @@
               type="text"
               name="notes"
               value="{{ defaults.notes }}"
-              placeholder="テンプレートの備考を入力できます"
+              placeholder="ワークフロー作成時の補足メモを入力できます"
             />
           </label>
           <input type="hidden" name="rakuten_orders_url" value="{{ defaults.rakuten_orders_url }}" />
           <div class="form-row">
             <button type="button" id="workflow-page-create" class="primary">ワークフローを作成</button>
-            <button type="button" id="workflow-template-save" class="secondary">テンプレートを保存</button>
-            <span class="muted">「ワークフローを作成」は新しいページを追加します。「テンプレートを保存」は雛形を更新します。</span>
+            <button type="button" id="workflow-template-save" class="secondary">作成テンプレートを更新</button>
+            <a class="secondary" href="/workflow-pages/archived">アーカイブ管理を開く</a>
+            <span class="muted">このカードは新規ワークフローの設定です。必要な場合のみ「作成テンプレートを更新」を使います。</span>
           </div>
         </form>
-      </section>
-
-      <section class="card">
-        <h2>アーカイブ済みワークフロー</h2>
-        <p class="muted">不要なワークフローを復元できます。</p>
-        <div id="workflow-archive-list" class="workflow-archive-list"></div>
-        <p id="workflow-archive-empty" class="muted">アーカイブ済みワークフローはありません。</p>
       </section>
 
       {% include "components/expense_workflow_card.html" %}

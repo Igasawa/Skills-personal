@@ -101,6 +101,8 @@ def register_api_workspace_routes(
     @router.post("/api/workflow-pages")
     def api_create_workflow_page(payload: dict[str, Any]) -> JSONResponse:
         page = normalize_workflow_page_payload(payload)
+        page_id = str(page.get("id") or "").strip()
+        source_template_id = normalize_workflow_template_id(page.get("source_template_id"))
         existing = read_workflow_pages(include_archived=True)
         if workflow_page_name_taken(existing, str(page.get("name") or "")):
             raise HTTPException(status_code=409, detail="Workflow page name already exists.")
@@ -109,8 +111,15 @@ def register_api_workspace_routes(
         existing.append(page)
         existing.sort(key=lambda row: str(row.get("updated_at") or row.get("created_at") or ""), reverse=True)
         write_workflow_pages(existing)
+        scheduler_copied = False
+        if page_id:
+            try:
+                core_scheduler.copy_timer_state(source_template_id, page_id)
+                scheduler_copied = True
+            except Exception:
+                scheduler_copied = False
         return JSONResponse(
-            {"status": "ok", "workflow_page": page, "count": len(existing)},
+            {"status": "ok", "workflow_page": page, "count": len(existing), "scheduler_copied": scheduler_copied},
             headers={"Cache-Control": "no-store"},
         )
 
@@ -207,12 +216,23 @@ def register_api_workspace_routes(
 
     @router.post("/api/workflow-templates")
     def api_save_workflow_template(payload: dict[str, Any]) -> JSONResponse:
+        payload = payload if isinstance(payload, dict) else {}
+        requested_mode = str(payload.get("template_mode") or "").strip().lower()
+        if requested_mode and requested_mode != "edit":
+            raise HTTPException(status_code=400, detail="Template create/copy is disabled. Use edit mode only.")
+        requested_template_id = normalize_workflow_template_id(payload.get("template_id") or payload.get("id"))
+        if not requested_template_id:
+            raise HTTPException(status_code=400, detail="Template id is required. Creating new templates is disabled.")
+        payload = dict(payload)
+        payload["template_mode"] = "edit"
         payload = normalize_workflow_template_payload(payload)
         template_id = str(payload.get("id") or "")
         source_template_id = normalize_workflow_template_id(payload.get("source_template_id"))
-        allow_duplicate_name = bool(payload.get("allow_duplicate_name"))
         base_updated_at = normalize_workflow_template_timestamp(payload.get("base_updated_at"))
         existing = read_workflow_templates()
+        template_exists = any(str(row.get("id") or "") == template_id for row in existing)
+        if not template_exists:
+            raise HTTPException(status_code=404, detail="Template not found.")
         updated = False
         saved: dict[str, Any] = {}
         for index, template in enumerate(existing):
@@ -238,33 +258,7 @@ def register_api_workspace_routes(
                 break
 
         if not updated:
-            template_mode = str(payload.get("template_mode") or "").strip().lower()
-            if template_mode == "copy":
-                source_exists = any(str(row.get("id") or "") == source_template_id for row in existing)
-                if not source_exists:
-                    raise HTTPException(status_code=404, detail="template_source_id not found.")
-            if (not allow_duplicate_name) and template_name_taken(
-                existing,
-                str(payload.get("name") or ""),
-                allow_existing_id=None,
-            ):
-                raise HTTPException(status_code=409, detail="Template name already exists.")
-            if len(existing) >= workflow_template_max_items:
-                raise HTTPException(status_code=409, detail="Template limit reached. Remove one and save again.")
-            payload["created_at"] = workflow_template_timestamp_now()
-            payload["updated_at"] = payload["created_at"]
-            sanitized = dict(payload)
-            sanitized.pop("allow_duplicate_name", None)
-            sanitized.pop("base_updated_at", None)
-            sanitized.pop("template_mode", None)
-            if source_template_id:
-                sanitized["source_template_id"] = source_template_id
-            existing.append(sanitized)
-            saved = dict(payload)
-            saved.pop("allow_duplicate_name", None)
-            saved.pop("base_updated_at", None)
-            if template_mode == "copy" and source_template_id:
-                core_scheduler.copy_timer_state(source_template_id, str(saved.get("id") or ""))
+            raise HTTPException(status_code=404, detail="Template not found.")
 
         existing.sort(key=lambda row: str(row.get("updated_at") or row.get("created_at") or ""), reverse=True)
         write_workflow_templates(existing)
@@ -360,4 +354,3 @@ def register_api_workspace_routes(
                 "print_mode": "manual_open",
             }
         )
-

@@ -16,6 +16,7 @@
   const refreshEl = document.getElementById("scheduler-refresh");
   const saveEl = document.getElementById("scheduler-save");
   const summaryEl = document.getElementById("scheduler-summary");
+  const pageEl = document.querySelector(".page");
 
   if (
     !form ||
@@ -149,14 +150,22 @@
   }
 
   function resolveTemplateIdForScheduler() {
+    const workflowPageRaw = String(pageEl?.dataset?.workflowPage || "").trim();
+    if (workflowPageRaw) {
+      try {
+        const workflowPage = JSON.parse(workflowPageRaw);
+        const workflowPageId = String(workflowPage?.id || "").trim();
+        if (workflowPageId) {
+          return workflowPageId;
+        }
+      } catch {
+        // Ignore malformed page metadata and continue fallback.
+      }
+    }
+
     const templateId = String(form.querySelector("[name=template_id]")?.value || "").trim();
     if (templateId) {
       return templateId;
-    }
-
-    const templateMode = String(form.querySelector("[name=template_mode]")?.value || "").trim().toLowerCase();
-    if (templateMode === "copy") {
-      return String(form.querySelector("[name=template_source_id]")?.value || "").trim();
     }
 
     return "";

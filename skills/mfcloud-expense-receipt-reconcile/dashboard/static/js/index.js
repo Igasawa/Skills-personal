@@ -52,31 +52,12 @@
   const templateSaveState = { inFlight: false };
   const workflowPageCreateState = { inFlight: false };
   const TEMPLATE_MODE_CONFIG = {
-    new: {
-      chip: "新規",
-      saveLabel: "新規テンプレートとして保存",
-      description:
-        "新規テンプレートとして保存します。保存後、サイドバーからすぐ利用できます。",
-      summary: "フォームモード: 新規",
-      successMessage: "テンプレートを新規作成しました。",
-      nameSeed: "（複製）",
-    },
     edit: {
       chip: "編集",
-      saveLabel: "テンプレートを保存",
-      description: "既存テンプレートを編集中です。保存すると選択中のテンプレートを更新します。",
+      saveLabel: "作成テンプレートを更新",
+      description: "作成元テンプレートを編集中です。保存すると現在のテンプレート設定を更新します。",
       summary: "フォームモード: 編集",
-      successMessage: "テンプレートを更新しました。",
-      nameSeed: "",
-    },
-    copy: {
-      chip: "複製",
-      saveLabel: "複製テンプレートとして保存",
-      description:
-        "複製モードです。保存すると選択元を基に新規テンプレートを作成し、サイドバーへ追加します。",
-      summary: "フォームモード: 複製",
-      successMessage: "テンプレートを複製しました。",
-      nameSeed: "（複製）",
+      successMessage: "作成テンプレートを更新しました。",
     },
   };
 
@@ -129,24 +110,11 @@
   const workflowPage = parseWorkflowPage(pageEl);
 
   function getTemplateMode() {
-    if (!form) return "edit";
-    return String(form.querySelector("[name=template_mode]")?.value || "edit").trim().toLowerCase();
+    return "edit";
   }
 
   function getTemplateModeConfig(mode) {
     return TEMPLATE_MODE_CONFIG[mode] || TEMPLATE_MODE_CONFIG.edit;
-  }
-
-  function maybeSeedCopyTemplateName(mode, template) {
-    if (!form || mode !== "copy") return;
-    const sourceName = String(template?.name || "").trim();
-    if (!sourceName) return;
-    const nameInput = form.querySelector("[name=template_name]");
-    if (!nameInput) return;
-    const currentName = String(nameInput.value || "").trim();
-    if (!currentName || currentName === sourceName) {
-      nameInput.value = `${sourceName}${getTemplateModeConfig("copy").nameSeed}`;
-    }
   }
 
   function syncTemplatePageHeader() {
@@ -155,7 +123,7 @@
     const nameInput = form?.querySelector("[name=template_name]");
     const subheadingInput = form?.querySelector("[name=template_subheading]");
     if (!titleEl && !subheadingEl && !nameInput && !subheadingInput) return;
-    const fallbackTitle = String(titleEl?.dataset.defaultTitle || "").trim() || "ワークフローテンプレート";
+    const fallbackTitle = String(titleEl?.dataset.defaultTitle || "").trim() || "ワークフロー作成テンプレート";
     const title = String(nameInput?.value || workflowTemplate?.name || "").trim() || fallbackTitle;
     const subheading = String(subheadingInput?.value || workflowTemplate?.subheading || "").trim();
 
@@ -324,87 +292,6 @@
       nameInput.focus();
       nameInput.select();
     });
-  }
-
-  function formatWorkflowYm(year, month) {
-    const y = Number.parseInt(String(year || "").trim(), 10);
-    const m = Number.parseInt(String(month || "").trim(), 10);
-    if (!Number.isInteger(y) || !Number.isInteger(m) || m < 1 || m > 12) return "";
-    return `${y}-${String(m).padStart(2, "0")}`;
-  }
-
-  async function loadArchivedWorkflowPages() {
-    const listEl = document.getElementById("workflow-archive-list");
-    const emptyEl = document.getElementById("workflow-archive-empty");
-    if (!listEl || !emptyEl) return;
-    listEl.innerHTML = "";
-    try {
-      const res = await fetch("/api/workflow-pages?include_archived=true", { cache: "no-store" });
-      const data = await res.json().catch(() => ({}));
-      const rows = Array.isArray(data.workflow_pages) ? data.workflow_pages : [];
-      const archivedRows = rows
-        .filter((row) => Boolean(row?.archived))
-        .sort((left, right) =>
-          String(right?.archived_at || right?.updated_at || "").localeCompare(
-            String(left?.archived_at || left?.updated_at || ""),
-          ),
-        );
-      if (archivedRows.length === 0) {
-        emptyEl.hidden = false;
-        return;
-      }
-      emptyEl.hidden = true;
-      archivedRows.forEach((row) => {
-        const item = document.createElement("div");
-        item.className = "workflow-archive-item";
-        const meta = document.createElement("div");
-        meta.className = "workflow-archive-meta";
-        const nameEl = document.createElement("div");
-        nameEl.className = "workflow-archive-name";
-        const ym = formatWorkflowYm(row?.year, row?.month);
-        nameEl.textContent = `${String(row?.name || "")}${ym ? ` (${ym})` : ""}`;
-        const detailsEl = document.createElement("span");
-        detailsEl.className = "muted";
-        const archivedAt = String(row?.archived_at || "").trim();
-        detailsEl.textContent = archivedAt ? `アーカイブ日時: ${archivedAt}` : "アーカイブ日時: -";
-        meta.appendChild(nameEl);
-        meta.appendChild(detailsEl);
-
-        const restore = document.createElement("button");
-        restore.type = "button";
-        restore.className = "secondary";
-        restore.textContent = "復元";
-        restore.addEventListener("click", async () => {
-          const workflowPageId = String(row?.id || "").trim();
-          if (!workflowPageId) return;
-          try {
-            const patchRes = await fetch(`/api/workflow-pages/${encodeURIComponent(workflowPageId)}`, {
-              method: "PATCH",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                archived: false,
-                base_updated_at: String(row?.updated_at || ""),
-              }),
-            });
-            const patchData = await patchRes.json().catch(() => ({}));
-            if (!patchRes.ok) {
-              const message = toFriendlyMessage(patchData.detail) || "復元に失敗しました。";
-              showToast(message, "error");
-              return;
-            }
-            showToast("ワークフローを復元しました。", "success");
-            loadArchivedWorkflowPages();
-          } catch {
-            showToast("復元に失敗しました。", "error");
-          }
-        });
-        item.appendChild(meta);
-        item.appendChild(restore);
-        listEl.appendChild(item);
-      });
-    } catch {
-      emptyEl.hidden = false;
-    }
   }
 
   function normalizeTemplateSourceUrls(rawValues) {
@@ -750,23 +637,30 @@
   function applyTemplateModeUI() {
     const mode = getTemplateMode();
     const config = getTemplateModeConfig(mode);
+    const templateId = getTemplateIdFromForm() || String(workflowTemplate?.id || "").trim();
+    const hasTemplateTarget = Boolean(templateId);
     const chipEl = document.getElementById("workflow-template-mode-chip");
     const descEl = document.getElementById("workflow-template-mode-description");
     const summaryEl = document.getElementById("workflow-template-mode-summary");
     const saveButton = document.getElementById("workflow-template-save");
     if (chipEl) chipEl.textContent = config.chip;
-    if (descEl) descEl.textContent = config.description;
+    if (descEl) {
+      descEl.textContent = hasTemplateTarget
+        ? config.description
+        : "新規テンプレート作成は無効です。既存テンプレートを選択して更新してください。";
+    }
     if (summaryEl) summaryEl.textContent = config.summary;
-    if (saveButton) saveButton.textContent = config.saveLabel;
+    if (saveButton) {
+      saveButton.textContent = hasTemplateTarget ? config.saveLabel : "テンプレート更新（対象なし）";
+      saveButton.disabled = !hasTemplateTarget;
+      saveButton.title = hasTemplateTarget ? "" : "更新対象のテンプレートがありません。";
+    }
 
     const sourceMeta = document.getElementById("workflow-template-source-meta");
     const sourceNameEl = document.getElementById("workflow-template-source-name");
     const sourceUpdatedEl = document.getElementById("workflow-template-source-updated");
     const sourceEditLink = document.getElementById("workflow-template-edit-source");
-    const sourceCopyLink = document.getElementById("workflow-template-copy-source");
-
-    if (!sourceMeta || !sourceEditLink || !sourceCopyLink || !sourceNameEl || !sourceUpdatedEl) {
-      maybeSeedCopyTemplateName(mode, workflowTemplate);
+    if (!sourceMeta || !sourceEditLink || !sourceNameEl || !sourceUpdatedEl) {
       syncTemplatePageHeader();
       return;
     }
@@ -778,19 +672,14 @@
       sourceNameEl.textContent = sourceName;
       sourceUpdatedEl.textContent = sourceUpdated || "-";
       sourceEditLink.href = `/expense-workflow-copy?template=${encodeURIComponent(sourceId)}`;
-      sourceCopyLink.href = `/expense-workflow-copy?template=${encodeURIComponent(sourceId)}&mode=copy`;
       sourceEditLink.hidden = false;
-      sourceCopyLink.hidden = false;
       sourceMeta.classList.remove("hidden");
-      maybeSeedCopyTemplateName(mode, workflowTemplate);
       syncTemplatePageHeader();
       return;
     }
 
     sourceMeta.classList.add("hidden");
     sourceEditLink.hidden = true;
-    sourceCopyLink.hidden = true;
-    maybeSeedCopyTemplateName(mode, workflowTemplate);
     syncTemplatePageHeader();
   }
 
@@ -1114,14 +1003,13 @@
     const rakutenOrdersEl = form.querySelector("[name=rakuten_orders_url]");
     const sourceUrls = collectTemplateSourceUrls();
     const primarySourceUrl = sourceUrls[0] || "";
-    const templateMode = getTemplateMode();
-    const templateId = templateMode === "copy" ? "" : getTemplateIdFromForm();
-    const templateSourceId = templateMode === "copy" ? getTemplateSourceIdFromForm() || String(workflowTemplate?.id || "").trim() : "";
+    const templateMode = "edit";
+    const templateId = getTemplateIdFromForm();
     const name = String(nameEl?.value || "").trim();
     return {
       template_id: templateId,
       template_mode: templateMode,
-      template_source_id: templateSourceId,
+      template_source_id: getTemplateSourceIdFromForm(),
       name,
       subheading: String(subheadingEl?.value || "").trim(),
       year: Number(yearEl?.value || 0),
@@ -1132,8 +1020,7 @@
       rakuten_orders_url: String(rakutenOrdersEl?.value || "").trim(),
       steps: collectTemplateSteps(),
       allow_duplicate_name: false,
-      base_updated_at:
-        templateMode === "copy" ? "" : getTemplateUpdatedAtFromForm() || String(workflowTemplate?.updated_at || ""),
+      base_updated_at: getTemplateUpdatedAtFromForm() || String(workflowTemplate?.updated_at || ""),
     };
   }
 
@@ -1149,6 +1036,7 @@
       month: payload.month,
       mfcloud_url: payload.mfcloud_url,
       source_urls: Array.isArray(payload.source_urls) ? payload.source_urls : [],
+      steps: Array.isArray(payload.steps) ? payload.steps : [],
       notes: payload.notes,
       rakuten_orders_url: payload.rakuten_orders_url,
       source_template_id: sourceTemplateId,
@@ -1181,7 +1069,7 @@
         `小見出し: ${payload.subheading || "(なし)"}`,
         `年月: ${payload.year}-${String(payload.month).padStart(2, "0")}`,
         `ソースURL件数: ${sourceCount}`,
-        "テンプレート自体は更新されません。",
+        "テンプレートの手順定義と自動実行設定を引き継ぎます。",
       ],
       confirmLabel: "作成して開く",
       cancelLabel: "戻る",
@@ -1214,7 +1102,11 @@
 
       const workflowPage = data.workflow_page || null;
       const workflowPageId = String(workflowPage?.id || "").trim();
-      showToast("ワークフローページを作成しました。", "success");
+      if (data.scheduler_copied === true) {
+        showToast("ワークフローを作成しました。自動実行設定も引き継ぎました。", "success");
+      } else {
+        showToast("ワークフローページを作成しました。", "success");
+      }
       if (workflowPageId) {
         window.location.href = `/workflow/${encodeURIComponent(workflowPageId)}?year=${payload.year}&month=${payload.month}`;
         return;
@@ -1293,7 +1185,7 @@
       title: "ワークフローのアーカイブ",
       lines: [
         "このワークフローをサイドバーから非表示にします。",
-        "必要な場合は WFテンプレート画面から復元できます。",
+        "必要な場合は WF作成テンプレート画面から復元できます。",
       ],
       confirmLabel: "アーカイブする",
       cancelLabel: "キャンセル",
@@ -1330,7 +1222,7 @@
     const payload = buildTemplatePayload();
     if (!payload) return;
     if (!payload.name) {
-      const message = "テンプレート名を入力してください。";
+      const message = "ワークフロー名を入力してください。";
       showError(message);
       showToast(message, "error");
       return;
@@ -1341,14 +1233,26 @@
       showToast(message, "error");
       return;
     }
+    if (!String(payload.template_id || "").trim()) {
+      const message = "新規テンプレート作成は無効です。既存テンプレートを選択してください。";
+      showError(message);
+      showToast(message, "error");
+      return;
+    }
+    if (!String(payload.base_updated_at || "").trim()) {
+      const message = "テンプレート更新情報が不足しています。テンプレートを再読み込みしてください。";
+      showError(message);
+      showToast(message, "error");
+      return;
+    }
 
     const saveButton = document.getElementById("workflow-template-save");
-    const mode = getTemplateMode();
-    const config = getTemplateModeConfig(mode);
+    const config = getTemplateModeConfig("edit");
     const templateIdInput = form.querySelector("[name=template_id]");
     const templateModeInput = form.querySelector("[name=template_mode]");
     const templateUpdatedAtInput = form.querySelector("[name=template_updated_at]");
-    const originalButtonLabel = config.saveLabel || (saveButton ? String(saveButton.textContent || "").trim() : "テンプレートを保存");
+    const originalButtonLabel =
+      config.saveLabel || (saveButton ? String(saveButton.textContent || "").trim() : "作成テンプレートを更新");
     templateSaveState.inFlight = true;
     if (saveButton) {
       saveButton.disabled = true;
@@ -1379,7 +1283,7 @@
         templateIdInput.value = templateId;
       }
       if (templateModeInput) {
-        templateModeInput.value = mode === "copy" ? "edit" : mode;
+        templateModeInput.value = "edit";
       }
       if (templateUpdatedAtInput && template) {
         templateUpdatedAtInput.value = String(template.updated_at || "");
@@ -2320,8 +2224,8 @@
     const nextStepReasonCode = String(data?.next_step_reason || "").trim();
     const nextStepGuidance = {
       preflight: {
-        message: "まずは前提条件の確認から進めてください。",
-        reason: "ログイン状態と月次情報を確認して、実行可能条件をそろえます。",
+        message: "準備フローを確認してください。",
+        reason: "対象ワークフローの実行条件を確認してから次の工程へ進めてください。",
         linkLabel: "準備工程へ",
       },
       amazon_or_rakuten_download: {
@@ -3251,7 +3155,6 @@
 
     hydrateTemplateSteps();
     restoreYmSelection();
-    loadArchivedWorkflowPages();
     const initialYm = getYmFromForm();
     applyArchivePageLink(initialYm);
     refreshSteps();
@@ -3332,4 +3235,3 @@
     });
   });
 })();
-

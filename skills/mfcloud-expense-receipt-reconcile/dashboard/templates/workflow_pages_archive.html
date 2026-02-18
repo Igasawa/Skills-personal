@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ワークフローアーカイブ管理</title>
+    <link rel="stylesheet" href="/static/styles.css" />
+  </head>
+  <body>
+    <div
+      class="page"
+      data-active-tab="{{ active_tab | default('workflow-archive', true) }}"
+      data-sidebar-links='{{ (sidebar_links | default([], true)) | tojson }}'
+    >
+      <header class="hero">
+        <div>
+          <h1>ワークフローアーカイブ管理</h1>
+          <p class="subtitle">アーカイブ済みワークフローの確認と復元を行います。</p>
+          <div class="step-actions">
+            <a class="secondary" href="/expense-workflow-copy">WF作成テンプレートへ戻る</a>
+            <button type="button" class="secondary" id="workflow-archive-refresh">一覧を更新</button>
+          </div>
+        </div>
+      </header>
+
+      <section class="card">
+        <h2>アーカイブ済みワークフロー</h2>
+        <p class="muted">復元したワークフローはサイドバーに再表示されます。</p>
+        <div id="workflow-archive-list" class="workflow-archive-list"></div>
+        <p id="workflow-archive-empty" class="muted">アーカイブ済みワークフローはありません。</p>
+      </section>
+    </div>
+
+    <div id="toast" class="toast" aria-live="polite"></div>
+    <script src="/static/js/common.js"></script>
+    <script src="/static/js/workflow-archive-pages.js"></script>
+  </body>
+</html>
