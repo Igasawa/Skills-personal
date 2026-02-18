@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>エージェント作業スペース</title>
+    <title>業務自動化準備ハブ</title>
     <link rel="stylesheet" href="/static/styles.css" />
   </head>
   <body>
@@ -14,13 +14,22 @@
     >
       <header class="hero">
         <div>
-          <p class="eyebrow">作業スペース</p>
-          <h1>エージェント作業スペース</h1>
+          <p class="eyebrow">Automation Hub</p>
+          <h1>業務自動化準備ハブ</h1>
           <p class="subtitle">
-            必要なリンクとエージェント向けのプロンプトをまとめて管理します。設定内容はこのブラウザだけでなく共有保存されます。
+            ここはエージェントが実行する場所ではなく、人が自動化運用を準備する管理画面です。リンク先、目的、エージェント向けプロンプトをまとめて管理します。
           </p>
         </div>
       </header>
+
+      <section class="card workspace-intent-card">
+        <h2>このページの使い方</h2>
+        <ul class="workspace-intent-list">
+          <li>自動化で使うリンク先を登録・更新する。</li>
+          <li>各リンクの目的とエージェント向けプロンプトを整備する。</li>
+          <li>担当者・推奨エージェント・最終見直し日を確認してから実行する。</li>
+        </ul>
+      </section>
 
       <section class="grid two">
         <div class="card">
@@ -72,6 +81,34 @@
                     data-note-key="mf_expense_reports"
                   ></textarea>
                 </label>
+                <div class="workspace-link-profile-grid">
+                  <label>
+                    担当者
+                    <input
+                      type="text"
+                      maxlength="80"
+                      placeholder="例: 経理 田中"
+                      data-workspace-link-owner
+                      data-profile-key="mf_expense_reports"
+                    />
+                  </label>
+                  <label>
+                    推奨エージェント
+                    <select data-workspace-link-agent data-profile-key="mf_expense_reports">
+                      <option value="">未設定</option>
+                      <option value="codex">Codex</option>
+                      <option value="chatgpt">ChatGPT</option>
+                      <option value="claude">Claude</option>
+                      <option value="gemini">Gemini</option>
+                      <option value="other">その他</option>
+                    </select>
+                  </label>
+                  <label>
+                    最終見直し日
+                    <input type="date" data-workspace-link-reviewed-on data-profile-key="mf_expense_reports" />
+                  </label>
+                </div>
+                <p class="workspace-link-review-status" data-workspace-link-review-status data-profile-key="mf_expense_reports"></p>
                 <div class="workspace-link-actions">
                   <button
                     type="button"
@@ -94,18 +131,6 @@
                   >
                     編集
                   </button>
-                </div>
-              </div>
-            </li>
-            <li class="workspace-link-item">
-              <div class="workspace-link-main">
-                <div class="workspace-link-head">
-                  <a
-                    class="secondary workspace-link-open"
-                    href="/status"
-                  >
-                    ステータスページ
-                  </a>
                 </div>
               </div>
             </li>
@@ -147,6 +172,33 @@
                 placeholder="例: 月次申請の承認状況を確認する"
               ></textarea>
             </label>
+            <div class="workspace-link-form-meta form-row">
+              <label for="workspace-link-owner">
+                担当者
+                <input
+                  id="workspace-link-owner"
+                  type="text"
+                  name="owner"
+                  maxlength="80"
+                  placeholder="例: 経理 田中"
+                />
+              </label>
+              <label for="workspace-link-agent">
+                推奨エージェント
+                <select id="workspace-link-agent" name="agent">
+                  <option value="">未設定</option>
+                  <option value="codex">Codex</option>
+                  <option value="chatgpt">ChatGPT</option>
+                  <option value="claude">Claude</option>
+                  <option value="gemini">Gemini</option>
+                  <option value="other">その他</option>
+                </select>
+              </label>
+              <label for="workspace-link-reviewed-on">
+                最終見直し日
+                <input id="workspace-link-reviewed-on" type="date" name="reviewed_on" />
+              </label>
+            </div>
             <div class="step-actions">
               <button type="submit" class="primary">リンクを追加</button>
               <button type="button" class="secondary" id="workspace-clear-links">追加リンクを全削除</button>
@@ -158,9 +210,9 @@
       </section>
 
       <section class="card workspace-prompt-card">
-        <h2>プロンプト編集</h2>
+        <h2>エージェント向けプロンプト編集</h2>
         <p class="muted">
-          プロンプト本文を自由に編集し、ワンクリックでコピーできます。上書きは自動保存されます。
+          プロンプト本文を自由に編集し、ワンクリックでコピーできます。実行時は「実行指示セットをコピー」でURLや目的と一緒に渡せます。
         </p>
         <div class="muted">編集対象: <span id="workspace-prompt-active-label">MF経費精算ページ</span></div>
         <label for="workspace-prompt-editor">
@@ -178,6 +230,7 @@
         </div>
         <div class="step-actions">
           <button type="button" id="workspace-save-prompt" class="primary">登録</button>
+          <button type="button" id="workspace-copy-handoff" class="secondary">実行指示セットをコピー</button>
         </div>
         <div class="workspace-token-help">
           <span class="workspace-token-chip">{month}</span>

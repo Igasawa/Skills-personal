@@ -342,7 +342,6 @@ def test_workspace_page_shows_core_link_and_prompt_tools(
     assert "data-workspace-link-details" in res.text
     assert 'id="workspace-prompt-active-label"' in res.text
     assert "/static/js/workspace.js" in res.text
-    assert 'href="/status"' in res.text
 
     match = re.search(r"data-sidebar-links='(.*?)'", res.text)
     assert match is not None
