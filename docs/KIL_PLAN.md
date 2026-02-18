@@ -220,10 +220,10 @@ scripts/
 
 ---
 
-## ‰^—p’Ç‹L: ƒRƒ~ƒbƒg‚²‚Æ‚ÌŽ©—¥ŠwKƒ‹[ƒv
+## é‹ç”¨è¿½è¨˜: ã‚³ãƒŸãƒƒãƒˆã”ã¨ã®è‡ªå¾‹å­¦ç¿’ãƒ«ãƒ¼ãƒ—
 
-1. `post-commit` ‚ÅƒRƒ~ƒbƒg’¼Œã‚É `scripts/analyze_commit.py` ‚ð•K‚¸ŽÀs‚µAÅVƒRƒ~ƒbƒg‚ð `AGENT_BRAIN` ‚É”½‰f‚·‚éB
-2. ŽŸ‚Ìƒ^ƒXƒNŠJŽn‘O‚ÉA`AGENT_BRAIN.md` ‚Æ `AGENT_BRAIN_INDEX.jsonl` ‚ÌÅV5ŒˆÈã‚ðŠm”F‚µ‚ÄAs“®ŽwjE‹ÖŽ~Ž–€E–¢‰ðŒˆ•¶–¬‚ðˆø‚«Œp‚®B
-3. ”½‰fˆ—Ž¸”s‚Í `AGENT_BRAIN_ERROR.log` ‚É‹L˜^‚µAƒRƒ~ƒbƒg‚ÍŽ~‚ß‚¸ŽŸ‰ñŠJŽnŽž‚É•œ‹Œ‘Î‰ž‚·‚éiÄŽÀs‰ÂjB
-4. `KIL_GEMINI_MODEL` ‚Æ `GEMINI_API_KEY` ‚Í `AX_HOME` ”z‰º‚Ì env ŠÇ—ƒtƒ@ƒCƒ‹iŠù’è: `~/.ax/secrets/kintone.env`j‚ÅŠÇ—‚µAƒŠƒ|ƒWƒgƒŠŠO‚É•ÛŽ‚·‚éB
-5. ‰^—pŒø‰Ê‘ª’è‚Æ‚µ‚ÄA`AGENT_BRAIN.md` / `AGENT_BRAIN_INDEX.jsonl` ‚ÌÅVƒGƒ“ƒgƒŠ”‚ð’ÇÕ‚µAXV‚ªŽ~‚Ü‚Á‚Ä‚¢‚È‚¢‚©‚ðŠm”F‚·‚éB
+1. `post-commit` ã§ã‚³ãƒŸãƒƒãƒˆç›´å¾Œã« `scripts/analyze_commit.py` ã‚’å¿…ãšå®Ÿè¡Œã—ã€æœ€æ–°ã‚³ãƒŸãƒƒãƒˆã‚’ `AGENT_BRAIN` ã«åæ˜ ã™ã‚‹ã€‚
+2. æ¬¡ã®ã‚¿ã‚¹ã‚¯é–‹å§‹å‰ã«ã€`AGENT_BRAIN.md` ã¨ `AGENT_BRAIN_INDEX.jsonl` ã®æœ€æ–°5ä»¶ä»¥ä¸Šã‚’ç¢ºèªã—ã¦ã€è¡Œå‹•æŒ‡é‡ãƒ»ç¦æ­¢äº‹é …ãƒ»æœªè§£æ±ºæ–‡è„ˆã‚’å¼•ãç¶™ãã€‚
+3. åæ˜ å‡¦ç†å¤±æ•—ã¯ `AGENT_BRAIN_ERROR.log` ã«è¨˜éŒ²ã—ã€ã‚³ãƒŸãƒƒãƒˆã¯æ­¢ã‚ãšæ¬¡å›žé–‹å§‹æ™‚ã«å¾©æ—§å¯¾å¿œã™ã‚‹ï¼ˆå†å®Ÿè¡Œå¯ï¼‰ã€‚
+4. `KIL_GEMINI_MODEL` ã¨ `GEMINI_API_KEY` ã¯ `AX_HOME` é…ä¸‹ã® env ç®¡ç†ãƒ•ã‚¡ã‚¤ãƒ«ï¼ˆæ—¢å®š: `~/.ax/secrets/kintone.env`ï¼‰ã§ç®¡ç†ã—ã€ãƒªãƒã‚¸ãƒˆãƒªå¤–ã«ä¿æŒã™ã‚‹ã€‚
+5. é‹ç”¨åŠ¹æžœæ¸¬å®šã¨ã—ã¦ã€`AGENT_BRAIN.md` / `AGENT_BRAIN_INDEX.jsonl` ã®æœ€æ–°ã‚¨ãƒ³ãƒˆãƒªæ•°ã‚’è¿½è·¡ã—ã€æ›´æ–°ãŒæ­¢ã¾ã£ã¦ã„ãªã„ã‹ã‚’ç¢ºèªã™ã‚‹ã€‚
