@@ -61,6 +61,34 @@
   let selectedDetail = null;
   let busy = false;
   let docStatusLoaded = false;
+  const tabNames = new Set(
+    Array.from(tabButtons)
+      .map((button) => String(button.dataset.errorsTab || "").trim())
+      .filter((name) => name.length > 0),
+  );
+
+  function resolveInitialTab() {
+    const page = document.querySelector(".page.errors-page");
+    const fromData = String(page?.dataset?.errorsInitialTab || "").trim();
+    const params = new URLSearchParams(window.location.search || "");
+    const fromQuery = String(params.get("tab") || "").trim();
+    const candidate = fromQuery || fromData;
+    if (candidate && tabNames.has(candidate)) {
+      return candidate;
+    }
+    return "incidents";
+  }
+
+  function syncTabToQuery(tabName) {
+    if (!tabName || !tabNames.has(tabName) || !window.history?.replaceState) return;
+    const url = new URL(window.location.href);
+    if (tabName === "incidents") {
+      url.searchParams.delete("tab");
+    } else {
+      url.searchParams.set("tab", tabName);
+    }
+    window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
+  }
 
   function setText(el, value) {
     if (!el) return;
@@ -548,13 +576,16 @@
       const target = button.dataset.errorsTab;
       if (!target) return;
       setActiveTab(target);
+      syncTabToQuery(target);
       if ((target === "document-update" || target === "document-targets") && !docStatusLoaded) {
         void refreshDocumentStatus();
       }
     });
   });
 
-  setActiveTab("incidents");
+  const initialTab = resolveInitialTab();
+  setActiveTab(initialTab);
+  syncTabToQuery(initialTab);
 
   (async function init() {
     setBusy(true);

@@ -159,11 +159,12 @@ def test_index_page_shows_manual_archive_button(monkeypatch: pytest.MonkeyPatch,
         link.get("href") == "/" and link.get("label") == "WorkFlow：経費精算" and link.get("section") == "workflow"
         for link in links
     )
-    assert any(link.get("href") == "/kil-review" and link.get("section") == "admin" for link in links)
+    assert not any(link.get("href") == "/kil-review" and link.get("section") == "admin" for link in links)
+    assert not any(link.get("href") == "/workflow-pages/archived" and link.get("section") == "admin" for link in links)
     assert any(link.get("href") == "/errors" and link.get("section") == "admin" for link in links)
     assert any(
         link.get("href") == "/expense-workflow-copy"
-        and link.get("label") == "WFテンプレート"
+        and link.get("label") in {"WFテンプレート", "WF作成テンプレート"}
         and link.get("section") == "admin"
         for link in links
     )
@@ -265,11 +266,33 @@ def test_expense_workflow_copy_scheduler_mode_rebuilds_from_template_step_action
         / "static"
         / "js"
         / "scheduler.js"
-    ).read_text(encoding="utf-16")
+    ).read_text(encoding="utf-8")
     assert "collectTemplateStepActions()" in scheduler_js
     assert "ensureSchedulerModeOptionList" in scheduler_js
     assert "Array.from(listEl.querySelectorAll(\"[data-template-step-action]\"))" in scheduler_js
     assert "const dedupedActions = actions.length ? actions : [DEFAULT_SCHEDULER_MODE];" in scheduler_js
+
+
+def test_expense_workflow_copy_step_card_script_supports_timer_and_default_clone(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    client = _create_client(monkeypatch, tmp_path)
+    res = client.get("/expense-workflow-copy")
+    assert res.status_code == 200
+
+    index_js = (
+        Path(__file__).resolve().parents[1]
+        / "dashboard"
+        / "static"
+        / "js"
+        / "index.js"
+    ).read_text(encoding="utf-8")
+    assert "TEMPLATE_STEP_TIMER_DEFAULT_MINUTES" in index_js
+    assert "data-template-step-timer" in index_js
+    assert "scheduleTemplateStepRow" in index_js
+    assert "addTemplateStepFromDefaultCard" in index_js
+    assert "scheduler-state-updated" in index_js
 
 
 def test_index_page_exposes_latest_run_status_hooks(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -332,6 +355,7 @@ def test_errors_page_shows_incident_controls(monkeypatch: pytest.MonkeyPatch, tm
     res = client.get("/errors")
     assert res.status_code == 200
     assert 'href="/errors"' not in res.text
+    assert 'data-errors-initial-tab="incidents"' in res.text
     assert 'id="error-incidents-list"' in res.text
     assert 'id="error-detail"' in res.text
     assert 'id="errors-plan-all"' in res.text
@@ -339,7 +363,29 @@ def test_errors_page_shows_incident_controls(monkeypatch: pytest.MonkeyPatch, tm
     assert 'id="errors-go"' in res.text
     assert 'id="errors-archive-resolved"' in res.text
     assert 'id="errors-archive-escalated"' in res.text
+    assert 'id="errors-tab-workflow-archive"' in res.text
+    assert 'id="errors-tab-kil-review"' in res.text
+    assert 'id="workflow-archive-list"' in res.text
+    assert 'id="kil-review-status"' in res.text
     assert "/static/js/errors.js" in res.text
+    assert "/static/js/workflow-archive-pages.js" in res.text
+    assert "/static/js/kil-review.js" in res.text
+
+
+def test_workflow_archive_route_redirects_to_error_center_tab(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    client = _create_client(monkeypatch, tmp_path)
+    res = client.get("/workflow-pages/archived", follow_redirects=False)
+    assert res.status_code in {302, 307}
+    assert res.headers["location"] == "/errors?tab=workflow-archive"
+
+
+def test_kil_review_route_redirects_to_error_center_tab(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    client = _create_client(monkeypatch, tmp_path)
+    res = client.get("/kil-review", follow_redirects=False)
+    assert res.status_code in {302, 307}
+    assert res.headers["location"] == "/errors?tab=kil-review"
 
 
 def test_run_page_shows_detail_shortcut_when_pdf_missing(

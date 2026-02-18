@@ -7,12 +7,10 @@
   const THEME_SYSTEM = "system";
   const THEME_VALUES = new Set([THEME_LIGHT, THEME_DARK]);
   const THEME_SELECTION_VALUES = new Set([THEME_LIGHT, THEME_DARK, THEME_SYSTEM]);
-const DEFAULT_DASHBOARD_SIDEBAR_LINKS = Object.freeze([
+  const DEFAULT_DASHBOARD_SIDEBAR_LINKS = Object.freeze([
     { href: "/workspace", label: "HOME", tab: "workspace", section: "home" },
     { href: "/", label: "WorkFlow：経費精算", tab: "wizard", section: "workflow" },
     { href: "/expense-workflow-copy", label: "WF作成テンプレート", tab: "wizard-copy", section: "admin" },
-    { href: "/workflow-pages/archived", label: "WFアーカイブ管理", tab: "workflow-archive", section: "admin" },
-    { href: "/kil-review", label: "KIL Review", tab: "kil-review", section: "admin" },
     { href: "/errors", label: "\u7ba1\u7406\u30bb\u30f3\u30bf\u30fc", tab: "errors", section: "admin" },
   ]);
   let currentThemeSelection = THEME_SYSTEM;
@@ -206,9 +204,9 @@ const DEFAULT_DASHBOARD_SIDEBAR_LINKS = Object.freeze([
     const normalized = (pathname || "").replace(/\/+$/, "");
     if (!normalized || normalized === "/") return "wizard";
     if (normalized === "/expense-workflow-copy") return "wizard-copy";
-    if (normalized === "/workflow-pages/archived") return "workflow-archive";
+    if (normalized === "/workflow-pages/archived") return "errors";
     if (normalized === "/status") return "status";
-    if (normalized === "/kil-review") return "kil-review";
+    if (normalized === "/kil-review") return "errors";
     if (normalized === "/errors") return "errors";
     if (normalized === "/workspace") return "workspace";
     if (normalized.startsWith("/runs/")) return "status";

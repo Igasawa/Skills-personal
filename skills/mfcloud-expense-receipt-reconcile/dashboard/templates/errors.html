@@ -8,15 +8,16 @@
   </head>
   <body>
     <div
-      class="page errors-page"
+      class="page errors-page kil-review-page"
       data-active-tab="{{ active_tab | default('errors', true) }}"
+      data-errors-initial-tab="{{ errors_initial_tab | default('incidents', true) }}"
       data-sidebar-links='{{ (sidebar_links | default([], true)) | tojson }}'
     >
       <header class="hero">
         <div>
           <p class="eyebrow">エラーインシデント管理</p>
           <h1>管理センター</h1>
-          <p class="subtitle">失敗ログの確認、修正計画、GO実行、アーカイブをこの画面で行います。</p>
+          <p class="subtitle">失敗ログ対応、WFアーカイブ管理、KIL Review をこの画面でまとめて行います。</p>
         </div>
       </header>
 
@@ -26,6 +27,8 @@
         <button type="button" class="pill is-active" data-errors-tab="incidents" id="errors-tab-incidents">エラーセンター</button>
         <button type="button" class="pill" data-errors-tab="document-update" id="errors-tab-document-update">ドキュメント更新</button>
         <button type="button" class="pill" data-errors-tab="document-targets" id="errors-tab-document-targets">対象ドキュメント</button>
+        <button type="button" class="pill" data-errors-tab="workflow-archive" id="errors-tab-workflow-archive">WFアーカイブ管理</button>
+        <button type="button" class="pill" data-errors-tab="kil-review" id="errors-tab-kil-review">KIL Review</button>
       </div>
 
       <section class="errors-tab-panel" data-errors-tab-panel="incidents">
@@ -190,10 +193,163 @@
           <ul id="errors-doc-targets-list" class="muted"></ul>
         </section>
       </section>
+
+      <section class="errors-tab-panel hidden" data-errors-tab-panel="workflow-archive">
+        <section class="card">
+          <div class="section-header">
+            <h2>ワークフローアーカイブ管理</h2>
+            <button type="button" class="secondary" id="workflow-archive-refresh">一覧を更新</button>
+          </div>
+          <p class="muted">アーカイブ済みワークフローの確認と復元を行います。</p>
+          <div id="workflow-archive-list" class="workflow-archive-list"></div>
+          <p id="workflow-archive-empty" class="muted">アーカイブ済みワークフローはありません。</p>
+        </section>
+      </section>
+
+      <section class="errors-tab-panel hidden" data-errors-tab-panel="kil-review">
+        <section class="card">
+          <div class="kil-review-toolbar">
+            <div class="section-header">
+              <h2>KIL Review 操作</h2>
+              <button type="button" class="secondary" id="kil-review-refresh">更新</button>
+            </div>
+            <div class="kil-review-toolbar-controls">
+              <label>
+                データ元
+                <select id="kil-review-source">
+                  <option value="auto" selected>自動</option>
+                  <option value="index">AGENT_BRAIN_INDEX.jsonl</option>
+                  <option value="markdown">AGENT_BRAIN.md</option>
+                  <option value="all">両方</option>
+                </select>
+              </label>
+              <label>
+                表示件数
+                <select id="kil-review-limit">
+                  <option value="10">10件</option>
+                  <option value="20" selected>20件</option>
+                  <option value="50">50件</option>
+                </select>
+              </label>
+              <label>
+                <input type="checkbox" id="kil-review-only-review" checked />
+                NOGOのみ
+              </label>
+              <p id="kil-review-status" class="muted">読込中...</p>
+            </div>
+          </div>
+        </section>
+
+        <section class="card">
+          <div class="section-header">
+            <h2>要約</h2>
+            <p id="kil-review-summary-line" class="muted">読込中...</p>
+          </div>
+          <div class="grid two kil-review-grid" id="kil-review-summary">
+            <div class="kil-review-stat">
+              <span class="label">対象件数</span>
+              <span class="value" id="kil-review-count">0</span>
+            </div>
+            <div class="kil-review-stat">
+              <span class="label">NOGO件数</span>
+              <span class="value" id="kil-review-review-needed">0</span>
+            </div>
+            <div class="kil-review-stat">
+              <span class="label">データ元</span>
+              <span class="value" id="kil-review-source-used">-</span>
+            </div>
+            <div class="kil-review-stat">
+              <span class="label">index件数</span>
+              <span class="value" id="kil-review-index-count">0</span>
+            </div>
+            <div class="kil-review-stat">
+              <span class="label">markdown件数</span>
+              <span class="value" id="kil-review-markdown-count">0</span>
+            </div>
+            <div class="kil-review-stat">
+              <span class="label">期限超過</span>
+              <span class="value" id="kil-review-overdue">0</span>
+            </div>
+            <div class="kil-review-stat">
+              <span class="label">7日以内</span>
+              <span class="value" id="kil-review-due-soon">0</span>
+            </div>
+            <div class="kil-review-stat">
+              <span class="label">期限未設定</span>
+              <span class="value" id="kil-review-no-deadline">0</span>
+            </div>
+            <div class="kil-review-stat">
+              <span class="label">更新時刻</span>
+              <span class="value" id="kil-review-generated-at">-</span>
+            </div>
+          </div>
+        </section>
+
+        <section class="card">
+          <div class="section-header">
+            <h2>学習ヘルス</h2>
+            <p id="kil-review-health-message" class="muted">読込中...</p>
+          </div>
+          <div class="grid two kil-review-grid" id="kil-review-health">
+            <div class="kil-review-stat">
+              <span class="label">ヘルス状態</span>
+              <span class="value kil-review-health-status" id="kil-review-health-status">-</span>
+            </div>
+            <div class="kil-review-stat">
+              <span class="label">学習スコア</span>
+              <span class="value" id="kil-review-health-score">0</span>
+            </div>
+            <div class="kil-review-stat">
+              <span class="label">HEADとの差分</span>
+              <span class="value" id="kil-review-health-lag-commits">-</span>
+            </div>
+            <div class="kil-review-stat">
+              <span class="label">最終解析から</span>
+              <span class="value" id="kil-review-health-lag-days">-</span>
+            </div>
+            <div class="kil-review-stat">
+              <span class="label">Markdown比率</span>
+              <span class="value" id="kil-review-health-fallback-ratio">-</span>
+            </div>
+            <div class="kil-review-stat">
+              <span class="label">最新解析コミット</span>
+              <span class="value" id="kil-review-health-analyzed-commit">-</span>
+            </div>
+            <div class="kil-review-stat">
+              <span class="label">最新解析日時</span>
+              <span class="value" id="kil-review-health-analyzed-at">-</span>
+            </div>
+          </div>
+        </section>
+
+        <section class="card">
+          <h2>リスク分布</h2>
+          <div id="kil-review-risk-grid" class="kil-review-risk-grid">
+            <div class="muted">リスク情報がありません</div>
+          </div>
+        </section>
+
+        <section class="card">
+          <div class="section-header">
+            <h2>Go / NOGO 判定</h2>
+            <p id="kil-review-empty" class="muted hidden">表示対象のレビュー項目がありません</p>
+          </div>
+          <ul id="kil-review-items" class="kil-review-items"></ul>
+        </section>
+
+        <section class="card">
+          <h2>参照元</h2>
+          <ul id="kil-review-data-files" class="muted">
+            <li>AGENT_BRAIN_INDEX.jsonl / AGENT_BRAIN.md</li>
+          </ul>
+        </section>
+      </section>
     </div>
 
     <div id="toast" class="toast" aria-live="polite"></div>
     <script src="/static/js/common.js"></script>
     <script src="/static/js/errors.js"></script>
+    <script src="/static/js/workflow-archive-pages.js"></script>
+    <script src="/static/js/kil-review.js"></script>
   </body>
 </html>

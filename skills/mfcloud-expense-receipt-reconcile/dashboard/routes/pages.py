@@ -16,6 +16,28 @@ WORKFLOW_TEMPLATE_SIDEBAR_LINK_LIMIT = 30
 WORKFLOW_PAGE_SIDEBAR_LABEL_LIMIT = 38
 WORKFLOW_PAGE_SIDEBAR_LINK_LIMIT = 60
 WORKFLOW_TEMPLATE_STEP_DEFAULT_ACTION = "preflight"
+WORKFLOW_TEMPLATE_STEP_DEFAULT_TIMER_MINUTES = 5
+WORKFLOW_TEMPLATE_STEP_MAX_TIMER_MINUTES = 7 * 24 * 60
+WORKFLOW_TEMPLATE_REQUIRED_STEP_ACTIONS = (
+    "preflight",
+    "mf_reconcile",
+)
+WORKFLOW_TEMPLATE_REQUIRED_STEP_TITLES = {
+    "preflight": "手順0 準備（ログイン確認・MF連携更新）",
+    "mf_reconcile": "手順5 MF突合・下書き作成",
+}
+WORKFLOW_TEMPLATE_FALLBACK_ACTION_ORDER = (
+    "preflight",
+    "amazon_download",
+    "amazon_print",
+    "rakuten_download",
+    "rakuten_print",
+    "provider_ingest",
+    "mf_bulk_upload_task",
+    "mf_reconcile",
+    "month_close",
+    "preflight_mf",
+)
 WORKFLOW_TEMPLATE_ALLOWED_STEP_ACTIONS = (
     "preflight",
     "preflight_mf",
@@ -23,16 +45,25 @@ WORKFLOW_TEMPLATE_ALLOWED_STEP_ACTIONS = (
     "rakuten_download",
     "amazon_print",
     "rakuten_print",
+    "provider_ingest",
+    "mf_bulk_upload_task",
     "mf_reconcile",
+    "month_close",
 )
+WORKFLOW_PAGE_MAX_STEP_VERSIONS = 30
 DEFAULT_SIDEBAR_LINKS = [
     {"href": "/workspace", "label": "HOME", "tab": "workspace", "section": "home"},
     {"href": "/", "label": "WorkFlow：経費精算", "tab": "wizard", "section": "workflow"},
     {"href": "/expense-workflow-copy", "label": "WF作成テンプレート", "tab": "wizard-copy", "section": "admin"},
-    {"href": "/workflow-pages/archived", "label": "WFアーカイブ管理", "tab": "workflow-archive", "section": "admin"},
-    {"href": "/kil-review", "label": "KIL Review", "tab": "kil-review", "section": "admin"},
     {"href": "/errors", "label": "\u7ba1\u7406\u30bb\u30f3\u30bf\u30fc", "tab": "errors", "section": "admin"},
 ]
+ERRORS_INITIAL_TAB_VALUES = {
+    "incidents",
+    "document-update",
+    "document-targets",
+    "workflow-archive",
+    "kil-review",
+}
 
 
 def _workflow_template_store() -> Path:
@@ -87,6 +118,29 @@ def _read_workflow_pages(*, include_archived: bool = False) -> list[dict[str, ob
         archived_at = str(row.get("archived_at") or "").strip() if archived else ""
         if archived and not include_archived:
             continue
+        steps = _normalize_template_steps_for_view(row.get("steps"))
+        created_at = str(row.get("created_at") or "").strip()
+        updated_at = str(row.get("updated_at") or "").strip()
+        step_version = core._safe_non_negative_int(row.get("step_version"), default=1)
+        if step_version < 1:
+            step_version = 1
+        step_versions = _normalize_step_versions_for_view(
+            row.get("step_versions"),
+            fallback_steps=steps,
+            fallback_version=step_version,
+            fallback_updated_at=updated_at,
+        )
+        if step_versions:
+            by_version = {
+                core._safe_non_negative_int(item.get("version"), default=1): item
+                for item in step_versions
+                if isinstance(item, dict)
+            }
+            current = by_version.get(step_version) or step_versions[-1]
+            steps = _normalize_template_steps_for_view(current.get("steps"))
+            step_version = core._safe_non_negative_int(current.get("version"), default=step_version)
+            if step_version < 1:
+                step_version = 1
 
         pages.append(
             {
@@ -97,14 +151,16 @@ def _read_workflow_pages(*, include_archived: bool = False) -> list[dict[str, ob
                 "month": month,
                 "mfcloud_url": mfcloud_url,
                 "source_urls": source_urls,
-                "steps": _normalize_template_steps_for_view(row.get("steps")),
+                "steps": steps,
                 "notes": str(row.get("notes") or ""),
                 "rakuten_orders_url": str(row.get("rakuten_orders_url") or ""),
                 "source_template_id": str(row.get("source_template_id") or "").strip(),
+                "step_version": step_version,
+                "step_versions": step_versions,
                 "archived": archived,
                 "archived_at": archived_at,
-                "created_at": str(row.get("created_at") or ""),
-                "updated_at": str(row.get("updated_at") or ""),
+                "created_at": created_at,
+                "updated_at": updated_at,
             }
         )
         seen.add(page_id)
@@ -116,27 +172,110 @@ def _read_workflow_pages(*, include_archived: bool = False) -> list[dict[str, ob
     return pages
 
 
-def _normalize_template_steps_for_view(value: Any) -> list[dict[str, str]]:
+def _normalize_template_steps_for_view(value: Any) -> list[dict[str, Any]]:
     raw_values = value if isinstance(value, list) else []
-    normalized: list[dict[str, str]] = []
+    normalized: list[dict[str, Any]] = []
+    seen_actions: set[str] = set()
+    seen_ids: set[str] = set()
+    fallback_index = 0
     for index, row in enumerate(raw_values):
         raw_id = ""
         raw_title = ""
         raw_action = ""
+        raw_timer_minutes: Any = None
         if isinstance(row, dict):
             raw_id = str(row.get("id") or "").strip()
             raw_title = row.get("title") or row.get("name")
             raw_action = str(row.get("action") or "").strip()
+            if "timer_minutes" in row:
+                raw_timer_minutes = row.get("timer_minutes")
+            elif "timer" in row:
+                raw_timer_minutes = row.get("timer")
         else:
             raw_title = row
-        title = str(raw_title or "").strip()
-        if not title:
+        action = raw_action if raw_action in WORKFLOW_TEMPLATE_ALLOWED_STEP_ACTIONS else ""
+        if not action:
+            for candidate in WORKFLOW_TEMPLATE_FALLBACK_ACTION_ORDER[fallback_index:]:
+                if candidate not in seen_actions and candidate in WORKFLOW_TEMPLATE_ALLOWED_STEP_ACTIONS:
+                    action = candidate
+                    break
+            if not action:
+                action = WORKFLOW_TEMPLATE_STEP_DEFAULT_ACTION
+        fallback_index += 1
+        if action in seen_actions:
             continue
-        action = raw_action if raw_action in WORKFLOW_TEMPLATE_ALLOWED_STEP_ACTIONS else WORKFLOW_TEMPLATE_STEP_DEFAULT_ACTION
+
+        title = " ".join(str(raw_title or "").strip().split())
+        if not title:
+            title = WORKFLOW_TEMPLATE_REQUIRED_STEP_TITLES.get(action, f"手順{index + 1}")
+        timer_minutes = core._safe_non_negative_int(raw_timer_minutes, default=WORKFLOW_TEMPLATE_STEP_DEFAULT_TIMER_MINUTES)
+        if timer_minutes > WORKFLOW_TEMPLATE_STEP_MAX_TIMER_MINUTES:
+            timer_minutes = WORKFLOW_TEMPLATE_STEP_MAX_TIMER_MINUTES
         step_id = raw_id.strip()
         if not step_id:
             step_id = f"step-{index + 1}"
-        normalized.append({"id": step_id, "title": title, "action": action})
+        while step_id in seen_ids:
+            step_id = f"{step_id}-{len(seen_ids) + 1}"
+        seen_ids.add(step_id)
+        seen_actions.add(action)
+        normalized.append({"id": step_id, "title": title, "action": action, "timer_minutes": timer_minutes})
+
+    for required_action in WORKFLOW_TEMPLATE_REQUIRED_STEP_ACTIONS:
+        if required_action in seen_actions:
+            continue
+        step_id = f"step-required-{required_action}"
+        while step_id in seen_ids:
+            step_id = f"{step_id}-{len(seen_ids) + 1}"
+        seen_ids.add(step_id)
+        normalized.append(
+            {
+                "id": step_id,
+                "title": WORKFLOW_TEMPLATE_REQUIRED_STEP_TITLES.get(required_action, required_action),
+                "action": required_action,
+                "timer_minutes": WORKFLOW_TEMPLATE_STEP_DEFAULT_TIMER_MINUTES,
+            }
+        )
+        seen_actions.add(required_action)
+    return normalized
+
+
+def _normalize_step_versions_for_view(
+    value: Any,
+    *,
+    fallback_steps: list[dict[str, Any]],
+    fallback_version: int,
+    fallback_updated_at: str,
+) -> list[dict[str, Any]]:
+    raw_values = value if isinstance(value, list) else []
+    by_version: dict[int, dict[str, Any]] = {}
+    for row in raw_values:
+        if not isinstance(row, dict):
+            continue
+        version = core._safe_non_negative_int(row.get("version"), default=0)
+        if version < 1:
+            continue
+        steps = _normalize_template_steps_for_view(row.get("steps"))
+        if not steps:
+            continue
+        updated_at = str(row.get("updated_at") or "").strip() or fallback_updated_at
+        by_version[version] = {
+            "version": version,
+            "steps": steps,
+            "updated_at": updated_at,
+        }
+    normalized_fallback_steps = _normalize_template_steps_for_view(fallback_steps)
+    if normalized_fallback_steps:
+        fallback_ver = core._safe_non_negative_int(fallback_version, default=1)
+        if fallback_ver < 1:
+            fallback_ver = 1
+        by_version[fallback_ver] = {
+            "version": fallback_ver,
+            "steps": normalized_fallback_steps,
+            "updated_at": fallback_updated_at,
+        }
+    normalized = sorted(by_version.values(), key=lambda row: int(row.get("version") or 0))
+    if len(normalized) > WORKFLOW_PAGE_MAX_STEP_VERSIONS:
+        normalized = normalized[-WORKFLOW_PAGE_MAX_STEP_VERSIONS:]
     return normalized
 
 
@@ -373,16 +512,9 @@ def create_pages_router(templates: Jinja2Templates) -> APIRouter:
             },
         )
 
-    @router.get("/workflow-pages/archived", response_class=HTMLResponse)
-    def workflow_pages_archived(request: Request) -> HTMLResponse:
-        return templates.TemplateResponse(
-            request,
-            "workflow_pages_archive.html",
-            {
-                **_dashboard_context("workflow-archive"),
-                "ax_home": str(core._ax_home()),
-            },
-        )
+    @router.get("/workflow-pages/archived")
+    def workflow_pages_archived() -> RedirectResponse:
+        return RedirectResponse(url="/errors?tab=workflow-archive")
 
     @router.get("/status", response_class=HTMLResponse)
     def status(request: Request) -> HTMLResponse:
@@ -416,16 +548,9 @@ def create_pages_router(templates: Jinja2Templates) -> APIRouter:
             },
         )
 
-    @router.get("/kil-review", response_class=HTMLResponse)
-    def kil_review(request: Request) -> HTMLResponse:
-        return templates.TemplateResponse(
-            request,
-            "kil_review.html",
-            {
-                **_dashboard_context("kil-review"),
-                "ax_home": str(core._ax_home()),
-            },
-        )
+    @router.get("/kil-review")
+    def kil_review() -> RedirectResponse:
+        return RedirectResponse(url="/errors?tab=kil-review")
 
     @router.get("/workspace", response_class=HTMLResponse)
     def workspace(request: Request) -> HTMLResponse:
@@ -439,12 +564,19 @@ def create_pages_router(templates: Jinja2Templates) -> APIRouter:
         )
 
     @router.get("/errors", response_class=HTMLResponse)
-    def errors(request: Request) -> HTMLResponse:
+    def errors(
+        request: Request,
+        tab: str | None = Query(default=None),
+    ) -> HTMLResponse:
+        normalized_tab = str(tab or "").strip()
+        if normalized_tab not in ERRORS_INITIAL_TAB_VALUES:
+            normalized_tab = "incidents"
         return templates.TemplateResponse(
             request,
             "errors.html",
             {
                 **_dashboard_context("errors"),
+                "errors_initial_tab": normalized_tab,
                 "ax_home": str(core._ax_home()),
             },
         )
