@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>エラーセンター | 経費ダッシュボード</title>
+    <title>管理センター | 経費ダッシュボード</title>
     <link rel="stylesheet" href="/static/styles.css" />
   </head>
   <body>
@@ -15,7 +15,7 @@
       <header class="hero">
         <div>
           <p class="eyebrow">エラーインシデント管理</p>
-          <h1>エラーセンター</h1>
+          <h1>管理センター</h1>
           <p class="subtitle">失敗ログの確認、修正計画、GO実行、アーカイブをこの画面で行います。</p>
         </div>
       </header>
@@ -23,8 +23,9 @@
       <div id="errors-status" class="error-box hidden"></div>
 
       <div class="hero-tabs errors-tabs" role="tablist" aria-label="エラーページタブ">
-        <button type="button" class="pill is-active" data-errors-tab="incidents" id="errors-tab-incidents">インシデント</button>
-            <button type="button" class="pill" data-errors-tab="document-update" id="errors-tab-document-update">ドキュメント更新</button>
+        <button type="button" class="pill is-active" data-errors-tab="incidents" id="errors-tab-incidents">エラーセンター</button>
+        <button type="button" class="pill" data-errors-tab="document-update" id="errors-tab-document-update">ドキュメント更新</button>
+        <button type="button" class="pill" data-errors-tab="document-targets" id="errors-tab-document-targets">対象ドキュメント</button>
       </div>
 
       <section class="errors-tab-panel" data-errors-tab-panel="incidents">
@@ -176,6 +177,17 @@
             <h2>ドキュメント更新結果</h2>
           </div>
           <pre id="errors-doc-run-result" class="log error-log">-</pre>
+        </section>
+      </section>
+
+      <section class="errors-tab-panel hidden" data-errors-tab-panel="document-targets">
+        <section class="card">
+          <div class="section-header">
+            <h2>ドキュメント更新対象リスト</h2>
+            <button type="button" class="secondary" id="errors-doc-targets-refresh">対象を再読み込み</button>
+          </div>
+          <p id="errors-doc-targets-summary" class="muted">対象ドキュメントを読み込み中...</p>
+          <ul id="errors-doc-targets-list" class="muted"></ul>
         </section>
       </section>
     </div>

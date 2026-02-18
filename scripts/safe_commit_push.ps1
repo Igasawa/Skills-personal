@@ -5,7 +5,27 @@ param(
     [switch]$DryRun,
     [switch]$AllowNoStage,
     [switch]$CheckOnly,
-    [switch]$SkipScopeCheck
+    [switch]$SkipScopeCheck,
+    [switch]$CheckLargeFiles,
+    [int]$LargeFileThreshold = 300,
+    [string[]]$LargeFileExtensions = @(
+        ".py", ".pyi",
+        ".js", ".mjs", ".ts", ".tsx", ".jsx",
+        ".ps1", ".psm1", ".psd1",
+        ".md", ".markdown",
+        ".css", ".html",
+        ".json", ".yaml", ".yml",
+        ".toml", ".ini", ".cfg"
+    ),
+    [string[]]$LargeFileExcludeDirs = @(
+        ".git",
+        ".venv",
+        "node_modules",
+        "output",
+        "__pycache__",
+        ".pytest_cache",
+        "skills/portable-codex-skills/pptx/ooxml/schemas"
+    )
 )
 
 Set-StrictMode -Version Latest
@@ -66,6 +86,73 @@ function Get-WorkingTreeFiles {
     return ($files | Select-Object -Unique)
 }
 
+function Invoke-LargeFileCheck {
+    param(
+        [string[]]$Paths,
+        [int]$Threshold,
+        [string[]]$ExtFilter,
+        [string[]]$ExcludeSubdirs
+    )
+
+    if (-not $Paths -or $Paths.Count -eq 0) {
+        Write-Host "Large-file check target is empty. Skipped."
+        return
+    }
+
+    $extLookup = @{}
+    foreach ($ext in $ExtFilter) {
+        $normalized = ("." + $ext.TrimStart(".")).ToLower()
+        $extLookup[$normalized] = $true
+    }
+
+    $violations = @()
+    foreach ($path in $Paths) {
+        if (-not (Test-Path -LiteralPath $path)) {
+            continue
+        }
+
+        $normalizedPath = $path.ToLower()
+        $skip = $false
+        foreach ($dir in $ExcludeSubdirs) {
+            $normalizedDir = $dir.ToLower().TrimEnd("/")
+            if ($normalizedPath.StartsWith($normalizedDir) -or $normalizedPath -like "*$normalizedDir*") {
+                $skip = $true
+                break
+            }
+        }
+        if ($skip) {
+            continue
+        }
+
+        $ext = [IO.Path]::GetExtension($path).ToLower()
+        if (-not $extLookup.ContainsKey($ext)) {
+            continue
+        }
+
+        try {
+            $lines = (Get-Content -LiteralPath $path -ErrorAction Stop | Measure-Object -Line).Lines
+            if ($lines -gt $Threshold) {
+                $violations += [pscustomobject]@{
+                    File  = $path
+                    Lines = $lines
+                }
+            }
+        } catch {
+            Write-Host "Skip file due to read error: $path"
+        }
+    }
+
+    if ($violations.Count -gt 0) {
+        Write-Host "Large-file debt check failed: files over $Threshold lines:"
+        $violations | Sort-Object Lines -Descending | ForEach-Object {
+            Write-Host ("  {0,5} {1}" -f $_.Lines, $_.File)
+        }
+        throw "Large-file debt check failed."
+    }
+
+    Write-Host "Large-file check passed."
+}
+
 function Invoke-EncodingCheck {
     param(
         [string]$Mode,
@@ -123,6 +210,9 @@ try {
         Write-Host "No staged changes found. Running checks on working-tree files only with --AllowNoStage."
         $worktree = Get-WorkingTreeFiles
         Invoke-EncodingCheck "working tree" $worktree
+        if ($CheckLargeFiles) {
+            Invoke-LargeFileCheck -Paths $worktree -Threshold $LargeFileThreshold -ExtFilter $LargeFileExtensions -ExcludeSubdirs $LargeFileExcludeDirs
+        }
 
         if ($CheckOnly -or $DryRun) {
             Write-Host "CheckOnly/DryRun: commit/push skipped."
@@ -135,6 +225,9 @@ try {
     Write-Host "Staged files:"
     foreach ($path in $staged) {
         Write-Host "  - $path"
+    }
+    if ($CheckLargeFiles) {
+        Invoke-LargeFileCheck -Paths $staged -Threshold $LargeFileThreshold -ExtFilter $LargeFileExtensions -ExcludeSubdirs $LargeFileExcludeDirs
     }
 
     Write-Host "Encoding check (staged files)..."

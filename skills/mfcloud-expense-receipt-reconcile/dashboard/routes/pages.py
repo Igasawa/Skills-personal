@@ -30,7 +30,7 @@ DEFAULT_SIDEBAR_LINKS = [
     {"href": "/", "label": "WorkFlow：経費精算", "tab": "wizard", "section": "workflow"},
     {"href": "/expense-workflow-copy", "label": "WFテンプレート", "tab": "wizard-copy", "section": "admin"},
     {"href": "/kil-review", "label": "KIL Review", "tab": "kil-review", "section": "admin"},
-    {"href": "/errors", "label": "\u7ba1\u7406", "tab": "errors", "section": "admin"},
+    {"href": "/errors", "label": "\u7ba1\u7406\u30bb\u30f3\u30bf\u30fc", "tab": "errors", "section": "admin"},
 ]
 
 

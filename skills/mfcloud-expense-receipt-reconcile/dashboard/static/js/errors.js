@@ -38,8 +38,12 @@
   const planJsonEl = document.getElementById("errors-plan-json");
   const runResultJsonEl = document.getElementById("errors-run-result-json");
 
+  const DOCUMENT_TARGET_LIMIT = 200;
+  const DOCUMENT_TARGET_SUMMARY_MAX = 160;
+
   const docRefreshButton = document.getElementById("errors-doc-refresh");
   const docRunButton = document.getElementById("errors-doc-run");
+  const docTargetsRefreshButton = document.getElementById("errors-doc-targets-refresh");
   const docSummaryEl = document.getElementById("errors-doc-summary");
   const docSourceUsedEl = document.getElementById("errors-doc-source-used");
   const docIndexCountEl = document.getElementById("errors-doc-index-count");
@@ -49,6 +53,8 @@
   const docReviewUpdatedAtEl = document.getElementById("errors-doc-review-updated-at");
   const docFilesEl = document.getElementById("errors-doc-files");
   const docRunResultEl = document.getElementById("errors-doc-run-result");
+  const docTargetsSummaryEl = document.getElementById("errors-doc-targets-summary");
+  const docTargetsListEl = document.getElementById("errors-doc-targets-list");
 
   let incidents = [];
   let selectedIncidentId = "";
@@ -79,6 +85,51 @@
   function toInt(value, fallback) {
     const n = Number.parseInt(String(value ?? ""), 10);
     return Number.isFinite(n) ? n : fallback;
+  }
+
+  function toText(value, fallback = "") {
+    const text = String(value == null ? "" : value).trim();
+    return text || String(fallback);
+  }
+
+  function truncateText(value, maxLength) {
+    const text = toText(value);
+    const limit = Number(maxLength) || 0;
+    if (!text || limit <= 0 || text.length <= limit) {
+      return text;
+    }
+    return `${text.slice(0, Math.max(limit - 1, 1))}…`;
+  }
+
+  function inferDocumentName(item) {
+    if (!item || typeof item !== "object") return "名称未取得";
+
+    const candidates = [
+      item.document_name,
+      item.document,
+      item.title,
+      item.name,
+      item.path,
+      item.file,
+      item.file_path,
+      item.source_file,
+      item.source_path,
+      item.source_name,
+    ];
+
+    for (const candidate of candidates) {
+      const name = toText(candidate);
+      if (name) return name;
+    }
+
+    const source = toText(item.source);
+    const commit = toText(item.commit);
+    if (source && commit) {
+      return `${source} / ${commit.slice(0, 8)}`;
+    }
+    if (source) return source;
+    if (commit) return `コミット ${commit.slice(0, 8)}`;
+    return "名称未取得";
   }
 
   function pretty(value) {
@@ -114,6 +165,7 @@
     if (planAllButton) planAllButton.disabled = busy;
     if (docRefreshButton) docRefreshButton.disabled = busy;
     if (docRunButton) docRunButton.disabled = busy;
+    if (docTargetsRefreshButton) docTargetsRefreshButton.disabled = busy;
 
     document.querySelectorAll("[data-error-action]").forEach((button) => {
       button.disabled = busy || !selectedIncidentId;
@@ -286,9 +338,58 @@
     }
   }
 
+  function renderDocumentTargets(payload) {
+    if (!docTargetsSummaryEl || !docTargetsListEl) return;
+
+    const items = Array.isArray(payload?.items) ? payload.items : [];
+    const safeItems = items.filter((item) => item && typeof item === "object");
+
+    docTargetsListEl.innerHTML = "";
+    setText(docTargetsSummaryEl, `対象ドキュメント: ${safeItems.length}件`);
+
+    if (!safeItems.length) {
+      const empty = document.createElement("li");
+      empty.textContent = "対象のドキュメントはありません。";
+      docTargetsListEl.appendChild(empty);
+      return;
+    }
+
+    safeItems.forEach((item) => {
+      const name = inferDocumentName(item);
+      const source = toText(item.source);
+      const date = toText(item.date);
+      const commit = toText(item.commit);
+      const summary = truncateText(item.summary || "", DOCUMENT_TARGET_SUMMARY_MAX);
+
+      const li = document.createElement("li");
+
+      const nameEl = document.createElement("div");
+      nameEl.textContent = `文書名: ${name}`;
+      nameEl.style.fontWeight = "bold";
+      li.appendChild(nameEl);
+
+      const summaryEl = document.createElement("div");
+      summaryEl.className = "muted";
+      summaryEl.textContent = `要約: ${summary || "要約がありません"}`;
+      li.appendChild(summaryEl);
+
+      const metaEl = document.createElement("div");
+      metaEl.className = "muted";
+      const bits = [];
+      if (source) bits.push(`種別: ${source}`);
+      if (date && date !== "-") bits.push(`更新日: ${date}`);
+      if (commit && commit !== "-") bits.push(`コミット: ${commit.slice(0, 8)}`);
+      metaEl.textContent = bits.join(" / ");
+      li.appendChild(metaEl);
+
+      docTargetsListEl.appendChild(li);
+    });
+  }
+
   async function refreshDocumentStatus() {
-    const payload = await apiGetJson("/api/kil-review?source=all&limit=1");
+    const payload = await apiGetJson(`/api/kil-review?source=all&limit=${DOCUMENT_TARGET_LIMIT}`);
     renderDocumentStatus(payload);
+    renderDocumentTargets(payload);
     docStatusLoaded = true;
     return payload;
   }
@@ -433,12 +534,21 @@
     });
   }
 
+  if (docTargetsRefreshButton) {
+    docTargetsRefreshButton.addEventListener("click", () => {
+      runDocAction(async () => {
+        await refreshDocumentStatus();
+        showToast("対象ドキュメント一覧を更新しました", "success");
+      });
+    });
+  }
+
   tabButtons.forEach((button) => {
     button.addEventListener("click", () => {
       const target = button.dataset.errorsTab;
       if (!target) return;
       setActiveTab(target);
-      if (target === "document-update" && !docStatusLoaded) {
+      if ((target === "document-update" || target === "document-targets") && !docStatusLoaded) {
         void refreshDocumentStatus();
       }
     });
