@@ -43,60 +43,24 @@
                 type="text"
                 name="template_name"
                 value="{{ workflow_template.name | default('', true) }}"
-                placeholder="例: 2026-02 経費精算"
+                placeholder="例: 経費精算ワークフロー"
                 required
               />
             </label>
-          <label>
-            年
-              <input type="number" name="year" value="{{ defaults.year }}" min="2000" max="2100" />
-            </label>
-            <label>
-              月
-              <input type="number" name="month" value="{{ defaults.month }}" min="1" max="12" />
-            </label>
           </div>
+          <input type="hidden" name="year" value="{{ defaults.year }}" />
+          <input type="hidden" name="month" value="{{ defaults.month }}" />
           <label>
-            小見出し（任意）
+            補足説明（任意）
             <input
               type="text"
               name="template_subheading"
               value="{{ workflow_template.subheading | default('', true) }}"
-              placeholder="例: Amazon / 楽天 / その他"
+              placeholder="例: Amazon / 楽天 / 手作業あり"
             />
           </label>
-          <label for="template-source-url-primary">ソースURL（任意）</label>
-          <div id="template-source-url-list" class="template-source-url-list" data-source-url-list>
-            <div class="form-row template-source-url-row" data-source-url-row>
-              <input
-                id="template-source-url-primary"
-                type="url"
-                name="mfcloud_url"
-                value="{{ workflow_template.mfcloud_url | default('', true) }}"
-                data-source-url-input
-                placeholder="https://example.com/path"
-              />
-              <button type="button" class="secondary" data-source-url-remove aria-label="このURL行を削除">-</button>
-            </div>
-          </div>
-          <div class="form-row">
-            <button type="button" id="template-source-url-add" class="secondary">+ URLを追加</button>
-          </div>
-          <label>
-            メモ
-            <input
-              type="text"
-              name="notes"
-              value="{{ defaults.notes }}"
-              placeholder="ワークフロー作成時の補足メモを入力できます"
-            />
-          </label>
-          <input type="hidden" name="rakuten_orders_url" value="{{ defaults.rakuten_orders_url }}" />
           <div class="form-row">
             <button type="button" id="workflow-page-create" class="primary">ワークフローを作成</button>
-            <button type="button" id="workflow-template-save" class="secondary">作成テンプレートを更新</button>
-            <a class="secondary" href="/workflow-pages/archived">アーカイブ管理を開く</a>
-            <span class="muted">このカードは新規ワークフローの設定です。必要な場合のみ「作成テンプレートを更新」を使います。</span>
           </div>
         </form>
       </section>

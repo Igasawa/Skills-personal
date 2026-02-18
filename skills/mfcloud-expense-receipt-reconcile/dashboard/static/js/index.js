@@ -249,7 +249,7 @@
 
       const subheadingLabel = document.createElement("label");
       subheadingLabel.className = "dialog-field";
-      subheadingLabel.textContent = "小見出し（任意）";
+      subheadingLabel.textContent = "補足説明（任意）";
       const subheadingInput = document.createElement("input");
       subheadingInput.type = "text";
       subheadingInput.value = String(subheading || "");
@@ -743,15 +743,10 @@
   function restoreYmSelection() {
     if (!form) return;
     const queryYm = readYmFromQueryString();
-    const templateYm =
-      workflowTemplate &&
-      Number.parseInt(String(workflowTemplate.year || 0), 10) &&
-      Number.parseInt(String(workflowTemplate.month || 0), 10)
-        ? normalizeYm(workflowTemplate.year, workflowTemplate.month)
-        : "";
-    const savedYm = queryYm || templateYm || readYmFromLocalStorage();
+    const savedYm = queryYm || readYmFromLocalStorage() || getYmFromForm();
     if (savedYm) setYmToForm(savedYm);
-    persistYmSelection(getYmFromForm());
+    const normalized = resolveFormYearMonth();
+    persistYmSelection(normalizeYm(normalized.year, normalized.month));
   }
 
   function normalizeChecklistState(raw) {
@@ -977,13 +972,12 @@
 
   function buildPayload(mode) {
     if (!form) return null;
-    const yearEl = form.querySelector("[name=year]");
-    const monthEl = form.querySelector("[name=month]");
+    const yearMonth = resolveFormYearMonth();
     const notesEl = form.querySelector("[name=notes]");
     const rakutenOrdersEl = form.querySelector("[name=rakuten_orders_url]");
     return {
-      year: Number(yearEl?.value || 0),
-      month: Number(monthEl?.value || 0),
+      year: yearMonth.year,
+      month: yearMonth.month,
       mfcloud_url: getPrimaryTemplateSourceUrl(),
       notes: (notesEl?.value || "").trim(),
       rakuten_orders_url: (rakutenOrdersEl?.value || "").trim(),
@@ -993,12 +987,31 @@
     };
   }
 
+  function resolveFormYearMonth() {
+    const now = new Date();
+    let year = now.getFullYear();
+    let month = now.getMonth() + 1;
+    if (!form) return { year, month };
+    const yearEl = form.querySelector("[name=year]");
+    const monthEl = form.querySelector("[name=month]");
+    const parsedYear = Number.parseInt(String(yearEl?.value || "").trim(), 10);
+    const parsedMonth = Number.parseInt(String(monthEl?.value || "").trim(), 10);
+    if (Number.isInteger(parsedYear) && parsedYear >= 2000) {
+      year = parsedYear;
+    }
+    if (Number.isInteger(parsedMonth) && parsedMonth >= 1 && parsedMonth <= 12) {
+      month = parsedMonth;
+    }
+    if (yearEl) yearEl.value = String(year);
+    if (monthEl) monthEl.value = String(month);
+    return { year, month };
+  }
+
   function buildTemplatePayload() {
     if (!form) return null;
     const nameEl = form.querySelector("[name=template_name]");
     const subheadingEl = form.querySelector("[name=template_subheading]");
-    const yearEl = form.querySelector("[name=year]");
-    const monthEl = form.querySelector("[name=month]");
+    const yearMonth = resolveFormYearMonth();
     const notesEl = form.querySelector("[name=notes]");
     const rakutenOrdersEl = form.querySelector("[name=rakuten_orders_url]");
     const sourceUrls = collectTemplateSourceUrls();
@@ -1012,8 +1025,8 @@
       template_source_id: getTemplateSourceIdFromForm(),
       name,
       subheading: String(subheadingEl?.value || "").trim(),
-      year: Number(yearEl?.value || 0),
-      month: Number(monthEl?.value || 0),
+      year: yearMonth.year,
+      month: yearMonth.month,
       mfcloud_url: primarySourceUrl,
       source_urls: sourceUrls,
       notes: String(notesEl?.value || "").trim(),
@@ -1054,21 +1067,12 @@
       showToast(message, "error");
       return;
     }
-    if (!payload.year || !payload.month) {
-      const message = "年月を入力してください。";
-      showError(message);
-      showToast(message, "error");
-      return;
-    }
-    const sourceCount = Array.isArray(payload.source_urls) ? payload.source_urls.length : 0;
     const confirmed = await showConfirmModal({
       title: "ワークフロー作成の確認",
       lines: [
         "新しいワークフローページを作成します。",
         `ページ名: ${payload.name}`,
-        `小見出し: ${payload.subheading || "(なし)"}`,
-        `年月: ${payload.year}-${String(payload.month).padStart(2, "0")}`,
-        `ソースURL件数: ${sourceCount}`,
+        `補足説明: ${payload.subheading || "(なし)"}`,
         "テンプレートの手順定義と自動実行設定を引き継ぎます。",
       ],
       confirmLabel: "作成して開く",
@@ -1223,12 +1227,6 @@
     if (!payload) return;
     if (!payload.name) {
       const message = "ワークフロー名を入力してください。";
-      showError(message);
-      showToast(message, "error");
-      return;
-    }
-    if (!payload.year || !payload.month) {
-      const message = "年月を入力してください。";
       showError(message);
       showToast(message, "error");
       return;
