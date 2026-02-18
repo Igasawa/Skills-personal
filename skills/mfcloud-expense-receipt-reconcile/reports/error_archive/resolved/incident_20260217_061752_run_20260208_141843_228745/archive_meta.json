@@ -1,0 +1,8 @@
+{
+  "incident_id": "incident_20260217_061752_run_20260208_141843_228745",
+  "result": "resolved",
+  "archived_at": "2026-02-18T03:13:51+00:00",
+  "reason": "manual archive from errors page",
+  "source": "C:\\Users\\Tatsuo-2023\\Projects\\PersonalSkills\\skills\\mfcloud-expense-receipt-reconcile\\reports\\error_inbox\\incident_20260217_061752_run_20260208_141843_228745",
+  "destination": "C:\\Users\\Tatsuo-2023\\Projects\\PersonalSkills\\skills\\mfcloud-expense-receipt-reconcile\\reports\\error_archive\\resolved\\incident_20260217_061752_run_20260208_141843_228745"
+}
