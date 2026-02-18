@@ -89,3 +89,32 @@ python -m pip install -r requirements-dev.txt
 python -m pytest -q
 npm run check:encoding
 ```
+
+## 安全コミット運用（文字化け再発防止）
+
+本リポジトリでは、文字化け防止を含む commit/push の再現手順を固定するため、以下を利用してください。
+
+```powershell
+# 変更をステージ後
+.\scripts\safe_commit_push.ps1 -Message "feat: 変更内容の要約"
+```
+
+### 実行内容
+
+- ステージ済み変更があることを確認（未ステージ時は停止）
+- `scripts/check_text_encoding.py --scope staged` を実行
+- `scripts/check_text_encoding.py --scope tracked` を `scripts/` と dashboard テンプレート/静的資産に対して実行
+- commit 後 `git fetch` し、push 先が自分のローカルより進んでいる場合は停止
+- `git push`
+
+### 補助オプション
+
+- `-NoPush` : commit のみ
+- `-DryRun` : チェックまで実施し、commit/push を行わない
+- `-SkipScopeCheck` : 追加スコープの再帰チェックを省略
+- `-Remote <name>` : push先を明示（既定 `origin`）
+
+### 注意
+
+- `-DryRun` でもステージ有無は判定されます。未ステージのまま実行しても失敗します。
+- この運用は pre-commit/pre-push の両方で文字エンコーディングチェックを行うため、文字化けの再発を抑制します。
