@@ -31,7 +31,7 @@ def _workflow_pages_store() -> Path:
     return core._artifact_root() / "_workflow_pages" / "workflow_pages.json"
 
 
-def _read_workflow_pages() -> list[dict[str, object]]:
+def _read_workflow_pages(*, include_archived: bool = False) -> list[dict[str, object]]:
     raw = core._read_json(_workflow_pages_store())
     if not isinstance(raw, list):
         return []
@@ -71,6 +71,10 @@ def _read_workflow_pages() -> list[dict[str, object]]:
             source_urls = [mfcloud_url]
         if source_urls:
             mfcloud_url = source_urls[0]
+        archived = bool(row.get("archived"))
+        archived_at = str(row.get("archived_at") or "").strip() if archived else ""
+        if archived and not include_archived:
+            continue
 
         pages.append(
             {
@@ -84,6 +88,8 @@ def _read_workflow_pages() -> list[dict[str, object]]:
                 "notes": str(row.get("notes") or ""),
                 "rakuten_orders_url": str(row.get("rakuten_orders_url") or ""),
                 "source_template_id": str(row.get("source_template_id") or "").strip(),
+                "archived": archived,
+                "archived_at": archived_at,
                 "created_at": str(row.get("created_at") or ""),
                 "updated_at": str(row.get("updated_at") or ""),
             }
@@ -183,7 +189,7 @@ def _workflow_template_sidebar_links() -> list[dict[str, object]]:
 
 def _workflow_page_sidebar_links() -> list[dict[str, object]]:
     links: list[dict[str, object]] = []
-    for page in _read_workflow_pages()[:WORKFLOW_PAGE_SIDEBAR_LINK_LIMIT]:
+    for page in _read_workflow_pages(include_archived=False)[:WORKFLOW_PAGE_SIDEBAR_LINK_LIMIT]:
         page_id = str(page.get("id") or "").strip()
         label = str(page.get("name") or "WorkFlow").strip()[:WORKFLOW_PAGE_SIDEBAR_LABEL_LIMIT]
         if not page_id:
@@ -221,7 +227,7 @@ def _lookup_workflow_page(workflow_id: str | None) -> dict[str, object] | None:
     wanted = str(workflow_id).strip()
     if not wanted:
         return None
-    for workflow_page in _read_workflow_pages():
+    for workflow_page in _read_workflow_pages(include_archived=False):
         if str(workflow_page.get("id")) == wanted:
             return workflow_page
     return None

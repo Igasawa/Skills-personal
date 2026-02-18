@@ -27,6 +27,7 @@ class ReviewResult:
     risk: str
     severity: str
     confidence: float
+    review_decision: str
     needs_human_review: bool
     needs_soon: bool
     issues: List[str]
@@ -70,6 +71,7 @@ def _infer_review_plan(record: Dict[str, Any]) -> ReviewResult:
 
     threshold = REVIEW_SCORE_RANGES.get(risk, 0.0)
     needs_human_review = risk == "high" or confidence < threshold
+    review_decision = "NOGO" if needs_human_review or needs_soon else "GO"
     if needs_human_review:
         reason = "高リスク" if risk == "high" else "信頼度しきい値未満"
         issues.append(
@@ -100,6 +102,7 @@ def _infer_review_plan(record: Dict[str, Any]) -> ReviewResult:
         risk=risk,
         severity=severity,
         confidence=confidence,
+        review_decision=review_decision,
         needs_human_review=needs_human_review,
         needs_soon=needs_soon,
         issues=issues,
@@ -115,6 +118,7 @@ def _append_review(record: ReviewResult) -> None:
         "risk": record.risk,
         "severity": record.severity,
         "confidence": record.confidence,
+        "review_decision": record.review_decision,
         "needs_human_review": record.needs_human_review,
         "needs_soon": record.needs_soon,
         "issues": record.issues,

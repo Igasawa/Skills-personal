@@ -2376,7 +2376,7 @@ def create_api_router() -> APIRouter:
     def _normalize_workflow_page_subheading(value: Any) -> str:
         return " ".join(str(value or "").strip().split())[:WORKFLOW_PAGE_MAX_SUBHEADING_CHARS]
 
-    def _read_workflow_pages() -> list[dict[str, Any]]:
+    def _read_workflow_pages(*, include_archived: bool = True) -> list[dict[str, Any]]:
         raw = core._read_json(_workflow_pages_path())
         if not isinstance(raw, list):
             return []
@@ -2403,6 +2403,10 @@ def create_api_router() -> APIRouter:
                 mfcloud_url = source_urls[0]
             else:
                 mfcloud_url = ""
+            archived = bool(row.get("archived"))
+            archived_at = _normalize_workflow_template_timestamp(row.get("archived_at")) if archived else ""
+            if archived and not include_archived:
+                continue
             rows.append(
                 {
                     "id": page_id,
@@ -2415,6 +2419,8 @@ def create_api_router() -> APIRouter:
                     "notes": _normalize_workflow_template_notes(row.get("notes")),
                     "rakuten_orders_url": _normalize_workflow_template_url(row.get("rakuten_orders_url")) or "",
                     "source_template_id": _normalize_workflow_template_id(row.get("source_template_id")),
+                    "archived": archived,
+                    "archived_at": archived_at,
                     "created_at": _normalize_workflow_template_timestamp(row.get("created_at"))
                     or _workflow_template_timestamp_now(),
                     "updated_at": _normalize_workflow_template_timestamp(row.get("updated_at"))
@@ -2467,6 +2473,8 @@ def create_api_router() -> APIRouter:
                     "notes": _normalize_workflow_template_notes(row.get("notes")),
                     "rakuten_orders_url": _normalize_workflow_template_url(row.get("rakuten_orders_url")) or "",
                     "source_template_id": _normalize_workflow_template_id(row.get("source_template_id")),
+                    "archived": bool(row.get("archived")),
+                    "archived_at": _normalize_workflow_template_timestamp(row.get("archived_at")) if bool(row.get("archived")) else "",
                     "created_at": str(row.get("created_at") or _workflow_template_timestamp_now()),
                     "updated_at": str(row.get("updated_at") or _workflow_template_timestamp_now()),
                 }
@@ -2515,6 +2523,8 @@ def create_api_router() -> APIRouter:
             "notes": _normalize_workflow_template_notes(payload.get("notes")),
             "rakuten_orders_url": _normalize_workflow_template_url(payload.get("rakuten_orders_url")) or "",
             "source_template_id": _normalize_workflow_template_id(payload.get("source_template_id")),
+            "archived": False,
+            "archived_at": "",
             "created_at": _workflow_template_timestamp_now(),
             "updated_at": _workflow_template_timestamp_now(),
         }
@@ -2545,6 +2555,8 @@ def create_api_router() -> APIRouter:
             if not 1 <= month <= 12:
                 raise HTTPException(status_code=400, detail="Invalid year/month.")
             updates["month"] = month
+        if "archived" in payload:
+            updates["archived"] = bool(payload.get("archived"))
 
         source_urls = None
         if "source_urls" in payload:
@@ -2609,8 +2621,8 @@ def create_api_router() -> APIRouter:
         )
 
     @router.get("/api/workflow-pages")
-    def api_get_workflow_pages() -> JSONResponse:
-        pages = _read_workflow_pages()
+    def api_get_workflow_pages(include_archived: bool = Query(default=False)) -> JSONResponse:
+        pages = _read_workflow_pages(include_archived=include_archived)
         return JSONResponse(
             {"status": "ok", "workflow_pages": pages, "count": len(pages)},
             headers={"Cache-Control": "no-store"},
@@ -2619,7 +2631,7 @@ def create_api_router() -> APIRouter:
     @router.post("/api/workflow-pages")
     def api_create_workflow_page(payload: dict[str, Any]) -> JSONResponse:
         page = _normalize_workflow_page_payload(payload)
-        existing = _read_workflow_pages()
+        existing = _read_workflow_pages(include_archived=True)
         if _workflow_page_name_taken(existing, str(page.get("name") or "")):
             raise HTTPException(status_code=409, detail="Workflow page name already exists.")
         if len(existing) >= WORKFLOW_PAGE_MAX_ITEMS:
@@ -2643,7 +2655,7 @@ def create_api_router() -> APIRouter:
         if not updates:
             raise HTTPException(status_code=400, detail="No updates.")
 
-        existing = _read_workflow_pages()
+        existing = _read_workflow_pages(include_archived=True)
         saved: dict[str, Any] = {}
         updated = False
         for index, page in enumerate(existing):
@@ -2663,6 +2675,8 @@ def create_api_router() -> APIRouter:
                     if str(other.get("name") or "").strip().lower() == next_name:
                         raise HTTPException(status_code=409, detail="Workflow page name already exists.")
             merged = dict(page, **updates)
+            if "archived" in updates:
+                merged["archived_at"] = _workflow_template_timestamp_now() if bool(updates.get("archived")) else ""
             merged["updated_at"] = _workflow_template_timestamp_now()
             existing[index] = merged
             saved = dict(merged)
