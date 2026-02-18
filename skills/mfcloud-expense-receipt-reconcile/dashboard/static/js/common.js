@@ -58,6 +58,7 @@ const DEFAULT_DASHBOARD_SIDEBAR_LINKS = Object.freeze([
     if (text.includes("Workflow page was updated by another action.")) return "ページ設定が他の操作で更新されました。再読み込みしてやり直してください。";
     if (text.includes("Workflow page not found.")) return "対象のワークフローページが見つかりません。";
     if (text.includes("No updates.")) return "変更内容がありません。";
+    if (text.includes("Invalid workflow page id.")) return "ワークフローページIDが不正です。";
     if (text.includes("MF Cloud expense list URL is required.")) return "ソースURLを入力してください。";
     if (text.includes("Invalid year/month")) return "年月が正しくありません。";
     if (text.includes("MF Cloud expense list URL is required")) return "ソースURLを入力してください。";

@@ -256,6 +256,10 @@ def _dashboard_context(active_tab: str) -> dict[str, object]:
 def create_pages_router(templates: Jinja2Templates) -> APIRouter:
     router = APIRouter()
 
+    @router.get("/favicon.ico", include_in_schema=False)
+    def favicon() -> RedirectResponse:
+        return RedirectResponse(url="/static/favicon.svg")
+
     @router.get("/", response_class=HTMLResponse)
     def index(request: Request) -> HTMLResponse:
         defaults = core._resolve_form_defaults()

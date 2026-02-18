@@ -2,7 +2,7 @@
 <html lang="ja">
   <head>
     {% set page_title = workflow_page.name if workflow_page and workflow_page.name else "workflow：経費精算" %}
-    {% set page_subheading = workflow_page.subheading if workflow_page and workflow_page.subheading else "MF経費精算 / Amazon / 楽天" %}
+    {% set page_subheading = workflow_page.subheading if workflow_page and workflow_page.subheading else ("MF経費精算 / Amazon / 楽天" if not workflow_page else "") %}
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>{{ page_title }}</title>

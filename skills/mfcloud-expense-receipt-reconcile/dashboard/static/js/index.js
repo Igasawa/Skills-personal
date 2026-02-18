@@ -159,6 +159,242 @@
     }
   }
 
+  function createModalShell(titleText) {
+    const overlay = document.createElement("div");
+    overlay.className = "modal-backdrop";
+
+    const modal = document.createElement("div");
+    modal.className = "modal modal-center";
+    modal.setAttribute("role", "dialog");
+    modal.setAttribute("aria-modal", "true");
+
+    const panel = document.createElement("div");
+    panel.className = "dialog-card";
+
+    const title = document.createElement("h3");
+    title.className = "dialog-title";
+    title.textContent = titleText;
+    panel.appendChild(title);
+
+    modal.appendChild(panel);
+    document.body.appendChild(overlay);
+    document.body.appendChild(modal);
+    return { overlay, modal, panel };
+  }
+
+  function bindModalDismiss(overlay, modal, onDismiss) {
+    let closed = false;
+    const close = (result) => {
+      if (closed) return;
+      closed = true;
+      window.removeEventListener("keydown", onKeyDown);
+      overlay.remove();
+      modal.remove();
+      onDismiss(result);
+    };
+    const onKeyDown = (event) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      close(false);
+    };
+    overlay.addEventListener("click", () => close(false));
+    modal.addEventListener("click", (event) => {
+      if (event.target === modal) close(false);
+    });
+    window.addEventListener("keydown", onKeyDown);
+    return close;
+  }
+
+  function showConfirmModal({
+    title = "確認",
+    lines = [],
+    confirmLabel = "実行",
+    cancelLabel = "キャンセル",
+  }) {
+    return new Promise((resolve) => {
+      const { overlay, modal, panel } = createModalShell(title);
+      const body = document.createElement("div");
+      body.className = "dialog-body";
+      const messageList = document.createElement("ul");
+      messageList.className = "dialog-message-list";
+      lines.forEach((line) => {
+        const li = document.createElement("li");
+        li.className = "muted";
+        li.textContent = String(line || "");
+        messageList.appendChild(li);
+      });
+      body.appendChild(messageList);
+      panel.appendChild(body);
+
+      const actions = document.createElement("div");
+      actions.className = "dialog-actions";
+
+      const cancelButton = document.createElement("button");
+      cancelButton.type = "button";
+      cancelButton.className = "secondary";
+      cancelButton.textContent = cancelLabel;
+
+      const confirmButton = document.createElement("button");
+      confirmButton.type = "button";
+      confirmButton.className = "primary";
+      confirmButton.textContent = confirmLabel;
+
+      const close = bindModalDismiss(overlay, modal, resolve);
+
+      cancelButton.addEventListener("click", () => close(false));
+      confirmButton.addEventListener("click", () => close(true));
+
+      actions.appendChild(cancelButton);
+      actions.appendChild(confirmButton);
+      panel.appendChild(actions);
+      confirmButton.focus();
+    });
+  }
+
+  function showWorkflowSettingsModal({ name = "", subheading = "" }) {
+    return new Promise((resolve) => {
+      const { overlay, modal, panel } = createModalShell("ページ設定");
+      const formEl = document.createElement("form");
+      formEl.className = "dialog-form";
+
+      const nameLabel = document.createElement("label");
+      nameLabel.className = "dialog-field";
+      nameLabel.textContent = "ワークフロー名";
+      const nameInput = document.createElement("input");
+      nameInput.type = "text";
+      nameInput.required = true;
+      nameInput.value = String(name || "");
+      nameLabel.appendChild(nameInput);
+      formEl.appendChild(nameLabel);
+
+      const subheadingLabel = document.createElement("label");
+      subheadingLabel.className = "dialog-field";
+      subheadingLabel.textContent = "小見出し（任意）";
+      const subheadingInput = document.createElement("input");
+      subheadingInput.type = "text";
+      subheadingInput.value = String(subheading || "");
+      subheadingLabel.appendChild(subheadingInput);
+      formEl.appendChild(subheadingLabel);
+
+      const actions = document.createElement("div");
+      actions.className = "dialog-actions";
+
+      const cancelButton = document.createElement("button");
+      cancelButton.type = "button";
+      cancelButton.className = "secondary";
+      cancelButton.textContent = "キャンセル";
+
+      const saveButton = document.createElement("button");
+      saveButton.type = "submit";
+      saveButton.className = "primary";
+      saveButton.textContent = "保存";
+
+      const close = bindModalDismiss(overlay, modal, resolve);
+
+      cancelButton.addEventListener("click", () => close(null));
+      formEl.addEventListener("submit", (event) => {
+        event.preventDefault();
+        const nextName = String(nameInput.value || "").trim();
+        const nextSubheading = String(subheadingInput.value || "").trim();
+        if (!nextName) {
+          nameInput.setCustomValidity("ワークフロー名を入力してください。");
+          nameInput.reportValidity();
+          return;
+        }
+        nameInput.setCustomValidity("");
+        close({ name: nextName, subheading: nextSubheading });
+      });
+
+      actions.appendChild(cancelButton);
+      actions.appendChild(saveButton);
+      formEl.appendChild(actions);
+      panel.appendChild(formEl);
+      nameInput.focus();
+      nameInput.select();
+    });
+  }
+
+  function formatWorkflowYm(year, month) {
+    const y = Number.parseInt(String(year || "").trim(), 10);
+    const m = Number.parseInt(String(month || "").trim(), 10);
+    if (!Number.isInteger(y) || !Number.isInteger(m) || m < 1 || m > 12) return "";
+    return `${y}-${String(m).padStart(2, "0")}`;
+  }
+
+  async function loadArchivedWorkflowPages() {
+    const listEl = document.getElementById("workflow-archive-list");
+    const emptyEl = document.getElementById("workflow-archive-empty");
+    if (!listEl || !emptyEl) return;
+    listEl.innerHTML = "";
+    try {
+      const res = await fetch("/api/workflow-pages?include_archived=true", { cache: "no-store" });
+      const data = await res.json().catch(() => ({}));
+      const rows = Array.isArray(data.workflow_pages) ? data.workflow_pages : [];
+      const archivedRows = rows
+        .filter((row) => Boolean(row?.archived))
+        .sort((left, right) =>
+          String(right?.archived_at || right?.updated_at || "").localeCompare(
+            String(left?.archived_at || left?.updated_at || ""),
+          ),
+        );
+      if (archivedRows.length === 0) {
+        emptyEl.hidden = false;
+        return;
+      }
+      emptyEl.hidden = true;
+      archivedRows.forEach((row) => {
+        const item = document.createElement("div");
+        item.className = "workflow-archive-item";
+        const meta = document.createElement("div");
+        meta.className = "workflow-archive-meta";
+        const nameEl = document.createElement("div");
+        nameEl.className = "workflow-archive-name";
+        const ym = formatWorkflowYm(row?.year, row?.month);
+        nameEl.textContent = `${String(row?.name || "")}${ym ? ` (${ym})` : ""}`;
+        const detailsEl = document.createElement("span");
+        detailsEl.className = "muted";
+        const archivedAt = String(row?.archived_at || "").trim();
+        detailsEl.textContent = archivedAt ? `アーカイブ日時: ${archivedAt}` : "アーカイブ日時: -";
+        meta.appendChild(nameEl);
+        meta.appendChild(detailsEl);
+
+        const restore = document.createElement("button");
+        restore.type = "button";
+        restore.className = "secondary";
+        restore.textContent = "復元";
+        restore.addEventListener("click", async () => {
+          const workflowPageId = String(row?.id || "").trim();
+          if (!workflowPageId) return;
+          try {
+            const patchRes = await fetch(`/api/workflow-pages/${encodeURIComponent(workflowPageId)}`, {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                archived: false,
+                base_updated_at: String(row?.updated_at || ""),
+              }),
+            });
+            const patchData = await patchRes.json().catch(() => ({}));
+            if (!patchRes.ok) {
+              const message = toFriendlyMessage(patchData.detail) || "復元に失敗しました。";
+              showToast(message, "error");
+              return;
+            }
+            showToast("ワークフローを復元しました。", "success");
+            loadArchivedWorkflowPages();
+          } catch {
+            showToast("復元に失敗しました。", "error");
+          }
+        });
+        item.appendChild(meta);
+        item.appendChild(restore);
+        listEl.appendChild(item);
+      });
+    } catch {
+      emptyEl.hidden = false;
+    }
+  }
+
   function normalizeTemplateSourceUrls(rawValues) {
     const values = Array.isArray(rawValues) ? rawValues : [];
     const urls = [];
@@ -760,15 +996,19 @@
       return;
     }
     const sourceCount = Array.isArray(payload.source_urls) ? payload.source_urls.length : 0;
-    const confirmed = window.confirm(
-      [
+    const confirmed = await showConfirmModal({
+      title: "ワークフロー作成の確認",
+      lines: [
         "新しいワークフローページを作成します。",
         `ページ名: ${payload.name}`,
         `小見出し: ${payload.subheading || "(なし)"}`,
         `年月: ${payload.year}-${String(payload.month).padStart(2, "0")}`,
         `ソースURL件数: ${sourceCount}`,
-      ].join("\n"),
-    );
+        "テンプレート自体は更新されません。",
+      ],
+      confirmLabel: "作成して開く",
+      cancelLabel: "戻る",
+    });
     if (!confirmed) return;
 
     const createButton = document.getElementById("workflow-page-create");
@@ -828,18 +1068,16 @@
     const heroSubheadingEl = document.querySelector(".hero .eyebrow");
     const currentName = String(workflowPage?.name || heroTitleEl?.textContent || "").trim();
     const currentSubheading = String(workflowPage?.subheading || heroSubheadingEl?.textContent || "").trim();
-    const nextNameRaw = window.prompt("ワークフロー名", currentName);
-    if (nextNameRaw === null) return;
-    const nextName = String(nextNameRaw || "").trim();
+    const nextValues = await showWorkflowSettingsModal({ name: currentName, subheading: currentSubheading });
+    if (!nextValues) return;
+    const nextName = String(nextValues.name || "").trim();
     if (!nextName) {
       const message = "ワークフロー名を入力してください。";
       showError(message);
       showToast(message, "error");
       return;
     }
-    const nextSubheadingRaw = window.prompt("小見出し（任意）", currentSubheading);
-    if (nextSubheadingRaw === null) return;
-    const nextSubheading = String(nextSubheadingRaw || "").trim();
+    const nextSubheading = String(nextValues.subheading || "").trim();
     if (nextName === currentName && nextSubheading === currentSubheading) {
       showToast("変更はありません。", "info");
       return;
@@ -866,6 +1104,44 @@
       window.location.reload();
     } catch {
       const message = "ページ設定の更新に失敗しました。";
+      showError(message);
+      showToast(message, "error");
+    }
+  }
+
+  async function archiveCurrentWorkflowPage() {
+    const workflowPageId = String(workflowPage?.id || "").trim();
+    if (!workflowPageId) return;
+    const confirmed = await showConfirmModal({
+      title: "ワークフローのアーカイブ",
+      lines: [
+        "このワークフローをサイドバーから非表示にします。",
+        "必要な場合は WFテンプレート画面から復元できます。",
+      ],
+      confirmLabel: "アーカイブする",
+      cancelLabel: "キャンセル",
+    });
+    if (!confirmed) return;
+    try {
+      const res = await fetch(`/api/workflow-pages/${encodeURIComponent(workflowPageId)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          archived: true,
+          base_updated_at: String(workflowPage?.updated_at || ""),
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const message = toFriendlyMessage(data.detail) || "アーカイブに失敗しました。";
+        showError(message);
+        showToast(message, "error");
+        return;
+      }
+      showToast("ワークフローをアーカイブしました。", "success");
+      window.location.href = "/";
+    } catch {
+      const message = "アーカイブに失敗しました。";
       showError(message);
       showToast(message, "error");
     }
@@ -2776,6 +3052,11 @@
       event.preventDefault();
       editWorkflowPageSettings();
     });
+    const workflowPageArchiveButton = document.getElementById("workflow-page-archive");
+    workflowPageArchiveButton?.addEventListener("click", (event) => {
+      event.preventDefault();
+      archiveCurrentWorkflowPage();
+    });
     form.querySelector("[name=template_name]")?.addEventListener("input", syncTemplatePageHeader);
     form.querySelector("[name=template_subheading]")?.addEventListener("input", syncTemplatePageHeader);
     form.querySelector("[name=year]")?.addEventListener("change", handleYmChanged);
@@ -2787,6 +3068,7 @@
     });
 
     restoreYmSelection();
+    loadArchivedWorkflowPages();
     const initialYm = getYmFromForm();
     applyArchivePageLink(initialYm);
     refreshSteps();
