@@ -1,0 +1,180 @@
+{
+  "skill_count": 14,
+  "skills": [
+    {
+      "name": "askul-tenant-purchase-aggregation",
+      "ok": true,
+      "metadata": [
+        "SKILL.md",
+        "skill.yaml"
+      ],
+      "optional_dirs": [
+        "scripts",
+        "tests"
+      ],
+      "issues": []
+    },
+    {
+      "name": "docs-knowledge-refresh",
+      "ok": true,
+      "metadata": [
+        "SKILL.md",
+        "skill.yaml"
+      ],
+      "optional_dirs": [
+        "scripts",
+        "tests"
+      ],
+      "issues": []
+    },
+    {
+      "name": "error-exec-loop",
+      "ok": true,
+      "metadata": [
+        "SKILL.md"
+      ],
+      "optional_dirs": [
+        "references"
+      ],
+      "issues": []
+    },
+    {
+      "name": "error-plan",
+      "ok": true,
+      "metadata": [
+        "SKILL.md"
+      ],
+      "optional_dirs": [
+        "references"
+      ],
+      "issues": []
+    },
+    {
+      "name": "kintone",
+      "ok": true,
+      "metadata": [
+        "SKILL.md"
+      ],
+      "optional_dirs": [
+        "references"
+      ],
+      "issues": []
+    },
+    {
+      "name": "kintone-gas-price-notification",
+      "ok": true,
+      "metadata": [
+        "SKILL.md",
+        "skill.yaml"
+      ],
+      "optional_dirs": [
+        "references",
+        "scripts",
+        "tests"
+      ],
+      "issues": []
+    },
+    {
+      "name": "kintone-inventory-export",
+      "ok": true,
+      "metadata": [
+        "SKILL.md",
+        "skill.yaml"
+      ],
+      "optional_dirs": [
+        "scripts",
+        "tests"
+      ],
+      "issues": []
+    },
+    {
+      "name": "kintone-record-crud",
+      "ok": true,
+      "metadata": [
+        "SKILL.md",
+        "skill.yaml"
+      ],
+      "optional_dirs": [
+        "scripts",
+        "tests"
+      ],
+      "issues": []
+    },
+    {
+      "name": "kintone-thread-comment-cleanup",
+      "ok": true,
+      "metadata": [
+        "SKILL.md",
+        "skill.yaml"
+      ],
+      "optional_dirs": [
+        "scripts",
+        "tests"
+      ],
+      "issues": []
+    },
+    {
+      "name": "lolipop-admin-ops",
+      "ok": true,
+      "metadata": [
+        "SKILL.md",
+        "skill.yaml"
+      ],
+      "optional_dirs": [
+        "scripts",
+        "tests"
+      ],
+      "issues": []
+    },
+    {
+      "name": "mf-accounting-csv-export",
+      "ok": true,
+      "metadata": [
+        "SKILL.md",
+        "skill.yaml"
+      ],
+      "optional_dirs": [
+        "scripts",
+        "tests"
+      ],
+      "issues": []
+    },
+    {
+      "name": "mfcloud-expense-receipt-reconcile",
+      "ok": true,
+      "metadata": [
+        "SKILL.md",
+        "skill.yaml"
+      ],
+      "optional_dirs": [
+        "assets",
+        "dashboard",
+        "references",
+        "scripts",
+        "tests"
+      ],
+      "issues": []
+    },
+    {
+      "name": "moneyforward",
+      "ok": true,
+      "metadata": [
+        "SKILL.md"
+      ],
+      "optional_dirs": [
+        "references"
+      ],
+      "issues": []
+    },
+    {
+      "name": "portable-codex-skills",
+      "ok": true,
+      "metadata": [
+        "README.md"
+      ],
+      "optional_dirs": [],
+      "issues": []
+    }
+  ],
+  "violations": 0
+}
