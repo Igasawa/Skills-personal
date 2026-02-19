@@ -407,3 +407,80 @@
 - **レビュー期限**: -
 - **ソース**: llm
 
+## [2026-02-19] Commit: 2d7e074ff634e4c8eded61630e675dbabf45ca1c
+- **要約**: ワークスペースのピン留めグループ管理機能の刷新と、削除確認UIの日本語化対応
+- **獲得した知識**: ワークスペースのピン留め管理には 'pinned-groups' という命名・ID体系を使用する, 削除確認ダイアログ等のUIメッセージは日本語で実装する, 開発時の一時ファイル（tmp_*, workspace_*.js, ws.diff, *.bak等）はリポジトリに含めない
+- **守るべきルール**: ワークスペースのグループ管理に旧称の 'pinned-links' を使用すること, 作業用のスクラッチファイルやバックアップファイルをコミットに含めること
+- **未解決の文脈**: スケジューラー関連コンポーネントの整理（一部テストで削除された要素の整合性確認と、不要になったJS/CSSのクリーンアップ）
+- **対象範囲**: skills/mfcloud-expense-receipt-reconcile/dashboard/, .gitignore, docs/AGENT_BRAIN.md
+- **確度**: 0.9
+- **重要度**: low
+- **レビュー期限**: -
+- **ソース**: llm
+
+## [2026-02-19] Commit: 03cf36666128fffafb45af98d3cd17f55ce9f4e9
+- **要約**: Skillディレクトリ構造の標準化とベースライン定義、およびスクリプト型Skillへのテスト導入
+- **獲得した知識**: 各Skillディレクトリには 'SKILL.md' と 'skill.yaml' を必須とする。, Skillの構成要素として 'scripts' および 'tests' ディレクトリを標準的なオプションとして定義する。, Skillの準拠状況は 'docs/skill-structure-baseline.json' で管理し、'scripts/check_skill_structure.py' で検証する。
+- **守るべきルール**: メタデータファイル（SKILL.md, skill.yaml）が欠落した状態でのSkillの新規作成。, 共通のパース処理（日付、金額、CSV等）をテストコードなしで実装すること。
+- **未解決の文脈**: 全Skillが標準構造に完全準拠しているわけではなく、'docs/structure-refactor-roadmap.md' に基づく段階的なリファクタリングが必要。, 構造チェックスクリプトのCIパイプラインへの完全な統合。
+- **対象範囲**: skills/ 配下の全ディレクトリ, docs/ 構造管理ドキュメント, scripts/ 構造チェックツール
+- **確度**: 0.9
+- **重要度**: low
+- **レビュー期限**: 2026-03-19
+- **ソース**: llm
+
+## [2026-02-19] Commit: 8414c4c46fbf1c5dbfb36d3d00f9268b3781c1d0
+- **要約**: Skillディレクトリ構造の厳格なチェックを行うCIワークフローの導入
+- **獲得した知識**: Skillのディレクトリ構造は `scripts/check_skill_structure.py --strict` による検証をパスしなければならない。, ファイル保存時にBOM（Byte Order Mark）を含めないように徹底する。
+- **守るべきルール**: CIの構造チェックをバイパスするようなディレクトリ構成の変更。, エディタ設定による意図しないBOM（Byte Order Mark）の付与。
+- **未解決の文脈**: scripts/check_skill_structure.py が定義する具体的なバリデーションルール（必須ファイル等）のドキュメント化。
+- **対象範囲**: .github/workflows/skill-structure-check.yml, skills/ 配下のディレクトリ構造およびファイル形式
+- **確度**: 0.9
+- **重要度**: medium
+- **レビュー期限**: -
+- **ソース**: llm
+
+## [2026-02-19] Commit: 14c4eda98ca2b30ff57d3fe2069d62b91ba5b6db
+- **要約**: ダッシュボードの500エラー修正（変数名衝突の解消とテンプレートの文字化け修正）
+- **獲得した知識**: ユーティリティ関数名（例: safe_incident_id）と同一の変数名をローカルスコープで使用しない。resolved_incident_id 等の明確に区別できる変数名を採用すること。, HTMLテンプレートのデフォルト値やメタデータに文字化けした文字列（mojibake）を含めない。必要に応じて英語表記または適切なエンコーディングの日本語を使用する。
+- **守るべきルール**: 関数名を変数名で上書き（シャドウイング）し、同一スコープ内での再利用を不可能にする実装。, 開発環境のエンコーディング不備に起因する不正な文字列のコミット。
+- **未解決の文脈**: 外部スクリプト（error_status.py, error_plan_generate.py等）をサブプロセスとして呼び出しており、引数構造の変更に対して脆弱な構造になっている。
+- **対象範囲**: skills/mfcloud-expense-receipt-reconcile/dashboard/routes/api_runs.py, skills/mfcloud-expense-receipt-reconcile/dashboard/templates/index.html
+- **確度**: 1.0
+- **重要度**: low
+- **レビュー期限**: -
+- **ソース**: llm
+
+## [2026-02-19] Commit: f3c5c9ab8e465855ee44ad609f0b5014707383fb
+- **要約**: mf_reconcileステップの削除とダッシュボードの文字化け修正
+- **獲得した知識**: Pythonソースコード内の日本語文字列は、文字化けを防ぐため適切なエンコーディング（UTF-8）で保存・管理し、コミット前に表示を確認すること。, ワークフローの必須ステップ定義（WORKFLOW_TEMPLATE_REQUIRED_STEP_ACTIONS等）を更新した際は、関連するテストコードの期待値も同期させること。
+- **守るべきルール**: 不適切なエンコーディングによるマルチバイト文字（文字化け）の混入。, 削除済みのワークフローアクションを必須定義やテンプレート内に残存させること。
+- **未解決の文脈**: mf_reconcileステップの削除に伴う、外部ドキュメントやユーザーマニュアルの更新要否の確認。, テストコード内でのUI要素（scheduler-panel等）の存在確認ロジックの整理。
+- **対象範囲**: skills/mfcloud-expense-receipt-reconcile/dashboard, skills/mfcloud-expense-receipt-reconcile/tests
+- **確度**: 0.9
+- **重要度**: low
+- **レビュー期限**: -
+- **ソース**: llm
+
+## [2026-02-19] Commit: ee9cacc6409dba4aac0f4feef97f1bf197b4bf72
+- **要約**: 非ASCII文字を含むファイルパスをGitコマンドから正確に取得するための修正
+- **獲得した知識**: Gitコマンドでファイルパス一覧を取得する際は -z オプションを使用し、ヌル文字で分割する。, subprocessでGit出力を扱う際は text=False でバイト列として取得し、明示的にデコードする。
+- **守るべきルール**: Gitのパス出力を標準の改行区切りや text=True でパースすること（非ASCII文字がクォートやエスケープされるリスクがあるため）。
+- **未解決の文脈**: プロジェクト内の他のスクリプトにおけるGitパス取得処理の横断的な確認。
+- **対象範囲**: scripts/check_text_encoding.py, Git操作を含むPythonスクリプト
+- **確度**: 1.0
+- **重要度**: low
+- **レビュー期限**: -
+- **ソース**: llm
+
+## [2026-02-19] Commit: dbcef8066ae8a3210e0367a254344602d1b8c09a
+- **要約**: ワークフロータスクカードのUI改善（コンパクト/詳細表示の切り替え機能追加とラベルの標準化）
+- **獲得した知識**: トグルボタンのラベルには標準的なハイフン「-」を使用し、全角文字や特殊なマイナス記号を避ける。, MVPフェーズにおける機能制限（自動実行の未実装など）は、UI上の注釈（data-template-step-mvp-note）でユーザーに明示する。
+- **守るべきルール**: UIのラベルや定数に、視覚的に区別がつきにくい特殊文字（全角マイナス「−」など）を混在させること。
+- **未解決の文脈**: タイマー機能の自動実行ロジックは未実装であり、現在はUI上の設定保存のみにとどまっている。, 注釈テキストが英語に変更されたが、プロジェクト全体の多言語対応方針との整合性確認が必要。
+- **対象範囲**: skills/mfcloud-expense-receipt-reconcile/dashboard/static/js/, skills/mfcloud-expense-receipt-reconcile/dashboard/templates/components/expense_workflow_card.html
+- **確度**: 0.9
+- **重要度**: low
+- **レビュー期限**: -
+- **ソース**: llm
+

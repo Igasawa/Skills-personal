@@ -92,7 +92,6 @@
   const customLinksEmpty = document.getElementById("workspace-custom-links-empty");
   const pinnedGroupsList = document.getElementById("workspace-pinned-groups");
   const pinnedGroupsEmpty = document.getElementById("workspace-pinned-groups-empty");
-  const pinnedGroupAddButton = document.getElementById("workspace-add-pinned-group");
   const pinnedCount = document.getElementById("workspace-pinned-count");
   const linkUndo = document.getElementById("workspace-link-undo");
   const toastElement = document.getElementById("toast");
@@ -1060,57 +1059,6 @@
     return saveWorkspaceState(customLinks, nextGroups);
   }
 
-  function addPinnedGroup() {
-    const groups = readPinnedLinkGroups();
-    if (groups.length >= MAX_PINNED_GROUPS) {
-      showToast(`固定リンクカードは最大 ${MAX_PINNED_GROUPS} 枚までです。`, "error");
-      return false;
-    }
-    const next = groups.slice();
-    const labels = next.map((row) => String(row.label || ""));
-    const nextGroup = makePinnedGroup(generatePinnedGroupLabel(labels), []);
-    next.push(nextGroup);
-    const saved = savePinnedLinkGroups(next);
-    if (!saved) {
-      showToast("固定リンクカードを追加できませんでした。", "error");
-      return false;
-    }
-    renderPinnedLinkGroups();
-    return true;
-  }
-
-  function duplicatePinnedGroup(groupId) {
-    const groups = readPinnedLinkGroups();
-    const sourceIndex = getPinnedGroupIndexById(groupId);
-    if (sourceIndex < 0) return false;
-    if (groups.length >= MAX_PINNED_GROUPS) {
-      showToast(`固定リンクカードは最大 ${MAX_PINNED_GROUPS} 枚までです。`, "error");
-      return false;
-    }
-    const source = groups[sourceIndex];
-    const labels = groups.map((row) => String(row.label || ""));
-    const copied = {
-      id: generatePinnedGroupId(),
-      label: normalizePinnedGroupLabel(`${String(source.label || `${WORKSPACE_PINNED_GROUP_LABEL_PREFIX}1`)} のコピー`, labels),
-      links: Array.isArray(source?.links)
-        ? source.links.map((link) => ({
-            label: String(link.label || ""),
-            url: String(link.url || ""),
-          }))
-        : [],
-      created_at: String(source.created_at || ""),
-    };
-    const next = groups.slice();
-    next.splice(sourceIndex + 1, 0, copied);
-    const saved = savePinnedLinkGroups(next);
-    if (!saved) {
-      showToast("固定リンクカードを複製できませんでした。", "error");
-      return false;
-    }
-    renderPinnedLinkGroups();
-    return true;
-  }
-
   function deletePinnedGroup(groupId) {
     const groups = readPinnedLinkGroups();
     const sourceIndex = getPinnedGroupIndexById(groupId);
@@ -1267,15 +1215,6 @@
       }
     });
 
-    const duplicateButton = document.createElement("button");
-    duplicateButton.type = "button";
-    duplicateButton.className = "secondary workspace-link-duplicate";
-    duplicateButton.textContent = "+";
-    duplicateButton.setAttribute("aria-label", "固定リンクカードを複製");
-    duplicateButton.addEventListener("click", () => {
-      void duplicatePinnedGroup(groupId);
-    });
-
     const deleteButton = document.createElement("button");
     deleteButton.type = "button";
     deleteButton.className = "secondary";
@@ -1306,7 +1245,6 @@
 
     titleRow.appendChild(orderControls);
     titleRow.appendChild(titleInput);
-    titleRow.appendChild(duplicateButton);
     titleRow.appendChild(deleteButton);
     titleRow.appendChild(dragHandle);
     head.appendChild(titleRow);
@@ -2535,12 +2473,6 @@
     bindLinkNoteEditors(document);
     bindLinkProfileEditors(document);
     bindWorkspaceMetadataToggle(document);
-    if (pinnedGroupAddButton) {
-      pinnedGroupAddButton.addEventListener("click", () => {
-        void addPinnedGroup();
-      });
-    }
-
     if (linkForm && linkLabelInput && linkUrlInput) {
       linkForm.addEventListener("submit", (event) => {
         event.preventDefault();

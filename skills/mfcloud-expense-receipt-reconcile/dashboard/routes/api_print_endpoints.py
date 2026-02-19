@@ -776,7 +776,7 @@ def register_api_print_endpoints(router: APIRouter) -> None:
 
 
     @router.post("/api/pptx/polish")
-    def api_pptx_polish_upload(file: UploadFile = File(...), request: Request) -> JSONResponse:
+    def api_pptx_polish_upload(request: Request, file: UploadFile = File(...)) -> JSONResponse:
         actor = _actor_from_request(request)
         filename = str(file.filename or "").strip()
         if not filename.lower().endswith(".pptx"):
