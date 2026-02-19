@@ -1,0 +1,17 @@
+{
+  "source": "dashboard_run_capture",
+  "reason": "process_ended_without_final_status",
+  "inferred_from": null,
+  "mode": "amazon_download",
+  "run_id": "run_20260208_094248_545973",
+  "returncode": -1,
+  "capture": {
+    "captured_at": "2026-02-19T02:08:03+00:00",
+    "script": "error_capture.py",
+    "run_id": "run_20260208_094248_545973",
+    "year": 2026,
+    "month": 1,
+    "step": "amazon_download",
+    "failure_class": "run_failed"
+  }
+}

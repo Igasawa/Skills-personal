@@ -484,3 +484,113 @@
 - **レビュー期限**: -
 - **ソース**: llm
 
+## [2026-02-19] Commit: 0b85804d4fb17bf8cd730ee40ac6308e9aa651b3
+- **要約**: ダッシュボードの起動障害（構文・依存関係）の修正およびワークスペース管理機能の整理
+- **獲得した知識**: ワークスペースのピン留め管理には 'pinned-groups' という命名・ID体系を統一して使用する, UIメッセージ（削除確認ダイアログ等）は日本語で実装する
+- **守るべきルール**: 開発時の一時ファイル（tmp_*, workspace_*.js, ws.diff, *.bak等）をコミットに含めること, ワークスペースのグループ管理に旧称の 'pinned-links' を使用すること
+- **未解決の文脈**: スケジューラー関連コンポーネントの整理（一部テストで削除された要素の整合性確認）, 不要になったJS/CSSのクリーンアップ
+- **対象範囲**: skills/mfcloud-expense-receipt-reconcile/dashboard/, docs/
+- **確度**: 0.9
+- **重要度**: medium
+- **レビュー期限**: -
+- **ソース**: llm
+
+## [2026-02-19] Commit: ceb08e8b00c3652fa97d6575e7ff3bee33534330
+- **要約**: ワークフローのプリセットステップ注入の廃止とエラーページの堅牢化
+- **獲得した知識**: ワークフローのコピーまたは新規作成時、template_id や template_source_id は必ずクリアし、意図しないデータの引き継ぎを防止する。, エラー表示ロジックにおいて、データが欠落している場合や予期しない形式の場合でも画面がクラッシュしないようガードを実装する。, フロントエンドの状態管理（index.state.js等）において、APIレスポンスの整合性を厳格にチェックする。
+- **守るべきルール**: プリセットによる暗黙的なステップ注入に依存したワークフローの実装。, コピー元のメタデータ（ID等）を保持したまま編集モードへ遷移させること。, エラーハンドリングにおいて、バックエンドからの不完全なデータ受信を考慮しない実装。
+- **未解決の文脈**: 既存のワークフロー定義の中で、削除されたプリセット注入に依存していた箇所の有無の最終確認。, エラーページの堅牢化（hardening）手法の、他のダッシュボードページへの共通化・横展開。
+- **対象範囲**: skills/mfcloud-expense-receipt-reconcile/dashboard, skills/mfcloud-expense-receipt-reconcile/scripts/error_common.py
+- **確度**: 0.9
+- **重要度**: medium
+- **レビュー期限**: -
+- **ソース**: llm
+
+## [2026-02-19] Commit: 18795a01b68e18cc0741dce68f2450def14e5736
+- **要約**: AIチャット・スキル制御機能の追加とPlaywright実行基盤の導入
+- **獲得した知識**: APIエンドポイントは機能単位で別ファイル（api_ai_chat_routes.py等）に分割し、register関数を用いて api.py に統合する。, Playwright実行時は、--session 引数または環境変数 PLAYWRIGHT_CLI_SESSION を通じてセッションを管理する。, 外部プロセス実行スクリプトでは、タイムアウト設定と実行ディレクトリ（cwd）の動的な指定をサポートする。
+- **守るべきルール**: api.py への直接的なルートロジックの記述（ファイル肥大化の防止）。, Playwright実行時におけるセッション情報のハードコーディング。
+- **未解決の文脈**: subprocess.run において check=False が指定されており、エラー時の詳細な原因切り分けが呼び出し側に依存している。, AIチャットのプロンプト管理やモデルパラメータの外部設定化。
+- **対象範囲**: skills/mfcloud-expense-receipt-reconcile/dashboard, skills/playwright
+- **確度**: 0.9
+- **重要度**: medium
+- **レビュー期限**: -
+- **ソース**: llm
+
+## [2026-02-19] Commit: ec94b8a793ebff4441bc7ca8442fdc08e1443f99
+- **要約**: ダッシュボードのレイアウト拡張、サイドバー制御ロジックの最適化、およびUIの日本語化
+- **獲得した知識**: UIラベルおよびアクセシビリティ用ラベル（aria-label）は日本語を標準とする。, サイドバーの「自動（AUTO）」モード制御では、ビューポートの種類（mobile/tablet/desktop）が変更されたタイミングでのみ状態をデフォルトに戻し、同一ビューポート内でのリサイズでは状態を維持する。, レイアウト設計時は、clamp関数等を用いてワークスペースの有効面積を優先的に確保する。
+- **守るべきルール**: ビューポートの種類が変わらない微細なウィンドウリサイズにおいて、ユーザーが手動で切り替えたサイドバーの状態を強制的にリセットすること。, 固定のピクセル値のみを使用し、高解像度ディスプレイでのワークスペース拡張性を損なうこと。
+- **未解決の文脈**: UIテキストがJS内に直接日本語でハードコードされており、将来的な多言語対応（i18n）の際にリファクタリングが必要。, JS側のビューポート判定閾値とCSS側のメディアクエリの閾値の二重管理による不整合のリスク。
+- **対象範囲**: skills/mfcloud-expense-receipt-reconcile/dashboard/static/js/common.js, skills/mfcloud-expense-receipt-reconcile/dashboard/static/styles/layout.css
+- **確度**: 0.9
+- **重要度**: low
+- **レビュー期限**: -
+- **ソース**: llm
+
+## [2026-02-19] Commit: bbc6c99ab98c4a7d7a885cdd8f0fe3b3f287d870
+- **要約**: ワークスペースのプロンプトをクリップボードにコピーする代わりに、サイドバーのAIチャットへ直接送信する機能の実装。
+- **獲得した知識**: AIチャットへのメッセージ送信には Common.sendAiChatMessage(text) を使用する。, 送信前にメッセージが空でないこと、および4000文字以内であることをバリデーションする。, sendAiChatMessage は内部でサイドバーの初期化状態を確認し、未初期化なら自動で initAiChatSidebar を呼び出す。, AIチャットが応答待ち（pending）の状態では、重複送信を避けるため送信を中断し、ユーザーに通知する。
+- **守るべきルール**: 初期化処理を考慮せずに sendAiChat を直接呼び出すこと。, 4000文字を超える長大なプロンプトを制限なしに送信しようとすること。, AIの応答中に連続してメッセージを送信すること。
+- **未解決の文脈**: common.js 内で aiChatUi をモジュールレベルの変数として保持しており、将来的に複数のチャットインスタンスが必要になった場合に拡張性が制限される。, 送信成功・失敗時のメッセージがJavaScriptコード内にハードコードされている。
+- **対象範囲**: skills/mfcloud-expense-receipt-reconcile/dashboard/static/js/common.js, skills/mfcloud-expense-receipt-reconcile/dashboard/static/js/workspace.js, skills/mfcloud-expense-receipt-reconcile/dashboard/templates/workspace.html
+- **確度**: 0.9
+- **重要度**: low
+- **レビュー期限**: -
+- **ソース**: llm
+
+## [2026-02-19] Commit: 9df04327107d49bf5b6baf135f6a69f5b6bd0a58
+- **要約**: SKILL.mdの指示文の日本語正規化、およびスプレッドシート操作における書式規約とスキル使い分けルールの定義。
+- **獲得した知識**: SKILL.md内の指示文やコメントは日本語に正規化する（例：dry-run -> ドライラン）。, スプレッドシートの色分け規約を遵守する：青（入力）、緑（連携）、灰（固定定数）、橙（要確認）、薄赤（エラー）、紫（制御）、ティール（KPI）。, 財務向け表示規約：ゼロは「-」、負数は赤字かつ括弧付き、ヘッダーに単位明記、生データに出典コメントを付与する。, IB（投資銀行）スタイルレイアウト：合計行は直上合算、グリッド線非表示、見出しは濃色背景＋白文字、サブ指標はインデントする。, スキル選択：財務モデリングや厳格な規約が必要な場合は `xlsx`、軽量なデータ加工・分析は `spreadsheet` を優先する。
+- **守るべきルール**: 財務モデリングや監査が必要な業務で、厳格な規約を無視して `spreadsheet` スキルを安易に選択すること。, SKILL.md内の実行例や手順説明において、英語と日本語の指示を混在させること。
+- **未解決の文脈**: 既存の全スキルファイルが新しい日本語正規化ルールや書式規約に完全に対応できているかの網羅的な確認。, `spreadsheet` と `xlsx` の境界線における判断基準の運用を通じた微調整。
+- **対象範囲**: skills/ 以下の全SKILL.md, スプレッドシート操作（spreadsheet, xlsx）, 財務・会計関連の自動化タスク
+- **確度**: 0.9
+- **重要度**: low
+- **レビュー期限**: -
+- **ソース**: llm
+
+## [2026-02-19] Commit: 4355416f514814bd7c78734671b978e52b5efdb4
+- **要約**: portable-codex-skills（pptx/xlsx）のドキュメント翻訳および、xlsxとspreadsheetスキルの使い分けルールの定義
+- **獲得した知識**: 財務モデル（DCF/LBO等）、厳格な品質管理、数式中心、監査性が重視される場合は `xlsx` スキルを選択する, 軽量なデータ加工、探索的分析、CSV/TSV中心のタスクには `spreadsheet` スキルを選択する, 精度や追跡可能性が必要で判断に迷う場合は `xlsx` スキルを優先する, データ探索を `spreadsheet` で行い、最終的な成果物の仕上げや規約適用を `xlsx` で行うという段階的運用を許容する
+- **守るべきルール**: 厳格な規約や数式の整合性が求められる成果物に対して、軽量な `spreadsheet` スキルのみで完結させること, 単純なデータ変換タスクに対して、オーバーヘッドの大きい `xlsx` スキルの厳格な規約を強制すること
+- **未解決の文脈**: portable版ドキュメントのローカライズに伴い、本体側のSKILL定義との乖離が発生した場合の同期プロセス
+- **対象範囲**: skills/portable-codex-skills/pptx/SKILL.md, skills/portable-codex-skills/xlsx/SKILL.md
+- **確度**: 1.0
+- **重要度**: low
+- **レビュー期限**: -
+- **ソース**: llm
+
+## [2026-02-19] Commit: 6505a3556384f1b0c716ee8b9ed237b4582731a4
+- **要約**: AIチャットの履歴正規化と永続化の同期、およびUIレイアウトの最適化
+- **獲得した知識**: localStorageから取得したデータの正規化結果が元のデータと異なる場合、正規化後のデータを再保存して永続化層と同期する, localStorageの操作（setItem, removeItem）は、プライベートモード等で利用不可な場合に備え、必ずtry-catchで保護する, AIチャットの標準幅は clamp(300px, 24vw, 340px) を基準とし、以前より広めに確保する
+- **守るべきルール**: Array.isArray を Number.isArray と誤記すること, localStorageのパースエラー時に、破損したデータを削除せずに放置すること, localStorageが利用できない環境で例外をハンドリングせず、処理を中断させること
+- **未解決の文脈**: localStorageが利用不可な場合のデータ永続化手段はなく、in-memory保持に限定される制約がある
+- **対象範囲**: skills/mfcloud-expense-receipt-reconcile/dashboard/static/js/common.js, skills/mfcloud-expense-receipt-reconcile/dashboard/static/js/workspace.js, skills/mfcloud-expense-receipt-reconcile/dashboard/static/styles/layout.css
+- **確度**: 1.0
+- **重要度**: low
+- **レビュー期限**: -
+- **ソース**: llm
+
+## [2026-02-19] Commit: 3e9f061a8395e57144a72136d7ff427b0ff57ee5
+- **要約**: API実行（runnerあり）とエージェント実行（SKILL.mdベース）の制約分離とスキル探索ロジックの改善
+- **獲得した知識**: API実行には scripts/run.py, run.ps1, run.mjs, run.js のいずれかのランナーファイルが必須である。, ランナーが存在しないスキルであっても、SKILL.mdが存在すれば『エージェント実行可能』として扱う。, スキル探索時、'.git', 'node_modules', 'venv', '.venv', '__pycache__' およびドットで始まるディレクトリは無視する。, スキルIDの決定には、SKILL.mdのフロントマター内の 'name' を優先し、存在しない場合にのみディレクトリ名を使用する。
+- **守るべきルール**: ランナー（scripts/run.*）がないことを理由に、スキルを完全に『利用不可』と判定・表示すること（SKILL.mdがあればエージェントが利用できるため）。, 依存ライブラリやソース管理用のディレクトリ（node_modules等）をスキルディレクトリとしてスキャンすること。
+- **未解決の文脈**: UIメッセージが英語でハードコードされており、多言語対応（i18n）の枠組みが未整備。, スキルIDが重複した場合の解決策が『最初に見つかったものを優先』という簡易的な実装に留まっている。
+- **対象範囲**: skills/mfcloud-expense-receipt-reconcile/dashboard/services/ai_skill_tools.py, skills/mfcloud-expense-receipt-reconcile/dashboard/routes/api_ai_chat_routes.py, skills/mfcloud-expense-receipt-reconcile/dashboard/static/js/errors.js
+- **確度**: 0.95
+- **重要度**: low
+- **レビュー期限**: -
+- **ソース**: llm
+
+## [2026-02-19] Commit: 5f06e5df11eb8b78db5572044e821e8d3a3995e1
+- **要約**: AIスキルの実行用ラッパー（xlsx/pptx）の追加と、階層構造を持つスキル探索ロジックの導入
+- **獲得した知識**: スキルディレクトリ内に `scripts/run.py` が存在する場合、そのスキルは実行可能（has_runner=True）かつ許可済み（allowed=True）として扱う。, 同一のスキルIDが複数箇所に存在する場合、ファイルシステム上でより浅い階層にあるパスを優先して採用する。, 実行用ラッパーには、依存するPythonモジュールや外部ツール（LibreOffice, Node.js等）の有無を確認する `--self-check` オプションを実装する。, 外部プロセスの実行にはタイムアウト制約（デフォルト300秒、許容範囲5〜1800秒）を適用する。
+- **守るべきルール**: `.system/` で始まるディレクトリを公開スキルとして登録・露出させること。, 依存する外部バイナリ（soffice等）の存在を確認せずに、関連するコマンドを実行すること。
+- **未解決の文脈**: xlsx用の `run.py` の実装が一部未完了（パッチが途切れている可能性あり）。, Node.jsなどの外部ランタイム依存が「オプション」扱いとなっており、実行時の動的なエラーハンドリングに依存している。
+- **対象範囲**: skills/portable-codex-skills/**, dashboard/services/ai_skill_tools.py, AIスキルのディスカバリおよび実行基盤
+- **確度**: 0.9
+- **重要度**: low
+- **レビュー期限**: -
+- **ソース**: llm
+
