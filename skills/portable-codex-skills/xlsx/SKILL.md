@@ -1,535 +1,286 @@
 ---
 name: xlsx
-description: "Comprehensive spreadsheet creation, editing, and analysis with support for formulas, formatting, data analysis, and visualization. When Claude needs to work with spreadsheets (.xlsx, .xlsm, .csv, .tsv, etc) for: (1) Creating new spreadsheets with formulas and formatting, (2) Reading or analyzing data, (3) Modify existing spreadsheets while preserving formulas, (4) Data analysis and visualization in spreadsheets, or (5) Recalculating formulas"
+description: "数式・書式・分析・可視化を含むスプレッドシート作業（.xlsx/.xlsm/.csv/.tsv）の包括スキル。新規作成、既存編集、分析、数式再計算、財務モデル品質管理に使う。"
 ---
 
-# Requirements for Outputs
+# XLSX 作成・編集・分析スキル
 
-## All Excel files
+## 出力要件
 
-### Zero Formula Errors
-- Every Excel model MUST be delivered with ZERO formula errors (#REF!, #DIV/0!, #VALUE!, #N/A, #NAME?)
+### 全Excelファイル共通
+- 数式エラーをゼロにする（`#REF!`, `#DIV/0!`, `#VALUE!`, `#N/A`, `#NAME?`）。
+- 既存テンプレート編集時は、既存の書式・命名・配置規約を最優先する。
+- 既存規約がある場合は、本ファイルの一般規約より既存規約を優先する。
 
-### Preserve Existing Templates (when updating templates)
-- Study and EXACTLY match existing format, style, and conventions when modifying files
-- Never impose standardized formatting on files with established patterns
-- Existing template conventions ALWAYS override these guidelines
+### 財務モデル向け規約
+- ユーザー指定や既存テンプレートがない場合は、次の色規約を使う。
+  - 青文字（`RGB 0,0,255`）: 入力値
+  - 黒文字（`RGB 0,0,0`）: 数式・計算
+  - 緑文字（`RGB 0,128,0`）: 同一ブック内リンク
+  - 赤文字（`RGB 255,0,0`）: 外部ファイルリンク
+  - 黄背景（`RGB 255,255,0`）: 重要前提・要更新セル
+- 数値書式:
+  - 年は文字列（例: `"2026"`）
+  - 通貨は `"$#,##0"` 形式、ヘッダーに単位を明記（例: `Revenue ($mm)`）
+  - ゼロは `-` 表示（パーセント含む）
+  - パーセントは既定で `0.0%`
+  - 倍率は `0.0x`
+  - 負数は `-123` ではなく `(123)`
 
-## Financial models
+### 数式構築ルール
+- 成長率・マージン・倍率などの前提は前提セルに分離する。
+- 式内ハードコードを避け、セル参照を使う。
+  - 例: `=B5*(1+$B$6)`（`=B5*1.05` ではなく）
+- 範囲のずれ、参照切れ、循環参照、期間間の式不整合を必ず確認する。
+- 境界値（ゼロ、負数、欠損）で式を検証する。
 
-### Color Coding Standards
-Unless otherwise stated by the user or existing template
+### ハードコード値の記録
+- ハードコード値には出典をコメントまたは表の近傍に記載する。
+- 記載形式:
+  - `Source: [System/Document], [Date], [Specific Reference], [URL if applicable]`
 
-#### Industry-Standard Color Conventions
-- **Blue text (RGB: 0,0,255)**: Hardcoded inputs, and numbers users will change for scenarios
-- **Black text (RGB: 0,0,0)**: ALL formulas and calculations
-- **Green text (RGB: 0,128,0)**: Links pulling from other worksheets within same workbook
-- **Red text (RGB: 255,0,0)**: External links to other files
-- **Yellow background (RGB: 255,255,0)**: Key assumptions needing attention or cells that need to be updated
+## 概要
 
-### Number Formatting Standards
+ユーザーは `.xlsx` ファイルの作成・編集・分析を依頼する。用途に応じて `openpyxl` と `pandas` を使い分ける。
 
-#### Required Format Rules
-- **Years**: Format as text strings (e.g., "2024" not "2,024")
-- **Currency**: Use $#,##0 format; ALWAYS specify units in headers ("Revenue ($mm)")
-- **Zeros**: Use number formatting to make all zeros "-", including percentages (e.g., "$#,##0;($#,##0);-")
-- **Percentages**: Default to 0.0% format (one decimal)
-- **Multiples**: Format as 0.0x for valuation multiples (EV/EBITDA, P/E)
-- **Negative numbers**: Use parentheses (123) not minus -123
+- `openpyxl`: 数式・書式保持を伴う編集
+- `pandas`: 集計・分析・CSV/TSV操作
 
-### Formula Construction Rules
+## 重要要件
 
-#### Assumptions Placement
-- Place ALL assumptions (growth rates, margins, multiples, etc.) in separate assumption cells
-- Use cell references instead of hardcoded values in formulas
-- Example: Use =B5*(1+$B$6) instead of =B5*1.05
+- LibreOffice を使った再計算を前提にしてよい。
+- 数式を使った場合、`recalc.py` による再計算とエラーチェックは必須。
 
-#### Formula Error Prevention
-- Verify all cell references are correct
-- Check for off-by-one errors in ranges
-- Ensure consistent formulas across all projection periods
-- Test with edge cases (zero values, negative numbers)
-- Verify no unintended circular references
+## 読み取りと分析
 
-#### Documentation Requirements for Hardcodes
-- Comment or in cells beside (if end of table). Format: "Source: [System/Document], [Date], [Specific Reference], [URL if applicable]"
-- Examples:
-  - "Source: Company 10-K, FY2024, Page 45, Revenue Note, [SEC EDGAR URL]"
-  - "Source: Company 10-Q, Q2 2025, Exhibit 99.1, [SEC EDGAR URL]"
-  - "Source: Bloomberg Terminal, 8/15/2025, AAPL US Equity"
-  - "Source: FactSet, 8/20/2025, Consensus Estimates Screen"
-
-# XLSX creation, editing, and analysis
-
-## Overview
-
-A user may ask you to create, edit, or analyze the contents of an .xlsx file. You have different tools and workflows available for different tasks.
-
-## Important Requirements
-
-**LibreOffice Required for Formula Recalculation**: You can assume LibreOffice is installed for recalculating formula values using the `recalc.py` script. The script automatically configures LibreOffice on first run
-
-## Reading and analyzing data
-
-### Data analysis with pandas
-For data analysis, visualization, and basic operations, use **pandas** which provides powerful data manipulation capabilities:
-
+### pandas 基本例
 ```python
 import pandas as pd
 
-# Read Excel
-df = pd.read_excel('file.xlsx')  # Default: first sheet
-all_sheets = pd.read_excel('file.xlsx', sheet_name=None)  # All sheets as dict
+# 読み取り
+df = pd.read_excel("file.xlsx")                   # 先頭シート
+all_sheets = pd.read_excel("file.xlsx", sheet_name=None)  # 全シート(dict)
 
-# Analyze
-df.head()      # Preview data
-df.info()      # Column info
-df.describe()  # Statistics
+# 確認
+df.head()
+df.info()
+df.describe()
 
-# Write Excel
-df.to_excel('output.xlsx', index=False)
+# 書き出し
+df.to_excel("output.xlsx", index=False)
 ```
 
-## Excel File Workflows
+## 最重要: 計算値をハードコードしない
 
-## CRITICAL: Use Formulas, Not Hardcoded Values
+Excel の動的再計算を維持するため、Python で計算して固定値を書き込まず、Excel 数式を書く。
 
-**Always use Excel formulas instead of calculating values in Python and hardcoding them.** This ensures the spreadsheet remains dynamic and updateable.
-
-### ❌ WRONG - Hardcoding Calculated Values
+### NG（ハードコード）
 ```python
-# Bad: Calculating in Python and hardcoding result
-total = df['Sales'].sum()
-sheet['B10'] = total  # Hardcodes 5000
-
-# Bad: Computing growth rate in Python
-growth = (df.iloc[-1]['Revenue'] - df.iloc[0]['Revenue']) / df.iloc[0]['Revenue']
-sheet['C5'] = growth  # Hardcodes 0.15
-
-# Bad: Python calculation for average
-avg = sum(values) / len(values)
-sheet['D20'] = avg  # Hardcodes 42.5
+total = df["Sales"].sum()
+sheet["B10"] = total
 ```
 
-### ✅ CORRECT - Using Excel Formulas
+### OK（Excel数式）
 ```python
-# Good: Let Excel calculate the sum
-sheet['B10'] = '=SUM(B2:B9)'
-
-# Good: Growth rate as Excel formula
-sheet['C5'] = '=(C4-C2)/C2'
-
-# Good: Average using Excel function
-sheet['D20'] = '=AVERAGE(D2:D19)'
+sheet["B10"] = "=SUM(B2:B9)"
+sheet["C5"] = "=(C4-C2)/C2"
+sheet["D20"] = "=AVERAGE(D2:D19)"
 ```
 
-This applies to ALL calculations - totals, percentages, ratios, differences, etc. The spreadsheet should be able to recalculate when source data changes.
+## 標準ワークフロー
 
-## Common Workflow
-1. **Choose tool**: pandas for data, openpyxl for formulas/formatting
-2. **Create/Load**: Create new workbook or load existing file
-3. **Modify**: Add/edit data, formulas, and formatting
-4. **Save**: Write to file
-5. **Recalculate formulas (MANDATORY IF USING FORMULAS)**: Use the recalc.py script
-   ```bash
-   python recalc.py output.xlsx
-   ```
-6. **Verify and fix any errors**: 
-   - The script returns JSON with error details
-   - If `status` is `errors_found`, check `error_summary` for specific error types and locations
-   - Fix the identified errors and recalculate again
-   - Common errors to fix:
-     - `#REF!`: Invalid cell references
-     - `#DIV/0!`: Division by zero
-     - `#VALUE!`: Wrong data type in formula
-     - `#NAME?`: Unrecognized formula name
+1. ツール選定（`pandas` / `openpyxl`）
+2. 新規作成または既存ブック読み込み
+3. データ・数式・書式を編集
+4. 保存
+5. 数式再計算（数式を使った場合は必須）
+6. エラー修正と再計算を繰り返し、エラーゼロで完了
 
-### Creating new Excel files
+再計算コマンド:
+```bash
+python recalc.py output.xlsx
+```
 
+## 新規作成例（openpyxl）
 ```python
-# Using openpyxl for formulas and formatting
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment
 
 wb = Workbook()
 sheet = wb.active
 
-# Add data
-sheet['A1'] = 'Hello'
-sheet['B1'] = 'World'
-sheet.append(['Row', 'of', 'data'])
+sheet["A1"] = "Hello"
+sheet["B1"] = "World"
+sheet.append(["Row", "of", "data"])
+sheet["B2"] = "=SUM(A1:A10)"
 
-# Add formula
-sheet['B2'] = '=SUM(A1:A10)'
+sheet["A1"].font = Font(bold=True, color="FF0000")
+sheet["A1"].fill = PatternFill("solid", start_color="FFFF00")
+sheet["A1"].alignment = Alignment(horizontal="center")
+sheet.column_dimensions["A"].width = 20
 
-# Formatting
-sheet['A1'].font = Font(bold=True, color='FF0000')
-sheet['A1'].fill = PatternFill('solid', start_color='FFFF00')
-sheet['A1'].alignment = Alignment(horizontal='center')
-
-# Column width
-sheet.column_dimensions['A'].width = 20
-
-wb.save('output.xlsx')
+wb.save("output.xlsx")
 ```
 
-### Editing existing Excel files
-
+## 既存編集例（openpyxl）
 ```python
-# Using openpyxl to preserve formulas and formatting
 from openpyxl import load_workbook
 
-# Load existing file
-wb = load_workbook('existing.xlsx')
-sheet = wb.active  # or wb['SheetName'] for specific sheet
+wb = load_workbook("existing.xlsx")
+sheet = wb.active
 
-# Working with multiple sheets
 for sheet_name in wb.sheetnames:
-    sheet = wb[sheet_name]
+    s = wb[sheet_name]
     print(f"Sheet: {sheet_name}")
 
-# Modify cells
-sheet['A1'] = 'New Value'
-sheet.insert_rows(2)  # Insert row at position 2
-sheet.delete_cols(3)  # Delete column 3
+sheet["A1"] = "New Value"
+sheet.insert_rows(2)
+sheet.delete_cols(3)
 
-# Add new sheet
-new_sheet = wb.create_sheet('NewSheet')
-new_sheet['A1'] = 'Data'
+new_sheet = wb.create_sheet("NewSheet")
+new_sheet["A1"] = "Data"
 
-wb.save('modified.xlsx')
+wb.save("modified.xlsx")
 ```
 
-## Recalculating formulas
+## 数式再計算と検証
 
-Excel files created or modified by openpyxl contain formulas as strings but not calculated values. Use the provided `recalc.py` script to recalculate formulas:
+openpyxl は数式を文字列として保持し、計算結果は更新しない。`recalc.py` で再計算する。
 
 ```bash
 python recalc.py <excel_file> [timeout_seconds]
 ```
 
-Example:
+例:
 ```bash
 python recalc.py output.xlsx 30
 ```
 
-The script:
-- Automatically sets up LibreOffice macro on first run
-- Recalculates all formulas in all sheets
-- Scans ALL cells for Excel errors (#REF!, #DIV/0!, etc.)
-- Returns JSON with detailed error locations and counts
-- Works on both Linux and macOS
+`recalc.py` のポイント:
+- 初回実行時に LibreOffice 側設定を自動セットアップ
+- 全シートの数式を再計算
+- 全セルを走査して Excel エラーを検出
+- JSON でエラー件数・位置を返却
 
-## Formula Verification Checklist
+## 数式検証チェックリスト
 
-Quick checks to ensure formulas work correctly:
+- 参照先が存在するか
+- 範囲の開始/終了が意図どおりか
+- 横展開・縦展開で式が崩れていないか
+- ゼロ除算や型不一致が起きないか
+- 期間列で式パターンが一貫しているか
 
-### Essential Verification
-- [ ] **Test 2-3 sample references**: Verify they pull correct values before building full model
-- [ ] **Column mapping**: Confirm Excel columns match (e.g., column 64 = BL, not BK)
-- [ ] **Row offset**: Remember Excel rows are 1-indexed (DataFrame row 5 = Excel row 6)
+## データ分析パターン（pandas）
 
-### Common Pitfalls
-- [ ] **NaN handling**: Check for null values with `pd.notna()`
-- [ ] **Far-right columns**: FY data often in columns 50+ 
-- [ ] **Multiple matches**: Search all occurrences, not just first
-- [ ] **Division by zero**: Check denominators before using `/` in formulas (#DIV/0!)
-- [ ] **Wrong references**: Verify all cell references point to intended cells (#REF!)
-- [ ] **Cross-sheet references**: Use correct format (Sheet1!A1) for linking sheets
-
-### Formula Testing Strategy
-- [ ] **Start small**: Test formulas on 2-3 cells before applying broadly
-- [ ] **Verify dependencies**: Check all cells referenced in formulas exist
-- [ ] **Test edge cases**: Include zero, negative, and very large values
-
-### Interpreting recalc.py Output
-The script returns JSON with error details:
-```json
-{
-  "status": "success",           // or "errors_found"
-  "total_errors": 0,              // Total error count
-  "total_formulas": 42,           // Number of formulas in file
-  "error_summary": {              // Only present if errors found
-    "#REF!": {
-      "count": 2,
-      "locations": ["Sheet1!B5", "Sheet1!C10"]
-    }
-  }
-}
-```
-
-## Best Practices
-
-### Library Selection
-- **pandas**: Best for data analysis, bulk operations, and simple data export
-- **openpyxl**: Best for complex formatting, formulas, and Excel-specific features
-
-### Working with openpyxl
-- Cell indices are 1-based (row=1, column=1 refers to cell A1)
-- Use `data_only=True` to read calculated values: `load_workbook('file.xlsx', data_only=True)`
-- **Warning**: If opened with `data_only=True` and saved, formulas are replaced with values and permanently lost
-- For large files: Use `read_only=True` for reading or `write_only=True` for writing
-- Formulas are preserved but not evaluated - use recalc.py to update values
-
-### Working with pandas
-- Specify data types to avoid inference issues: `pd.read_excel('file.xlsx', dtype={'id': str})`
-- For large files, read specific columns: `pd.read_excel('file.xlsx', usecols=['A', 'C', 'E'])`
-- Handle dates properly: `pd.read_excel('file.xlsx', parse_dates=['date_column'])`
-
-## Code Style Guidelines
-**IMPORTANT**: When generating Python code for Excel operations:
-- Write minimal, concise Python code without unnecessary comments
-- Avoid verbose variable names and redundant operations
-- Avoid unnecessary print statements
-
-**For Excel files themselves**:
-- Add comments to cells with complex formulas or important assumptions
-- Document data sources for hardcoded values
-- Include notes for key calculations and model sections
-
-## Data Analysis Patterns
-
-### Reading Multiple Sheets
-
-Process all sheets efficiently with ExcelFile:
-
+### 複数シート読み取り
 ```python
 import pandas as pd
 
-excel_file = pd.ExcelFile("workbook.xlsx")
-
-for sheet_name in excel_file.sheet_names:
-    df = pd.read_excel(excel_file, sheet_name=sheet_name)
-    print(f"{sheet_name}: {len(df)} rows")
+sheets = pd.read_excel("input.xlsx", sheet_name=None)
+for name, df in sheets.items():
+    print(name, df.shape)
 ```
 
-### Pivot Tables
-
+### ピボット
 ```python
-import pandas as pd
-
-df = pd.read_excel("sales_data.xlsx")
-
-pivot = pd.pivot_table(
-    df,
-    values="sales",
-    index="region",
-    columns="product",
+pivot = df.pivot_table(
+    index="Region",
+    columns="Product",
+    values="Sales",
     aggfunc="sum",
     fill_value=0
 )
-
-pivot.to_excel("pivot_report.xlsx")
 ```
 
-### Group By and Aggregate
-
+### groupby 集計
 ```python
-df = pd.read_excel("sales.xlsx")
+agg = df.groupby("Category", as_index=False)["Amount"].sum()
 
-# Group and sum
-sales_by_region = df.groupby("region")["sales"].sum()
-
-# Multiple aggregations
-summary = df.groupby("region").agg({
-    "sales": "sum",
-    "quantity": "mean",
-    "profit": ["min", "max"]
+agg2 = df.groupby("Category", as_index=False).agg({
+    "Amount": ["sum", "mean"],
+    "Count": "sum"
 })
 ```
 
-### Filtering
-
+### フィルタ・派生列
 ```python
-# Simple filter
-high_sales = df[df["sales"] > 10000]
-
-# Multiple conditions
-filtered = df[(df["region"] == "West") & (df["sales"] > 5000)]
-
-# Calculate new columns
-df["profit_margin"] = (df["revenue"] - df["cost"]) / df["revenue"]
-
-# Sort
-df_sorted = df.sort_values("sales", ascending=False)
+filtered = df[df["Amount"] > 0]
+filtered = filtered[(filtered["Region"] == "APAC") & (filtered["Status"] == "Open")]
+filtered["Margin"] = filtered["Revenue"] - filtered["Cost"]
+filtered = filtered.sort_values(["Region", "Amount"], ascending=[True, False])
 ```
 
-## Data Cleaning
-
+### クリーニング
 ```python
-import pandas as pd
-
-df = pd.read_excel("messy_data.xlsx")
-
-# Remove duplicates
 df = df.drop_duplicates()
-
-# Handle missing values
-df = df.fillna(0)           # Fill with value
-df = df.dropna()            # Drop rows with missing values
-df = df.dropna(subset=["important_col"])  # Drop only if specific column is null
-
-# Remove whitespace from strings
-df["name"] = df["name"].str.strip()
-
-# Convert data types
-df["date"] = pd.to_datetime(df["date"])
-df["amount"] = pd.to_numeric(df["amount"], errors="coerce")
-
-# Save cleaned data
-df.to_excel("cleaned_data.xlsx", index=False)
+df = df.fillna({"Amount": 0, "Category": "UNKNOWN"})
+df["Name"] = df["Name"].astype(str).str.strip()
+df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
+df.to_excel("cleaned.xlsx", index=False)
 ```
 
-## Merging and Joining
-
+### 結合
 ```python
-import pandas as pd
+# 縦結合
+stacked = pd.concat([df1, df2, df3], ignore_index=True)
 
-# Concatenate files vertically (stack rows)
-df1 = pd.read_excel("sales_q1.xlsx")
-df2 = pd.read_excel("sales_q2.xlsx")
-combined = pd.concat([df1, df2], ignore_index=True)
-
-# Merge on common column (like SQL JOIN)
-customers = pd.read_excel("customers.xlsx")
-sales = pd.read_excel("sales.xlsx")
-
-merged = pd.merge(sales, customers, on="customer_id", how="left")
-
-merged.to_excel("merged_data.xlsx", index=False)
+# キー結合
+merged = pd.merge(left_df, right_df, on="CustomerID", how="left")
 ```
 
-## Charts and Visualization
+## 可視化
 
-Generate charts from Excel data using matplotlib:
+`pandas` で分析し、最終納品が Excel の場合は必要に応じて `openpyxl.chart` でネイティブグラフ化する。
 
+## 条件付き書式（openpyxl）
 ```python
-import pandas as pd
-import matplotlib.pyplot as plt
-
-df = pd.read_excel("data.xlsx")
-
-# Bar chart
-df.plot(x="category", y="value", kind="bar")
-plt.title("Sales by Category")
-plt.xlabel("Category")
-plt.ylabel("Sales")
-plt.tight_layout()
-plt.savefig("bar_chart.png")
-plt.close()
-
-# Pie chart
-df.set_index("category")["value"].plot(kind="pie", autopct="%1.1f%%")
-plt.title("Market Share")
-plt.ylabel("")
-plt.savefig("pie_chart.png")
-plt.close()
-
-# Line chart
-df.plot(x="date", y="revenue", kind="line")
-plt.savefig("trend.png")
-plt.close()
-```
-
-## Conditional Formatting
-
-Apply formatting programmatically based on cell values:
-
-```python
-import pandas as pd
-from openpyxl import load_workbook
 from openpyxl.styles import PatternFill, Font
 
-df = pd.DataFrame({
-    "Product": ["A", "B", "C"],
-    "Sales": [100, 200, 150]
-})
+green_fill = PatternFill("solid", fgColor="C6EFCE")
+red_fill = PatternFill("solid", fgColor="FFC7CE")
 
-df.to_excel("formatted.xlsx", index=False)
-
-wb = load_workbook("formatted.xlsx")
-ws = wb.active
-
-# Define fills
-red_fill = PatternFill(start_color="FF0000", end_color="FF0000", fill_type="solid")
-green_fill = PatternFill(start_color="00FF00", end_color="00FF00", fill_type="solid")
-
-# Apply conditional formatting
-for row in range(2, len(df) + 2):
-    cell = ws[f"B{row}"]
-    if cell.value < 150:
-        cell.fill = red_fill
-    else:
+for row in sheet.iter_rows(min_row=2, max_row=sheet.max_row, min_col=2, max_col=2):
+    cell = row[0]
+    if cell.value is None:
+        continue
+    if cell.value >= 0:
         cell.fill = green_fill
+    else:
+        cell.fill = red_fill
 
-# Bold headers
-for cell in ws[1]:
+for cell in sheet[1]:
     cell.font = Font(bold=True)
-
-wb.save("formatted.xlsx")
 ```
 
-## Performance Tips
+## パフォーマンスのコツ
 
-For large Excel files:
+- 必要列だけ読む（`usecols`）。
+- 大規模データはチャンク分割で処理する。
+- `dtype` 指定で推論コストを削減する。
+- `openpyxl` では `read_only=True` / `write_only=True` を必要に応じて使う。
 
+## ユーティリティ: 列幅自動調整
 ```python
-import pandas as pd
+from openpyxl.utils import get_column_letter
 
-# Read only specific columns
-df = pd.read_excel("large.xlsx", usecols=["A", "C", "E"])
-
-# Read in chunks for very large files
-for chunk in pd.read_excel("huge.xlsx", chunksize=10000):
-    # Process each chunk
-    process(chunk)
-
-# Specify dtypes to avoid inference overhead
-df = pd.read_excel("data.xlsx", dtype={"id": str, "amount": float})
-
-# For openpyxl with large files
-from openpyxl import load_workbook
-wb = load_workbook("large.xlsx", read_only=True)  # Read-only mode
+for col in sheet.columns:
+    max_len = 0
+    col_idx = col[0].column
+    for cell in col:
+        value = "" if cell.value is None else str(cell.value)
+        max_len = max(max_len, len(value))
+    sheet.column_dimensions[get_column_letter(col_idx)].width = min(max_len + 2, 80)
 ```
 
-## Utilities
+## `spreadsheet` スキルとの役割分担
 
-### Auto-Adjust Column Widths
+- `xlsx`: 財務モデル、厳格な品質管理、数式中心、監査性重視
+- `spreadsheet`: 軽量なデータ加工、探索分析、CSV/TSV中心
 
-```python
-import pandas as pd
+判断ルール:
+1. 財務モデル・厳格規約があるなら `xlsx`
+2. 軽量分析なら `spreadsheet`
+3. 迷ったら、精度/追跡可能性が必要な場合は `xlsx`
 
-df = pd.DataFrame({"Product": ["Widget A", "Widget B"], "Sales": [100, 200]})
-
-writer = pd.ExcelWriter("output.xlsx", engine="openpyxl")
-df.to_excel(writer, sheet_name="Sales", index=False)
-
-worksheet = writer.sheets["Sales"]
-
-for column in worksheet.columns:
-    max_length = 0
-    column_letter = column[0].column_letter
-    for cell in column:
-        try:
-            if len(str(cell.value)) > max_length:
-                max_length = len(str(cell.value))
-        except:
-            pass
-    worksheet.column_dimensions[column_letter].width = max_length + 2
-
-writer.close()
-```
-
-## Scope Clarification with `spreadsheet`
-
-Use this skill when you need Excel work with stronger guarantees than the generic spreadsheet workflow.
-
-- Choose `xlsx` for financial models (DCF/LBO/valuation), strict style conventions, and outputs where formula integrity, recalculation, and auditability are important.
-- Choose `spreadsheet` for quick transformation, exploratory analysis, and non-critical formatting tasks.
-- Use `spreadsheet` for fast prototypes; migrate to `xlsx` before delivery if:
-  - formula consistency must be validated
-  - template conventions are strict
-  - downstream stakeholders require the stricter `xlsx` conventions defined in this skill
-
-### Conflict Resolution
-- If the task involves both data analysis and strict modeling rules, start with `spreadsheet` to iterate quickly, then deliver with `xlsx` rules applied.
+競合時:
+- まず `spreadsheet` で探索し、最終仕上げを `xlsx` で行う運用は可。
