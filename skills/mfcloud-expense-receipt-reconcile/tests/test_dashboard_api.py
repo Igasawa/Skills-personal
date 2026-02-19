@@ -30,6 +30,10 @@ def _workflow_template_store(ax_home: Path) -> Path:
     return _artifact_root(ax_home) / "_workflow_templates" / "workflow_templates.json"
 
 
+def _workflow_pages_store(ax_home: Path) -> Path:
+    return _artifact_root(ax_home) / "_workflow_pages" / "workflow_pages.json"
+
+
 def _write_json(path: Path, data: dict[str, Any] | list[Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -2357,10 +2361,10 @@ def test_api_save_workflow_template_allows_empty_year_month(monkeypatch: pytest.
     assert template["month"] == 0
     steps = template["steps"]
     assert isinstance(steps, list)
-    assert len(steps) >= 2
+    assert len(steps) == 2
     assert any(
         str(step.get("title") or "") == "Step 1"
-        and str(step.get("action") or "") == "preflight"
+        and str(step.get("action") or "") == ""
         and int(step.get("order") or 0) >= 1
         and bool(step.get("auto_run")) is False
         and step.get("timer_minutes") is None
@@ -2384,11 +2388,41 @@ def test_api_save_workflow_template_allows_empty_year_month(monkeypatch: pytest.
     assert len(stored_steps) == len(steps)
     assert any(
         str(step.get("title") or "") == "Step 1"
-        and str(step.get("action") or "") == "preflight"
+        and str(step.get("action") or "") == ""
         and isinstance(step.get("execution_log"), list)
         for step in stored_steps
         if isinstance(step, dict)
     )
+
+
+def test_api_create_workflow_page_keeps_blank_action_steps(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    client = _create_client(monkeypatch, tmp_path)
+    res = client.post(
+        "/api/workflow-pages",
+        json={
+            "name": "Blank Workflow",
+            "year": 2026,
+            "month": 1,
+            "steps": [
+                {"title": "step only title"},
+                {"title": "explicit blank action", "action": ""},
+            ],
+        },
+    )
+    assert res.status_code == 200
+    page = res.json()["workflow_page"]
+    steps = page.get("steps") if isinstance(page.get("steps"), list) else []
+    assert len(steps) == 2
+    assert all(str(step.get("action") or "") == "" for step in steps if isinstance(step, dict))
+
+    rows = json.loads(_workflow_pages_store(tmp_path).read_text(encoding="utf-8"))
+    assert isinstance(rows, list) and rows
+    stored_steps = rows[0].get("steps") if isinstance(rows[0], dict) else []
+    assert isinstance(stored_steps, list)
+    assert len(stored_steps) == 2
+    assert all(str(step.get("action") or "") == "" for step in stored_steps if isinstance(step, dict))
 
 
 def test_api_save_workflow_template_persists_step_timer_minutes(
@@ -2819,3 +2853,23 @@ def test_api_document_freshness_respects_limit(monkeypatch: pytest.MonkeyPatch, 
     assert summary.get("displayed") == 2
     assert summary.get("hidden") == 2
     assert len(items) == 2
+
+
+def test_api_error_incidents_returns_degraded_payload_when_tool_fails(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    def _raise_error_tool(*args: Any, **kwargs: Any) -> dict[str, Any]:
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(api_routes, "_run_error_tool", _raise_error_tool)
+    client = _create_client(monkeypatch, tmp_path)
+    res = client.get("/api/errors/incidents")
+    assert res.status_code == 200
+    body = res.json()
+    assert body.get("status") == "degraded"
+    assert body.get("inbox_count") == 0
+    assert body.get("archive_resolved_count") == 0
+    assert body.get("archive_escalated_count") == 0
+    incidents = body.get("incidents")
+    assert isinstance(incidents, list)
+    assert incidents == []

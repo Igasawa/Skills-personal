@@ -184,12 +184,23 @@ def incident_updated_at_iso(incident_dir: Path) -> str:
 def list_inbox_incidents(reports_root: Path) -> list[dict[str, Any]]:
     dirs = ensure_error_dirs(reports_root)
     rows: list[dict[str, Any]] = []
-    for child in dirs["inbox"].iterdir():
-        if not child.is_dir():
+    try:
+        children = list(dirs["inbox"].iterdir())
+    except Exception:
+        return rows
+    for child in children:
+        try:
+            is_dir = child.is_dir()
+        except Exception:
+            continue
+        if not is_dir:
             continue
         payload = read_json(child / "incident.json")
         payload = payload if isinstance(payload, dict) else {}
-        updated_at = str(payload.get("updated_at") or "").strip() or incident_updated_at_iso(child)
+        try:
+            updated_at = str(payload.get("updated_at") or "").strip() or incident_updated_at_iso(child)
+        except Exception:
+            updated_at = str(payload.get("updated_at") or "").strip()
         row = {
             "incident_id": child.name,
             "status": read_status(child),
@@ -204,4 +215,3 @@ def list_inbox_incidents(reports_root: Path) -> list[dict[str, Any]]:
         rows.append(row)
     rows.sort(key=lambda row: str(row.get("updated_at") or ""), reverse=True)
     return rows
-

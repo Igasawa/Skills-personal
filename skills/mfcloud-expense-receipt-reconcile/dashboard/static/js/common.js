@@ -9,7 +9,7 @@
   const THEME_SELECTION_VALUES = new Set([THEME_LIGHT, THEME_DARK, THEME_SYSTEM]);
   const DEFAULT_DASHBOARD_SIDEBAR_LINKS = Object.freeze([
     { href: "/workspace", label: "HOME", tab: "workspace", section: "home" },
-    { href: "/", label: "WorkFlow：経費精算", tab: "wizard", section: "workflow" },
+    { href: "/", label: "WorkFlow", tab: "wizard", section: "workflow" },
     { href: "/expense-workflow-copy", label: "WF作成テンプレート", tab: "wizard-copy", section: "admin" },
     { href: "/errors", label: "\u7ba1\u7406\u30bb\u30f3\u30bf\u30fc", tab: "errors", section: "admin" },
     { href: "/pptx-polish", label: "PowerPoint整形", tab: "pptx-polish", section: "admin" },

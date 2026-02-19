@@ -171,7 +171,7 @@ def register_api_workspace_routes(
         existing.sort(key=lambda row: str(row.get("updated_at") or row.get("created_at") or ""), reverse=True)
         write_workflow_pages(existing)
         scheduler_copied = False
-        if page_id:
+        if page_id and source_template_id:
             try:
                 core_scheduler.copy_timer_state(source_template_id, page_id)
                 scheduler_copied = True

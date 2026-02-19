@@ -356,15 +356,16 @@ def register_api_workflow_endpoints(router: APIRouter) -> None:
             else:
                 raw_title = row
 
-            action = str(raw_action or "").strip()
-            if action not in WORKFLOW_TEMPLATE_ALLOWED_STEP_ACTIONS:
-                action = _next_available_step_action(used_actions)
-            if action in used_actions:
+            action = str(raw_action or "").strip()[:WORKFLOW_TEMPLATE_MAX_STEP_ACTION_CHARS]
+            if action and action in used_actions:
                 continue
 
             title = " ".join(str(raw_title or "").strip().split())
             if not title:
-                title = _default_workflow_template_step_title(action)
+                if action:
+                    title = _default_workflow_template_step_title(action)
+                else:
+                    continue
             auto_run = _normalize_workflow_template_step_auto_run(raw_auto_run)
             timer_minutes = _normalize_workflow_template_step_timer_minutes(raw_timer_minutes) if has_timer_field else None
             if auto_run and (
@@ -375,7 +376,7 @@ def register_api_workflow_endpoints(router: APIRouter) -> None:
             execution_log = _normalize_workflow_template_step_execution_log(raw_execution_log)
             normalized_row: dict[str, Any] = {
                 "title": title[:WORKFLOW_TEMPLATE_MAX_STEP_TITLE_CHARS],
-                "action": action[:WORKFLOW_TEMPLATE_MAX_STEP_ACTION_CHARS],
+                "action": action,
                 "order": order,
                 "auto_run": auto_run,
                 "timer_minutes": timer_minutes,
@@ -394,42 +395,11 @@ def register_api_workflow_endpoints(router: APIRouter) -> None:
             normalized_row["id"] = step_id
 
             normalized.append(normalized_row)
-            used_actions.add(action)
+            if action:
+                used_actions.add(action)
             if len(normalized) >= WORKFLOW_TEMPLATE_MAX_STEPS:
                 break
 
-        required_actions = set(WORKFLOW_TEMPLATE_REQUIRED_STEP_ACTIONS)
-        for required_action in WORKFLOW_TEMPLATE_REQUIRED_STEP_ACTIONS:
-            if required_action in used_actions:
-                continue
-            if len(normalized) >= WORKFLOW_TEMPLATE_MAX_STEPS:
-                removed = False
-                for index in range(len(normalized) - 1, -1, -1):
-                    action = str(normalized[index].get("action") or "").strip()
-                    if action in required_actions:
-                        continue
-                    normalized.pop(index)
-                    used_actions.discard(action)
-                    removed = True
-                    break
-                if not removed:
-                    break
-            step_id = uuid4().hex[:24]
-            while step_id in seen_ids:
-                step_id = uuid4().hex[:24]
-            seen_ids.add(step_id)
-            normalized.append(
-                {
-                    "id": step_id,
-                    "title": _default_workflow_template_step_title(required_action),
-                    "action": required_action,
-                    "order": len(normalized) + 1,
-                    "auto_run": False,
-                    "timer_minutes": None,
-                    "execution_log": [],
-                }
-            )
-            used_actions.add(required_action)
         for index, row in enumerate(normalized, start=1):
             row["order"] = index
         return normalized

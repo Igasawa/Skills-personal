@@ -53,7 +53,7 @@ WORKFLOW_TEMPLATE_ALLOWED_STEP_ACTIONS = (
 WORKFLOW_PAGE_MAX_STEP_VERSIONS = 30
 DEFAULT_SIDEBAR_LINKS = [
     {"href": "/workspace", "label": "HOME", "tab": "workspace", "section": "home"},
-    {"href": "/", "label": "WorkFlow：経費精算", "tab": "wizard", "section": "workflow"},
+    {"href": "/", "label": "WorkFlow", "tab": "wizard", "section": "workflow"},
     {"href": "/expense-workflow-copy", "label": "WF作成テンプレート", "tab": "wizard-copy", "section": "admin"},
     {"href": "/errors", "label": "\u7ba1\u7406\u30bb\u30f3\u30bf\u30fc", "tab": "errors", "section": "admin"},
 ]
@@ -177,7 +177,6 @@ def _normalize_template_steps_for_view_legacy(value: Any) -> list[dict[str, Any]
     normalized: list[dict[str, Any]] = []
     seen_actions: set[str] = set()
     seen_ids: set[str] = set()
-    fallback_index = 0
     for index, row in enumerate(raw_values):
         raw_id = ""
         raw_title = ""
@@ -193,21 +192,13 @@ def _normalize_template_steps_for_view_legacy(value: Any) -> list[dict[str, Any]
                 raw_timer_minutes = row.get("timer")
         else:
             raw_title = row
-        action = raw_action if raw_action in WORKFLOW_TEMPLATE_ALLOWED_STEP_ACTIONS else ""
-        if not action:
-            for candidate in WORKFLOW_TEMPLATE_FALLBACK_ACTION_ORDER[fallback_index:]:
-                if candidate not in seen_actions and candidate in WORKFLOW_TEMPLATE_ALLOWED_STEP_ACTIONS:
-                    action = candidate
-                    break
-            if not action:
-                action = WORKFLOW_TEMPLATE_STEP_DEFAULT_ACTION
-        fallback_index += 1
-        if action in seen_actions:
+        action = str(raw_action or "").strip()
+        if action and action in seen_actions:
             continue
 
         title = " ".join(str(raw_title or "").strip().split())
         if not title:
-            title = WORKFLOW_TEMPLATE_REQUIRED_STEP_TITLES.get(action, f"手順{index + 1}")
+            title = WORKFLOW_TEMPLATE_REQUIRED_STEP_TITLES.get(action, action or f"手順{index + 1}")
         timer_minutes = core._safe_non_negative_int(raw_timer_minutes, default=WORKFLOW_TEMPLATE_STEP_DEFAULT_TIMER_MINUTES)
         if timer_minutes > WORKFLOW_TEMPLATE_STEP_MAX_TIMER_MINUTES:
             timer_minutes = WORKFLOW_TEMPLATE_STEP_MAX_TIMER_MINUTES
@@ -217,25 +208,9 @@ def _normalize_template_steps_for_view_legacy(value: Any) -> list[dict[str, Any]
         while step_id in seen_ids:
             step_id = f"{step_id}-{len(seen_ids) + 1}"
         seen_ids.add(step_id)
-        seen_actions.add(action)
+        if action:
+            seen_actions.add(action)
         normalized.append({"id": step_id, "title": title, "action": action, "timer_minutes": timer_minutes})
-
-    for required_action in WORKFLOW_TEMPLATE_REQUIRED_STEP_ACTIONS:
-        if required_action in seen_actions:
-            continue
-        step_id = f"step-required-{required_action}"
-        while step_id in seen_ids:
-            step_id = f"{step_id}-{len(seen_ids) + 1}"
-        seen_ids.add(step_id)
-        normalized.append(
-            {
-                "id": step_id,
-                "title": WORKFLOW_TEMPLATE_REQUIRED_STEP_TITLES.get(required_action, required_action),
-                "action": required_action,
-                "timer_minutes": WORKFLOW_TEMPLATE_STEP_DEFAULT_TIMER_MINUTES,
-            }
-        )
-        seen_actions.add(required_action)
     return normalized
 
 
@@ -244,7 +219,6 @@ def _normalize_template_steps_for_view(value: Any) -> list[dict[str, Any]]:
     normalized: list[dict[str, Any]] = []
     seen_actions: set[str] = set()
     seen_ids: set[str] = set()
-    fallback_index = 0
 
     def _normalize_auto_run(raw: Any) -> bool:
         if isinstance(raw, bool):
@@ -305,21 +279,13 @@ def _normalize_template_steps_for_view(value: Any) -> list[dict[str, Any]]:
         else:
             raw_title = row
 
-        action = raw_action if raw_action in WORKFLOW_TEMPLATE_ALLOWED_STEP_ACTIONS else ""
-        if not action:
-            for candidate in WORKFLOW_TEMPLATE_FALLBACK_ACTION_ORDER[fallback_index:]:
-                if candidate not in seen_actions and candidate in WORKFLOW_TEMPLATE_ALLOWED_STEP_ACTIONS:
-                    action = candidate
-                    break
-            if not action:
-                action = WORKFLOW_TEMPLATE_STEP_DEFAULT_ACTION
-        fallback_index += 1
-        if action in seen_actions:
+        action = str(raw_action or "").strip()
+        if action and action in seen_actions:
             continue
 
         title = " ".join(str(raw_title or "").strip().split())
         if not title:
-            title = WORKFLOW_TEMPLATE_REQUIRED_STEP_TITLES.get(action, f"Task {index + 1}")
+            title = WORKFLOW_TEMPLATE_REQUIRED_STEP_TITLES.get(action, action or f"Task {index + 1}")
 
         timer_minutes: int | None = None
         if raw_timer_minutes is not None and str(raw_timer_minutes).strip():
@@ -341,7 +307,8 @@ def _normalize_template_steps_for_view(value: Any) -> list[dict[str, Any]]:
         while step_id in seen_ids:
             step_id = f"{step_id}-{len(seen_ids) + 1}"
         seen_ids.add(step_id)
-        seen_actions.add(action)
+        if action:
+            seen_actions.add(action)
         normalized.append(
             {
                 "id": step_id,
@@ -353,26 +320,6 @@ def _normalize_template_steps_for_view(value: Any) -> list[dict[str, Any]]:
                 "execution_log": _normalize_execution_log(raw_execution_log),
             }
         )
-
-    for required_action in WORKFLOW_TEMPLATE_REQUIRED_STEP_ACTIONS:
-        if required_action in seen_actions:
-            continue
-        step_id = f"step-required-{required_action}"
-        while step_id in seen_ids:
-            step_id = f"{step_id}-{len(seen_ids) + 1}"
-        seen_ids.add(step_id)
-        normalized.append(
-            {
-                "id": step_id,
-                "order": len(normalized) + 1,
-                "title": WORKFLOW_TEMPLATE_REQUIRED_STEP_TITLES.get(required_action, required_action),
-                "action": required_action,
-                "auto_run": False,
-                "timer_minutes": None,
-                "execution_log": [],
-            }
-        )
-        seen_actions.add(required_action)
 
     for order, row in enumerate(normalized, start=1):
         row["order"] = order
@@ -643,9 +590,6 @@ def create_pages_router(templates: Jinja2Templates) -> APIRouter:
         defaults = _sanitize_form_defaults_year_month(core._resolve_form_defaults())
         resolved_template_id = template or template_id
         workflow_template = _lookup_workflow_template(resolved_template_id)
-        if workflow_template is None:
-            template_rows = _read_workflow_templates()
-            workflow_template = template_rows[0] if template_rows else None
 
         template_mode = "edit"
         workflow_template_source_id = str(workflow_template.get("id") or "") if workflow_template else ""

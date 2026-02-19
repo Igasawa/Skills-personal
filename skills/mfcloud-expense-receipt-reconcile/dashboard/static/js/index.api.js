@@ -238,7 +238,7 @@
 
   function buildWorkflowStepPreviewLines(steps) {
     const rows = normalizeWorkflowStepRows(Array.isArray(steps) ? steps : [], {
-      ensureRequired: true,
+      ensureRequired: false,
       includeTimer: true,
     });
     return rows.map((row, index) => {
@@ -448,7 +448,7 @@
     const modelListEl = getWorkflowPageStepModelListEl();
     if (!modelListEl) return;
     const rows = normalizeWorkflowStepRows(stepRows, {
-      ensureRequired: true,
+      ensureRequired: false,
       includeTimer: true,
     });
     modelListEl.innerHTML = "";
@@ -492,7 +492,7 @@
     if (!containerEl) return;
     const rows = normalizeWorkflowStepRows(
       Array.isArray(stepRowsInput) ? stepRowsInput : workflowPage?.steps,
-      { ensureRequired: true, includeTimer: true },
+      { ensureRequired: false, includeTimer: true },
     );
     const rowByAction = new Map(rows.map((row) => [String(row.action || "").trim(), row]));
     const visibleBlockSet = new Set();
@@ -501,6 +501,7 @@
       if (key) visibleBlockSet.add(key);
     });
     const orderedBlockKeys = WORKFLOW_STEP_BLOCK_ORDER.filter((key) => visibleBlockSet.has(key));
+    const genericRows = rows.filter((row) => !actionToWorkflowBlockKey(row.action));
 
     const processConfigs = [
       { elementId: "step-amazon-download", action: "amazon_download" },
@@ -556,6 +557,35 @@
         titleEl.textContent = String(step.title || "").trim() || defaultTitleForStepAction(step.action);
       }
     });
+    containerEl.querySelectorAll("[data-generic-step-row]").forEach((node) => node.remove());
+    genericRows.forEach((step, index) => {
+      const cardEl = document.createElement("div");
+      cardEl.className = "wizard-step";
+      cardEl.dataset.genericStepRow = "1";
+      const headEl = document.createElement("div");
+      headEl.className = "step-head";
+      const numEl = document.createElement("span");
+      numEl.className = "step-num";
+      numEl.textContent = String(orderedBlockKeys.length + index + 1);
+      const titleEl = document.createElement("span");
+      titleEl.className = "step-title";
+      titleEl.textContent = String(step.title || "").trim() || `Task ${index + 1}`;
+      const statusEl = document.createElement("span");
+      statusEl.className = "step-status pending";
+      statusEl.textContent = "手動";
+      headEl.appendChild(numEl);
+      headEl.appendChild(titleEl);
+      headEl.appendChild(statusEl);
+      const actionsEl = document.createElement("div");
+      actionsEl.className = "step-actions";
+      const noteEl = document.createElement("span");
+      noteEl.className = "muted";
+      noteEl.textContent = "この手順は手動タスクです。";
+      actionsEl.appendChild(noteEl);
+      cardEl.appendChild(headEl);
+      cardEl.appendChild(actionsEl);
+      containerEl.appendChild(cardEl);
+    });
 
     workflowPage.steps = rows;
     syncWorkflowPageStepModelRows(rows);
@@ -585,7 +615,7 @@
       body.className = "dialog-body";
       const note = document.createElement("p");
       note.className = "muted";
-      note.textContent = "必須手順（preflight）は削除・変更できません。";
+      note.textContent = "手順は自由に追加・削除できます。";
       body.appendChild(note);
 
       const listEl = document.createElement("div");
@@ -618,13 +648,13 @@
 
       const close = bindModalDismiss(overlay, modal, resolve);
       const state = normalizeWorkflowStepRows(initialSteps, {
-        ensureRequired: true,
+        ensureRequired: false,
         includeTimer: true,
       }).map((row) => ({ ...row }));
 
       const normalizeState = () => {
         const normalized = normalizeWorkflowStepRows(state, {
-          ensureRequired: true,
+          ensureRequired: false,
           includeTimer: true,
         });
         state.splice(0, state.length, ...normalized.map((row) => ({ ...row })));
@@ -657,7 +687,8 @@
           actionEl.title = requiredAction ? "必須手順は変更できません。" : "";
           actionEl.addEventListener("change", () => {
             const nextAction = normalizeTemplateStepAction(actionEl.value);
-            const duplicated = state.some((step, stepIndex) => stepIndex !== index && step.action === nextAction);
+            const duplicated = Boolean(nextAction)
+              && state.some((step, stepIndex) => stepIndex !== index && step.action === nextAction);
             if (duplicated) {
               actionEl.value = state[index].action;
               showToast("同じ処理は1回だけ追加できます。", "error");
@@ -714,7 +745,7 @@
         const action = nextAvailableTemplateStepAction(usedActions);
         state.push({
           id: generateTemplateStepId(),
-          title: defaultTitleForStepAction(action),
+          title: "",
           action,
           auto_run: false,
           timer_minutes: null,
@@ -738,7 +769,7 @@
     if (!workflowPageId) return false;
     const payload = {
       steps: normalizeWorkflowStepRows(nextSteps, {
-        ensureRequired: true,
+        ensureRequired: false,
         includeTimer: true,
       }),
       base_updated_at: String(workflowPage?.updated_at || ""),
@@ -775,13 +806,13 @@
     const workflowPageId = String(workflowPage?.id || "").trim();
     if (!workflowPageId) return;
     const currentSteps = normalizeWorkflowStepRows(workflowPage?.steps, {
-      ensureRequired: true,
+      ensureRequired: false,
       includeTimer: true,
     });
     const nextSteps = await showWorkflowPageStepEditorModal(currentSteps);
     if (!nextSteps) return;
     const normalizedNext = normalizeWorkflowStepRows(nextSteps, {
-      ensureRequired: true,
+      ensureRequired: false,
       includeTimer: true,
     });
     if (JSON.stringify(currentSteps) === JSON.stringify(normalizedNext)) {
@@ -823,7 +854,7 @@
     }
     const targetVersion = Number.parseInt(String(targetRow.version || 0), 10) || 1;
     const targetSteps = normalizeWorkflowStepRows(targetRow.steps, {
-      ensureRequired: true,
+      ensureRequired: false,
       includeTimer: true,
     });
     const confirmed = await showConfirmModal({
@@ -857,19 +888,6 @@
       showToast(message, "error");
       return;
     }
-    if (!String(payload.template_id || "").trim()) {
-      const message = "新規テンプレート作成は無効です。既存テンプレートを選択してください。";
-      showError(message);
-      showToast(message, "error");
-      return;
-    }
-    if (!String(payload.base_updated_at || "").trim()) {
-      const message = "テンプレート更新情報が不足しています。テンプレートを再読み込みしてください。";
-      showError(message);
-      showToast(message, "error");
-      return;
-    }
-
     const saveButton = document.getElementById("workflow-template-save");
     const config = getTemplateModeConfig("edit");
     const templateIdInput = form.querySelector("[name=template_id]");

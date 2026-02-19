@@ -134,7 +134,7 @@
     rows.forEach((row, index) => {
       const raw = row && typeof row === "object" ? row : {};
       const action = normalizeTemplateStepAction(raw.action);
-      if (!action || seen.has(action)) return;
+      if (action && seen.has(action)) return;
       const title = String(raw.title || "").trim();
       const id = String(raw.id || "").trim() || generateTemplateStepId();
       const autoRun = normalizeTemplateStepAutoRun(raw.auto_run ?? raw.autoRun);
@@ -149,7 +149,7 @@
       }
       const executionLog = normalizeTemplateStepExecutionLog(raw.execution_log ?? raw.executionLog);
       const order = normalizeTemplateStepOrder(raw.order, index + 1);
-      seen.add(action);
+      if (action) seen.add(action);
       const nextRow = {
         id,
         order,
@@ -194,23 +194,7 @@
       const optionalRows = normalized.filter((row) => !isRequiredTemplateStepAction(row.action));
       normalized.splice(0, normalized.length, ...requiredRows, ...optionalRows);
     }
-
-    const limited = normalized.filter((row) => TEMPLATE_STEP_ACTION_VALUES.has(String(row.action || "").trim()));
-    if (limited.length === 0) {
-      const fallbackAction = TEMPLATE_REQUIRED_STEPS[0]?.action || TEMPLATE_STEP_DEFAULT_ACTION;
-      const nextRow = {
-        id: generateTemplateStepId(),
-        title: defaultTitleForStepAction(fallbackAction),
-        action: fallbackAction,
-        auto_run: false,
-        execution_log: [],
-      };
-      if (includeTimer) {
-        nextRow.timer_minutes = null;
-      }
-      limited.push(nextRow);
-    }
-    return limited.map((row, index) => ({
+    return normalized.map((row, index) => ({
       ...row,
       order: index + 1,
     }));
@@ -226,6 +210,7 @@
   }
 
   function nextAvailableTemplateStepAction(usedActions = new Set()) {
+    if (!TEMPLATE_STEP_DEFAULT_ACTION) return "";
     const used = usedActions instanceof Set ? usedActions : new Set();
     for (const row of TEMPLATE_STEP_ACTIONS) {
       const action = String(row?.value || "").trim();
@@ -592,16 +577,23 @@
   }
 
   function getTemplateStepActionOptionsHtml(selectedAction) {
-    const normalizedAction = normalizeTemplateStepAction(selectedAction);
-    return TEMPLATE_STEP_ACTIONS.map(
+    const rawSelectedAction = String(selectedAction || "").trim();
+    const normalizedAction = normalizeTemplateStepAction(rawSelectedAction);
+    const options = ['<option value="">(未設定)</option>'];
+    if (rawSelectedAction && !TEMPLATE_STEP_ACTIONS.some((item) => item.value === rawSelectedAction)) {
+      options.push(`<option value="${rawSelectedAction}" selected>${rawSelectedAction}</option>`);
+    }
+    options.push(...TEMPLATE_STEP_ACTIONS.map(
       (item) =>
         `<option value="${item.value}"${item.value === normalizedAction ? " selected" : ""}>${item.label}</option>`,
-    ).join("");
+    ));
+    return options.join("");
   }
 
   function normalizeTemplateStepAction(value) {
-    const action = String(value || TEMPLATE_STEP_DEFAULT_ACTION).trim();
-    return TEMPLATE_STEP_ACTIONS.some((item) => item.value === action) ? action : TEMPLATE_STEP_DEFAULT_ACTION;
+    const action = String(value || "").trim();
+    if (!action) return "";
+    return action;
   }
 
   function generateTemplateStepId() {
@@ -761,7 +753,7 @@
 
     rows.forEach((row, index) => {
       const parsed = parsedRows[index] || {
-        action: TEMPLATE_STEP_DEFAULT_ACTION,
+        action: "",
         title: "",
         auto_run: false,
         timer_minutes: null,
@@ -913,7 +905,7 @@
       .map((row, index) => parseTemplateStepRow(row, index))
       .filter((row) => Boolean(row.title));
     const normalized = normalizeWorkflowStepRows(parsedRows, {
-      ensureRequired: true,
+      ensureRequired: false,
       includeTimer: true,
     });
     return normalized.map((row) => ({
@@ -928,14 +920,7 @@
   }
 
   function addTemplateStepFromDefaultCard(options = {}) {
-    const usedActions = new Set(
-      getTemplateStepRows().map((row) => normalizeTemplateStepAction(row?.querySelector("[data-template-step-action]")?.value)),
-    );
-    let action = "amazon_download";
-    if (usedActions.has(action)) {
-      action = nextAvailableTemplateStepAction(usedActions);
-    }
-    const nextIndex = getTemplateStepRows().length + 1;
+    const action = TEMPLATE_STEP_DEFAULT_ACTION || "";
     addTemplateStepRow(
       {
         id: "",
@@ -1130,7 +1115,7 @@
         const otherAction = normalizeTemplateStepAction(
           otherRow.querySelector("[data-template-step-action]")?.value,
         );
-        return otherAction === nextAction;
+        return Boolean(nextAction) && otherAction === nextAction;
       });
       if (duplicated) {
         actionEl.value = previousAction;
@@ -1169,17 +1154,11 @@
     const templateSteps = Array.isArray(workflowTemplate?.steps) ? workflowTemplate.steps : [];
     const initialRows = normalizeWorkflowStepRows(
       workflowPageSteps.length > 0 ? workflowPageSteps : templateSteps,
-      { ensureRequired: true, includeTimer: true },
+      { ensureRequired: false, includeTimer: true },
     );
 
     listEl.innerHTML = "";
-    const rowsToRender =
-      initialRows.length > 0
-        ? initialRows
-        : normalizeWorkflowStepRows([{ action: TEMPLATE_STEP_DEFAULT_ACTION }], {
-            ensureRequired: true,
-            includeTimer: true,
-          });
+    const rowsToRender = initialRows;
     rowsToRender.forEach((row, index) => {
       const title = String(row?.title || "").trim();
       const action = normalizeTemplateStepAction(row?.action);

@@ -156,7 +156,7 @@ def test_index_page_shows_manual_archive_button(monkeypatch: pytest.MonkeyPatch,
     assert links[0].get("label") == "HOME"
     assert links[0].get("section") == "home"
     assert any(
-        link.get("href") == "/" and link.get("label") == "WorkFlow：経費精算" and link.get("section") == "workflow"
+        link.get("href") == "/" and link.get("label") == "WorkFlow" and link.get("section") == "workflow"
         for link in links
     )
     assert not any(link.get("href") == "/kil-review" and link.get("section") == "admin" for link in links)
@@ -677,6 +677,34 @@ def test_expense_workflow_copy_page_prefills_template_and_sidebar_link(monkeypat
         for link in links
     )
     assert not any(str(link.get("href") or "").startswith("/expense-workflow-copy?template=") for link in links)
+
+
+def test_expense_workflow_copy_page_does_not_auto_prefill_without_template_query(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _write_json(
+        _workflow_template_store(tmp_path),
+        [
+            {
+                "id": "copy-source",
+                "name": "Monthly Copy Source",
+                "year": 2026,
+                "month": 2,
+                "mfcloud_url": "https://example.com/mf",
+                "notes": "copied from source",
+                "rakuten_orders_url": "https://example.com/orders",
+                "created_at": "2026-02-01T00:00:00",
+                "updated_at": "2026-02-01T00:00:00",
+            },
+        ],
+    )
+    client = _create_client(monkeypatch, tmp_path)
+    res = client.get("/expense-workflow-copy")
+    assert res.status_code == 200
+    assert 'name="template_mode" value="edit"' in res.text
+    assert 'name="template_id" value=""' in res.text
+    assert 'name="template_source_id" value=""' in res.text
+    assert 'value="Monthly Copy Source"' not in res.text
 
 
 def test_expense_workflow_copy_page_copy_mode_prefills_and_clears_template_id_for_create(

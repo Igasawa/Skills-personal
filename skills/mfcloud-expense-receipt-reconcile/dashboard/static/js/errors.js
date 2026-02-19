@@ -287,6 +287,10 @@
     const payload = await apiGetJson("/api/errors/incidents");
     incidents = Array.isArray(payload.incidents) ? payload.incidents : [];
     updateStats(payload);
+    if (String(payload?.status || "").toLowerCase() === "degraded") {
+      const message = toFriendlyMessage(payload?.detail || "インシデント一覧の読み込みに失敗しました");
+      setStatus(message, "error");
+    }
 
     if (keepSelection && previousSelection && incidents.some((row) => String(row.incident_id || "") === previousSelection)) {
       selectedIncidentId = previousSelection;
@@ -654,22 +658,37 @@
   (async function init() {
     setBusy(true);
     try {
-      const initTasks = [refreshIncidents({ keepSelection: false })];
+      const tasks = [{ name: "インシデント一覧", run: () => refreshIncidents({ keepSelection: false }) }];
       if (initialTab === "document-update") {
-        initTasks.push(refreshDocumentStatus());
+        tasks.push({ name: "ドキュメント更新", run: () => refreshDocumentStatus() });
       } else if (initialTab === "document-targets") {
-        initTasks.push(refreshDocumentTargets());
+        tasks.push({ name: "対象ドキュメント", run: () => refreshDocumentTargets() });
       }
-      await Promise.all(initTasks);
-      if (!selectedIncidentId) {
+
+      const settled = await Promise.allSettled(tasks.map((task) => Promise.resolve().then(() => task.run())));
+      const failed = [];
+      settled.forEach((result, index) => {
+        if (result.status === "rejected") {
+          failed.push({
+            name: tasks[index]?.name || "読み込み",
+            message: toFriendlyMessage(result.reason?.message || "読み込みに失敗しました"),
+          });
+        }
+      });
+
+      if (failed.length > 0) {
+        const first = failed[0];
+        const message =
+          failed.length === 1
+            ? `${first.name}の読み込みに失敗しました: ${first.message}`
+            : `一部データの読み込みに失敗しました: ${first.message}`;
+        setStatus(message, "error");
+        showToast(message, "error");
+      } else if (!selectedIncidentId) {
         setStatus("", "");
       } else {
         showToast("インシデント一覧を更新しました", "success");
       }
-    } catch (error) {
-      const message = toFriendlyMessage(error?.message || "読み込みに失敗しました");
-      setStatus(message, "error");
-      showToast(message, "error");
     } finally {
       setBusy(false);
     }

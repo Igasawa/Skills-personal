@@ -76,28 +76,38 @@ def _iter_document_freshness_targets() -> tuple[list[dict[str, str]], list[tuple
     for label, root in roots:
         exists = root.exists()
         is_dir = root.is_dir() if exists else False
-        diagnostics.append(
-            {
-                "label": label,
-                "path": str(root),
-                "status": "ok" if is_dir else ("missing" if not exists else "not_directory"),
-            }
-        )
+        entry = {
+            "label": label,
+            "path": str(root),
+            "status": "ok" if is_dir else ("missing" if not exists else "not_directory"),
+        }
+        diagnostics.append(entry)
         if not is_dir:
             continue
 
-        for candidate in sorted(root.rglob("*")):
-            if not candidate.is_file():
+        try:
+            candidates = sorted(root.rglob("*"))
+        except Exception as exc:
+            entry["status"] = "scan_error"
+            entry["scan_error"] = str(exc).replace("\n", " ")[:280]
+            continue
+
+        for candidate in candidates:
+            try:
+                if not candidate.is_file():
+                    continue
+                if candidate.suffix.lower() not in DOCUMENT_FRESHNESS_ALLOWED_SUFFIXES:
+                    continue
+                if _is_excluded_document_target(candidate):
+                    continue
+                key = str(candidate.resolve()).lower()
+                if key in seen:
+                    continue
+                seen.add(key)
+                targets.append((label, candidate))
+            except Exception:
+                # 個別ファイルの読み取り失敗は対象外として継続する
                 continue
-            if candidate.suffix.lower() not in DOCUMENT_FRESHNESS_ALLOWED_SUFFIXES:
-                continue
-            if _is_excluded_document_target(candidate):
-                continue
-            key = str(candidate.resolve()).lower()
-            if key in seen:
-                continue
-            seen.add(key)
-            targets.append((label, candidate))
     return diagnostics, targets
 
 
@@ -267,7 +277,26 @@ def register_api_run_routes(
     
     @router.get("/api/errors/incidents")
     def api_get_error_incidents() -> JSONResponse:
-        payload = run_error_tool("error_status.py", ["--json"], timeout_seconds=30)
+        try:
+            payload = run_error_tool("error_status.py", ["--json"], timeout_seconds=30)
+        except HTTPException as exc:
+            payload = {
+                "status": "degraded",
+                "detail": str(exc.detail or "Failed to load incidents."),
+                "inbox_count": 0,
+                "archive_resolved_count": 0,
+                "archive_escalated_count": 0,
+                "incidents": [],
+            }
+        except Exception as exc:
+            payload = {
+                "status": "degraded",
+                "detail": f"Failed to load incidents: {exc}",
+                "inbox_count": 0,
+                "archive_resolved_count": 0,
+                "archive_escalated_count": 0,
+                "incidents": [],
+            }
         return JSONResponse(payload, headers={"Cache-Control": "no-store"})
 
     @router.get("/api/errors/document-freshness")
@@ -343,6 +372,7 @@ def register_api_run_routes(
                     "fresh_days": fresh_days,
                     "warning_days": warning_days,
                 },
+                "roots_errors": [entry for entry in roots if str(entry.get("status") or "").endswith("scan_error")],
                 "roots": roots,
                 "summary": {
                     "total": len(items),

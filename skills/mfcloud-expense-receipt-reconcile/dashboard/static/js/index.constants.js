@@ -36,7 +36,7 @@
   const monthCloseChecklistKeys = ["expense_submission", "document_printout", "mf_accounting_link"];
   const YM_STORAGE_KEY = "mfcloud.dashboard.selectedYm";
   const YM_PATTERN = /^(\d{4})-(\d{2})$/;
-  const TEMPLATE_STEP_DEFAULT_ACTION = "preflight";
+  const TEMPLATE_STEP_DEFAULT_ACTION = "";
   // Canonical action list is mirror of API validation (`WORKFLOW_TEMPLATE_ALLOWED_STEP_ACTIONS`)
   // and scheduler action whitelist (`SCHEDULER_ALLOWED_ACTION_KEYS`).
   const TEMPLATE_STEP_ACTIONS = [
@@ -58,9 +58,7 @@
   const TEMPLATE_STEP_UI_MODE_DEFAULT = TEMPLATE_STEP_UI_MODE.compact;
   const AUTO_TIMER_LABEL_OFF = "+";
   const AUTO_TIMER_LABEL_ON = "-";
-  const TEMPLATE_REQUIRED_STEPS = [
-    { action: "preflight", title: "" },
-  ];
+  const TEMPLATE_REQUIRED_STEPS = [];
   const TEMPLATE_REQUIRED_STEP_ACTION_SET = new Set(TEMPLATE_REQUIRED_STEPS.map((row) => row.action));
   const TEMPLATE_STEP_DEFAULT_TITLES = {
     preflight: "",
