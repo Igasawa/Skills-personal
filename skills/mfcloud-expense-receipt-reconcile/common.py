@@ -6,6 +6,8 @@ from datetime import date
 from pathlib import Path
 from typing import Any
 
+SUPPORTED_DASHBOARD_UI_LOCALES = {"ja", "en"}
+
 
 def ax_home() -> Path:
     configured = os.environ.get("AX_HOME")
@@ -27,6 +29,17 @@ def ym_default(now: date | None = None) -> tuple[int, int]:
     if d.month == 1:
         return d.year - 1, 12
     return d.year, d.month - 1
+
+
+def dashboard_ui_locale() -> str:
+    raw = str(os.environ.get("DASHBOARD_UI_LOCALE") or "").strip().lower()
+    if raw in SUPPORTED_DASHBOARD_UI_LOCALES:
+        return raw
+    if raw.startswith("ja"):
+        return "ja"
+    if raw.startswith("en"):
+        return "en"
+    return "ja"
 
 
 def ym_to_dirname(year: int, month: int) -> str:

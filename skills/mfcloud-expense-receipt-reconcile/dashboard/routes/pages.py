@@ -516,6 +516,7 @@ def _dashboard_context(active_tab: str) -> dict[str, object]:
     return {
         "active_tab": active_tab,
         "sidebar_links": deduped,
+        "ui_locale": core._dashboard_ui_locale(),
     }
 
 

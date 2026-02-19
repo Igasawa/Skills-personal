@@ -177,6 +177,10 @@ def test_pptx_polish_page_shows_upload_polish_controls_and_sidebar_link(
     client = _create_client(monkeypatch, tmp_path)
     res = client.get("/pptx-polish")
     assert res.status_code == 200
+    assert 'lang="ja"' in res.text
+    assert "PowerPoint整形" in res.text
+    assert "アップロードと整形" in res.text
+    assert "整形履歴" in res.text
     assert 'id="pptx-file"' in res.text
     assert 'id="pptx-polish-form"' in res.text
     assert 'id="pptx-polish-submit"' in res.text
@@ -199,6 +203,17 @@ def test_pptx_polish_page_shows_upload_polish_controls_and_sidebar_link(
         and link.get("section") == "admin"
         for link in links
     )
+
+
+def test_pptx_polish_page_uses_dashboard_ui_locale_env(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setenv("DASHBOARD_UI_LOCALE", "en")
+    client = _create_client(monkeypatch, tmp_path)
+    res = client.get("/pptx-polish")
+    assert res.status_code == 200
+    assert 'lang="en"' in res.text
 
 
 def test_index_page_sidebar_includes_pptx_polish_link(

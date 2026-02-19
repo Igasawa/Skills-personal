@@ -51,11 +51,11 @@
   }
 
   function statusLabel(status) {
-    if (status === "running") return "Running";
-    if (status === "done") return "Completed";
-    if (status === "failed") return "Failed";
-    if (status === "uploaded") return "Uploaded";
-    return "Unknown";
+    if (status === "running") return "実行中";
+    if (status === "done") return "完了";
+    if (status === "failed") return "失敗";
+    if (status === "uploaded") return "アップロード済み";
+    return "不明";
   }
 
   function setProgress(progress) {
@@ -86,7 +86,7 @@
     const diff = job.diff && typeof job.diff === "object" ? job.diff : {};
     const inputName = String(input.filename || "").trim() || "upload.pptx";
     const status = String(job.status || "unknown");
-    const message = String(job.message || "");
+    const message = toFriendlyMessage(String(job.message || ""));
     const createdAt = String(job.created_at || "");
     const updatedAt = String(job.updated_at || "");
     const progress = job.progress && typeof job.progress === "object" ? Number.parseInt(String(job.progress.value || 0), 10) : 0;
@@ -95,23 +95,23 @@
     const slideHashChanges = Number.parseInt(String(diff?.slide_hash_changes || "0"), 10);
 
     const metaRows = [
-      { label: "Job ID", value: String(job.job_id || currentPollJobId || "-") },
-      { label: "Status", value: `${statusLabel(status)}${message ? ` (${message})` : ""}` },
-      { label: "Input", value: inputName },
-      { label: "Input size", value: formatBytes(input.size || 0) },
-      { label: "Output size", value: formatBytes(output.size || 0) },
+      { label: "ジョブID", value: String(job.job_id || currentPollJobId || "-") },
+      { label: "ステータス", value: `${statusLabel(status)}${message ? `（${message}）` : ""}` },
+      { label: "入力ファイル", value: inputName },
+      { label: "入力サイズ", value: formatBytes(input.size || 0) },
+      { label: "出力サイズ", value: formatBytes(output.size || 0) },
       {
-        label: "Attempt",
+        label: "試行回数",
         value: Number.isFinite(attempt) ? attempt : 0,
       },
-      { label: "Created at", value: createdAt || "-" },
-      { label: "Updated at", value: updatedAt || "-" },
+      { label: "作成日時", value: createdAt || "-" },
+      { label: "更新日時", value: updatedAt || "-" },
       {
-        label: "Slides",
+        label: "スライド数",
         value: Number.isFinite(beforeSlides) ? beforeSlides : 0,
       },
       {
-        label: "Slides changed",
+        label: "変更スライド数",
         value: Number.isFinite(slideHashChanges) ? slideHashChanges : 0,
       },
     ];
@@ -127,7 +127,7 @@
     const response = await fetch(url, options);
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) {
-      const detail = typeof payload?.detail === "string" ? payload.detail : "Request failed";
+      const detail = typeof payload?.detail === "string" ? payload.detail : "リクエストに失敗しました。";
       throw new Error(detail);
     }
     return payload;
@@ -142,7 +142,7 @@
       });
       const job = payload?.job;
       if (!job || typeof job !== "object") {
-        throw new Error("Invalid status response.");
+        throw new Error("ステータス応答が不正です。");
       }
       if (!allowedStates.has(String(job.status || "").toLowerCase())) {
         job.status = "unknown";
@@ -152,7 +152,7 @@
     } catch (error) {
       showToast(toFriendlyMessage(error.message), "error");
       clearPolling();
-      setMessage("Unable to check job status.", "error");
+      setMessage("ジョブ状態を確認できませんでした。", "error");
       return null;
     }
   }
@@ -175,18 +175,18 @@
 
     if ((status === "uploaded" || status === "failed") && !isCurrentPolling()) {
       currentActionsEl.appendChild(
-        buildActionButton(status === "uploaded" ? "Run polish" : "Retry polish", async () => {
+        buildActionButton(status === "uploaded" ? "整形を開始" : "再実行", async () => {
           try {
             setBusy(true);
             clearJobActions();
-            setMessage("Polish start requested...");
+            setMessage("整形開始をリクエストしています...");
             await runPolishJob(jobId);
-            setMessage("Polish started.");
+            setMessage("整形を開始しました。");
             await pollJobStatus(jobId);
             setBusy(false);
           } catch (error) {
             setBusy(false);
-            setMessage(toFriendlyMessage(error.message) || "Failed to start polish.", "error");
+            setMessage(toFriendlyMessage(error.message) || "整形の開始に失敗しました。", "error");
           }
         }),
       );
@@ -197,21 +197,21 @@
       anchor.href = job.download_url;
       anchor.rel = "noopener noreferrer";
       anchor.className = "secondary";
-      anchor.textContent = "Download polished file";
+      anchor.textContent = "整形済みファイルをダウンロード";
       anchor.setAttribute("download", "");
       currentActionsEl.appendChild(anchor);
       currentActionsEl.appendChild(
-        buildActionButton("Run again", async () => {
+        buildActionButton("再実行", async () => {
           try {
             setBusy(true);
             clearJobActions();
             await runPolishJob(jobId);
-            setMessage("Polish started.");
+            setMessage("整形を開始しました。");
             await pollJobStatus(jobId);
             setBusy(false);
           } catch (error) {
             setBusy(false);
-            setMessage(toFriendlyMessage(error.message) || "Failed to start polish.", "error");
+            setMessage(toFriendlyMessage(error.message) || "整形の開始に失敗しました。", "error");
           }
         }),
       );
@@ -220,7 +220,7 @@
     if (status === "running") {
       const runningBadge = document.createElement("span");
       runningBadge.className = "muted";
-      runningBadge.textContent = "Running... this may take a few seconds.";
+      runningBadge.textContent = "実行中... 数秒かかる場合があります。";
       currentActionsEl.appendChild(runningBadge);
     }
   }
@@ -237,7 +237,8 @@
     currentPanel.classList.remove("hidden");
     job.job_id = currentPollJobId;
     renderMeta(job);
-    summaryEl.textContent = `Status: ${statusLabel(status)}${job.message ? ` - ${job.message}` : ""}`;
+    const jobMessage = toFriendlyMessage(String(job.message || ""));
+    summaryEl.textContent = `ステータス: ${statusLabel(status)}${jobMessage ? ` - ${jobMessage}` : ""}`;
     renderCurrentActions(job);
 
     if (status === "done" || status === "failed") {
@@ -269,7 +270,7 @@
     });
     const job = data?.job || data;
     if (!job || typeof job !== "object") {
-      const detail = String(data?.message || "Start failed");
+      const detail = String(data?.message || "開始に失敗しました。");
       throw new Error(detail);
     }
     job.job_id = String(jobId);
@@ -288,7 +289,7 @@
     const input = job.input && typeof job.input === "object" ? job.input : {};
     const output = job.output && typeof job.output === "object" ? job.output : {};
     const inputName = String(input.filename || "upload.pptx");
-    const summary = String(job.message || "");
+    const summary = toFriendlyMessage(String(job.message || ""));
 
     const actions = document.createElement("div");
     actions.className = "step-actions";
@@ -299,22 +300,22 @@
       anchor.className = "secondary";
       anchor.href = job.download_url;
       anchor.rel = "noopener noreferrer";
-      anchor.textContent = "Download";
+      anchor.textContent = "ダウンロード";
       anchor.setAttribute("download", "");
       actions.appendChild(anchor);
     }
     if (status === "uploaded" || status === "failed") {
       actions.appendChild(
-        buildActionButton(status === "uploaded" ? "Run" : "Retry", async () => {
+        buildActionButton(status === "uploaded" ? "実行" : "再実行", async () => {
           try {
             setBusy(true);
-            setMessage("Run requested.");
+            setMessage("実行を開始しています。");
             await runPolishJob(jobId);
             await refreshJobs();
             setBusy(false);
           } catch (error) {
             setBusy(false);
-            setMessage(toFriendlyMessage(error.message) || "Failed to run.", "error");
+            setMessage(toFriendlyMessage(error.message) || "実行に失敗しました。", "error");
           }
         }),
       );
@@ -333,7 +334,7 @@
     subtitle.className = "muted";
     statusBadge.className = `pptx-job-status status-${status}`;
 
-    title.textContent = `Job: ${jobId || "(unknown)"}`;
+    title.textContent = `ジョブ: ${jobId || "(不明)"}`;
     subtitle.textContent = inputName;
     statusBadge.textContent = statusLabel(status);
     left.appendChild(title);
@@ -347,11 +348,11 @@
     const inBytes = document.createElement("span");
     const outBytes = document.createElement("span");
     const progressText = document.createElement("span");
-    created.textContent = `Created: ${createdAt}`;
-    updated.textContent = `Updated: ${updatedAt}`;
-    inBytes.textContent = `Input: ${formatBytes(input.size || 0)}`;
-    outBytes.textContent = `Output: ${formatBytes(output.size || 0)}`;
-    progressText.textContent = `Progress: ${Number.isFinite(progress) ? progress : 0}%`;
+    created.textContent = `作成: ${createdAt}`;
+    updated.textContent = `更新: ${updatedAt}`;
+    inBytes.textContent = `入力: ${formatBytes(input.size || 0)}`;
+    outBytes.textContent = `出力: ${formatBytes(output.size || 0)}`;
+    progressText.textContent = `進捗: ${Number.isFinite(progress) ? progress : 0}%`;
     meta.appendChild(created);
     meta.appendChild(updated);
     meta.appendChild(inBytes);
@@ -403,18 +404,18 @@
         renderCurrentJob(currentJob);
       }
     } catch {
-      showToast("Unable to load job history.");
+      showToast("履歴を読み込めませんでした。");
     }
   }
 
   async function uploadAndRun() {
     if (!fileInput || !fileInput.files || fileInput.files.length === 0) {
-      setMessage("Please select a .pptx file.", "error");
+      setMessage(".pptx ファイルを選択してください。", "error");
       return;
     }
     const file = fileInput.files[0];
     if (!file || !String(file.name || "").toLowerCase().endsWith(".pptx")) {
-      setMessage("Only .pptx files are accepted.", "error");
+      setMessage(".pptx ファイルのみ受け付けています。", "error");
       return;
     }
 
@@ -426,14 +427,14 @@
     });
     const jobId = String(uploadResponse.job_id || "").trim();
     if (!jobId) {
-      throw new Error("Upload response is missing job ID.");
+      throw new Error("アップロード結果にジョブIDが含まれていません。");
     }
 
     if (currentPollJobId && pollTimer) clearPolling();
-    setMessage("Upload complete. Starting polish job...");
+    setMessage("アップロードが完了しました。整形ジョブを開始します...");
     await runPolishJob(jobId);
     await refreshJobs();
-    if (submitButton) submitButton.textContent = "Execute";
+    if (submitButton) submitButton.textContent = "実行";
   }
 
   function bindEvents() {
@@ -441,15 +442,15 @@
       form.addEventListener("submit", async (event) => {
         event.preventDefault();
         setBusy(true);
-        setMessage("Uploading...");
+        setMessage("アップロード中...");
         try {
           await uploadAndRun();
-          setMessage("Polish started.");
+          setMessage("整形を開始しました。");
           if (fileInput) fileInput.value = "";
-          showToast("Polish process started.", "success");
+          showToast("整形処理を開始しました。", "success");
         } catch (error) {
-          setMessage(toFriendlyMessage(error.message) || "Failed to start polish.", "error");
-          showToast(toFriendlyMessage(error.message) || "Failed to start polish.", "error");
+          setMessage(toFriendlyMessage(error.message) || "整形の開始に失敗しました。", "error");
+          showToast(toFriendlyMessage(error.message) || "整形の開始に失敗しました。", "error");
         } finally {
           setBusy(false);
         }
@@ -477,9 +478,9 @@
         refreshJobsButton.disabled = true;
         try {
           await refreshJobs();
-          setMessage("History refreshed.", "success");
+          setMessage("履歴を更新しました。", "success");
         } catch {
-          setMessage("Failed to refresh history.", "error");
+          setMessage("履歴の更新に失敗しました。", "error");
         } finally {
           refreshJobsButton.disabled = false;
         }

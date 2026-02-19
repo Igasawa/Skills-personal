@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="ja">
+<html lang="{{ ui_locale | default('ja', true) }}">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>PowerPoint Polish | MF Cloud Dashboard</title>
+    <title>PowerPoint整形 | MF Cloud Dashboard</title>
     <link rel="stylesheet" href="/static/styles.css" />
   </head>
   <body>
@@ -14,21 +14,21 @@
     >
       <header class="hero">
         <div>
-          <p class="eyebrow">PowerPoint Polish</p>
-          <h1>PowerPoint Polish</h1>
+          <p class="eyebrow">PowerPoint整形</p>
+          <h1>PowerPoint整形</h1>
           <p class="subtitle">
-            Upload a PowerPoint file and generate a polished version with improved slide readability and typography.
+            PowerPoint ファイルをアップロードし、スライドの可読性とタイポグラフィを改善した整形版を生成します。
           </p>
         </div>
       </header>
 
       <section class="card pptx-polish-workflow">
-        <h2>Upload and polish</h2>
-        <p class="muted">Select a <strong>.pptx</strong> file and click Execute.</p>
+        <h2>アップロードと整形</h2>
+        <p class="muted"><strong>.pptx</strong> ファイルを選択し、「実行」をクリックしてください。</p>
 
         <form id="pptx-polish-form" class="form" autocomplete="off">
           <label for="pptx-file">
-            PowerPoint file (.pptx)
+            PowerPoint ファイル（.pptx）
             <input
               id="pptx-file"
               name="file"
@@ -40,10 +40,10 @@
 
           <div class="step-actions">
             <button type="submit" id="pptx-polish-submit" class="primary">
-              Execute
+              実行
             </button>
             <button type="button" id="pptx-polish-reset" class="secondary">
-              Reset
+              リセット
             </button>
           </div>
         </form>
@@ -51,7 +51,7 @@
         <p id="pptx-polish-message" class="muted" role="status" aria-live="polite"></p>
 
         <div id="pptx-polish-current" class="pptx-polish-current hidden" aria-live="polite">
-          <h3>Current job</h3>
+          <h3>現在のジョブ</h3>
           <div id="pptx-polish-job-meta" class="pptx-polish-grid"></div>
           <div class="pptx-progress-track">
             <span id="pptx-polish-progress-fill" class="pptx-progress-fill"></span>
@@ -63,12 +63,12 @@
 
       <section class="card">
         <div class="section-header">
-          <h2>Polish history</h2>
+          <h2>整形履歴</h2>
           <button type="button" id="pptx-polish-refresh-jobs" class="secondary">
-            Refresh
+            更新
           </button>
         </div>
-        <p id="pptx-polish-empty" class="muted">No jobs yet.</p>
+        <p id="pptx-polish-empty" class="muted">ジョブはまだありません。</p>
         <div id="pptx-polish-job-list" class="pptx-job-list"></div>
       </section>
     </div>

@@ -7,6 +7,11 @@
 - ダッシュボードのエンドユーザー向けUI文言（見出し、ボタン、説明、トースト、エラー表示）は、原則として日本語に統一する。
 - 英語を許容するのは、コード識別子・APIキー・ログ解析用の固定判定文字列など、機械処理上必要な箇所のみ。
 - UI文言を追加・変更する際は、日本語表示になっていることを確認してから反映する。
+- UIロケールの既定値は `ja`。必要時のみ環境変数 `DASHBOARD_UI_LOCALE` で切り替える（例: `ja`, `en`）。
+
+```powershell
+$env:DASHBOARD_UI_LOCALE = "ja"
+```
 
 ## 文字コード方針（文字化け防止）
 
@@ -28,6 +33,8 @@ powershell -ExecutionPolicy Bypass -File .\scripts\bootstrap_kil.ps1
 
 ## 収録スキル
 
+- `skills/dashboard-ja-localization/`  
+  ダッシュボードUIを日本語化し、`toFriendlyMessage` 翻訳と UTF-8 検証をセットで実施。
 - `skills/mfcloud-expense-receipt-reconcile/`  
   Amazon領収書PDFの一括取得 → MFクラウド経費の未添付明細と突き合わせ。
 

@@ -105,6 +105,20 @@
     if (text.includes("Provider auto-download is disabled")) {
       return "手順3の自動取得は無効です。各サービスで手動取得した領収書を共通フォルダに置いてから「共通フォルダから取り込み」を実行してください。";
     }
+    if (text.includes("Only .pptx files are accepted.")) return ".pptx ファイルのみ受け付けています。";
+    if (text.includes("Upload complete. Start polish to generate output.")) return "アップロードが完了しました。整形を開始してください。";
+    if (text.includes("PPTX polish job started.")) return "PowerPoint整形ジョブを開始しました。";
+    if (text.includes("PPTX polish completed:")) return "PowerPoint整形が完了しました。";
+    if (text.includes("PPTX polish failed.")) return "PowerPoint整形に失敗しました。";
+    if (text.includes("Polish started.")) return "整形を開始しました。";
+    if (text.includes("Job is already running.")) return "このジョブはすでに実行中です。";
+    if (text.includes("Job is not ready to run.")) return "このジョブは実行可能な状態ではありません。";
+    if (text.includes("Uploaded file not found.")) return "アップロード済みファイルが見つかりません。";
+    if (text.includes("Job is not completed.")) return "ジョブが完了していないためダウンロードできません。";
+    if (text.includes("Output file is not ready.")) return "出力ファイルがまだ準備できていません。";
+    if (text.includes("Job is not finished.")) return "ジョブがまだ終了していません。";
+    if (text.includes("Job not found.")) return "対象ジョブが見つかりません。";
+    if (text.includes("Invalid job id.")) return "ジョブIDの形式が不正です。";
     if (text === "Not Found") {
       return "APIエンドポイントが見つかりません。ダッシュボードを再起動して再試行してください。";
     }

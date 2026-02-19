@@ -14,6 +14,7 @@ if str(SKILL_ROOT) not in sys.path:
 from common import (  # noqa: E402
     artifact_root as _artifact_root,
     ax_home as _ax_home,
+    dashboard_ui_locale as _dashboard_ui_locale,
     read_json as _read_json,
     read_jsonl as _read_jsonl,
     runs_root as _runs_root,
