@@ -19,6 +19,8 @@ def register_api_workspace_routes(
     write_workspace_state: Callable[..., dict[str, Any]],
     sanitize_workspace_links: Callable[[Any], list[dict[str, str]]],
     merge_workspace_links: Callable[[list[dict[str, str]], list[dict[str, str]]], list[dict[str, str]]],
+    sanitize_workspace_pinned_links: Callable[[Any], list[dict[str, str]]],
+    merge_workspace_pinned_links: Callable[[list[dict[str, str]], list[dict[str, str]]], list[dict[str, str]]],
     sanitize_workspace_prompts: Callable[[Any], dict[str, str]],
     merge_workspace_prompts: Callable[[dict[str, str], dict[str, str]], dict[str, str]],
     sanitize_workspace_link_notes: Callable[[Any], dict[str, str]],
@@ -69,6 +71,15 @@ def register_api_workspace_routes(
                 current["links"] = merge_workspace_links(links_payload, sanitize_workspace_links(current.get("links")))
             else:
                 current["links"] = links_payload
+        if "pinned_links" in payload:
+            pinned_links_payload = sanitize_workspace_pinned_links(payload.get("pinned_links"))
+            if revision_conflict:
+                current["pinned_links"] = merge_workspace_pinned_links(
+                    pinned_links_payload,
+                    sanitize_workspace_pinned_links(current.get("pinned_links")),
+                )
+            else:
+                current["pinned_links"] = pinned_links_payload
         if "prompts" in payload:
             prompts_payload = sanitize_workspace_prompts(payload.get("prompts"))
             if revision_conflict:

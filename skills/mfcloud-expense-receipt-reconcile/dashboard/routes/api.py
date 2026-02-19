@@ -39,6 +39,7 @@ def _provider_source_status_for_ym(year: int, month: int) -> dict[str, Any]:
 def create_api_router() -> APIRouter:
     router = APIRouter()
     WORKSPACE_MAX_LINKS = 100
+    WORKSPACE_MAX_PINNED_LINKS = 6
     WORKSPACE_MAX_LABEL_CHARS = 80
     WORKSPACE_MAX_PROMPT_ENTRIES = 200
     WORKSPACE_MAX_PROMPT_CHARS = 50000
@@ -438,6 +439,7 @@ def create_api_router() -> APIRouter:
     def _workspace_default_state() -> dict[str, Any]:
         return {
             "links": [],
+            "pinned_links": [],
             "prompts": {},
             "link_notes": {},
             "link_profiles": {},
@@ -482,6 +484,42 @@ def create_api_router() -> APIRouter:
             if len(out) >= WORKSPACE_MAX_LINKS:
                 break
         return out
+
+    def _sanitize_workspace_pinned_links(value: Any) -> list[dict[str, str]]:
+        if not isinstance(value, list):
+            return []
+        out: list[dict[str, str]] = []
+        seen: set[str] = set()
+        for row in value:
+            if not isinstance(row, dict):
+                continue
+            url = _normalize_workspace_url(row.get("url"))
+            if not url:
+                continue
+            key = url.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            label = _normalize_workspace_label(row.get("label"))
+            if not label:
+                label = urlparse(url).netloc or url
+            out.append({"label": label, "url": url})
+            if len(out) >= WORKSPACE_MAX_PINNED_LINKS:
+                break
+        return out
+
+    def _normalize_workspace_link_pools(
+        links: Any,
+        pinned_links: Any,
+    ) -> tuple[list[dict[str, str]], list[dict[str, str]]]:
+        safe_pinned = _sanitize_workspace_pinned_links(pinned_links)
+        pinned_keys = {str(row.get("url") or "").lower() for row in safe_pinned}
+        safe_links = [
+            row
+            for row in _sanitize_workspace_links(links)
+            if str(row.get("url") or "").lower() not in pinned_keys
+        ]
+        return safe_links, safe_pinned
 
     def _is_valid_prompt_key(key: Any) -> bool:
         text = str(key or "").strip()
@@ -578,7 +616,10 @@ def create_api_router() -> APIRouter:
     def _normalize_workspace_state(payload: Any) -> dict[str, Any]:
         if not isinstance(payload, dict):
             return _workspace_default_state()
-        links = _sanitize_workspace_links(payload.get("links"))
+        links, pinned_links = _normalize_workspace_link_pools(
+            payload.get("links"),
+            payload.get("pinned_links"),
+        )
         prompts = _sanitize_workspace_prompts(payload.get("prompts"))
         link_notes = _sanitize_workspace_link_notes(payload.get("link_notes"))
         link_profiles = _sanitize_workspace_link_profiles(payload.get("link_profiles"))
@@ -587,6 +628,7 @@ def create_api_router() -> APIRouter:
         updated_at = str(payload.get("updated_at") or "").strip() or None
         return {
             "links": links,
+            "pinned_links": pinned_links,
             "prompts": prompts,
             "link_notes": link_notes,
             "link_profiles": link_profiles,
@@ -638,6 +680,30 @@ def create_api_router() -> APIRouter:
                 label = urlparse(url).netloc or url
             merged.append({"label": label, "url": url})
             if len(merged) >= WORKSPACE_MAX_LINKS:
+                break
+        return merged
+
+    def _merge_workspace_pinned_links(
+        client_links: list[dict[str, str]],
+        server_links: list[dict[str, str]],
+    ) -> list[dict[str, str]]:
+        merged: list[dict[str, str]] = []
+        seen: set[str] = set()
+        for row in [*client_links, *server_links]:
+            if not isinstance(row, dict):
+                continue
+            url = _normalize_workspace_url(row.get("url"))
+            if not url:
+                continue
+            key = url.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            label = _normalize_workspace_label(row.get("label"))
+            if not label:
+                label = urlparse(url).netloc or url
+            merged.append({"label": label, "url": url})
+            if len(merged) >= WORKSPACE_MAX_PINNED_LINKS:
                 break
         return merged
 
@@ -3009,6 +3075,8 @@ def create_api_router() -> APIRouter:
         write_workspace_state=_write_workspace_state,
         sanitize_workspace_links=_sanitize_workspace_links,
         merge_workspace_links=_merge_workspace_links,
+        sanitize_workspace_pinned_links=_sanitize_workspace_pinned_links,
+        merge_workspace_pinned_links=_merge_workspace_pinned_links,
         sanitize_workspace_prompts=_sanitize_workspace_prompts,
         merge_workspace_prompts=_merge_workspace_prompts,
         sanitize_workspace_link_notes=_sanitize_workspace_link_notes,
