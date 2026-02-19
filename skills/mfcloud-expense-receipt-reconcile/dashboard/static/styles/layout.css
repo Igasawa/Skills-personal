@@ -1,11 +1,11 @@
 .page {
-  --page-gutter: clamp(16px, 2vw, 40px);
-  --page-max-width: 2400px;
-  --shell-gap: clamp(16px, 1.4vw, 24px);
-  --sidebar-width-expanded: 280px;
+  --page-gutter: clamp(10px, 1.4vw, 24px);
+  --page-max-width: 2600px;
+  --shell-gap: clamp(12px, 1vw, 18px);
+  --sidebar-width-expanded: 252px;
   --sidebar-width-collapsed: 64px;
   --sidebar-width-current: var(--sidebar-width-expanded);
-  --ai-chat-width: clamp(300px, 23vw, 360px);
+  --ai-chat-width: clamp(256px, 18vw, 304px);
   width: min(var(--page-max-width), calc(100vw - (var(--page-gutter) * 2)));
   margin: 0 auto;
   padding: 40px 0 72px;
@@ -644,7 +644,7 @@ h1 {
 
 @media (max-width: 1439px) {
   .page {
-    --ai-chat-width: clamp(280px, 24vw, 332px);
+    --ai-chat-width: clamp(236px, 22vw, 284px);
   }
 }
 

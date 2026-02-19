@@ -423,7 +423,7 @@
 
     const heading = document.createElement("div");
     heading.className = "dashboard-sidebar-section-title";
-    heading.textContent = "Sidebar mode";
+    heading.textContent = "表示モード";
     section.appendChild(heading);
 
     const group = document.createElement("div");
@@ -431,8 +431,8 @@
     section.appendChild(group);
 
     const options = [
-      { value: SIDEBAR_MODE_AUTO, label: "Auto" },
-      { value: SIDEBAR_MODE_FIXED, label: "Fixed" },
+      { value: SIDEBAR_MODE_AUTO, label: "自動" },
+      { value: SIDEBAR_MODE_FIXED, label: "固定" },
     ];
     options.forEach(({ value, label }) => {
       const button = document.createElement("button");
@@ -462,7 +462,7 @@
     closeButton.type = "button";
     closeButton.className = "dashboard-sidebar-close";
     closeButton.dataset.sidebarClose = "1";
-    closeButton.setAttribute("aria-label", "Close sidebar");
+    closeButton.setAttribute("aria-label", "サイドバーを閉じる");
     closeButton.textContent = "\u00d7";
     sidebar.appendChild(closeButton);
 
@@ -488,7 +488,7 @@
     resizer.dataset.sidebarResizer = "1";
     resizer.setAttribute("role", "separator");
     resizer.setAttribute("aria-orientation", "vertical");
-    resizer.setAttribute("aria-label", "Resize sidebar width");
+    resizer.setAttribute("aria-label", "サイドバー幅を調整");
     resizer.tabIndex = 0;
     sidebar.appendChild(resizer);
 
@@ -513,8 +513,8 @@
     sidebarToggle.dataset.sidebarToggle = "1";
     sidebarToggle.setAttribute("aria-controls", sidebar.id);
     sidebarToggle.setAttribute("aria-expanded", "false");
-    sidebarToggle.setAttribute("aria-label", "Toggle sidebar");
-    sidebarToggle.textContent = "Sidebar";
+    sidebarToggle.setAttribute("aria-label", "サイドバー切替");
+    sidebarToggle.textContent = "サイドバー";
     shellActions.appendChild(sidebarToggle);
     mainContent.appendChild(shellActions);
 
@@ -532,7 +532,7 @@
     backdrop.type = "button";
     backdrop.className = "dashboard-sidebar-backdrop";
     backdrop.dataset.sidebarBackdrop = "1";
-    backdrop.setAttribute("aria-label", "Close sidebar");
+    backdrop.setAttribute("aria-label", "サイドバーを閉じる");
     backdrop.hidden = true;
     page.appendChild(backdrop);
 
@@ -555,6 +555,7 @@
 
     let mode = readStoredSidebarMode();
     let state = readStoredSidebarState();
+    let lastViewportKind = getSidebarViewportKind();
     let lastFocusedElement = null;
     let resizeSession = null;
     let resizePending = false;
@@ -593,29 +594,33 @@
 
     function updateSidebarToggleLabel(viewportKind, isOpen) {
       if (viewportKind === "mobile") {
-        sidebarToggle.textContent = isOpen ? "Hide menu" : "Show menu";
+        sidebarToggle.textContent = isOpen ? "メニューを閉じる" : "メニューを開く";
         return;
       }
       if (viewportKind === "tablet") {
-        sidebarToggle.textContent = isOpen ? "Collapse menu" : "Expand menu";
+        sidebarToggle.textContent = isOpen ? "メニューを折りたたむ" : "メニューを展開";
         return;
       }
       if (state === SIDEBAR_STATE_COLLAPSED) {
-        sidebarToggle.textContent = "Expand sidebar";
+        sidebarToggle.textContent = "サイドバーを展開";
         return;
       }
       if (state === SIDEBAR_STATE_HIDDEN) {
-        sidebarToggle.textContent = "Show sidebar";
+        sidebarToggle.textContent = "サイドバーを表示";
         return;
       }
-      sidebarToggle.textContent = "Collapse sidebar";
+      sidebarToggle.textContent = "サイドバーを折りたたむ";
     }
 
     function applySidebarLayout(options = {}) {
-      const { persist = false, focusSidebar = false } = options;
+      const { persist = false, focusSidebar = false, resetForAuto = false } = options;
       const viewportKind = getSidebarViewportKind();
       if (mode === SIDEBAR_MODE_AUTO) {
-        state = getDefaultSidebarState(viewportKind);
+        if (resetForAuto) {
+          state = getDefaultSidebarState(viewportKind);
+        } else {
+          state = normalizeSidebarStateForViewport(state, viewportKind);
+        }
       } else {
         state = normalizeSidebarStateForViewport(state, viewportKind);
       }
@@ -698,7 +703,7 @@
       } else {
         state = state === SIDEBAR_STATE_HIDDEN ? SIDEBAR_STATE_EXPANDED : SIDEBAR_STATE_HIDDEN;
       }
-      applySidebarLayout({ persist: true, focusSidebar: !wasExpanded });
+      applySidebarLayout({ persist: true, focusSidebar: !wasExpanded, resetForAuto: false });
     }
 
     function canResizeSidebar() {
@@ -768,7 +773,7 @@
         if (mode === SIDEBAR_MODE_AUTO) {
           state = getDefaultSidebarState(getSidebarViewportKind());
         }
-        applySidebarLayout({ persist: true });
+        applySidebarLayout({ persist: true, resetForAuto: true });
       });
     });
 
@@ -795,11 +800,15 @@
       resizePending = true;
       window.requestAnimationFrame(() => {
         resizePending = false;
-        applySidebarLayout();
+        const nextViewportKind = getSidebarViewportKind();
+        const shouldResetAuto = nextViewportKind !== lastViewportKind;
+        lastViewportKind = nextViewportKind;
+        applySidebarLayout({ resetForAuto: shouldResetAuto });
       });
     });
 
-    applySidebarLayout();
+    applySidebarLayout({ resetForAuto: true });
+    lastViewportKind = getSidebarViewportKind();
   }
 
   function sanitizeAiChatMessage(value) {
