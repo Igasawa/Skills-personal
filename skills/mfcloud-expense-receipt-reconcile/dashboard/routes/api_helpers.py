@@ -39,6 +39,7 @@ def _provider_source_status_for_ym(year: int, month: int) -> dict[str, Any]:
 
 WORKSPACE_MAX_LINKS = 100
 WORKSPACE_MAX_PINNED_LINKS = 6
+WORKSPACE_MAX_PINNED_LINK_GROUPS = 8
 WORKSPACE_MAX_LABEL_CHARS = 80
 WORKSPACE_MAX_PROMPT_ENTRIES = 200
 WORKSPACE_MAX_PROMPT_CHARS = 50000
@@ -64,11 +65,9 @@ WORKFLOW_TEMPLATE_MAX_STEP_EXECUTION_LOG_MESSAGE_CHARS = 200
 WORKFLOW_TEMPLATE_STEP_DEFAULT_ACTION = "preflight"
 WORKFLOW_TEMPLATE_REQUIRED_STEP_ACTIONS = (
     "preflight",
-    "mf_reconcile",
 )
 WORKFLOW_TEMPLATE_REQUIRED_STEP_TITLES = {
     "preflight": "手順0 準備（ログイン確認・MF連携更新）",
-    "mf_reconcile": "手順5 MF突合・下書き作成",
 }
 WORKFLOW_TEMPLATE_FALLBACK_ACTION_ORDER = (
     "preflight",
@@ -78,7 +77,6 @@ WORKFLOW_TEMPLATE_FALLBACK_ACTION_ORDER = (
     "rakuten_print",
     "provider_ingest",
     "mf_bulk_upload_task",
-    "mf_reconcile",
     "month_close",
     "preflight_mf",
 )
@@ -94,7 +92,6 @@ WORKFLOW_TEMPLATE_ALLOWED_STEP_ACTIONS = (
     "rakuten_print",
     "provider_ingest",
     "mf_bulk_upload_task",
-    "mf_reconcile",
     "month_close",
 )
 WORKFLOW_TEMPLATE_MAX_NOTES_CHARS = 4000
@@ -457,6 +454,7 @@ def _workspace_state_path() -> Path:
 def _workspace_default_state() -> dict[str, Any]:
     return {
         "links": [],
+        "pinned_link_groups": [],
         "pinned_links": [],
         "prompts": {},
         "link_notes": {},
@@ -529,6 +527,157 @@ def _sanitize_workspace_pinned_links(value: Any) -> list[dict[str, str]]:
         if len(out) >= WORKSPACE_MAX_PINNED_LINKS:
             break
     return out
+
+
+def _normalize_workspace_pinned_group_label(value: Any) -> str:
+    return _normalize_workspace_label(value) or "固定リンク1"
+
+
+def _sanitize_workspace_pinned_link_groups(value: Any) -> list[dict[str, Any]]:
+    if not isinstance(value, list):
+        return []
+    out: list[dict[str, Any]] = []
+    seen_ids: set[str] = set()
+    used_labels: list[str] = []
+    used_groups = 0
+    for row in value:
+        if not isinstance(row, dict):
+            continue
+        if used_groups >= WORKSPACE_MAX_PINNED_LINK_GROUPS:
+            break
+        raw_id = str(row.get("id") or "").strip()
+        group_id = raw_id if raw_id else uuid4().hex
+        while group_id in seen_ids:
+            group_id = uuid4().hex
+        seen_ids.add(group_id)
+        links = _sanitize_workspace_pinned_links(row.get("links"))
+        label = _normalize_workspace_pinned_group_label(row.get("label"))
+        if not label or label in used_labels:
+            label = _generate_next_workspace_pinned_group_label(used_labels)
+        used_labels.append(label)
+        used_groups += 1
+        out.append(
+            {
+                "id": group_id,
+                "label": label,
+                "links": links,
+                "created_at": str(row.get("created_at") or "").strip(),
+            }
+        )
+    return out
+
+
+def _flatten_workspace_pinned_links(value: Any) -> list[dict[str, str]]:
+    if not isinstance(value, list):
+        return []
+    out: list[dict[str, str]] = []
+    seen: set[str] = set()
+    for row in value:
+        if not isinstance(row, dict):
+            continue
+        links = _sanitize_workspace_pinned_links(row.get("links"))
+        for item in links:
+            key = item.get("url", "").lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append(item)
+    return out[:WORKSPACE_MAX_PINNED_LINKS * WORKSPACE_MAX_PINNED_LINK_GROUPS]
+
+
+def _merge_workspace_pinned_link_groups(
+    client_groups: list[dict[str, str]],
+    server_groups: list[dict[str, str]],
+) -> list[dict[str, Any]]:
+    client = _sanitize_workspace_pinned_link_groups(client_groups)
+    server = _sanitize_workspace_pinned_link_groups(server_groups)
+    out: list[dict[str, Any]] = []
+    used_ids: set[str] = set()
+    server_by_id = {
+        str(row.get("id") or "").strip(): row
+        for row in server
+        if isinstance(row, dict) and str(row.get("id") or "").strip()
+    }
+
+    for row in client:
+        if len(out) >= WORKSPACE_MAX_PINNED_LINK_GROUPS:
+            break
+        if not isinstance(row, dict):
+            continue
+        raw_id = str(row.get("id") or "").strip()
+        merged_id = raw_id if raw_id else uuid4().hex
+        server_row = server_by_id.get(raw_id, {}) if raw_id else {}
+        merged = {
+            "id": merged_id,
+            "label": _normalize_workspace_pinned_group_label(row.get("label") or server_row.get("label")),
+            "links": _merge_workspace_pinned_links(
+                row.get("links") if isinstance(row.get("links"), list) else [],
+                server_row.get("links") if isinstance(server_row.get("links"), list) else [],
+            ),
+            "created_at": str(row.get("created_at") or server_row.get("created_at") or "").strip(),
+        }
+        out.append(merged)
+        used_ids.add(merged_id)
+
+    for row in server:
+        if len(out) >= WORKSPACE_MAX_PINNED_LINK_GROUPS:
+            break
+        if not isinstance(row, dict):
+            continue
+        raw_id = str(row.get("id") or "").strip()
+        if raw_id in used_ids:
+            continue
+        out.append(
+            {
+                "id": raw_id if raw_id else uuid4().hex,
+                "label": _normalize_workspace_pinned_group_label(row.get("label")),
+                "links": _sanitize_workspace_pinned_links(row.get("links")),
+                "created_at": str(row.get("created_at") or "").strip(),
+            }
+        )
+        used_ids.add(raw_id)
+
+    return _sanitize_workspace_pinned_link_groups(out)
+
+
+def _generate_next_workspace_pinned_group_label(existing_labels: list[str]) -> str:
+    normalized = [str(label or "").strip() for label in existing_labels]
+    if not normalized:
+        return "固定リンク1"
+    if not any("固定リンク" in (label or "") for label in normalized):
+        return "固定リンク1"
+    used = set(normalized)
+    index = 1
+    while True:
+        candidate = f"固定リンク{index}";
+        if candidate not in used:
+            return candidate
+        index += 1
+
+
+def _migrate_legacy_pinned_links(
+    pinned_links: Any,
+    base_groups: list[dict[str, Any]] | None = None,
+) -> list[dict[str, Any]]:
+    normalized_links = _sanitize_workspace_pinned_links(pinned_links)
+    if not normalized_links:
+        return []
+    base = _sanitize_workspace_pinned_link_groups(base_groups)
+    base_group = base[0] if base else None
+    group_id = str(base_group.get("id") or "") if base_group else ""
+    if not group_id:
+        group_id = uuid4().hex
+    base_label = _normalize_workspace_pinned_group_label(base_group.get("label")) if base_group else ""
+    label = base_label if base_label else _generate_next_workspace_pinned_group_label([g.get("label", "") for g in base] if base else [])
+    created_at = str(base_group.get("created_at") or "").strip() if base_group else ""
+    return [
+        {
+            "id": group_id,
+            "label": label,
+            "links": normalized_links,
+            "created_at": created_at,
+        }
+    ]
 
 
 def _normalize_workspace_link_pools(
@@ -648,10 +797,20 @@ def _sanitize_workspace_active_prompt_key(value: Any) -> str:
 def _normalize_workspace_state(payload: Any) -> dict[str, Any]:
     if not isinstance(payload, dict):
         return _workspace_default_state()
-    links, pinned_links = _normalize_workspace_link_pools(
+    pinned_link_groups = _sanitize_workspace_pinned_link_groups(payload.get("pinned_link_groups"))
+    if not pinned_link_groups and "pinned_links" in payload:
+        migrated = _migrate_legacy_pinned_links(payload.get("pinned_links"), pinned_link_groups)
+        if migrated:
+            pinned_link_groups = migrated
+        else:
+            pinned_link_groups = []
+    links, _ = _normalize_workspace_link_pools(
         payload.get("links"),
-        payload.get("pinned_links"),
+        _flatten_workspace_pinned_links(pinned_link_groups),
     )
+    pinned_links = _sanitize_workspace_pinned_links(
+        pinned_link_groups[0].get("links") if pinned_link_groups else payload.get("pinned_links")
+    ) if (pinned_link_groups or ("pinned_links" in payload)) else []
     prompts = _sanitize_workspace_prompts(payload.get("prompts"))
     link_notes = _sanitize_workspace_link_notes(payload.get("link_notes"))
     link_profiles = _sanitize_workspace_link_profiles(payload.get("link_profiles"))
@@ -660,6 +819,7 @@ def _normalize_workspace_state(payload: Any) -> dict[str, Any]:
     updated_at = str(payload.get("updated_at") or "").strip() or None
     return {
         "links": links,
+        "pinned_link_groups": pinned_link_groups,
         "pinned_links": pinned_links,
         "prompts": prompts,
         "link_notes": link_notes,
@@ -955,5 +1115,6 @@ def _open_receipts_folder_for_ym(ym: str, actor: dict[str, str]) -> JSONResponse
 
 
 __all__ = [name for name in globals() if not name.startswith("__")]
+
 
 

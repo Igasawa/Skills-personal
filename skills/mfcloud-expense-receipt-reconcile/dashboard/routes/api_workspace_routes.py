@@ -21,6 +21,8 @@ def register_api_workspace_routes(
     merge_workspace_links: Callable[[list[dict[str, str]], list[dict[str, str]]], list[dict[str, str]]],
     sanitize_workspace_pinned_links: Callable[[Any], list[dict[str, str]]],
     merge_workspace_pinned_links: Callable[[list[dict[str, str]], list[dict[str, str]]], list[dict[str, str]]],
+    sanitize_workspace_pinned_link_groups: Callable[[Any], list[dict[str, Any]]],
+    merge_workspace_pinned_link_groups: Callable[[list[dict[str, Any]], list[dict[str, Any]]], list[dict[str, Any]]],
     sanitize_workspace_prompts: Callable[[Any], dict[str, str]],
     merge_workspace_prompts: Callable[[dict[str, str], dict[str, str]], dict[str, str]],
     sanitize_workspace_link_notes: Callable[[Any], dict[str, str]],
@@ -71,15 +73,47 @@ def register_api_workspace_routes(
                 current["links"] = merge_workspace_links(links_payload, sanitize_workspace_links(current.get("links")))
             else:
                 current["links"] = links_payload
-        if "pinned_links" in payload:
-            pinned_links_payload = sanitize_workspace_pinned_links(payload.get("pinned_links"))
+        if "pinned_link_groups" in payload:
+            pinned_link_groups_payload = sanitize_workspace_pinned_link_groups(payload.get("pinned_link_groups"))
+            current_server_groups = sanitize_workspace_pinned_link_groups(current.get("pinned_link_groups"))
             if revision_conflict:
-                current["pinned_links"] = merge_workspace_pinned_links(
-                    pinned_links_payload,
-                    sanitize_workspace_pinned_links(current.get("pinned_links")),
+                current["pinned_link_groups"] = merge_workspace_pinned_link_groups(
+                    pinned_link_groups_payload,
+                    current_server_groups,
                 )
             else:
-                current["pinned_links"] = pinned_links_payload
+                current["pinned_link_groups"] = pinned_link_groups_payload
+        elif "pinned_links" in payload:
+            current_server_groups = sanitize_workspace_pinned_link_groups(current.get("pinned_link_groups"))
+            first_server_group = current_server_groups[0] if current_server_groups else {}
+            first_label = str(first_server_group.get("label") or "").strip() or "固定リンク1"
+            first_id = str(first_server_group.get("id") or "").strip()
+            legacy_links = sanitize_workspace_pinned_links(payload.get("pinned_links"))
+            legacy_group = {
+                "id": first_id if first_id else "",
+                "label": first_label,
+                "links": legacy_links,
+                "created_at": str(first_server_group.get("created_at") or "").strip() if first_server_group else "",
+            }
+            if current_server_groups:
+                next_groups = current_server_groups[:]
+                if next_groups:
+                    next_groups[0] = legacy_group
+                current["pinned_link_groups"] = next_groups
+            elif legacy_group.get("links"):
+                current["pinned_link_groups"] = [legacy_group]
+            else:
+                current["pinned_link_groups"] = []
+            if revision_conflict:
+                current["pinned_link_groups"] = merge_workspace_pinned_link_groups(
+                    current["pinned_link_groups"],
+                    current_server_groups,
+                )
+        if "pinned_link_groups" in payload or "pinned_links" in payload:
+            pinned_groups = sanitize_workspace_pinned_link_groups(current.get("pinned_link_groups"))
+            current["pinned_links"] = sanitize_workspace_pinned_links(
+                pinned_groups[0].get("links") if pinned_groups else []
+            )
         if "prompts" in payload:
             prompts_payload = sanitize_workspace_prompts(payload.get("prompts"))
             if revision_conflict:
@@ -462,3 +496,4 @@ def register_api_workspace_routes(
                 "print_mode": "manual_open",
             }
         )
+

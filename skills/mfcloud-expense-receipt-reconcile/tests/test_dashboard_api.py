@@ -1848,6 +1848,7 @@ def test_api_workspace_state_get_returns_default(monkeypatch: pytest.MonkeyPatch
     assert body["status"] == "ok"
     assert body["links"] == []
     assert body["pinned_links"] == []
+    assert body["pinned_link_groups"] == []
     assert body["prompts"] == {}
     assert body["link_notes"] == {}
     assert body["link_profiles"] == {}
@@ -1903,6 +1904,11 @@ def test_api_workspace_state_post_persists_and_sanitizes(monkeypatch: pytest.Mon
     assert body["status"] == "ok"
     assert body["links"] == [{"label": "MF 経費", "url": "https://expense.moneyforward.com/expense_reports"}]
     assert body["pinned_links"] == [{"label": "Pinned Ops", "url": "https://ops.example.com/"}]
+    pinned_group = body["pinned_link_groups"][0]
+    assert pinned_group["id"]
+    assert pinned_group["label"] == "固定リンク1"
+    assert pinned_group["links"] == [{"label": "Pinned Ops", "url": "https://ops.example.com/"}]
+    assert pinned_group["created_at"] == ""
     assert body["prompts"] == {
         "mf_expense_reports": "core prompt",
         "custom:https%3A%2F%2Fexample.com": "custom prompt",
@@ -1926,6 +1932,7 @@ def test_api_workspace_state_post_persists_and_sanitizes(monkeypatch: pytest.Mon
     persisted = json.loads(state_path.read_text(encoding="utf-8"))
     assert persisted["links"] == body["links"]
     assert persisted["pinned_links"] == body["pinned_links"]
+    assert persisted["pinned_link_groups"] == body["pinned_link_groups"]
     assert persisted["prompts"] == body["prompts"]
     assert persisted["link_notes"] == body["link_notes"]
     assert persisted["link_profiles"] == body["link_profiles"]
@@ -1940,12 +1947,75 @@ def test_api_workspace_state_post_persists_and_sanitizes(monkeypatch: pytest.Mon
     body_partial = res_partial.json()
     assert body_partial["links"] == body["links"]
     assert body_partial["pinned_links"] == body["pinned_links"]
+    assert body_partial["pinned_link_groups"] == body["pinned_link_groups"]
     assert body_partial["prompts"] == body["prompts"]
     assert body_partial["link_notes"] == body["link_notes"]
     assert body_partial["link_profiles"] == body["link_profiles"]
     assert body_partial["active_prompt_key"] == "custom:https%3A%2F%2Fexample.com"
     assert body_partial["revision"] == body["revision"] + 1
     assert body_partial["conflict_resolved"] is False
+
+
+def test_api_workspace_state_post_legacy_pinned_links_keeps_existing_groups(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    client = _create_client(monkeypatch, tmp_path)
+
+    initial = client.post(
+        "/api/workspace/state",
+        json={
+            "pinned_link_groups": [
+                {
+                    "id": "group-a",
+                    "label": "Pinned Card A",
+                    "links": [{"label": "Pinned A", "url": "https://pinned-a.example.com/"}],
+                },
+                {
+                    "id": "group-b",
+                    "label": "Pinned Card B",
+                    "links": [{"label": "Pinned B", "url": "https://pinned-b.example.com/"}],
+                },
+            ],
+            "links": [],
+        },
+    )
+    assert initial.status_code == 200
+    initial_body = initial.json()
+    assert initial_body["revision"] == 1
+    assert len(initial_body["pinned_link_groups"]) == 2
+    assert initial_body["pinned_link_groups"][0]["id"] == "group-a"
+    assert initial_body["pinned_link_groups"][1]["id"] == "group-b"
+
+    updated = client.post(
+        "/api/workspace/state",
+        json={
+            "base_revision": initial_body["revision"],
+            "pinned_links": [{"label": "Pinned C", "url": "https://pinned-c.example.com/"}],
+            "links": [],
+        },
+    )
+    assert updated.status_code == 200
+    updated_body = updated.json()
+    assert updated_body["revision"] == 2
+    assert updated_body["conflict_resolved"] is False
+    assert len(updated_body["pinned_link_groups"]) == 2
+    assert updated_body["pinned_link_groups"][0]["links"] == [{"label": "Pinned C", "url": "https://pinned-c.example.com/"}]
+    assert updated_body["pinned_link_groups"][1]["links"] == [{"label": "Pinned B", "url": "https://pinned-b.example.com/"}]
+
+    cleared = client.post(
+        "/api/workspace/state",
+        json={
+            "base_revision": updated_body["revision"],
+            "pinned_links": [],
+            "links": [],
+        },
+    )
+    assert cleared.status_code == 200
+    cleared_body = cleared.json()
+    assert cleared_body["revision"] == 3
+    assert cleared_body["conflict_resolved"] is False
+    assert cleared_body["pinned_link_groups"][0]["links"] == []
+    assert cleared_body["pinned_link_groups"][1]["links"] == [{"label": "Pinned B", "url": "https://pinned-b.example.com/"}]
 
 
 def test_api_workspace_state_post_merges_on_revision_conflict(

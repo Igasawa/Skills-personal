@@ -17,6 +17,8 @@ from .api_helpers import (
     _merge_workspace_link_profiles,
     _merge_workspace_links,
     _merge_workspace_pinned_links,
+    _sanitize_workspace_pinned_link_groups,
+    _merge_workspace_pinned_link_groups,
     _merge_workspace_prompts,
     _read_workspace_state,
     _sanitize_workspace_active_prompt_key,
@@ -303,7 +305,6 @@ def register_api_workflow_endpoints(router: APIRouter) -> None:
             "rakuten_print": "手順2 楽天除外判断・印刷",
             "provider_ingest": "手順3 共通フォルダ取り込み",
             "mf_bulk_upload_task": "手順4 MF一括アップロード",
-            "mf_reconcile": "手順5 MF突合・下書き作成",
             "month_close": "手順6 月次クローズ",
         }
         default_title = defaults.get(action_key) or WORKFLOW_TEMPLATE_REQUIRED_STEP_TITLES.get(action_key) or action_key
@@ -999,6 +1000,8 @@ def register_api_workflow_endpoints(router: APIRouter) -> None:
         merge_workspace_links=_merge_workspace_links,
         sanitize_workspace_pinned_links=_sanitize_workspace_pinned_links,
         merge_workspace_pinned_links=_merge_workspace_pinned_links,
+        sanitize_workspace_pinned_link_groups=_sanitize_workspace_pinned_link_groups,
+        merge_workspace_pinned_link_groups=_merge_workspace_pinned_link_groups,
         sanitize_workspace_prompts=_sanitize_workspace_prompts,
         merge_workspace_prompts=_merge_workspace_prompts,
         sanitize_workspace_link_notes=_sanitize_workspace_link_notes,

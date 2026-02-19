@@ -191,7 +191,6 @@ def test_dashboard_templates_reference_expected_script_chunks() -> None:
             "/static/js/index.render.js",
             "/static/js/index.events.js",
             "/static/js/index.js",
-            "/static/js/scheduler.js",
         ],
         base / "pptx_polish.html": [
             "/static/js/common.js",

@@ -8,55 +8,6 @@
         <div class="wizard-step">
           <div class="step-head">
             <span class="step-num">-</span>
-            <span class="step-title">対象設定（実行依頼）</span>
-            <span class="step-status pending">未実行</span>
-          </div>
-          <div class="scheduler-panel" id="scheduler-panel" data-scheduler-card-id="workflow-template-card" data-scheduler-action-key="preflight">
-            <div class="scheduler-head">
-              <h3>タイマー自動実行</h3>
-            </div>
-            <div class="scheduler-grid">
-              <label>
-                実行日
-                <input type="date" id="scheduler-run-date" />
-              </label>
-              <label>
-                実行時刻
-                <input type="time" id="scheduler-run-time" value="09:00" />
-              </label>
-<label>
-                再実行条件
-                <select id="scheduler-catch-up">
-                  <option value="run_on_startup">次回起動時に実行</option>
-                  <option value="skip">スキップ</option>
-                </select>
-              </label>
-              <label>
-                繰り返し
-                <select id="scheduler-recurrence">
-                  <option value="once">1回だけ</option>
-                  <option value="daily">毎日</option>
-                  <option value="weekly">毎週</option>
-                  <option value="monthly">毎月（同日）</option>
-                </select>
-              </label>
-
-
-              <label class="inline-check">
-                <input type="checkbox" id="scheduler-toggle" />
-                自動実行を有効化
-              </label>
-            </div>
-            <div class="scheduler-actions">
-              <button type="button" class="secondary" id="scheduler-refresh">更新</button>
-              <button type="button" class="primary" id="scheduler-save">保存</button>
-              <span class="muted" id="scheduler-summary">未設定</span>
-            </div>
-          </div>
-        </div>
-        <div class="wizard-step">
-          <div class="step-head">
-            <span class="step-num">-</span>
             <span class="step-title">手順定義</span>
             <span class="step-status pending">未実行</span>
           </div>

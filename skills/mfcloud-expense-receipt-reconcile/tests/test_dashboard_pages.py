@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import json
 from pathlib import Path
@@ -156,7 +156,7 @@ def test_index_page_shows_manual_archive_button(monkeypatch: pytest.MonkeyPatch,
     assert links[0].get("label") == "HOME"
     assert links[0].get("section") == "home"
     assert any(
-        link.get("href") == "/" and link.get("label") == "WorkFlow：経費精算" and link.get("section") == "workflow"
+        link.get("href") == "/" and link.get("label") == "WorkFlow・夂ｵ瑚ｲｻ邊ｾ邂・ and link.get("section") == "workflow"
         for link in links
     )
     assert not any(link.get("href") == "/kil-review" and link.get("section") == "admin" for link in links)
@@ -164,7 +164,7 @@ def test_index_page_shows_manual_archive_button(monkeypatch: pytest.MonkeyPatch,
     assert any(link.get("href") == "/errors" and link.get("section") == "admin" for link in links)
     assert any(
         link.get("href") == "/expense-workflow-copy"
-        and link.get("label") in {"WFテンプレート", "WF作成テンプレート"}
+        and link.get("label") in {"WF繝・Φ繝励Ξ繝ｼ繝・, "WF菴懈・繝・Φ繝励Ξ繝ｼ繝・}
         and link.get("section") == "admin"
         for link in links
     )
@@ -313,7 +313,7 @@ def test_index_page_shows_archive_history_links(monkeypatch: pytest.MonkeyPatch,
     assert 'class="archive-history"' in res.text
     assert 'data-archive-history-list' in res.text
     assert f"/runs/{ym}/archived-receipts" in res.text
-    assert "経費精算ページへ戻る" in res.text
+    assert "邨瑚ｲｻ邊ｾ邂励・繝ｼ繧ｸ縺ｸ謌ｻ繧・ in res.text
 
 
 def test_expense_workflow_copy_page_shows_shared_wizard(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -329,15 +329,19 @@ def test_expense_workflow_copy_page_shows_shared_wizard(monkeypatch: pytest.Monk
     assert "data-workflow-template" in res.text
     assert 'data-template-steps-list' in res.text
     assert 'id="template-step-add"' in res.text
-    assert 'id="scheduler-recurrence"' in res.text
-    assert 'id="scheduler-toggle"' in res.text
     assert 'id="template-steps-list"' in res.text
     assert "data-template-step-mvp-note" in res.text
+    assert "id=\"scheduler-panel\"" not in res.text
+    assert "id=\"scheduler-toggle\"" not in res.text
+    assert "id=\"scheduler-run-date\"" not in res.text
+    assert "id=\"scheduler-run-time\"" not in res.text
+    assert "id=\"scheduler-catch-up\"" not in res.text
+    assert "id=\"scheduler-recurrence\"" not in res.text
+    assert "data-scheduler-card-id" not in res.text
+    assert "data-scheduler-action-key" not in res.text
     assert "/static/js/index.js" in res.text
-    assert "/static/js/scheduler.js" in res.text
+    assert "/static/js/scheduler.js" not in res.text
     assert "/static/js/template-step-timer.js" not in res.text
-    assert "data-scheduler-card-id" in res.text
-    assert "data-scheduler-action-key" in res.text
 
     match = re.search(r"data-sidebar-links='(.*?)'", res.text)
     assert match is not None
@@ -350,7 +354,7 @@ def test_expense_workflow_copy_page_shows_shared_wizard(monkeypatch: pytest.Monk
     )
 
 
-def test_expense_workflow_copy_scheduler_uses_context_keys_without_mode_selector(
+def test_expense_workflow_copy_template_loads_without_scheduler_panel(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
@@ -366,8 +370,8 @@ def test_expense_workflow_copy_scheduler_uses_context_keys_without_mode_selector
                 "notes": "for scheduler context test",
                 "rakuten_orders_url": "https://example.com/orders",
                 "steps": [
-                    {"id": "step-1", "title": "Amazon 取得", "action": "amazon_download"},
-                    {"id": "step-2", "title": "MF 突合", "action": "mf_reconcile"},
+                    {"id": "step-1", "title": "Amazon 蜿門ｾ・, "action": "amazon_download"},
+                    {"id": "step-2", "title": "MF 遯∝粋", "action": "mf_reconcile"},
                 ],
                 "created_at": "2026-02-01T00:00:00",
                 "updated_at": "2026-02-01T00:00:00",
@@ -378,20 +382,12 @@ def test_expense_workflow_copy_scheduler_uses_context_keys_without_mode_selector
     res = client.get("/expense-workflow-copy?template=scheduler-context-template")
     assert res.status_code == 200
     assert 'id="template-steps-list"' in res.text
-    assert 'id="scheduler-toggle"' in res.text
-    assert "data-scheduler-card-id" in res.text
-    assert "data-scheduler-action-key" in res.text
-
-    scheduler_js = (
-        Path(__file__).resolve().parents[1]
-        / "dashboard"
-        / "static"
-        / "js"
-        / "scheduler.js"
-    ).read_text(encoding="utf-8")
-    assert "resolveSchedulerCardId" in scheduler_js
-    assert "resolveSchedulerActionKey" in scheduler_js
-    assert "scheduler-context-changed" in scheduler_js
+    assert 'id="template-step-add"' in res.text
+    assert "data-scheduler-card-id" not in res.text
+    assert "data-scheduler-action-key" not in res.text
+    assert "id=\"scheduler-panel\"" not in res.text
+    assert "id=\"scheduler-toggle\"" not in res.text
+    assert "/static/js/scheduler.js" not in res.text
 
 
 def test_expense_workflow_copy_step_card_script_supports_timer_and_default_clone(
@@ -462,7 +458,7 @@ def test_workspace_page_shows_core_link_and_prompt_tools(
     assert "workspace-edit-prompt" in res.text
     assert 'id="workspace-link-form"' in res.text
     assert 'id="workspace-custom-links"' in res.text
-    assert 'id="workspace-pinned-links"' in res.text
+    assert 'id="workspace-pinned-groups"' in res.text
     assert 'id="workspace-pinned-count"' in res.text
     assert 'id="workspace-link-undo"' in res.text
     assert 'id="workspace-prompt-editor"' in res.text

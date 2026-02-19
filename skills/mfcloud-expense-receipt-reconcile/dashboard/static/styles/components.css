@@ -297,6 +297,33 @@ select:focus-visible {
   color: rgb(var(--semantic-feedback-danger-text));
 }
 
+.toast.toast-confirm {
+  pointer-events: auto;
+  max-width: min(360px, calc(100vw - 48px));
+}
+
+.toast-message,
+.toast-actions {
+  width: 100%;
+}
+
+.toast-message {
+  line-height: 1.45;
+  white-space: normal;
+}
+
+.toast-actions {
+  margin-top: 10px;
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.toast-actions .toast-action-button {
+  min-height: 30px;
+}
+
 .log {
   background: rgb(var(--surface-0));
   color: rgb(var(--text-default));

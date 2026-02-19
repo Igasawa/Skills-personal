@@ -27,7 +27,7 @@
         <ul class="workspace-intent-list">
           <li>自動化で使うリンク先を登録・更新する。</li>
           <li>各リンクの目的とエージェント向けプロンプトを整備する。</li>
-          <li>担当者・推奨エージェント・最終見直し日を確認してから実行する。</li>
+          <li>リンク内容とプロンプトを確認してから実行する。</li>
         </ul>
       </section>
 
@@ -81,34 +81,6 @@
                     data-note-key="mf_expense_reports"
                   ></textarea>
                 </label>
-                <div class="workspace-link-profile-grid">
-                  <label>
-                    担当者
-                    <input
-                      type="text"
-                      maxlength="80"
-                      placeholder="例: 経理 田中"
-                      data-workspace-link-owner
-                      data-profile-key="mf_expense_reports"
-                    />
-                  </label>
-                  <label>
-                    推奨エージェント
-                    <select data-workspace-link-agent data-profile-key="mf_expense_reports">
-                      <option value="">未設定</option>
-                      <option value="codex">Codex</option>
-                      <option value="chatgpt">ChatGPT</option>
-                      <option value="claude">Claude</option>
-                      <option value="gemini">Gemini</option>
-                      <option value="other">その他</option>
-                    </select>
-                  </label>
-                  <label>
-                    最終見直し日
-                    <input type="date" data-workspace-link-reviewed-on data-profile-key="mf_expense_reports" />
-                  </label>
-                </div>
-                <p class="workspace-link-review-status" data-workspace-link-review-status data-profile-key="mf_expense_reports"></p>
                 <div class="workspace-link-actions">
                   <button
                     type="button"
@@ -138,8 +110,11 @@
           <p class="muted workspace-pinned-count" id="workspace-pinned-count">
             固定リンク（追加分）: 0 / 6
           </p>
-          <ul id="workspace-pinned-links" class="workspace-link-list workspace-link-list-pinned"></ul>
-          <p id="workspace-pinned-links-empty" class="muted">
+          <div class="workspace-pinned-group-actions">
+            <button type="button" class="secondary" id="workspace-add-pinned-group">固定リンクを追加</button>
+          </div>
+          <ul id="workspace-pinned-groups" class="workspace-pinned-group-list"></ul>
+          <p id="workspace-pinned-groups-empty" class="muted">
             昇格した固定リンクはまだありません。
           </p>
           <div id="workspace-link-undo" class="workspace-link-undo hidden" aria-live="polite"></div>
@@ -180,33 +155,6 @@
                 placeholder="例: 月次申請の承認状況を確認する"
               ></textarea>
             </label>
-            <div class="workspace-link-form-meta form-row">
-              <label for="workspace-link-owner">
-                担当者
-                <input
-                  id="workspace-link-owner"
-                  type="text"
-                  name="owner"
-                  maxlength="80"
-                  placeholder="例: 経理 田中"
-                />
-              </label>
-              <label for="workspace-link-agent">
-                推奨エージェント
-                <select id="workspace-link-agent" name="agent">
-                  <option value="">未設定</option>
-                  <option value="codex">Codex</option>
-                  <option value="chatgpt">ChatGPT</option>
-                  <option value="claude">Claude</option>
-                  <option value="gemini">Gemini</option>
-                  <option value="other">その他</option>
-                </select>
-              </label>
-              <label for="workspace-link-reviewed-on">
-                最終見直し日
-                <input id="workspace-link-reviewed-on" type="date" name="reviewed_on" />
-              </label>
-            </div>
             <div class="step-actions">
               <button type="submit" class="primary">リンクを追加</button>
               <button type="button" class="secondary" id="workspace-clear-links">追加リンクを全削除</button>

@@ -42,7 +42,6 @@
       ["rakuten_download", "Rakuten Download"],
       ["amazon_print", "Amazon Print"],
       ["rakuten_print", "Rakuten Print"],
-      ["mf_reconcile", "MF Reconcile"],
     ];
     return fallback
       .map(([value, label]) => `<option value="${value}"${value === selectedAction ? " selected" : ""}>${label}</option>`)

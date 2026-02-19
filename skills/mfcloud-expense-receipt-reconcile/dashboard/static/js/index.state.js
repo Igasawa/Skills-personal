@@ -49,6 +49,10 @@
   function defaultTitleForStepAction(action, fallback = "") {
     const normalizedAction = String(action || "").trim();
     const fallbackTitle = String(fallback || "").trim();
+    if (normalizedAction === "preflight") {
+      const defaultTitle = String(TEMPLATE_STEP_DEFAULT_TITLES[normalizedAction] || "").trim();
+      return defaultTitle;
+    }
     if (fallbackTitle) return fallbackTitle;
     return TEMPLATE_STEP_DEFAULT_TITLES[normalizedAction] || TEMPLATE_STEP_ACTION_LABELS[normalizedAction] || "Task";
   }

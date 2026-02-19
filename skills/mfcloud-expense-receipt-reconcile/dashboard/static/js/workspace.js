@@ -9,9 +9,12 @@
   const STORAGE_LINK_NOTES_KEY = "mf-dashboard-workspace-link-notes-v1";
   const STORAGE_LINK_PROFILES_KEY = "mf-dashboard-workspace-link-profiles-v1";
   const STORAGE_PINNED_LINKS_KEY = "mf-dashboard-workspace-pinned-links-v1";
+  const STORAGE_PINNED_LINK_GROUPS_KEY = "mf-dashboard-workspace-pinned-link-groups-v1";
   const MAX_LINKS = 100;
   const MAX_PINNED_LINKS = 6;
+  const MAX_PINNED_GROUPS = 8;
   const MAX_LINK_NOTE_CHARS = 4000;
+  const WORKSPACE_PINNED_GROUP_LABEL_PREFIX = "\u56fa\u5b9a\u30ea\u30f3\u30af";
   const LINK_NOTE_SAVE_DEBOUNCE_MS = 300;
   const MAX_PROFILE_OWNER_CHARS = 80;
   const MAX_PROFILE_AGENT_CHARS = 32;
@@ -84,16 +87,16 @@
   const linkLabelInput = document.getElementById("workspace-link-label");
   const linkUrlInput = document.getElementById("workspace-link-url");
   const linkPurposeInput = document.getElementById("workspace-link-purpose");
-  const linkOwnerInput = document.getElementById("workspace-link-owner");
-  const linkAgentInput = document.getElementById("workspace-link-agent");
-  const linkReviewedOnInput = document.getElementById("workspace-link-reviewed-on");
   const clearLinksButton = document.getElementById("workspace-clear-links");
   const customLinksList = document.getElementById("workspace-custom-links");
   const customLinksEmpty = document.getElementById("workspace-custom-links-empty");
-  const pinnedLinksList = document.getElementById("workspace-pinned-links");
-  const pinnedLinksEmpty = document.getElementById("workspace-pinned-links-empty");
+  const pinnedGroupsList = document.getElementById("workspace-pinned-groups");
+  const pinnedGroupsEmpty = document.getElementById("workspace-pinned-groups-empty");
+  const pinnedGroupAddButton = document.getElementById("workspace-add-pinned-group");
   const pinnedCount = document.getElementById("workspace-pinned-count");
   const linkUndo = document.getElementById("workspace-link-undo");
+  const toastElement = document.getElementById("toast");
+  const TOAST_CONFIRM_DURATION_MS = 10000;
 
   const promptEditor = document.getElementById("workspace-prompt-editor");
   const promptStatus = document.getElementById("workspace-prompt-status");
@@ -103,6 +106,7 @@
   const promptActiveLabel = document.getElementById("workspace-prompt-active-label");
   let linkUndoTimer = null;
   let linkUndoAction = null;
+  let toastConfirmTimer = null;
 
   function isObject(value) {
     return value !== null && typeof value === "object" && !Array.isArray(value);
@@ -330,6 +334,7 @@
   function collectLocalWorkspaceState() {
     return {
       links: readCustomLinks(),
+      pinned_link_groups: readPinnedLinkGroups(),
       pinned_links: readPinnedLinks(),
       prompts: readPromptMap(),
       link_notes: readLinkNoteMap(),
@@ -341,12 +346,17 @@
   function hasMeaningfulWorkspaceState(state) {
     if (!isObject(state)) return false;
     const links = Array.isArray(state.links) ? state.links : [];
+    const pinnedGroups = Array.isArray(state.pinned_link_groups) ? state.pinned_link_groups : [];
     const pinnedLinks = Array.isArray(state.pinned_links) ? state.pinned_links : [];
     const prompts = isObject(state.prompts) ? state.prompts : {};
     const linkNotes = isObject(state.link_notes) ? state.link_notes : {};
     const linkProfiles = isObject(state.link_profiles) ? state.link_profiles : {};
+    const pinnedLinkCount = Array.isArray(pinnedGroups)
+      ? pinnedGroups.reduce((sum, row) => sum + (Array.isArray(row?.links) ? row.links.length : 0), 0)
+      : 0;
     return (
       links.length > 0 ||
+      pinnedLinkCount > 0 ||
       pinnedLinks.length > 0 ||
       Object.keys(prompts).length > 0 ||
       Object.keys(linkNotes).length > 0 ||
@@ -356,16 +366,20 @@
 
   function applyWorkspaceStateToLocalStorage(state) {
     const links = Array.isArray(state?.links) ? state.links : [];
-    const pinnedLinks = Array.isArray(state?.pinned_links) ? state.pinned_links : [];
+    const pinnedGroups = normalizePinnedLinkGroups(Array.isArray(state?.pinned_link_groups) ? state.pinned_link_groups : []);
+    const legacyPinnedLinks = Array.isArray(state?.pinned_links) ? state.pinned_links : [];
+    const mergedPinnedGroups =
+      pinnedGroups.length > 0 ? pinnedGroups : migrateLegacyPinnedLinks(legacyPinnedLinks, pinnedGroups);
     const prompts = isObject(state?.prompts) ? state.prompts : {};
     const linkNotes = isObject(state?.link_notes) ? state.link_notes : {};
     const linkProfiles = isObject(state?.link_profiles) ? state.link_profiles : {};
     const activePromptKey = isValidPromptKey(state?.active_prompt_key)
       ? String(state.active_prompt_key)
       : PROMPT_KEY_MF_EXPENSE_REPORTS;
-    const normalized = normalizeLinkPools(links, pinnedLinks);
+    const normalized = normalizeLinkPools(links, getAllPinnedLinksFromGroups(mergedPinnedGroups));
     try {
       window.localStorage.setItem(STORAGE_LINKS_KEY, JSON.stringify(normalized.links));
+      window.localStorage.setItem(STORAGE_PINNED_LINK_GROUPS_KEY, JSON.stringify(mergedPinnedGroups));
       window.localStorage.setItem(STORAGE_PINNED_LINKS_KEY, JSON.stringify(normalized.pinned_links));
       window.localStorage.setItem(STORAGE_PROMPTS_KEY, JSON.stringify(prompts));
       window.localStorage.setItem(STORAGE_LINK_NOTES_KEY, JSON.stringify(linkNotes));
@@ -389,6 +403,7 @@
       if (!isObject(data)) return null;
       return {
         links: Array.isArray(data.links) ? data.links : [],
+        pinned_link_groups: Array.isArray(data.pinned_link_groups) ? data.pinned_link_groups : [],
         pinned_links: Array.isArray(data.pinned_links) ? data.pinned_links : [],
         prompts: isObject(data.prompts) ? data.prompts : {},
         link_notes: isObject(data.link_notes) ? data.link_notes : {},
@@ -422,6 +437,7 @@
       if (isObject(data)) {
         applyWorkspaceStateToLocalStorage({
           links: Array.isArray(data.links) ? data.links : [],
+          pinned_link_groups: Array.isArray(data.pinned_link_groups) ? data.pinned_link_groups : [],
           pinned_links: Array.isArray(data.pinned_links) ? data.pinned_links : [],
           prompts: isObject(data.prompts) ? data.prompts : {},
           link_notes: isObject(data.link_notes) ? data.link_notes : {},
@@ -551,7 +567,7 @@
     if (text === PROMPT_KEY_MF_EXPENSE_REPORTS) return "MF経費精算ページ";
     const url = resolvePromptUrl(text, context);
     if (url) {
-      const links = [...readPinnedLinks(), ...readCustomLinks()];
+      const links = [...getAllPinnedLinksFromGroups(readPinnedLinkGroups()), ...readCustomLinks()];
       const hit = links.find((item) => item && item.url === url);
       if (hit && hit.label) return String(hit.label);
       try {
@@ -585,6 +601,10 @@
       "- 現状",
       "- 次アクション",
       "- 注意点",
+      "",
+      "参照:",
+      "- レポートパス: {reports_path}",
+      "- メモ: {notes}",
     ].join("\n");
   }
 
@@ -737,20 +757,20 @@
     }
 
     const lines = [
-      "自動化実行指示セット",
+      "目的:",
       `対象リンク: ${label || "-"}`,
       `URL: ${url || "-"}`,
-      `目的: ${purpose || "-"}`,
-      `担当者: ${profile.owner || "-"}`,
-      `推奨エージェント: ${resolveAgentLabel(profile.agent)}`,
-      `最終見直し日: ${profile.reviewed_on || "-"}`,
+      `対象リンク: ${label || "-"}`,
+      `対象リンク: ${label || "-"}`,
+      `- 次のページ（${label}）で必要な作業を進める。`,
+      `対象リンク: ${label || "-"}`,
       "",
-      "プロンプト:",
+      "目的:",
       promptText,
     ];
     const ok = await copyToClipboard(lines.join("\n"));
-    if (ok) showToast("実行指示セットをコピーしました。", "success");
-    else showToast("実行指示セットのコピーに失敗しました。", "error");
+    if (ok) showToast("プロンプトをコピーしました。", "success");
+    else showToast("プロンプトのコピーに失敗しました。", "error");
   }
 
   function activatePromptEditorForKey(key, context = {}) {
@@ -793,7 +813,7 @@
   }
 
   function normalizeLinkPools(links, pinnedLinks) {
-    const safePinnedLinks = sanitizeLinkList(pinnedLinks, MAX_PINNED_LINKS);
+    const safePinnedLinks = sanitizeLinkList(pinnedLinks, MAX_PINNED_LINKS * MAX_PINNED_GROUPS);
     const pinnedKeys = new Set(safePinnedLinks.map((item) => String(item.url || "").toLowerCase()));
     const safeLinks = sanitizeLinkList(links, MAX_LINKS, true).filter(
       (item) => !pinnedKeys.has(String(item.url || "").toLowerCase())
@@ -801,19 +821,67 @@
     return { links: safeLinks, pinned_links: safePinnedLinks };
   }
 
-  function readCustomLinks() {
-    try {
-      const raw = window.localStorage.getItem(STORAGE_LINKS_KEY);
-      if (!raw) return [];
-      const parsed = JSON.parse(raw);
-      const normalized = normalizeLinkPools(parsed, readPinnedLinks());
-      return normalized.links;
-    } catch {
-      return [];
-    }
+  function generatePinnedGroupId() {
+    return `pinned-group-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
   }
 
-  function readPinnedLinks() {
+  function generatePinnedGroupLabel(existingLabels = []) {
+    const used = new Set(Array.isArray(existingLabels) ? existingLabels.map((value) => String(value || "")) : []);
+    let index = 1;
+    while (used.has(`${WORKSPACE_PINNED_GROUP_LABEL_PREFIX}${index}`)) index += 1;
+    return `${WORKSPACE_PINNED_GROUP_LABEL_PREFIX}${index}`;
+  }
+
+  function normalizePinnedGroupLabel(value, existingLabels = []) {
+    const raw = String(value || "").trim();
+    const fallback = generatePinnedGroupLabel(existingLabels);
+    let candidate = raw || fallback;
+    if (!candidate) return fallback;
+    let suffix = 2;
+    const used = new Set(Array.isArray(existingLabels) ? existingLabels.map((v) => String(v || "")) : []);
+    while (used.has(candidate)) {
+      candidate = `${raw || fallback} (${suffix})`;
+      suffix += 1;
+    }
+    return candidate;
+  }
+
+  function normalizePinnedLinkGroups(rows) {
+    if (!Array.isArray(rows)) return [];
+    const out = [];
+    const usedLabels = [];
+    const usedIds = new Set();
+    rows.forEach((row) => {
+      if (!isObject(row)) return;
+      const label = normalizePinnedGroupLabel(row.label, usedLabels);
+      const idCandidate = String(row.id || "").trim();
+      const id = idCandidate && !usedIds.has(idCandidate) ? idCandidate : generatePinnedGroupId();
+      usedIds.add(id);
+      out.push({
+        id,
+        label,
+        links: sanitizeLinkList(row.links, MAX_PINNED_LINKS),
+        created_at: String(row.created_at || ""),
+      });
+      usedLabels.push(label);
+    });
+    if (out.length === 0) return [];
+    const trimmed = out.slice(0, Math.max(0, MAX_PINNED_GROUPS));
+    return trimmed;
+  }
+
+  function makePinnedGroup(label, links, createdAt = "") {
+    const existingRows = readPinnedLinkGroups();
+    const existingLabels = existingRows.map((row) => row.label);
+    return {
+      id: generatePinnedGroupId(),
+      label: normalizePinnedGroupLabel(label || generatePinnedGroupLabel(existingLabels), existingLabels),
+      links: sanitizeLinkList(links, MAX_PINNED_LINKS),
+      created_at: String(createdAt || ""),
+    };
+  }
+
+  function readLegacyPinnedLinks() {
     try {
       const raw = window.localStorage.getItem(STORAGE_PINNED_LINKS_KEY);
       if (!raw) return [];
@@ -824,26 +892,599 @@
     }
   }
 
-  function saveLinkPools(nextLinks, nextPinnedLinks) {
-    const normalized = normalizeLinkPools(nextLinks, nextPinnedLinks);
+  function migrateLegacyPinnedLinks(pinnedLinks, baseGroups = []) {
+    const base = normalizePinnedLinkGroups(baseGroups);
+    if (base.length > 0) return base;
+    const safePinnedLinks = Array.isArray(pinnedLinks) ? sanitizeLinkList(pinnedLinks, MAX_PINNED_LINKS) : [];
+    if (safePinnedLinks.length === 0) return [];
+    const fallback = normalizePinnedLinkGroups([{}])[0] || {
+      id: generatePinnedGroupId(),
+      label: `${WORKSPACE_PINNED_GROUP_LABEL_PREFIX}1`,
+      links: [],
+      created_at: "",
+    };
+    const row = {
+      id: generatePinnedGroupId(),
+      label: `${WORKSPACE_PINNED_GROUP_LABEL_PREFIX}1`,
+      links: safePinnedLinks,
+      created_at: "",
+    };
+    return [row];
+  }
+
+  function readPinnedLinkGroups() {
+    try {
+      const raw = window.localStorage.getItem(STORAGE_PINNED_LINK_GROUPS_KEY);
+      if (!raw) {
+        const migrated = migrateLegacyPinnedLinks(readLegacyPinnedLinks(), []);
+        if (migrated.length > 0) {
+          void savePinnedLinkGroups(migrated);
+          return migrated;
+        }
+        return [];
+      }
+      const parsed = JSON.parse(raw);
+      const normalized = normalizePinnedLinkGroups(parsed);
+      if (normalized.length > 0) return normalized;
+      const migrated = migrateLegacyPinnedLinks(readLegacyPinnedLinks(), normalized);
+      if (migrated.length > 0) {
+        void savePinnedLinkGroups(migrated);
+        return migrated;
+      }
+      return [];
+    } catch {
+      return [];
+    }
+  }
+
+  function readPinnedLinks() {
+    const groups = readPinnedLinkGroups();
+    return Array.isArray(groups[0]?.links) ? groups[0].links : [];
+  }
+
+  function readPinnedLinksAll() {
+    return getAllPinnedLinksFromGroups(readPinnedLinkGroups());
+  }
+
+  function readPinnedLinksFromGroup(groupId) {
+    const groups = readPinnedLinkGroups();
+    const targetId = String(groupId || "").trim();
+    const group = groups.find((row) => String(row.id || "") === targetId);
+    return Array.isArray(group?.links) ? group.links : [];
+  }
+
+  function getPinnedGroupIndexById(groupId) {
+    const groups = readPinnedLinkGroups();
+    const targetId = String(groupId || "").trim();
+    return groups.findIndex((row) => String(row.id || "") === targetId);
+  }
+
+  function ensurePinnedGroupExists() {
+    const groups = readPinnedLinkGroups();
+    if (groups.length > 0) return groups;
+    const created = makePinnedGroup(`${WORKSPACE_PINNED_GROUP_LABEL_PREFIX}1`, []);
+    const saved = savePinnedLinkGroups([created]);
+    return saved ? [created] : [];
+  }
+
+  function getAllPinnedLinksFromGroups(groups = null) {
+    const list = Array.isArray(groups) ? groups : readPinnedLinkGroups();
+    const flattened = [];
+    list.forEach((row) => {
+      if (!isObject(row)) return;
+      if (!Array.isArray(row.links)) return;
+      row.links.forEach((link) => {
+        if (!isObject(link)) return;
+        flattened.push(link);
+      });
+    });
+    return sanitizeLinkList(flattened, MAX_PINNED_LINKS * MAX_PINNED_GROUPS);
+  }
+
+  function readRawCustomLinks() {
+    try {
+      const raw = window.localStorage.getItem(STORAGE_LINKS_KEY);
+      if (!raw) return [];
+      const parsed = JSON.parse(raw);
+      return sanitizeLinkList(parsed, MAX_LINKS, true);
+    } catch {
+      return [];
+    }
+  }
+
+  function readCustomLinks() {
+    const raw = readRawCustomLinks();
+    const allPinnedLinks = getAllPinnedLinksFromGroups(readPinnedLinkGroups());
+    const normalized = normalizeLinkPools(raw, allPinnedLinks);
+    return normalized.links;
+  }
+
+  function saveWorkspaceState(links, pinnedLinkGroups) {
+    const nextGroups = normalizePinnedLinkGroups(pinnedLinkGroups);
+    const nextLinks = sanitizeLinkList(links, MAX_LINKS, true);
+    const normalized = normalizeLinkPools(nextLinks, getAllPinnedLinksFromGroups(nextGroups));
     try {
       window.localStorage.setItem(STORAGE_LINKS_KEY, JSON.stringify(normalized.links));
-      window.localStorage.setItem(STORAGE_PINNED_LINKS_KEY, JSON.stringify(normalized.pinned_links));
+      window.localStorage.setItem(STORAGE_PINNED_LINK_GROUPS_KEY, JSON.stringify(nextGroups));
+      window.localStorage.setItem(STORAGE_PINNED_LINKS_KEY, JSON.stringify(nextGroups[0]?.links || []));
       scheduleWorkspaceSync();
-      return normalized;
+      return {
+        links: normalized.links,
+        pinned_link_groups: nextGroups,
+        pinned_links: nextGroups[0]?.links || [],
+      };
     } catch {
       return null;
     }
   }
 
+  function savePinnedLinkGroups(pinnedLinkGroups) {
+    return saveWorkspaceState(readRawCustomLinks(), pinnedLinkGroups);
+  }
+
   function saveCustomLinks(links) {
-    const saved = saveLinkPools(links, readPinnedLinks());
-    return Boolean(saved);
+    const saved = saveWorkspaceState(links, readPinnedLinkGroups());
+    return saved;
   }
 
   function savePinnedLinks(pinnedLinks) {
-    const saved = saveLinkPools(readCustomLinks(), pinnedLinks);
-    return Boolean(saved);
+    const groups = readPinnedLinkGroups();
+    const nextGroups =
+      groups.length > 0
+        ? groups.slice()
+        : [makePinnedGroup(`${WORKSPACE_PINNED_GROUP_LABEL_PREFIX}1`, sanitizeLinkList([], MAX_PINNED_LINKS), "")];
+    const nextLabelGroup = { ...nextGroups[0], links: sanitizeLinkList(pinnedLinks, MAX_PINNED_LINKS) };
+    nextGroups[0] = nextLabelGroup;
+    const saved = savePinnedLinkGroups(nextGroups);
+    return saved;
+  }
+
+  function savePinnedLinksToGroup(groupId, pinnedLinks) {
+    const groups = readPinnedLinkGroups();
+    const index = groups.findIndex((row) => String(row.id || "") === String(groupId || ""));
+    if (index < 0) return false;
+    const nextGroups = groups.slice();
+    nextGroups[index] = { ...nextGroups[index], links: sanitizeLinkList(pinnedLinks, MAX_PINNED_LINKS) };
+    return saveWorkspaceState(readCustomLinks(), nextGroups);
+  }
+
+  function saveLinkPools(customLinks, pinnedLinks) {
+    const ensured = ensurePinnedGroupExists();
+    if (ensured.length === 0) return null;
+    const nextGroups = ensured.slice();
+    const first = nextGroups[0];
+    nextGroups[0] = {
+      ...first,
+      links: sanitizeLinkList(Array.isArray(pinnedLinks) ? pinnedLinks : [], MAX_PINNED_LINKS),
+    };
+    return saveWorkspaceState(customLinks, nextGroups);
+  }
+
+  function addPinnedGroup() {
+    const groups = readPinnedLinkGroups();
+    if (groups.length >= MAX_PINNED_GROUPS) {
+      showToast(`固定リンクカードは最大 ${MAX_PINNED_GROUPS} 枚までです。`, "error");
+      return false;
+    }
+    const next = groups.slice();
+    const labels = next.map((row) => String(row.label || ""));
+    const nextGroup = makePinnedGroup(generatePinnedGroupLabel(labels), []);
+    next.push(nextGroup);
+    const saved = savePinnedLinkGroups(next);
+    if (!saved) {
+      showToast("固定リンクカードを追加できませんでした。", "error");
+      return false;
+    }
+    renderPinnedLinkGroups();
+    return true;
+  }
+
+  function duplicatePinnedGroup(groupId) {
+    const groups = readPinnedLinkGroups();
+    const sourceIndex = getPinnedGroupIndexById(groupId);
+    if (sourceIndex < 0) return false;
+    if (groups.length >= MAX_PINNED_GROUPS) {
+      showToast(`固定リンクカードは最大 ${MAX_PINNED_GROUPS} 枚までです。`, "error");
+      return false;
+    }
+    const source = groups[sourceIndex];
+    const labels = groups.map((row) => String(row.label || ""));
+    const copied = {
+      id: generatePinnedGroupId(),
+      label: normalizePinnedGroupLabel(`${String(source.label || `${WORKSPACE_PINNED_GROUP_LABEL_PREFIX}1`)} のコピー`, labels),
+      links: Array.isArray(source?.links)
+        ? source.links.map((link) => ({
+            label: String(link.label || ""),
+            url: String(link.url || ""),
+          }))
+        : [],
+      created_at: String(source.created_at || ""),
+    };
+    const next = groups.slice();
+    next.splice(sourceIndex + 1, 0, copied);
+    const saved = savePinnedLinkGroups(next);
+    if (!saved) {
+      showToast("固定リンクカードを複製できませんでした。", "error");
+      return false;
+    }
+    renderPinnedLinkGroups();
+    return true;
+  }
+
+  function deletePinnedGroup(groupId) {
+    const groups = readPinnedLinkGroups();
+    const sourceIndex = getPinnedGroupIndexById(groupId);
+    if (sourceIndex < 0) return false;
+    const next = groups.slice();
+    next.splice(sourceIndex, 1);
+    const saved = savePinnedLinkGroups(next);
+    if (!saved) {
+      showToast("固定リンクカードを削除できませんでした。", "error");
+      return false;
+    }
+    renderPinnedLinkGroups();
+    return true;
+  }
+
+  function reorderPinnedGroups(fromIndex, toIndex) {
+    const groups = readPinnedLinkGroups();
+    const maxIndex = groups.length - 1;
+    const from = Number.isFinite(fromIndex) ? Math.trunc(fromIndex) : -1;
+    const to = Number.isFinite(toIndex) ? Math.trunc(toIndex) : -1;
+    if (from < 0 || to < 0 || from > maxIndex || to > maxIndex || from === to) return false;
+    const next = groups.slice();
+    const [moved] = next.splice(from, 1);
+    const insertIndex = to;
+    next.splice(insertIndex, 0, moved);
+    const saved = savePinnedLinkGroups(next);
+    if (!saved) {
+      showToast("固定リンクカードの順序変更に失敗しました。", "error");
+      return false;
+    }
+    renderPinnedLinkGroups();
+    return true;
+  }
+
+  function reorderPinnedGroupLinks(groupId, fromIndex, toIndex) {
+    const groups = readPinnedLinkGroups();
+    const index = getPinnedGroupIndexById(groupId);
+    if (index < 0) return false;
+    const group = groups[index];
+    const links = Array.isArray(group.links) ? sanitizeLinkList(group.links, MAX_PINNED_LINKS) : [];
+    const maxIndex = links.length - 1;
+    const from = Number.isFinite(fromIndex) ? Math.trunc(fromIndex) : -1;
+    const to = Number.isFinite(toIndex) ? Math.trunc(toIndex) : -1;
+    if (from < 0 || to < 0 || from > maxIndex || to > maxIndex || from === to) return false;
+    const nextLinks = links.slice();
+    const [moved] = nextLinks.splice(from, 1);
+    const insertIndex = to;
+    nextLinks.splice(insertIndex, 0, moved);
+    const nextGroups = groups.slice();
+    nextGroups[index] = { ...group, links: nextLinks };
+    const saved = savePinnedLinkGroups(nextGroups);
+    if (!saved) {
+      showToast("固定リンクの順序変更に失敗しました。", "error");
+      return false;
+    }
+    renderPinnedLinkGroups();
+    return true;
+  }
+
+  function updatePinnedGroupLabel(groupId, nextLabel) {
+    const groups = readPinnedLinkGroups();
+    const index = getPinnedGroupIndexById(groupId);
+    if (index < 0) return false;
+    const next = groups.slice();
+    const existing = groups.map((row) => String(row.label || ""));
+    const label = normalizePinnedGroupLabel(
+      nextLabel,
+      existing.filter((_, rowIndex) => rowIndex !== index),
+    );
+    const current = String(next[index].label || "");
+    if (label === current) return true;
+    next[index] = { ...next[index], label };
+    const saved = savePinnedLinkGroups(next);
+    if (!saved) {
+      showToast("固定リンクカード名の変更に失敗しました。", "error");
+      return false;
+    }
+    renderPinnedLinkGroups();
+    return true;
+  }
+
+  function createPinnedGroupNode(group, index, totalGroups = 0) {
+    const safeIndex = Number.isFinite(Number(index)) ? Math.max(0, Math.trunc(index)) : 0;
+    const safeTotalGroups = Number.isFinite(Number(totalGroups)) ? Math.max(0, Math.trunc(totalGroups)) : 0;
+    const safeGroup = isObject(group) ? group : {};
+    const groupId = String(safeGroup.id || "");
+    const groupLabel = String(safeGroup.label || "").trim() || `${WORKSPACE_PINNED_GROUP_LABEL_PREFIX}${safeIndex + 1}`;
+    const safeLinks = sanitizeLinkList(safeGroup.links, MAX_PINNED_LINKS);
+
+    const item = document.createElement("li");
+    item.className = "workspace-pinned-group-item";
+    item.dataset.groupIndex = String(safeIndex);
+    item.dataset.groupId = groupId;
+
+    const head = document.createElement("div");
+    head.className = "workspace-pinned-group-head";
+
+    const titleRow = document.createElement("div");
+    titleRow.className = "workspace-pinned-group-title-row";
+
+    const orderBadge = document.createElement("span");
+    orderBadge.className = "workspace-link-order-badge";
+    orderBadge.textContent = String(safeIndex + 1);
+    titleRow.appendChild(orderBadge);
+
+    const orderControls = document.createElement("div");
+    orderControls.className = "workspace-pinned-group-order-controls";
+
+    const moveUpButton = document.createElement("button");
+    moveUpButton.type = "button";
+    moveUpButton.className = "secondary workspace-order-button workspace-order-button-inline";
+    moveUpButton.textContent = "↑";
+    moveUpButton.setAttribute("aria-label", "固定リンクカードを上へ");
+    moveUpButton.disabled = safeIndex <= 0;
+    moveUpButton.addEventListener("click", () => {
+      const moved = reorderPinnedGroups(safeIndex, safeIndex - 1);
+      if (!moved) {
+        showToast("固定リンクカードを上へ移動できませんでした。", "error");
+      }
+    });
+
+    const moveDownButton = document.createElement("button");
+    moveDownButton.type = "button";
+    moveDownButton.className = "secondary workspace-order-button workspace-order-button-inline";
+    moveDownButton.textContent = "↓";
+    moveDownButton.setAttribute("aria-label", "固定リンクカードを下へ");
+    moveDownButton.disabled = safeIndex >= Math.max(0, safeTotalGroups - 1);
+    moveDownButton.addEventListener("click", () => {
+      const moved = reorderPinnedGroups(safeIndex, safeIndex + 1);
+      if (!moved) {
+        showToast("固定リンクカードを下へ移動できませんでした。", "error");
+      }
+    });
+
+    orderControls.appendChild(moveUpButton);
+    orderControls.appendChild(moveDownButton);
+
+    const titleInput = document.createElement("input");
+    titleInput.type = "text";
+    titleInput.className = "workspace-pinned-group-title";
+    titleInput.value = groupLabel;
+    titleInput.placeholder = `${WORKSPACE_PINNED_GROUP_LABEL_PREFIX}${safeIndex + 1}`;
+    titleInput.setAttribute("aria-label", "固定リンクカード名を編集");
+    titleInput.addEventListener("change", () => {
+      const changed = updatePinnedGroupLabel(groupId, String(titleInput.value || "").trim());
+      if (!changed) {
+        titleInput.value = String(groupLabel);
+      }
+    });
+    titleInput.addEventListener("blur", () => {
+      const changed = updatePinnedGroupLabel(groupId, String(titleInput.value || "").trim());
+      if (!changed) {
+        titleInput.value = String(groupLabel);
+      }
+    });
+
+    const duplicateButton = document.createElement("button");
+    duplicateButton.type = "button";
+    duplicateButton.className = "secondary workspace-link-duplicate";
+    duplicateButton.textContent = "+";
+    duplicateButton.setAttribute("aria-label", "固定リンクカードを複製");
+    duplicateButton.addEventListener("click", () => {
+      void duplicatePinnedGroup(groupId);
+    });
+
+    const deleteButton = document.createElement("button");
+    deleteButton.type = "button";
+    deleteButton.className = "secondary";
+    deleteButton.textContent = "削除";
+    deleteButton.setAttribute("aria-label", "固定リンクカードを削除");
+    deleteButton.addEventListener("click", () => {
+      const targetLabel = String(groupLabel || `${WORKSPACE_PINNED_GROUP_LABEL_PREFIX}${safeIndex + 1}`).trim();
+      const confirmMessage = `"${targetLabel}"を削除しますか？`;
+      showToastConfirmDialog(confirmMessage, {
+        confirmText: "削除",
+        cancelText: "キャンセル",
+        type: "error",
+        onConfirm: () => {
+          const deleted = deletePinnedGroup(groupId);
+          if (!deleted) return;
+          showToast(`固定リンクカード「${targetLabel}」を削除しました。`, "success");
+        },
+      });
+    });
+
+    const dragHandle = document.createElement("button");
+    dragHandle.type = "button";
+    dragHandle.className = "secondary workspace-drag-handle";
+    dragHandle.textContent = "並び替え";
+    dragHandle.setAttribute("data-workspace-drag-handle", "");
+    dragHandle.dataset.dragIndex = String(safeIndex);
+    dragHandle.draggable = true;
+
+    titleRow.appendChild(orderControls);
+    titleRow.appendChild(titleInput);
+    titleRow.appendChild(duplicateButton);
+    titleRow.appendChild(deleteButton);
+    titleRow.appendChild(dragHandle);
+    head.appendChild(titleRow);
+    item.appendChild(head);
+
+    const linksList = document.createElement("ul");
+    linksList.className = "workspace-pinned-group-links workspace-link-list workspace-link-list-pinned";
+    linksList.dataset.groupId = groupId;
+
+    safeLinks.forEach((link, linkIndex) => {
+      linksList.appendChild(createLinkNode(link, linkIndex, safeLinks, "pinned", {
+        groupId,
+        groupIndex: safeIndex,
+      }));
+    });
+
+    item.appendChild(linksList);
+    bindPinnedGroupLinksDragAndDrop(groupId, linksList);
+    return item;
+  }
+
+  function bindPinnedGroupDragAndDrop() {
+    if (!pinnedGroupsList) return;
+    bindLinkListDragAndDrop(pinnedGroupsList, readPinnedLinkGroups, savePinnedLinkGroups, renderPinnedLinkGroups, {
+      saveLabel: "固定リンクカードの順序を保存",
+      itemSelector: ".workspace-pinned-group-item[data-group-index]",
+      indexAttribute: "groupIndex",
+      boundAttribute: "pinnedGroupsDragBound",
+      itemHandleSelector: "[data-workspace-drag-handle][data-drag-index]",
+    });
+  }
+
+  function bindPinnedGroupLinksDragAndDrop(groupId, linksList) {
+    if (!(linksList instanceof HTMLElement)) return;
+    bindLinkListDragAndDrop(linksList, () => readPinnedLinksFromGroup(groupId), (next) => savePinnedLinksToGroup(groupId, next), () => renderPinnedLinkGroups(), {
+      saveLabel: "固定リンクカード内リンクの順序を保存",
+      boundAttribute: "pinnedGroupLinksDragBound",
+    });
+  }
+
+  function renderPinnedLinkGroups(pinnedLinkGroups = null) {
+    if (!pinnedGroupsList || !pinnedGroupsEmpty) return;
+    const groups = normalizePinnedLinkGroups(Array.isArray(pinnedLinkGroups) ? pinnedLinkGroups : readPinnedLinkGroups());
+    pinnedGroupsList.innerHTML = "";
+    let totalPinned = 0;
+    groups.forEach((group, index) => {
+      totalPinned += Number.isArray(group?.links) ? group.links.length : 0;
+      const node = createPinnedGroupNode(group, index, groups.length);
+      if (node) pinnedGroupsList.appendChild(node);
+    });
+    pinnedGroupsEmpty.classList.toggle("hidden", groups.length > 0);
+    updatePinnedCountMeta(totalPinned, groups.length);
+    bindPinnedGroupDragAndDrop();
+  }
+
+  function clonePinnedGroupsState(groups) {
+    if (!Array.isArray(groups)) return [];
+    return groups.map((group) => {
+      return {
+        id: String(group?.id || ""),
+        label: String(group?.label || ""),
+        links: Array.isArray(group?.links)
+          ? group.links.map((link) => ({ label: String(link?.label || ""), url: String(link?.url || "") }))
+          : [],
+        created_at: String(group?.created_at || ""),
+      };
+    });
+  }
+
+  async function pickPinnedGroupForPromotion(groups, targetGroupId) {
+    if (!Array.isArray(groups) || groups.length === 0) return null;
+    const chosen = String(targetGroupId || "").trim();
+    if (chosen) {
+      const direct = groups.find((group) => String(group?.id || "") === chosen);
+      if (direct) return direct;
+      showToast("固定リンクカードが見つかりません。", "error");
+      return null;
+    }
+
+    if (groups.length === 1) return groups[0];
+    const groupOptions = groups
+      .map((group, index) => {
+        const id = String(group?.id || "").trim();
+        const label = String(group?.label || "").trim() || `${WORKSPACE_PINNED_GROUP_LABEL_PREFIX}${index + 1}`;
+        return { id, label };
+      })
+      .filter((row) => row.id);
+    if (groupOptions.length <= 1) return groups[0] || null;
+
+    const selected = await openPinnedGroupPicker(groupOptions);
+    if (!selected) return null;
+    const direct = groups.find((group) => String(group?.id || "") === selected);
+    if (!direct) {
+      showToast("選択した固定リンクカードが見つかりません。", "error");
+      return null;
+    }
+    return direct;
+  }
+
+  function openPinnedGroupPicker(groupOptions) {
+    const options = Array.isArray(groupOptions) ? groupOptions : [];
+    const list = options.filter((row) => String(row?.id || "").trim());
+    if (list.length === 0) return Promise.resolve(null);
+
+    return new Promise((resolve) => {
+      const overlay = document.createElement("div");
+      overlay.className = "workspace-pinned-group-picker-overlay";
+
+      const modal = document.createElement("div");
+      modal.className = "workspace-pinned-group-picker";
+      modal.role = "dialog";
+      modal.setAttribute("aria-modal", "true");
+      modal.setAttribute("aria-label", "固定リンクカードを選択");
+
+      const title = document.createElement("h3");
+      title.className = "workspace-pinned-group-picker-title";
+      title.textContent = "固定リンクカードを選択";
+
+      const select = document.createElement("select");
+      select.className = "workspace-pinned-group-picker-select";
+      list.forEach((row) => {
+        const option = document.createElement("option");
+        option.value = String(row.id);
+        option.textContent = String(row.label || "").trim() || "(Fixed link)";
+        select.appendChild(option);
+      });
+
+      const actions = document.createElement("div");
+      actions.className = "workspace-pinned-group-picker-actions";
+
+      const cancelButton = document.createElement("button");
+      cancelButton.type = "button";
+      cancelButton.className = "secondary";
+      cancelButton.textContent = "キャンセル";
+
+      const confirmButton = document.createElement("button");
+      confirmButton.type = "button";
+      confirmButton.className = "primary";
+      confirmButton.textContent = "決定";
+
+      const closePicker = (value) => {
+        if (overlay.parentElement) overlay.remove();
+        document.removeEventListener("keydown", onKeyDown, true);
+        resolve(value);
+      };
+
+      const onOverlayClick = (event) => {
+        if (event.target === overlay) {
+          closePicker(null);
+        }
+      };
+      const onKeyDown = (event) => {
+        if (event.key === "Escape") {
+          closePicker(null);
+        }
+      };
+
+      cancelButton.addEventListener("click", () => closePicker(null));
+      confirmButton.addEventListener("click", () => closePicker(select.value || null));
+      select.addEventListener("keydown", (event) => {
+        if (event.key === "Enter") {
+          event.preventDefault();
+          closePicker(select.value || null);
+        }
+      });
+
+      overlay.addEventListener("click", onOverlayClick);
+
+      actions.appendChild(cancelButton);
+      actions.appendChild(confirmButton);
+      modal.appendChild(title);
+      modal.appendChild(select);
+      modal.appendChild(actions);
+      overlay.appendChild(modal);
+      document.body.appendChild(overlay);
+      document.addEventListener("keydown", onKeyDown, true);
+      select.focus();
+    });
   }
 
   async function copyToClipboard(text) {
@@ -919,28 +1560,29 @@
 
   function buildReviewStatusState(profile) {
     const safeProfile = normalizeLinkProfile(profile);
-    const ownerText = safeProfile.owner ? `担当: ${safeProfile.owner}` : "担当: 未設定";
-    const agentText = `推奨: ${resolveAgentLabel(safeProfile.agent)}`;
+    const ownerText = safeProfile.owner ? `${safeProfile.owner}` : "";
+    const agentText = safeProfile.agent ? resolveAgentLabel(safeProfile.agent) : "";
     const ageDays = daysSinceReviewedOn(safeProfile.reviewed_on);
+    const ageLabel =
+      ageDays === null || Number.isNaN(ageDays) ? "" : `（最終見直しから ${ageDays} 日経過）`;
 
     if (!safeProfile.reviewed_on) {
       return {
         className: "is-missing",
-        text: `${ownerText} / ${agentText} / 最終見直し日: 未設定`,
+        text: `${ownerText}${ownerText && agentText ? " / " : ""}${agentText}${ageLabel || " / 見直し日未設定"}`,
       };
     }
 
     if (ageDays !== null && ageDays > REVIEW_STALE_DAYS) {
       return {
         className: "is-stale",
-        text: `${ownerText} / ${agentText} / 最終見直し: ${safeProfile.reviewed_on}（${ageDays}日前・更新推奨）`,
+        text: `${ownerText}${ownerText && agentText ? " / " : ""}${agentText} / 見直し日: ${safeProfile.reviewed_on}${ageLabel}`,
       };
     }
 
-    const ageLabel = ageDays === null ? "" : `（${ageDays}日前）`;
     return {
       className: "is-fresh",
-      text: `${ownerText} / ${agentText} / 最終見直し: ${safeProfile.reviewed_on}${ageLabel}`,
+      text: `${ownerText}${ownerText && agentText ? " / " : ""}${agentText} / 見直し日: ${safeProfile.reviewed_on}${ageLabel}`,
     };
   }
 
@@ -1043,6 +1685,43 @@
     });
   }
 
+  function bindWorkspaceMetadataToggle(root = document) {
+    if (!root || typeof root.querySelectorAll !== "function") return;
+    root.querySelectorAll("[data-workspace-link-profile-toggle]").forEach((button) => {
+      if (!(button instanceof HTMLButtonElement)) return;
+      if (button.dataset.workspaceLinkMetadataToggleBound === "1") return;
+      button.dataset.workspaceLinkMetadataToggleBound = "1";
+
+      const details = button.closest(".workspace-link-details");
+      const profileSection = details ? details.querySelector(".workspace-link-profile-section") : null;
+      if (!(profileSection instanceof HTMLElement)) return;
+
+      const profileKeyNode = profileSection.querySelector(
+        "[data-workspace-link-owner][data-profile-key], [data-workspace-link-agent][data-profile-key], [data-workspace-link-reviewed-on][data-profile-key], [data-workspace-link-review-status][data-profile-key]",
+      );
+      const profileKey = profileKeyNode ? String(profileKeyNode.dataset.profileKey || "").trim() : "";
+      const profile = getLinkProfileForKey(profileKey);
+      const hasMetadata = Boolean(profile.owner) || Boolean(profile.agent) || Boolean(profile.reviewed_on);
+
+      profileSection.hidden = !hasMetadata;
+      button.textContent = hasMetadata ? "情報を隠す" : "情報を表示";
+
+      button.addEventListener("click", () => {
+        const nextHidden = !profileSection.hidden;
+        profileSection.hidden = nextHidden;
+        button.textContent = nextHidden ? "情報を表示" : "情報を隠す";
+        if (!nextHidden) {
+          const firstInput = profileSection.querySelector(
+            "[data-workspace-link-owner], [data-workspace-link-agent], [data-workspace-link-reviewed-on]",
+          );
+          if (firstInput instanceof HTMLElement && typeof firstInput.focus === "function") {
+            firstInput.focus();
+          }
+        }
+      });
+    });
+  }
+
   function clearLinkUndoNotice() {
     linkUndoAction = null;
     if (linkUndoTimer) {
@@ -1054,12 +1733,97 @@
     linkUndo.innerHTML = "";
   }
 
+  function clearToast() {
+    if (toastConfirmTimer) {
+      window.clearTimeout(toastConfirmTimer);
+      toastConfirmTimer = null;
+    }
+    if (window.__toastTimer) {
+      window.clearTimeout(window.__toastTimer);
+      window.__toastTimer = null;
+    }
+    if (!toastElement) return;
+    toastElement.classList.remove("show", "success", "error", "toast-confirm");
+    toastElement.textContent = "";
+  }
+
+  function hideToast() {
+    if (!toastElement) return;
+    if (toastConfirmTimer) {
+      window.clearTimeout(toastConfirmTimer);
+      toastConfirmTimer = null;
+    }
+    if (window.__toastTimer) {
+      window.clearTimeout(window.__toastTimer);
+      window.__toastTimer = null;
+    }
+    toastElement.classList.remove("show", "toast-confirm");
+    toastElement.textContent = "";
+  }
+
+  function showToastConfirmDialog(message, {
+    confirmText = "OK",
+    cancelText = "キャンセル",
+    onConfirm = null,
+    onCancel = null,
+    type = "",
+    duration = TOAST_CONFIRM_DURATION_MS,
+  } = {}) {
+    const normalizedMessage = String(message || "").trim();
+    if (!toastElement || !normalizedMessage || typeof onConfirm !== "function") return false;
+    const safeDuration = Number.isFinite(Number(duration)) ? Math.max(2500, Math.floor(Number(duration))) : TOAST_CONFIRM_DURATION_MS;
+
+    clearToast();
+    toastElement.classList.remove("success", "error", "toast-confirm");
+    if (type === "success") toastElement.classList.add("success");
+    if (type === "error") toastElement.classList.add("error");
+    toastElement.classList.add("toast-confirm");
+
+    const messageText = document.createElement("div");
+    messageText.className = "toast-message";
+    messageText.textContent = normalizedMessage;
+
+    const actions = document.createElement("div");
+    actions.className = "toast-actions";
+
+    const cancelButton = document.createElement("button");
+    cancelButton.type = "button";
+    cancelButton.className = "secondary toast-action-button";
+    cancelButton.textContent = String(cancelText || "キャンセル");
+
+    const confirmButton = document.createElement("button");
+    confirmButton.type = "button";
+    confirmButton.className = "primary toast-action-button";
+    confirmButton.textContent = String(confirmText || "OK");
+
+    cancelButton.addEventListener("click", () => {
+      hideToast();
+      if (typeof onCancel === "function") onCancel();
+    });
+    confirmButton.addEventListener("click", () => {
+      hideToast();
+      onConfirm();
+    });
+
+    actions.appendChild(cancelButton);
+    actions.appendChild(confirmButton);
+    toastElement.appendChild(messageText);
+    toastElement.appendChild(actions);
+    requestAnimationFrame(() => toastElement.classList.add("show"));
+
+    toastConfirmTimer = window.setTimeout(() => {
+      hideToast();
+      if (typeof onCancel === "function") onCancel();
+    }, safeDuration);
+    return true;
+  }
+
   function showLinkUndoNotice(message, onUndo) {
     if (!linkUndo) return;
     clearLinkUndoNotice();
     linkUndoAction = typeof onUndo === "function" ? onUndo : null;
     const text = document.createElement("span");
-    text.textContent = String(message || "").trim() || "更新しました。";
+    text.textContent = String(message || "").trim() || "元に戻せます。";
 
     const undoButton = document.createElement("button");
     undoButton.type = "button";
@@ -1080,120 +1844,207 @@
     }, LINK_UNDO_TTL_MS);
   }
 
-  function updatePinnedCountMeta(total) {
+  function updatePinnedCountMeta(total, totalGroups = 1) {
     if (!pinnedCount) return;
     const safeTotal = Number.isFinite(total) ? Math.max(0, total) : 0;
+    const normalizedGroups = Number.isFinite(totalGroups) ? Math.max(0, Math.trunc(totalGroups)) : 1;
+    const maxPinned = MAX_PINNED_LINKS * Math.max(1, normalizedGroups);
     pinnedCount.textContent = `固定リンク（追加分）: ${safeTotal} / ${MAX_PINNED_LINKS}`;
-    pinnedCount.classList.toggle("is-limit", safeTotal >= MAX_PINNED_LINKS);
+    pinnedCount.classList.toggle("is-limit", safeTotal >= maxPinned);
   }
 
-  function renderLinkLists(links, pinnedLinks) {
-    const normalized = normalizeLinkPools(links, pinnedLinks);
+  function renderLinkLists(links, pinnedLinkGroups = null) {
+    const groups = Array.isArray(pinnedLinkGroups) ? normalizePinnedLinkGroups(pinnedLinkGroups) : readPinnedLinkGroups();
+    const normalized = normalizeLinkPools(links, getAllPinnedLinksFromGroups(groups));
     renderCustomLinks(normalized.links);
-    renderPinnedLinks(normalized.pinned_links);
+    renderPinnedLinkGroups(groups);
     renderPromptFronts();
   }
 
-  function promoteCustomLinkByUrl(url) {
+  async function promoteCustomLinkToGroup(url, options = {}) {
     const normalizedUrl = normalizeUrl(url);
     if (!normalizedUrl) return;
-    const current = normalizeLinkPools(readCustomLinks(), readPinnedLinks());
-    const fromIndex = current.links.findIndex(
-      (item) => String(item.url || "").toLowerCase() === String(normalizedUrl).toLowerCase()
-    );
-    if (fromIndex < 0) {
-      showToast("追加リンクが見つかりませんでした。", "error");
+
+    const groups = readPinnedLinkGroups();
+    if (groups.length === 0) {
+      showToast("固定リンクカードがありません。", "error");
       return;
     }
-    if (current.pinned_links.length >= MAX_PINNED_LINKS) {
-      showToast(`固定リンクは最大 ${MAX_PINNED_LINKS} 件です。`, "error");
+
+    const current = normalizeLinkPools(readCustomLinks(), getAllPinnedLinksFromGroups(groups));
+    const fromIndex = current.links.findIndex((item) => String(item.url || "").toLowerCase() === String(normalizedUrl).toLowerCase());
+    if (fromIndex < 0) {
+      showToast("対象リンクが見つかりません。", "error");
+      return;
+    }
+
+    const target = await pickPinnedGroupForPromotion(groups, options.targetGroupId);
+    if (!target) return;
+
+    const targetIndex = getPinnedGroupIndexById(target.id);
+    if (targetIndex < 0) return;
+    const targetLinks = sanitizeLinkList(Array.isArray(groups[targetIndex]?.links) ? groups[targetIndex].links : [], MAX_PINNED_LINKS);
+    if (targetLinks.length >= MAX_PINNED_LINKS) {
+      showToast(`固定リンクの上限（${MAX_PINNED_LINKS}件）に達しました。`, "error");
       return;
     }
 
     const snapshot = {
       links: current.links.map((item) => ({ ...item })),
-      pinned_links: current.pinned_links.map((item) => ({ ...item })),
+      pinned_link_groups: clonePinnedGroupsState(groups),
     };
 
+    const moved = { ...current.links[fromIndex] };
     const nextLinks = current.links.slice();
-    const [moved] = nextLinks.splice(fromIndex, 1);
-    const nextPinnedLinks = [{ ...moved }, ...current.pinned_links];
-    const saved = saveLinkPools(nextLinks, nextPinnedLinks);
+    nextLinks.splice(fromIndex, 1);
+
+    const nextGroups = groups.slice();
+    nextGroups[targetIndex] = {
+      ...nextGroups[targetIndex],
+      links: sanitizeLinkList([moved, ...targetLinks], MAX_PINNED_LINKS),
+    };
+
+    const saved = saveWorkspaceState(nextLinks, nextGroups);
     if (!saved) {
-      showToast("固定リンクへの移動を保存できませんでした。", "error");
+      showToast("固定リンクへの追加に失敗しました。", "error");
       return;
     }
 
-    renderLinkLists(saved.links, saved.pinned_links);
-    showToast("固定リンクへ移動しました。", "success");
-    showLinkUndoNotice("固定リンクに昇格しました。", () => {
-      const restored = saveLinkPools(snapshot.links, snapshot.pinned_links);
+    renderLinkLists(saved.links, saved.pinned_link_groups);
+    showToast("選択した固定リンクカードに固定しました。", "success");
+
+    showLinkUndoNotice("固定リンク追加を取り消しますか？", () => {
+      const restored = saveWorkspaceState(snapshot.links, snapshot.pinned_link_groups);
       if (!restored) {
-        showToast("元に戻せませんでした。", "error");
+        showToast("固定化の取り消しに失敗しました。", "error");
         return;
       }
-      renderLinkLists(restored.links, restored.pinned_links);
-      showToast("元に戻しました。", "success");
+      renderLinkLists(restored.links, restored.pinned_link_groups);
+      showToast("取り消しました。", "success");
     });
   }
 
   function demotePinnedLinkByUrl(url, options = {}) {
+    const groups = readPinnedLinkGroups();
+    if (groups.length === 0) return false;
+
     const normalizedUrl = normalizeUrl(url);
     if (!normalizedUrl) return false;
-    const showFeedback = options.showFeedback !== false;
-    const current = normalizeLinkPools(readCustomLinks(), readPinnedLinks());
-    const fromIndex = current.pinned_links.findIndex(
-      (item) => String(item.url || "").toLowerCase() === String(normalizedUrl).toLowerCase()
-    );
-    if (fromIndex < 0) return false;
+    if (options.targetGroupId) {
+      return demoteGroupLink(options.targetGroupId, normalizedUrl, options);
+    }
 
-    const nextPinnedLinks = current.pinned_links.slice();
-    const [moved] = nextPinnedLinks.splice(fromIndex, 1);
-    const nextLinks = [{ ...moved }, ...current.links];
-    const saved = saveLinkPools(nextLinks, nextPinnedLinks);
+    if (groups.length === 1) {
+      return demoteGroupLink(groups[0].id, normalizedUrl, options);
+    }
+
+    const index = groups.findIndex((group) =>
+      Array.isArray(group.links) && group.links.some((item) => String(item.url || "").toLowerCase() === String(normalizedUrl).toLowerCase()),
+    );
+    if (index < 0) return false;
+    return demoteGroupLink(groups[index].id, normalizedUrl, options);
+  }
+
+  function demoteGroupLink(groupId, url, options = {}) {
+    const normalizedUrl = normalizeUrl(url);
+    if (!normalizedUrl) return false;
+
+    const groups = readPinnedLinkGroups();
+    const targetIndex = getPinnedGroupIndexById(groupId);
+    if (targetIndex < 0) return false;
+
+    const showFeedback = options.showFeedback !== false;
+    const showUndo = options.showUndo !== false;
+    const current = normalizeLinkPools(readCustomLinks(), getAllPinnedLinksFromGroups(groups));
+    const targetLinks = sanitizeLinkList(Array.isArray(groups[targetIndex]?.links) ? groups[targetIndex].links : [], MAX_PINNED_LINKS);
+
+    const sourceIndexCandidate = Number.isFinite(Number(options.sourceIndex)) ? Math.trunc(Number(options.sourceIndex)) : -1;
+    const sourceIndex = sourceIndexCandidate >= 0
+      ? sourceIndexCandidate
+      : targetLinks.findIndex((item) => String(item.url || "").toLowerCase() === String(normalizedUrl).toLowerCase());
+    if (sourceIndex < 0) return false;
+
+    const snapshot = {
+      links: current.links.map((item) => ({ ...item })),
+      pinned_link_groups: clonePinnedGroupsState(groups),
+    };
+
+    const nextTargetLinks = targetLinks.slice();
+    const [moved] = nextTargetLinks.splice(sourceIndex, 1);
+    if (!moved) return false;
+
+    const nextGroups = groups.slice();
+    nextGroups[targetIndex] = {
+      ...nextGroups[targetIndex],
+      links: sanitizeLinkList(nextTargetLinks, MAX_PINNED_LINKS),
+    };
+
+    const nextLinks = sanitizeLinkList([{ ...moved }, ...current.links], MAX_LINKS);
+    const saved = saveWorkspaceState(nextLinks, nextGroups);
     if (!saved) {
-      if (showFeedback) showToast("固定解除を保存できませんでした。", "error");
+      if (showFeedback) showToast("固定解除に失敗しました。", "error");
       return false;
     }
+
+    renderLinkLists(saved.links, saved.pinned_link_groups);
+    if (showFeedback) showToast("固定を解除しました。", "success");
+
+    if (!showUndo) return true;
+
     clearLinkUndoNotice();
-    renderLinkLists(saved.links, saved.pinned_links);
-    if (showFeedback) showToast("追加リンクへ戻しました。", "success");
+    showLinkUndoNotice("固定解除を取り消しますか？", () => {
+      const restored = saveWorkspaceState(snapshot.links, snapshot.pinned_link_groups);
+      if (!restored) {
+        showToast("固定解除の取り消しに失敗しました。", "error");
+        return;
+      }
+      renderLinkLists(restored.links, restored.pinned_link_groups);
+      showToast("取り消しました。", "success");
+    });
     return true;
   }
 
   function bindLinkListDragAndDrop(listElement, readLinks, saveLinks, renderLinks, options = {}) {
     if (!(listElement instanceof HTMLElement)) return;
-    if (listElement.dataset.dragBound === "1") return;
-    listElement.dataset.dragBound = "1";
-    const saveLabel = String(options.saveLabel || "").trim() || "並び順";
+    const boundAttribute = String(options.boundAttribute || "dragBound");
+    if (listElement.dataset[boundAttribute] === "1") return;
+    listElement.dataset[boundAttribute] = "1";
+    const saveLabel = String(options.saveLabel || "").trim() || "順序を保存";
+    const itemSelector = String(options.itemSelector || ".workspace-link-item[data-link-index]").trim();
+    const itemHandleSelector = String(options.itemHandleSelector || "[data-workspace-drag-handle][data-drag-index]").trim();
+    const indexAttribute = String(options.indexAttribute || "linkIndex").trim();
+    const draggingClass = String(options.draggingClass || "is-dragging").trim();
+    const dropClass = String(options.dropClass || "is-drop-target").trim();
     let draggingIndex = -1;
 
     const clearDragClasses = () => {
-      listElement.querySelectorAll(".workspace-link-item.is-dragging").forEach((node) => {
-        node.classList.remove("is-dragging");
+      listElement.querySelectorAll(`.${draggingClass}`).forEach((node) => {
+        node.classList.remove(draggingClass);
       });
-      listElement.querySelectorAll(".workspace-link-item.is-drop-target").forEach((node) => {
-        node.classList.remove("is-drop-target");
+      listElement.querySelectorAll(`.${dropClass}`).forEach((node) => {
+        node.classList.remove(dropClass);
       });
     };
 
     const toIndexFromNode = (item) => {
       if (!(item instanceof HTMLElement)) return -1;
-      const raw = item.dataset.linkIndex || "";
+      const raw = item.dataset[indexAttribute] || "";
       const parsed = Number.parseInt(raw, 10);
       return Number.isFinite(parsed) && parsed >= 0 ? parsed : -1;
     };
 
     listElement.addEventListener("dragstart", (event) => {
       const target = event.target instanceof Element ? event.target : null;
-      const handle = target ? target.closest("[data-workspace-drag-handle][data-drag-index]") : null;
+      const handle = target ? target.closest(itemHandleSelector) : null;
       if (!(handle instanceof HTMLElement)) return;
       const indexRaw = handle.dataset.dragIndex || "";
       const nextIndex = Number.parseInt(indexRaw, 10);
       if (!Number.isFinite(nextIndex) || nextIndex < 0) return;
+
       draggingIndex = nextIndex;
-      const item = handle.closest(".workspace-link-item");
-      if (item instanceof HTMLElement) item.classList.add("is-dragging");
+      const item = handle.closest(itemSelector);
+      if (item instanceof HTMLElement) item.classList.add(draggingClass);
+
       if (event.dataTransfer) {
         event.dataTransfer.effectAllowed = "move";
         try {
@@ -1207,20 +2058,20 @@
     listElement.addEventListener("dragover", (event) => {
       if (!Number.isFinite(draggingIndex) || draggingIndex < 0) return;
       const target = event.target instanceof Element ? event.target : null;
-      const item = target ? target.closest(".workspace-link-item[data-link-index]") : null;
+      const item = target ? target.closest(itemSelector) : null;
       if (!(item instanceof HTMLElement)) return;
       const targetIndex = toIndexFromNode(item);
       if (targetIndex < 0 || targetIndex === draggingIndex) return;
       event.preventDefault();
       clearDragClasses();
-      item.classList.add("is-drop-target");
+      item.classList.add(dropClass);
       if (event.dataTransfer) event.dataTransfer.dropEffect = "move";
     });
 
     listElement.addEventListener("drop", (event) => {
       if (!Number.isFinite(draggingIndex) || draggingIndex < 0) return;
       const target = event.target instanceof Element ? event.target : null;
-      const item = target ? target.closest(".workspace-link-item[data-link-index]") : null;
+      const item = target ? target.closest(itemSelector) : null;
       if (!(item instanceof HTMLElement)) return;
       const targetIndex = toIndexFromNode(item);
       if (!Number.isFinite(targetIndex) || targetIndex < 0) {
@@ -1249,20 +2100,20 @@
 
       const next = current.slice();
       const [moved] = next.splice(draggingIndex, 1);
-      const insertIndex = draggingIndex < targetIndex ? targetIndex - 1 : targetIndex;
+      const insertIndex = targetIndex;
       next.splice(insertIndex, 0, moved);
 
       const saved = typeof saveLinks === "function" ? saveLinks(next) : false;
       if (!saved) {
         clearDragClasses();
         draggingIndex = -1;
-        showToast(`${saveLabel}を保存できませんでした。`, "error");
+        showToast(`${saveLabel}`, "error");
         return;
       }
       if (typeof renderLinks === "function") {
         renderLinks(next);
       }
-      showToast(`${saveLabel}を更新しました。`, "success");
+      showToast(`${saveLabel}`, "success");
       clearDragClasses();
       draggingIndex = -1;
     });
@@ -1273,20 +2124,15 @@
     });
   }
 
-  function bindPinnedLinkDragAndDrop() {
-    bindLinkListDragAndDrop(pinnedLinksList, readPinnedLinks, savePinnedLinks, renderPinnedLinks, {
-      saveLabel: "固定リンクの並び順",
-    });
-  }
-
   function bindCustomLinkDragAndDrop() {
     bindLinkListDragAndDrop(customLinksList, readCustomLinks, saveCustomLinks, renderCustomLinks, {
-      saveLabel: "追加リンクの並び順",
+      saveLabel: "追加リンクの順序を変更",
     });
   }
 
-  function createLinkNode(link, index, links, section = "custom") {
+  function createLinkNode(link, index, links, section = "custom", options = {}) {
     const isPinnedSection = section === "pinned";
+    const pinnedGroupId = isPinnedSection ? String(options.groupId || "").trim() : "";
     const item = document.createElement("li");
     item.className = `workspace-link-item${isPinnedSection ? " workspace-pinned-item" : ""}`;
     item.dataset.linkUrl = String(link.url || "");
@@ -1306,7 +2152,7 @@
     openLink.target = "_blank";
     openLink.rel = "noopener noreferrer";
     openLink.title = link.url;
-    openLink.setAttribute("aria-label", `${link.label} を開く（${link.url}）`);
+    openLink.setAttribute("aria-label", `${link.label} - ${link.url}`);
     openLink.textContent = link.label;
 
     const titleRow = document.createElement("div");
@@ -1324,46 +2170,46 @@
     moveUpButton.type = "button";
     moveUpButton.className = "secondary workspace-order-button workspace-order-button-inline";
     moveUpButton.textContent = "↑";
-    moveUpButton.setAttribute("aria-label", "上へ移動");
+    moveUpButton.setAttribute("aria-label", "上へ");
     moveUpButton.disabled = Number(index) <= 0;
     moveUpButton.addEventListener("click", () => {
-      const current = isPinnedSection ? readPinnedLinks() : readCustomLinks();
+      const current = isPinnedSection ? readPinnedLinksFromGroup(pinnedGroupId) : readCustomLinks();
       const currentIndex = Number.isFinite(Number(index)) ? Number(index) : -1;
       if (currentIndex <= 0 || currentIndex >= current.length) return;
       const next = current.slice();
       const [moved] = next.splice(currentIndex, 1);
       next.splice(currentIndex - 1, 0, moved);
-      const saved = isPinnedSection ? savePinnedLinks(next) : saveCustomLinks(next);
+      const saved = isPinnedSection ? savePinnedLinksToGroup(pinnedGroupId, next) : saveCustomLinks(next);
       if (!saved) {
-        showToast(isPinnedSection ? "固定リンクの上へ移動を保存できませんでした。" : "追加リンクの上へ移動を保存できませんでした。", "error");
+        showToast(isPinnedSection ? "固定リンクの順序変更に失敗しました。" : "追加リンクの順序変更に失敗しました。", "error");
         return;
       }
-      if (isPinnedSection) renderPinnedLinks(next);
+      if (isPinnedSection) renderLinkLists(saved.links, saved.pinned_link_groups);
       else renderCustomLinks(next);
-      showToast(isPinnedSection ? "固定リンクを上へ移動しました。" : "追加リンクを上へ移動しました。", "success");
+      showToast(isPinnedSection ? "固定リンクの順序を変更しました。" : "追加リンクの順序を変更しました。", "success");
     });
 
     const moveDownButton = document.createElement("button");
     moveDownButton.type = "button";
     moveDownButton.className = "secondary workspace-order-button workspace-order-button-inline";
     moveDownButton.textContent = "↓";
-    moveDownButton.setAttribute("aria-label", "下へ移動");
+    moveDownButton.setAttribute("aria-label", "下へ");
     moveDownButton.disabled = Number(index) >= Math.max(0, (Array.isArray(links) ? links.length : 0) - 1);
     moveDownButton.addEventListener("click", () => {
-      const current = isPinnedSection ? readPinnedLinks() : readCustomLinks();
+      const current = isPinnedSection ? readPinnedLinksFromGroup(pinnedGroupId) : readCustomLinks();
       const currentIndex = Number.isFinite(Number(index)) ? Number(index) : -1;
       if (currentIndex < 0 || currentIndex >= current.length - 1) return;
       const next = current.slice();
       const [moved] = next.splice(currentIndex, 1);
       next.splice(currentIndex + 1, 0, moved);
-      const saved = isPinnedSection ? savePinnedLinks(next) : saveCustomLinks(next);
+      const saved = isPinnedSection ? savePinnedLinksToGroup(pinnedGroupId, next) : saveCustomLinks(next);
       if (!saved) {
-        showToast(isPinnedSection ? "固定リンクの下へ移動を保存できませんでした。" : "追加リンクの下へ移動を保存できませんでした。", "error");
+        showToast(isPinnedSection ? "固定リンクの順序変更に失敗しました。" : "追加リンクの順序変更に失敗しました。", "error");
         return;
       }
-      if (isPinnedSection) renderPinnedLinks(next);
+      if (isPinnedSection) renderLinkLists(saved.links, saved.pinned_link_groups);
       else renderCustomLinks(next);
-      showToast(isPinnedSection ? "固定リンクを下へ移動しました。" : "追加リンクを下へ移動しました。", "success");
+      showToast(isPinnedSection ? "固定リンクの順序を変更しました。" : "追加リンクの順序を変更しました。", "success");
     });
 
     orderControls.appendChild(moveUpButton);
@@ -1380,7 +2226,7 @@
       duplicateButton.addEventListener("click", () => {
         const current = readCustomLinks();
         if (current.length >= MAX_LINKS) {
-          showToast(`追加リンクは最大 ${MAX_LINKS} 件です。`, "error");
+          showToast(`リンク数上限（${MAX_LINKS}件）に達しているため "${link.label}" を複製できません。`, "error");
           return;
         }
         const sourceIndex = Number.isFinite(Number(index)) ? Number(index) : -1;
@@ -1455,60 +2301,6 @@
     details.appendChild(noteWrap);
     bindLinkNoteEditor(noteEditor);
 
-    const profileGrid = document.createElement("div");
-    profileGrid.className = "workspace-link-profile-grid";
-
-    const ownerLabel = document.createElement("label");
-    ownerLabel.textContent = "担当者";
-    const ownerInput = document.createElement("input");
-    ownerInput.type = "text";
-    ownerInput.maxLength = MAX_PROFILE_OWNER_CHARS;
-    ownerInput.placeholder = "例: 経理 田中";
-    ownerInput.setAttribute("data-workspace-link-owner", "");
-    ownerInput.dataset.profileKey = promptKey;
-    ownerLabel.appendChild(ownerInput);
-    profileGrid.appendChild(ownerLabel);
-
-    const agentLabel = document.createElement("label");
-    agentLabel.textContent = "推奨エージェント";
-    const agentSelect = document.createElement("select");
-    agentSelect.setAttribute("data-workspace-link-agent", "");
-    agentSelect.dataset.profileKey = promptKey;
-    [
-      { value: "", label: "未設定" },
-      { value: "codex", label: "Codex" },
-      { value: "chatgpt", label: "ChatGPT" },
-      { value: "claude", label: "Claude" },
-      { value: "gemini", label: "Gemini" },
-      { value: "other", label: "その他" },
-    ].forEach((itemOption) => {
-      const option = document.createElement("option");
-      option.value = itemOption.value;
-      option.textContent = itemOption.label;
-      agentSelect.appendChild(option);
-    });
-    agentLabel.appendChild(agentSelect);
-    profileGrid.appendChild(agentLabel);
-
-    const reviewedLabel = document.createElement("label");
-    reviewedLabel.textContent = "最終見直し日";
-    const reviewedInput = document.createElement("input");
-    reviewedInput.type = "date";
-    reviewedInput.setAttribute("data-workspace-link-reviewed-on", "");
-    reviewedInput.dataset.profileKey = promptKey;
-    reviewedLabel.appendChild(reviewedInput);
-    profileGrid.appendChild(reviewedLabel);
-
-    details.appendChild(profileGrid);
-
-    const reviewStatus = document.createElement("p");
-    reviewStatus.className = "workspace-link-review-status";
-    reviewStatus.setAttribute("data-workspace-link-review-status", "");
-    reviewStatus.dataset.profileKey = promptKey;
-    details.appendChild(reviewStatus);
-
-    bindLinkProfileEditors(details);
-
     const actions = document.createElement("div");
     actions.className = "workspace-link-actions";
 
@@ -1543,7 +2335,7 @@
     editLinkButton.className = "secondary workspace-edit-link";
     editLinkButton.textContent = "リンク名を編集";
     editLinkButton.addEventListener("click", () => {
-      const nextLabelRaw = window.prompt("リンク名を編集してください。", String(link.label || ""));
+      const nextLabelRaw = window.prompt("リンク名を変更しますか:", String(link.label || ""));
       if (nextLabelRaw === null) return;
       const fallbackLabel = formatUrlHost(link.url) || String(link.url || "");
       const nextLabel = normalizeText(nextLabelRaw, 80) || fallbackLabel;
@@ -1554,18 +2346,18 @@
 
       const next = links.slice();
       next[index] = { label: nextLabel, url: String(link.url || "") };
-      const linksSaved = isPinnedSection ? savePinnedLinks(next) : saveCustomLinks(next);
+      const linksSaved = isPinnedSection ? savePinnedLinksToGroup(pinnedGroupId, next) : saveCustomLinks(next);
       if (!linksSaved) {
-        showToast("リンク名を更新できませんでした。", "error");
+        showToast("リンク名の更新に失敗しました。", "error");
         return;
       }
 
       if (activePromptKey === promptKey) {
         setActivePrompt(promptKey, { label: nextLabel, url: String(link.url || "") });
-        if (promptEditor) updatePromptMeta(String(promptEditor.value || ""), "更新しました。");
+        if (promptEditor) updatePromptMeta(String(promptEditor.value || ""), "リンク名を更新しました。");
       }
 
-      if (isPinnedSection) renderPinnedLinks(next);
+      if (isPinnedSection) renderLinkLists(linksSaved.links, linksSaved.pinned_link_groups);
       else renderCustomLinks(next);
       showToast("リンク名を更新しました。", "success");
     });
@@ -1581,7 +2373,7 @@
       unpinButton.className = "secondary workspace-unpin-link";
       unpinButton.textContent = "固定解除";
       unpinButton.addEventListener("click", () => {
-        void demotePinnedLinkByUrl(link.url);
+        void demotePinnedLinkByUrl(link.url, { targetGroupId: pinnedGroupId, sourceIndex: index });
       });
       actions.appendChild(unpinButton);
 
@@ -1599,7 +2391,7 @@
       pinButton.className = "secondary workspace-pin-link";
       pinButton.textContent = "固定化";
       pinButton.addEventListener("click", () => {
-        void promoteCustomLinkByUrl(link.url);
+        void promoteCustomLinkToGroup(link.url);
       });
       actions.appendChild(pinButton);
 
@@ -1608,16 +2400,30 @@
       removeButton.className = "step-reset";
       removeButton.textContent = "削除";
       removeButton.addEventListener("click", () => {
-        const next = links.slice();
-        next.splice(index, 1);
-        const saved = saveCustomLinks(next);
-        if (!saved) {
-          showToast("追加リンクを削除できませんでした。", "error");
-          return;
-        }
-        clearLinkUndoNotice();
-        renderCustomLinks(next);
-        showToast("追加リンクを削除しました。", "success");
+        const currentIndex = Number.isFinite(Number(index)) ? Number(index) : -1;
+        const targetLabel = String(link.label || formatUrlHost(link.url) || "this link");
+        showToastConfirmDialog(`"${targetLabel}"を削除しますか？`, {
+          confirmText: "削除",
+          cancelText: "キャンセル",
+          type: "error",
+          onConfirm: () => {
+            const next = links.slice();
+            const deleteIndex = Number.isFinite(Number(currentIndex)) ? Number(currentIndex) : -1;
+            if (deleteIndex < 0 || deleteIndex >= next.length) {
+              showToast("リンクの削除に失敗しました。", "error");
+              return;
+            }
+            next.splice(deleteIndex, 1);
+            const saved = saveCustomLinks(next);
+            if (!saved) {
+              showToast("リンクの削除に失敗しました。", "error");
+              return;
+            }
+            clearLinkUndoNotice();
+            renderCustomLinks(next);
+            showToast("リンクを削除しました。", "success");
+          },
+        });
       });
       actions.appendChild(removeButton);
 
@@ -1650,15 +2456,15 @@
   }
 
   function renderPinnedLinks(links) {
-    if (!pinnedLinksList || !pinnedLinksEmpty) return;
-    pinnedLinksList.innerHTML = "";
+    const groups = readPinnedLinkGroups();
     const safeLinks = sanitizeLinkList(links, MAX_PINNED_LINKS);
-    safeLinks.forEach((link, index) => {
-      pinnedLinksList.appendChild(createLinkNode(link, index, safeLinks, "pinned"));
-    });
-    pinnedLinksEmpty.classList.toggle("hidden", safeLinks.length > 0);
-    updatePinnedCountMeta(safeLinks.length);
-    bindPinnedLinkDragAndDrop();
+    if (!groups.length) return;
+    const nextGroups = groups.slice();
+    nextGroups[0] = {
+      ...nextGroups[0],
+      links: safeLinks,
+    };
+    renderPinnedLinkGroups(nextGroups);
   }
 
   function updatePromptMeta(text, statusText) {
@@ -1723,74 +2529,84 @@
 
   function initializeLinks() {
     const links = readCustomLinks();
-    const pinnedLinks = readPinnedLinks();
-    renderLinkLists(links, pinnedLinks);
+    const pinnedLinkGroups = readPinnedLinkGroups();
+    renderLinkLists(links, pinnedLinkGroups);
     bindStaticCopyButtons();
     bindLinkNoteEditors(document);
     bindLinkProfileEditors(document);
+    bindWorkspaceMetadataToggle(document);
+    if (pinnedGroupAddButton) {
+      pinnedGroupAddButton.addEventListener("click", () => {
+        void addPinnedGroup();
+      });
+    }
 
     if (linkForm && linkLabelInput && linkUrlInput) {
       linkForm.addEventListener("submit", (event) => {
         event.preventDefault();
         const url = normalizeUrl(linkUrlInput.value);
         if (!url) {
-          showToast("有効な http(s) URL を入力してください。", "error");
+          showToast("追加リンクを複製できませんでした。", "error");
           linkUrlInput.focus();
           return;
         }
         const fallback = new URL(url).hostname;
         const label = normalizeText(linkLabelInput.value, 80) || fallback;
         const purpose = normalizeLinkNoteText(linkPurposeInput ? linkPurposeInput.value : "");
-        const owner = normalizeProfileOwner(linkOwnerInput ? linkOwnerInput.value : "");
-        const agent = normalizeProfileAgent(linkAgentInput ? linkAgentInput.value : "");
-        const reviewed_on = normalizeReviewedOn(linkReviewedOnInput ? linkReviewedOnInput.value : "");
 
         const current = readCustomLinks();
-        const currentPinned = readPinnedLinks();
+        const currentPinned = getAllPinnedLinksFromGroups(readPinnedLinkGroups());
         const duplicate = [...current, ...currentPinned].some(
           (item) => String(item.url).toLowerCase() === String(url).toLowerCase()
         );
         if (duplicate) {
-          showToast("そのURLはすでに追加されています。", "error");
+          showToast("追加リンクを複製できませんでした。", "error");
           return;
         }
         const next = [{ label, url }, ...current].slice(0, MAX_LINKS);
         const saved = saveCustomLinks(next);
         if (!saved) {
-          showToast("追加リンクを保存できませんでした。", "error");
+          showToast("追加リンクを複製できませんでした。", "error");
           return;
         }
         if (!saveLinkNoteForKey(buildCustomPromptKey(url), purpose)) {
-          showToast("リンクは保存しましたが、目的の保存に失敗しました。", "error");
-        }
-        if (!saveLinkProfileForKey(buildCustomPromptKey(url), { owner, agent, reviewed_on })) {
-          showToast("リンクは保存しましたが、担当情報の保存に失敗しました。", "error");
+          showToast("追加リンクを複製できませんでした。", "error");
         }
         clearLinkUndoNotice();
-        renderLinkLists(next, currentPinned);
+        renderLinkLists(next, readPinnedLinkGroups());
         linkForm.reset();
         if (linkPurposeInput) linkPurposeInput.value = "";
-        if (linkOwnerInput) linkOwnerInput.value = "";
-        if (linkAgentInput) linkAgentInput.value = "";
-        if (linkReviewedOnInput) linkReviewedOnInput.value = "";
         linkLabelInput.focus();
-        showToast("追加リンクを保存しました。", "success");
+        showToast("リンクを複製しました。", "success");
       });
     }
 
-    if (clearLinksButton) {
-      clearLinksButton.addEventListener("click", () => {
-        const currentPinned = readPinnedLinks();
-        const saved = saveLinkPools([], currentPinned);
-        if (!saved) {
-          showToast("追加リンクを削除できませんでした。", "error");
-          return;
-        }
-        clearLinkUndoNotice();
-        renderLinkLists(saved.links, saved.pinned_links);
-        showToast("追加リンクを全削除しました。", "success");
-      });
-    }
+      if (clearLinksButton) {
+        clearLinksButton.addEventListener("click", () => {
+          const currentLinks = readCustomLinks();
+          if (currentLinks.length <= 0) {
+            showToast("削除対象の追加リンクがありません。", "error");
+            return;
+          }
+          showToastConfirmDialog("追加リンクを全て削除しますか？", {
+            confirmText: "削除",
+            cancelText: "キャンセル",
+            type: "error",
+            onConfirm: () => {
+              const currentPinned = readPinnedLinkGroups();
+              const saved = saveWorkspaceState([], currentPinned);
+              if (!saved) {
+                showToast("追加リンクの全削除に失敗しました。", "error");
+                return;
+              }
+              clearLinkUndoNotice();
+              renderLinkLists(saved.links, saved.pinned_link_groups);
+              showToast("追加リンクを全削除しました。", "success");
+            },
+          });
+        });
+      }
+
   }
 
   function initializePrompt() {
@@ -1825,7 +2641,7 @@
           return;
         }
         updatePromptMeta(text, "保存できませんでした（ストレージ利用不可）。");
-        showToast("プロンプトを登録できませんでした。", "error");
+        showToast("元に戻せませんでした。", "error");
       });
     }
 

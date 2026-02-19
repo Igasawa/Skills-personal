@@ -1,4 +1,4 @@
-  async function fetchStatus(runId) {
+﻿  async function fetchStatus(runId) {
     return apiGetJson(`/api/runs/${runId}`);
   }
 
@@ -243,7 +243,7 @@
     });
     return rows.map((row, index) => {
       const action = String(row.action || "").trim();
-    const actionLabel = TEMPLATE_STEP_ACTION_LABELS[action] || action || "(未設定)";
+    const actionLabel = TEMPLATE_STEP_ACTION_LABELS[action] || action || "(譛ｪ險ｭ螳・";
       const title = String(row.title || "").trim() || defaultTitleForStepAction(action, `Task ${index + 1}`);
       const autoRun = normalizeTemplateStepAutoRun(row.auto_run);
       const timer = autoRun ? normalizeTemplateStepTimerForAutoRun(row.timer_minutes) : null;
@@ -256,14 +256,14 @@
     const listEl = document.getElementById("workflow-create-preview-list");
     if (!listEl) return;
     const currentPayload = payload || buildWorkflowPagePayload() || {};
-    const name = String(currentPayload.name || "").trim() || "(未入力)";
-    const subheading = String(currentPayload.subheading || "").trim() || "(なし)";
+    const name = String(currentPayload.name || "").trim() || "(譛ｪ蜈･蜉・";
+    const subheading = String(currentPayload.subheading || "").trim() || "(縺ｪ縺・";
     const stepLines = buildWorkflowStepPreviewLines(currentPayload.steps);
-    const lines = [`ワークフロー名: ${name}`, `補足説明: ${subheading}`, "作成される手順:"];
+    const lines = [`繝ｯ繝ｼ繧ｯ繝輔Ο繝ｼ蜷・ ${name}`, `陬懆ｶｳ隱ｬ譏・ ${subheading}`, "菴懈・縺輔ｌ繧区焔鬆・"];
     if (stepLines.length > 0) {
       lines.push(...stepLines.map((line) => `  ${line}`));
     } else {
-      lines.push("  (手順なし)");
+      lines.push("  (謇矩・↑縺・");
     }
     listEl.innerHTML = "";
     lines.forEach((line) => {
@@ -281,31 +281,31 @@
     const payload = buildWorkflowPagePayload();
     if (!payload) return;
     if (!payload.name) {
-      const message = "ワークフロー名を入力してください。";
+      const message = "繝ｯ繝ｼ繧ｯ繝輔Ο繝ｼ蜷阪ｒ蜈･蜉帙＠縺ｦ縺上□縺輔＞縲・;
       showError(message);
       showToast(message, "error");
       return;
     }
     const confirmed = await showConfirmModal({
-      title: "ワークフロー作成の確認",
+      title: "繝ｯ繝ｼ繧ｯ繝輔Ο繝ｼ菴懈・縺ｮ遒ｺ隱・,
       lines: [
-        "新しいワークフローページを作成します。",
-        `ページ名: ${payload.name}`,
-        `補足説明: ${payload.subheading || "(なし)"}`,
-        ...buildWorkflowStepPreviewLines(payload.steps).map((line) => `手順: ${line}`),
-        "テンプレートの手順定義と自動実行設定を引き継ぎます。",
+        "譁ｰ縺励＞繝ｯ繝ｼ繧ｯ繝輔Ο繝ｼ繝壹・繧ｸ繧剃ｽ懈・縺励∪縺吶・,
+        `繝壹・繧ｸ蜷・ ${payload.name}`,
+        `陬懆ｶｳ隱ｬ譏・ ${payload.subheading || "(縺ｪ縺・"}`,
+        ...buildWorkflowStepPreviewLines(payload.steps).map((line) => `謇矩・ ${line}`),
+        "繝・Φ繝励Ξ繝ｼ繝医・謇矩・ｮ夂ｾｩ縺ｨ閾ｪ蜍募ｮ溯｡瑚ｨｭ螳壹ｒ蠑輔″邯吶℃縺ｾ縺吶・,
       ],
-      confirmLabel: "作成して開く",
-      cancelLabel: "戻る",
+      confirmLabel: "菴懈・縺励※髢九￥",
+      cancelLabel: "謌ｻ繧・,
     });
     if (!confirmed) return;
 
     const createButton = document.getElementById("workflow-page-create");
-    const originalLabel = createButton ? String(createButton.textContent || "").trim() : "ワークフローを作成";
+    const originalLabel = createButton ? String(createButton.textContent || "").trim() : "繝ｯ繝ｼ繧ｯ繝輔Ο繝ｼ繧剃ｽ懈・";
     workflowPageCreateState.inFlight = true;
     if (createButton) {
       createButton.disabled = true;
-      createButton.textContent = "作成中...";
+      createButton.textContent = "菴懈・荳ｭ...";
       createButton.dataset.busy = "1";
     }
     clearError();
@@ -318,7 +318,7 @@
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        const message = toFriendlyMessage(data.detail) || "ワークフローページの作成に失敗しました。";
+        const message = toFriendlyMessage(data.detail) || "繝ｯ繝ｼ繧ｯ繝輔Ο繝ｼ繝壹・繧ｸ縺ｮ菴懈・縺ｫ螟ｱ謨励＠縺ｾ縺励◆縲・;
         showError(message);
         showToast(message, "error");
         return;
@@ -327,19 +327,19 @@
       const workflowPage = data.workflow_page || null;
       const workflowPageId = String(workflowPage?.id || "").trim();
       if (data.scheduler_copied === true) {
-        showToast("ワークフローを作成しました。自動実行設定も引き継ぎました。", "success");
+        showToast("繝ｯ繝ｼ繧ｯ繝輔Ο繝ｼ繧剃ｽ懈・縺励∪縺励◆縲り・蜍募ｮ溯｡瑚ｨｭ螳壹ｂ蠑輔″邯吶℃縺ｾ縺励◆縲・, "success");
       } else {
-        showToast("ワークフローページを作成しました。", "success");
+        showToast("繝ｯ繝ｼ繧ｯ繝輔Ο繝ｼ繝壹・繧ｸ繧剃ｽ懈・縺励∪縺励◆縲・, "success");
       }
       if (workflowPageId) {
         window.location.href = `/workflow/${encodeURIComponent(workflowPageId)}`;
         return;
       }
-      const message = "作成は完了しましたが、遷移先が見つかりませんでした。";
+      const message = "菴懈・縺ｯ螳御ｺ・＠縺ｾ縺励◆縺後・・遘ｻ蜈医′隕九▽縺九ｊ縺ｾ縺帙ｓ縺ｧ縺励◆縲・;
       showError(message);
       showToast(message, "error");
     } catch {
-      const message = "ワークフローページの作成に失敗しました。";
+      const message = "繝ｯ繝ｼ繧ｯ繝輔Ο繝ｼ繝壹・繧ｸ縺ｮ菴懈・縺ｫ螟ｱ謨励＠縺ｾ縺励◆縲・;
       showError(message);
       showToast(message, "error");
     } finally {
@@ -365,14 +365,14 @@
     if (!nextValues) return;
     const nextName = String(nextValues.name || "").trim();
     if (!nextName) {
-      const message = "ワークフロー名を入力してください。";
+      const message = "繝ｯ繝ｼ繧ｯ繝輔Ο繝ｼ蜷阪ｒ蜈･蜉帙＠縺ｦ縺上□縺輔＞縲・;
       showError(message);
       showToast(message, "error");
       return;
     }
     const nextSubheading = String(nextValues.subheading || "").trim();
     if (nextName === currentName && nextSubheading === currentSubheading) {
-      showToast("変更はありません。", "info");
+      showToast("螟画峩縺ｯ縺ゅｊ縺ｾ縺帙ｓ縲・, "info");
       return;
     }
     const updates = {
@@ -388,15 +388,15 @@
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        const message = toFriendlyMessage(data.detail) || "ページ設定の更新に失敗しました。";
+        const message = toFriendlyMessage(data.detail) || "繝壹・繧ｸ險ｭ螳壹・譖ｴ譁ｰ縺ｫ螟ｱ謨励＠縺ｾ縺励◆縲・;
         showError(message);
         showToast(message, "error");
         return;
       }
-      showToast("ページ設定を更新しました。", "success");
+      showToast("繝壹・繧ｸ險ｭ螳壹ｒ譖ｴ譁ｰ縺励∪縺励◆縲・, "success");
       window.location.reload();
     } catch {
-      const message = "ページ設定の更新に失敗しました。";
+      const message = "繝壹・繧ｸ險ｭ螳壹・譖ｴ譁ｰ縺ｫ螟ｱ謨励＠縺ｾ縺励◆縲・;
       showError(message);
       showToast(message, "error");
     }
@@ -406,13 +406,13 @@
     const workflowPageId = String(workflowPage?.id || "").trim();
     if (!workflowPageId) return;
     const confirmed = await showConfirmModal({
-      title: "ワークフローのアーカイブ",
+      title: "繝ｯ繝ｼ繧ｯ繝輔Ο繝ｼ縺ｮ繧｢繝ｼ繧ｫ繧､繝・,
       lines: [
-        "このワークフローをサイドバーから非表示にします。",
-        "必要な場合は WF作成テンプレート画面から復元できます。",
+        "縺薙・繝ｯ繝ｼ繧ｯ繝輔Ο繝ｼ繧偵し繧､繝峨ヰ繝ｼ縺九ｉ髱櫁｡ｨ遉ｺ縺ｫ縺励∪縺吶・,
+        "蠢・ｦ√↑蝣ｴ蜷医・ WF菴懈・繝・Φ繝励Ξ繝ｼ繝育判髱｢縺九ｉ蠕ｩ蜈・〒縺阪∪縺吶・,
       ],
-      confirmLabel: "アーカイブする",
-      cancelLabel: "キャンセル",
+      confirmLabel: "繧｢繝ｼ繧ｫ繧､繝悶☆繧・,
+      cancelLabel: "繧ｭ繝｣繝ｳ繧ｻ繝ｫ",
     });
     if (!confirmed) return;
     try {
@@ -426,15 +426,15 @@
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        const message = toFriendlyMessage(data.detail) || "アーカイブに失敗しました。";
+        const message = toFriendlyMessage(data.detail) || "繧｢繝ｼ繧ｫ繧､繝悶↓螟ｱ謨励＠縺ｾ縺励◆縲・;
         showError(message);
         showToast(message, "error");
         return;
       }
-      showToast("ワークフローをアーカイブしました。", "success");
+      showToast("繝ｯ繝ｼ繧ｯ繝輔Ο繝ｼ繧偵い繝ｼ繧ｫ繧､繝悶＠縺ｾ縺励◆縲・, "success");
       window.location.href = "/";
     } catch {
-      const message = "アーカイブに失敗しました。";
+      const message = "繧｢繝ｼ繧ｫ繧､繝悶↓螟ｱ謨励＠縺ｾ縺励◆縲・;
       showError(message);
       showToast(message, "error");
     }
@@ -459,7 +459,7 @@
       const titleEl = document.createElement("input");
       titleEl.type = "text";
       titleEl.dataset.templateStepTitle = "1";
-      titleEl.value = String(row.title || "").trim() || defaultTitleForStepAction(row.action, `手順${index + 1}`);
+      titleEl.value = String(row.title || "").trim() || defaultTitleForStepAction(row.action, `謇矩・{index + 1}`);
       const actionEl = document.createElement("select");
       actionEl.dataset.templateStepAction = "1";
       actionEl.innerHTML = getTemplateStepActionOptionsHtml(row.action);
@@ -482,7 +482,7 @@
     const versions = Array.isArray(workflowPage?.step_versions) ? workflowPage.step_versions : [];
     const currentRow = versions.find((row) => Number.parseInt(String(row?.version || 0), 10) === safeVersion);
     const updatedAt = String(currentRow?.updated_at || "").trim();
-    labelEl.textContent = updatedAt ? `手順版 v${safeVersion} (${updatedAt})` : `手順版 v${safeVersion}`;
+    labelEl.textContent = updatedAt ? `謇矩・沿 v${safeVersion} (${updatedAt})` : `謇矩・沿 v${safeVersion}`;
   }
 
   function applyWorkflowPageStepLayout(stepRowsInput = null) {
@@ -580,12 +580,12 @@
 
   function showWorkflowPageStepEditorModal(initialSteps = []) {
     return new Promise((resolve) => {
-      const { overlay, modal, panel } = createModalShell("手順編集");
+      const { overlay, modal, panel } = createModalShell("謇矩・ｷｨ髮・);
       const body = document.createElement("div");
       body.className = "dialog-body";
       const note = document.createElement("p");
       note.className = "muted";
-      note.textContent = "必須手順（preflight / mf_reconcile）は削除・変更できません。";
+      note.textContent = "必須手順（preflight）は削除・変更できません。";
       body.appendChild(note);
 
       const listEl = document.createElement("div");
@@ -597,7 +597,7 @@
       const addButton = document.createElement("button");
       addButton.type = "button";
       addButton.className = "secondary";
-      addButton.textContent = "+ 手順を追加";
+      addButton.textContent = "+ 謇矩・ｒ霑ｽ蜉";
       addWrap.appendChild(addButton);
       body.appendChild(addWrap);
       panel.appendChild(body);
@@ -607,11 +607,11 @@
       const cancelButton = document.createElement("button");
       cancelButton.type = "button";
       cancelButton.className = "secondary";
-      cancelButton.textContent = "キャンセル";
+      cancelButton.textContent = "繧ｭ繝｣繝ｳ繧ｻ繝ｫ";
       const saveButton = document.createElement("button");
       saveButton.type = "button";
       saveButton.className = "primary";
-      saveButton.textContent = "保存";
+      saveButton.textContent = "菫晏ｭ・;
       actionBar.appendChild(cancelButton);
       actionBar.appendChild(saveButton);
       panel.appendChild(actionBar);
@@ -640,12 +640,12 @@
 
           const indexEl = document.createElement("span");
           indexEl.className = "muted";
-          indexEl.textContent = `手順${index + 1}`;
+          indexEl.textContent = `謇矩・{index + 1}`;
 
           const titleEl = document.createElement("input");
           titleEl.type = "text";
           titleEl.required = true;
-          titleEl.value = String(row.title || "").trim() || defaultTitleForStepAction(row.action, `手順${index + 1}`);
+          titleEl.value = String(row.title || "").trim() || defaultTitleForStepAction(row.action, `謇矩・{index + 1}`);
           titleEl.addEventListener("input", () => {
             state[index].title = String(titleEl.value || "").trim() || defaultTitleForStepAction(state[index].action);
           });
@@ -654,13 +654,13 @@
           actionEl.innerHTML = getTemplateStepActionOptionsHtml(row.action);
           const requiredAction = isRequiredTemplateStepAction(row.action);
           actionEl.disabled = requiredAction;
-          actionEl.title = requiredAction ? "必須手順は変更できません。" : "";
+          actionEl.title = requiredAction ? "蠢・域焔鬆・・螟画峩縺ｧ縺阪∪縺帙ｓ縲・ : "";
           actionEl.addEventListener("change", () => {
             const nextAction = normalizeTemplateStepAction(actionEl.value);
             const duplicated = state.some((step, stepIndex) => stepIndex !== index && step.action === nextAction);
             if (duplicated) {
               actionEl.value = state[index].action;
-              showToast("同じ処理は1回だけ追加できます。", "error");
+              showToast("蜷後§蜃ｦ逅・・1蝗槭□縺題ｿｽ蜉縺ｧ縺阪∪縺吶・, "error");
               return;
             }
             state[index].action = nextAction;
@@ -676,7 +676,7 @@
           timerEl.max = String(TEMPLATE_STEP_TIMER_MAX_MINUTES);
           timerEl.step = "1";
           timerEl.value = String(normalizeTemplateStepTimerMinutes(row.timer_minutes));
-          timerEl.title = "タイマー（分）";
+          timerEl.title = "繧ｿ繧､繝槭・・亥・・・;
           timerEl.addEventListener("change", () => {
             state[index].timer_minutes = normalizeTemplateStepTimerMinutes(timerEl.value);
             timerEl.value = String(state[index].timer_minutes);
@@ -688,7 +688,7 @@
           removeButton.textContent = "-";
           removeButton.hidden = requiredAction || optionalCount <= 0;
           removeButton.disabled = requiredAction || optionalCount <= 0;
-          removeButton.title = requiredAction ? "必須手順は削除できません。" : "";
+          removeButton.title = requiredAction ? "蠢・域焔鬆・・蜑企勁縺ｧ縺阪∪縺帙ｓ縲・ : "";
           removeButton.addEventListener("click", () => {
             if (requiredAction) return;
             state.splice(index, 1);
@@ -733,7 +733,7 @@
     });
   }
 
-  async function saveWorkflowPageSteps(nextSteps, { successMessage = "手順を更新しました。" } = {}) {
+  async function saveWorkflowPageSteps(nextSteps, { successMessage = "謇矩・ｒ譖ｴ譁ｰ縺励∪縺励◆縲・ } = {}) {
     const workflowPageId = String(workflowPage?.id || "").trim();
     if (!workflowPageId) return false;
     const payload = {
@@ -752,7 +752,7 @@
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        const message = toFriendlyMessage(data.detail) || "手順の更新に失敗しました。";
+        const message = toFriendlyMessage(data.detail) || "謇矩・・譖ｴ譁ｰ縺ｫ螟ｱ謨励＠縺ｾ縺励◆縲・;
         showError(message);
         showToast(message, "error");
         return false;
@@ -764,7 +764,7 @@
       showToast(successMessage, "success");
       return true;
     } catch {
-      const message = "手順の更新に失敗しました。";
+      const message = "謇矩・・譖ｴ譁ｰ縺ｫ螟ｱ謨励＠縺ｾ縺励◆縲・;
       showError(message);
       showToast(message, "error");
       return false;
@@ -785,11 +785,11 @@
       includeTimer: true,
     });
     if (JSON.stringify(currentSteps) === JSON.stringify(normalizedNext)) {
-      showToast("変更はありません。", "info");
+      showToast("螟画峩縺ｯ縺ゅｊ縺ｾ縺帙ｓ縲・, "info");
       return;
     }
     const saved = await saveWorkflowPageSteps(normalizedNext, {
-      successMessage: "手順を更新しました。",
+      successMessage: "謇矩・ｒ譖ｴ譁ｰ縺励∪縺励◆縲・,
     });
     if (saved) {
       refreshSteps({ force: true });
@@ -801,7 +801,7 @@
     if (!workflowPageId) return;
     const versions = Array.isArray(workflowPage?.step_versions) ? workflowPage.step_versions : [];
     if (versions.length < 2) {
-      showToast("戻せる前版がありません。", "info");
+      showToast("謌ｻ縺帙ｋ蜑咲沿縺後≠繧翫∪縺帙ｓ縲・, "info");
       return;
     }
     const currentVersion = Number.parseInt(String(workflowPage?.step_version || 1), 10) || 1;
@@ -818,7 +818,7 @@
       targetRow = versions.length >= 2 ? versions[versions.length - 2] : null;
     }
     if (!targetRow) {
-      showToast("戻せる前版がありません。", "info");
+      showToast("謌ｻ縺帙ｋ蜑咲沿縺後≠繧翫∪縺帙ｓ縲・, "info");
       return;
     }
     const targetVersion = Number.parseInt(String(targetRow.version || 0), 10) || 1;
@@ -827,18 +827,18 @@
       includeTimer: true,
     });
     const confirmed = await showConfirmModal({
-      title: "手順を前版に戻す",
+      title: "謇矩・ｒ蜑咲沿縺ｫ謌ｻ縺・,
       lines: [
-        `迴ｾ蝨ｨ迚・ v${currentVersion}`,
-        `戻し先: v${targetVersion}`,
-        ...buildWorkflowStepPreviewLines(targetSteps).map((line) => `手順: ${line}`),
+        `霑ｴ・ｾ陜ｨ・ｨ霑壹・ v${currentVersion}`,
+        `謌ｻ縺怜・: v${targetVersion}`,
+        ...buildWorkflowStepPreviewLines(targetSteps).map((line) => `謇矩・ ${line}`),
       ],
-      confirmLabel: "前版を反映",
-      cancelLabel: "キャンセル",
+      confirmLabel: "蜑咲沿繧貞渚譏",
+      cancelLabel: "繧ｭ繝｣繝ｳ繧ｻ繝ｫ",
     });
     if (!confirmed) return;
     const saved = await saveWorkflowPageSteps(targetSteps, {
-      successMessage: `手順を前版(v${targetVersion})の内容で復元しました。`,
+      successMessage: `謇矩・ｒ蜑咲沿(v${targetVersion})縺ｮ蜀・ｮｹ縺ｧ蠕ｩ蜈・＠縺ｾ縺励◆縲Ａ,
     });
     if (saved) {
       refreshSteps({ force: true });
@@ -852,19 +852,19 @@
     const payload = buildTemplatePayload();
     if (!payload) return;
     if (!payload.name) {
-      const message = "ワークフロー名を入力してください。";
+      const message = "繝ｯ繝ｼ繧ｯ繝輔Ο繝ｼ蜷阪ｒ蜈･蜉帙＠縺ｦ縺上□縺輔＞縲・;
       showError(message);
       showToast(message, "error");
       return;
     }
     if (!String(payload.template_id || "").trim()) {
-      const message = "新規テンプレート作成は無効です。既存テンプレートを選択してください。";
+      const message = "譁ｰ隕上ユ繝ｳ繝励Ξ繝ｼ繝井ｽ懈・縺ｯ辟｡蜉ｹ縺ｧ縺吶よ里蟄倥ユ繝ｳ繝励Ξ繝ｼ繝医ｒ驕ｸ謚槭＠縺ｦ縺上□縺輔＞縲・;
       showError(message);
       showToast(message, "error");
       return;
     }
     if (!String(payload.base_updated_at || "").trim()) {
-      const message = "テンプレート更新情報が不足しています。テンプレートを再読み込みしてください。";
+      const message = "繝・Φ繝励Ξ繝ｼ繝域峩譁ｰ諠・ｱ縺御ｸ崎ｶｳ縺励※縺・∪縺吶ゅユ繝ｳ繝励Ξ繝ｼ繝医ｒ蜀崎ｪｭ縺ｿ霎ｼ縺ｿ縺励※縺上□縺輔＞縲・;
       showError(message);
       showToast(message, "error");
       return;
@@ -876,12 +876,12 @@
     const templateModeInput = form.querySelector("[name=template_mode]");
     const templateUpdatedAtInput = form.querySelector("[name=template_updated_at]");
     const originalButtonLabel =
-      config.saveLabel || (saveButton ? String(saveButton.textContent || "").trim() : "作成テンプレートを更新");
+      config.saveLabel || (saveButton ? String(saveButton.textContent || "").trim() : "菴懈・繝・Φ繝励Ξ繝ｼ繝医ｒ譖ｴ譁ｰ");
     templateSaveState.inFlight = true;
     if (saveButton) {
       saveButton.disabled = true;
       saveButton.dataset.busy = "1";
-      saveButton.textContent = "保存中...";
+      saveButton.textContent = "菫晏ｭ倅ｸｭ...";
     }
     clearError();
 
@@ -893,7 +893,7 @@
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        const message = toFriendlyMessage(data.detail) || "テンプレートの保存に失敗しました。";
+        const message = toFriendlyMessage(data.detail) || "繝・Φ繝励Ξ繝ｼ繝医・菫晏ｭ倥↓螟ｱ謨励＠縺ｾ縺励◆縲・;
         showError(message);
         showToast(message, "error");
         return;
@@ -920,7 +920,7 @@
       }
       showError("");
     } catch {
-      const message = "テンプレートの保存に失敗しました。";
+      const message = "繝・Φ繝励Ξ繝ｼ繝医・菫晏ｭ倥↓螟ｱ謨励＠縺ｾ縺励◆縲・;
       showError(message);
       showToast(message, "error");
     } finally {

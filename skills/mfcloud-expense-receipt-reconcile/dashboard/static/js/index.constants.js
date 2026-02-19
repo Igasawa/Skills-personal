@@ -48,17 +48,22 @@
     { value: "rakuten_print", label: "楽天除外判断・印刷" },
     { value: "provider_ingest", label: "手順3（共通フォルダ取り込み）" },
     { value: "mf_bulk_upload_task", label: "手順4（MF一括アップロード）" },
-    { value: "mf_reconcile", label: "MF突合" },
     { value: "month_close", label: "手順6（月次クローズ）" },
   ];
   const TEMPLATE_STEP_ACTION_LABELS = Object.fromEntries(TEMPLATE_STEP_ACTIONS.map((item) => [item.value, item.label]));
+  const TEMPLATE_STEP_UI_MODE = {
+    compact: "compact",
+    advanced: "advanced",
+  };
+  const TEMPLATE_STEP_UI_MODE_DEFAULT = TEMPLATE_STEP_UI_MODE.compact;
+  const AUTO_TIMER_LABEL_OFF = "+";
+  const AUTO_TIMER_LABEL_ON = "−";
   const TEMPLATE_REQUIRED_STEPS = [
-    { action: "preflight", title: "手順0 準備（ログイン確認・MF連携更新）" },
-    { action: "mf_reconcile", title: "手順5 MF突合・下書き作成" },
+    { action: "preflight", title: "" },
   ];
   const TEMPLATE_REQUIRED_STEP_ACTION_SET = new Set(TEMPLATE_REQUIRED_STEPS.map((row) => row.action));
   const TEMPLATE_STEP_DEFAULT_TITLES = {
-    preflight: "手順0 準備（ログイン確認・MF連携更新）",
+    preflight: "",
     preflight_mf: "手順0 MF再取得のみ",
     amazon_download: "手順1 Amazon領収書取得",
     amazon_print: "手順1 Amazon除外判断・印刷",
@@ -66,7 +71,6 @@
     rakuten_print: "手順2 楽天除外判断・印刷",
     provider_ingest: "手順3 共通フォルダ取り込み",
     mf_bulk_upload_task: "手順4 MF一括アップロード",
-    mf_reconcile: "手順5 MF突合・下書き作成",
     month_close: "手順6 月次クローズ",
   };
   const WORKFLOW_STEP_BLOCK_KEYS_BY_ACTION = {
@@ -78,7 +82,6 @@
     rakuten_print: "rakuten",
     provider_ingest: "provider_ingest",
     mf_bulk_upload_task: "mf_bulk_upload_task",
-    mf_reconcile: "mf_reconcile",
     month_close: "month_close",
   };
   const WORKFLOW_STEP_BLOCK_SELECTORS = {
@@ -87,7 +90,6 @@
     rakuten: "#step-rakuten-task",
     provider_ingest: "#step-provider-ingest",
     mf_bulk_upload_task: "#step-mf-bulk-upload-task",
-    mf_reconcile: "#step-mf-reconcile",
     month_close: "#step-month-close",
   };
   const WORKFLOW_ACTIONS_BY_BLOCK_KEY = {
@@ -96,7 +98,6 @@
     rakuten: ["rakuten_download", "rakuten_print"],
     provider_ingest: ["provider_ingest"],
     mf_bulk_upload_task: ["mf_bulk_upload_task"],
-    mf_reconcile: ["mf_reconcile"],
     month_close: ["month_close"],
   };
   const WORKFLOW_STEP_BLOCK_ORDER = [
@@ -105,7 +106,6 @@
     "rakuten",
     "provider_ingest",
     "mf_bulk_upload_task",
-    "mf_reconcile",
     "month_close",
   ];
   const TEMPLATE_STEP_ACTION_VALUES = new Set(TEMPLATE_STEP_ACTIONS.map((item) => item.value));
@@ -169,6 +169,10 @@ window.DashboardIndexConstants = {
   WORKFLOW_STEP_BLOCK_ORDER,
   TEMPLATE_STEP_ACTION_VALUES,
   templateSaveState,
+  TEMPLATE_STEP_UI_MODE,
+  TEMPLATE_STEP_UI_MODE_DEFAULT,
+  AUTO_TIMER_LABEL_OFF,
+  AUTO_TIMER_LABEL_ON,
   workflowPageCreateState,
   activeTemplateStepDragRow,
   TEMPLATE_MODE_CONFIG,
