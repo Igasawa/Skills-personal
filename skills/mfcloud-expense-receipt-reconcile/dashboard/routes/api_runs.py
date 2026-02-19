@@ -361,10 +361,10 @@ def register_api_run_routes(
         force = bool(body.get("force"))
         status_payload = run_error_tool("error_status.py", ["--json"], timeout_seconds=30)
         incidents = status_payload.get("incidents") if isinstance(status_payload.get("incidents"), list) else []
-    
+
         planned: list[dict[str, Any]] = []
         failed: list[dict[str, str]] = []
-    
+
         for row in incidents:
             if not isinstance(row, dict):
                 continue
@@ -372,25 +372,25 @@ def register_api_run_routes(
             if not raw_incident_id:
                 continue
             try:
-                safe_incident_id = safe_incident_id(raw_incident_id)
+                resolved_incident_id = safe_incident_id(raw_incident_id)
             except HTTPException as exc:
                 failed.append({"incident_id": raw_incident_id, "detail": str(exc.detail)})
                 continue
-    
-            args = ["--incident-id", safe_incident_id]
+
+            args = ["--incident-id", resolved_incident_id]
             if force:
                 args.append("--force")
             try:
                 result = run_error_tool("error_plan_generate.py", args, timeout_seconds=60)
                 planned.append(
                     {
-                        "incident_id": safe_incident_id,
+                        "incident_id": resolved_incident_id,
                         "plan_json": str(result.get("plan_json") or ""),
                     }
                 )
             except HTTPException as exc:
-                failed.append({"incident_id": safe_incident_id, "detail": str(exc.detail)})
-    
+                failed.append({"incident_id": resolved_incident_id, "detail": str(exc.detail)})
+
         return JSONResponse(
             {
                 "status": "ok",
@@ -405,28 +405,30 @@ def register_api_run_routes(
     
     @router.get("/api/errors/incidents/{incident_id}")
     def api_get_error_incident(incident_id: str) -> JSONResponse:
-        safe_incident_id = safe_incident_id(incident_id)
+        resolved_incident_id = safe_incident_id(incident_id)
         payload = run_error_tool(
             "error_status.py",
-            ["--json", "--incident-id", safe_incident_id],
+            ["--json", "--incident-id", resolved_incident_id],
             timeout_seconds=30,
         )
-        plan_dir = error_reports_root() / "error_plans" / safe_incident_id
+        plan_dir = error_reports_root() / "error_plans" / resolved_incident_id
         plan_json = core._read_json(plan_dir / "plan.json")
         if isinstance(plan_json, dict):
             payload["plan"] = plan_json
             payload["plan_json_path"] = str(plan_dir / "plan.json")
             payload["plan_md_path"] = str(plan_dir / "plan.md")
-        run_result = core._read_json(error_reports_root() / "error_runs" / safe_incident_id / "run_result.json")
+        run_result = core._read_json(
+            error_reports_root() / "error_runs" / resolved_incident_id / "run_result.json"
+        )
         if isinstance(run_result, dict):
             payload["run_result"] = run_result
         return JSONResponse(payload, headers={"Cache-Control": "no-store"})
     
     @router.post("/api/errors/incidents/{incident_id}/plan")
     def api_build_error_plan(incident_id: str, request: Request, payload: dict[str, Any] | None = None) -> JSONResponse:
-        safe_incident_id = safe_incident_id(incident_id)
+        resolved_incident_id = safe_incident_id(incident_id)
         body = payload if isinstance(payload, dict) else {}
-        args = ["--incident-id", safe_incident_id]
+        args = ["--incident-id", resolved_incident_id]
         if bool(body.get("force")):
             args.append("--force")
         result = run_error_tool("error_plan_generate.py", args, timeout_seconds=60)
@@ -442,15 +444,15 @@ def register_api_run_routes(
                 status="success",
                 actor=actor_from_request(request),
                 details={
-                    "incident_id": safe_incident_id,
+                    "incident_id": resolved_incident_id,
                     "plan_json": result.get("plan_json"),
                 },
             )
         return JSONResponse(result, headers={"Cache-Control": "no-store"})
-    
+
     @router.post("/api/errors/incidents/{incident_id}/go")
     def api_execute_error_go(incident_id: str, request: Request, payload: dict[str, Any] | None = None) -> JSONResponse:
-        safe_incident_id = safe_incident_id(incident_id)
+        resolved_incident_id = safe_incident_id(incident_id)
         body = payload if isinstance(payload, dict) else {}
         max_loops = core._safe_non_negative_int(body.get("max_loops"), default=8) or 8
         max_runtime = core._safe_non_negative_int(body.get("max_runtime_minutes"), default=45) or 45
@@ -458,10 +460,10 @@ def register_api_run_routes(
         single_iteration = bool(body.get("single_iteration"))
         archive_on_success = bool(body.get("archive_on_success", True))
         archive_on_escalate = bool(body.get("archive_on_escalate", True))
-    
+
         args = [
             "--incident-id",
-            safe_incident_id,
+            resolved_incident_id,
             "--max-loops",
             str(max_loops),
             "--max-runtime-minutes",
@@ -475,13 +477,13 @@ def register_api_run_routes(
             args.append("--archive-on-success")
         if archive_on_escalate:
             args.append("--archive-on-escalate")
-    
+
         timeout_seconds = max(60, max_runtime * 60 + 120)
         result = run_error_tool("error_exec_loop.py", args, timeout_seconds=timeout_seconds)
-    
+
         incident_view = run_error_tool(
             "error_status.py",
-            ["--json", "--incident-id", safe_incident_id],
+            ["--json", "--incident-id", resolved_incident_id],
             timeout_seconds=30,
         )
         ym = extract_incident_year_month(incident_view)
@@ -495,23 +497,23 @@ def register_api_run_routes(
                 status=str(result.get("final_status") or "unknown"),
                 actor=actor_from_request(request),
                 details={
-                    "incident_id": safe_incident_id,
+                    "incident_id": resolved_incident_id,
                     "loops_used": result.get("loops_used"),
                     "runtime_minutes": result.get("runtime_minutes"),
                     "same_error_repeats": result.get("same_error_repeats"),
                 },
             )
         return JSONResponse(result, headers={"Cache-Control": "no-store"})
-    
+
     @router.post("/api/errors/incidents/{incident_id}/archive")
     def api_archive_error_incident(incident_id: str, request: Request, payload: dict[str, Any]) -> JSONResponse:
-        safe_incident_id = safe_incident_id(incident_id)
+        resolved_incident_id = safe_incident_id(incident_id)
         body = payload if isinstance(payload, dict) else {}
         result_value = str(body.get("result") or "").strip().lower()
         if result_value not in {"resolved", "escalated"}:
             raise HTTPException(status_code=400, detail="result must be resolved or escalated.")
         reason = str(body.get("reason") or "").strip()
-        args = ["--incident-id", safe_incident_id, "--result", result_value]
+        args = ["--incident-id", resolved_incident_id, "--result", result_value]
         if reason:
             args += ["--reason", reason]
         result = run_error_tool("error_archive.py", args, timeout_seconds=30)
@@ -527,7 +529,7 @@ def register_api_run_routes(
                 action="archive",
                 status=result_value,
                 actor=actor_from_request(request),
-                details={"incident_id": safe_incident_id, "reason": reason},
+                details={"incident_id": resolved_incident_id, "reason": reason},
             )
         return JSONResponse(result, headers={"Cache-Control": "no-store"})
     

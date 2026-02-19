@@ -1,8 +1,8 @@
 <!DOCTYPE html>
 <html lang="ja">
   <head>
-    {% set page_title = workflow_page.name if workflow_page and workflow_page.name else "workflow・夂ｵ瑚ｲｻ邊ｾ邂・ %}
-    {% set page_subheading = workflow_page.subheading if workflow_page and workflow_page.subheading else ("MF邨瑚ｲｻ邊ｾ邂・/ Amazon / 讌ｽ螟ｩ" if not workflow_page else "") %}
+    {% set page_title = workflow_page.name if workflow_page and workflow_page.name else "workflow" %}
+    {% set page_subheading = workflow_page.subheading if workflow_page and workflow_page.subheading else ("MF Cloud / Amazon / Rakuten" if not workflow_page else "") %}
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>{{ page_title }}</title>
