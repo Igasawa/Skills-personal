@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 import re
 import threading
 import calendar
@@ -11,9 +10,9 @@ from typing import Any
 from fastapi import HTTPException
 
 from . import core_runs
-from .core_shared import SKILL_ROOT, _read_json, _write_json
+from .core_shared import _read_json, _write_json
 
-SCHEDULER_ALLOWED_MODES = {
+SCHEDULER_ALLOWED_ACTION_KEYS = {
     "preflight",
     "preflight_mf",
     "amazon_download",
@@ -25,14 +24,15 @@ SCHEDULER_ALLOWED_MODES = {
 CATCH_UP_POLICIES = {"run_on_startup", "skip"}
 SCHEDULER_RECURRENCE = {"once", "daily", "weekly", "monthly"}
 DEFAULT_RUN_TIME = "09:00"
+DEFAULT_ACTION_KEY = "preflight"
 SCHEDULER_POLL_SECONDS = 15
-AUTOSTART_SCRIPT_NAME = "MF_Expense_Dashboard_Autostart.cmd"
 SCHEDULE_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 SCHEDULE_TIME_RE = re.compile(r"^\d{2}:\d{2}$")
 _DEFAULT_TEMPLATE_ID = "__default__"
 _TIMER_STATE_KEYS = {
     "enabled",
-    "mode",
+    "card_id",
+    "action_key",
     "year",
     "month",
     "mfcloud_url",
@@ -41,10 +41,6 @@ _TIMER_STATE_KEYS = {
     "run_time",
     "catch_up_policy",
     "recurrence",
-    "auth_handoff",
-    "auto_receipt_name",
-    "mf_draft_create",
-    "auto_start_enabled",
     "updated_at",
     "last_evaluated_at",
     "last_result",
@@ -52,7 +48,8 @@ _TIMER_STATE_KEYS = {
     "last_triggered_at",
 }
 _TIMER_STATE_COPY_KEYS = {
-    "mode",
+    "card_id",
+    "action_key",
     "year",
     "month",
     "mfcloud_url",
@@ -61,9 +58,6 @@ _TIMER_STATE_COPY_KEYS = {
     "run_time",
     "catch_up_policy",
     "recurrence",
-    "auth_handoff",
-    "auto_receipt_name",
-    "mf_draft_create",
 }
 
 _state_lock = threading.Lock()
@@ -89,7 +83,8 @@ def _state_path() -> Path:
 def _default_state() -> dict[str, Any]:
     return {
         "enabled": False,
-        "mode": "preflight",
+        "card_id": "",
+        "action_key": DEFAULT_ACTION_KEY,
         "year": None,
         "month": None,
         "mfcloud_url": "",
@@ -98,10 +93,6 @@ def _default_state() -> dict[str, Any]:
         "run_time": DEFAULT_RUN_TIME,
         "catch_up_policy": "run_on_startup",
         "recurrence": "once",
-        "auth_handoff": False,
-        "auto_receipt_name": True,
-        "mf_draft_create": True,
-        "auto_start_enabled": False,
         "updated_at": None,
         "last_evaluated_at": None,
         "last_result": None,
@@ -117,11 +108,11 @@ def _as_int(value: Any) -> int | None:
         return None
 
 
-def _normalize_mode(value: Any) -> str:
-    mode = str(value or "").strip()
-    if mode in SCHEDULER_ALLOWED_MODES:
-        return mode
-    return "preflight"
+def _normalize_action_key(value: Any) -> str:
+    action_key = str(value or "").strip()
+    if action_key in SCHEDULER_ALLOWED_ACTION_KEYS:
+        return action_key
+    return DEFAULT_ACTION_KEY
 
 
 def _normalize_catch_up_policy(value: Any) -> str:
@@ -173,54 +164,8 @@ def _normalize_text(value: Any, *, max_len: int) -> str:
     return text
 
 
-def _startup_dir() -> Path:
-    override = str(os.environ.get("AX_DASHBOARD_STARTUP_DIR") or "").strip()
-    if override:
-        return Path(override).expanduser()
-    appdata = str(os.environ.get("APPDATA") or "").strip()
-    if appdata:
-        return Path(appdata).expanduser() / "Microsoft" / "Windows" / "Start Menu" / "Programs" / "Startup"
-    return (
-        Path.home()
-        / "AppData"
-        / "Roaming"
-        / "Microsoft"
-        / "Windows"
-        / "Start Menu"
-        / "Programs"
-        / "Startup"
-    )
-
-
-def _autostart_script_path() -> Path:
-    return _startup_dir() / AUTOSTART_SCRIPT_NAME
-
-
-def _autostart_supported() -> bool:
-    return os.name == "nt" and (SKILL_ROOT / "scripts" / "start_dashboard.ps1").exists()
-
-
-def _autostart_active() -> bool:
-    return _autostart_script_path().exists()
-
-
-def _set_autostart_enabled(enabled: bool) -> None:
-    target = _autostart_script_path()
-    if not enabled:
-        try:
-            target.unlink()
-        except FileNotFoundError:
-            pass
-        return
-
-    if not _autostart_supported():
-        raise HTTPException(status_code=409, detail="Autostart is supported only on Windows.")
-
-    target.parent.mkdir(parents=True, exist_ok=True)
-    script_path = (SKILL_ROOT / "scripts" / "start_dashboard.ps1").resolve()
-    command = f'"%SystemRoot%\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File "{script_path}" -NoOpen'
-    content = "@echo off\r\n" + command + "\r\n"
-    target.write_text(content, encoding="utf-8")
+def _normalize_card_id(value: Any) -> str:
+    return _normalize_text(value, max_len=128)
 
 
 def _normalize_state(payload: Any) -> dict[str, Any]:
@@ -235,17 +180,14 @@ def _normalize_state(payload: Any) -> dict[str, Any]:
         out["month"] = month
 
     out["enabled"] = bool(src.get("enabled"))
-    out["mode"] = _normalize_mode(src.get("mode"))
+    out["card_id"] = _normalize_card_id(src.get("card_id"))
+    out["action_key"] = _normalize_action_key(src.get("action_key"))
     out["mfcloud_url"] = _normalize_text(src.get("mfcloud_url"), max_len=2000)
     out["notes"] = _normalize_text(src.get("notes"), max_len=2000)
     out["run_date"] = _normalize_run_date(src.get("run_date"))
     out["run_time"] = _normalize_run_time(src.get("run_time"))
     out["catch_up_policy"] = _normalize_catch_up_policy(src.get("catch_up_policy"))
     out["recurrence"] = _normalize_recurrence(src.get("recurrence"))
-    out["auth_handoff"] = bool(src.get("auth_handoff"))
-    out["auto_receipt_name"] = bool(src.get("auto_receipt_name", True))
-    out["mf_draft_create"] = bool(src.get("mf_draft_create", True))
-    out["auto_start_enabled"] = bool(src.get("auto_start_enabled", False))
     out["updated_at"] = str(src.get("updated_at") or "").strip() or None
     out["last_evaluated_at"] = str(src.get("last_evaluated_at") or "").strip() or None
 
@@ -317,7 +259,6 @@ def _build_copied_timer_state(source_state: dict[str, Any] | None) -> dict[str, 
     for key in _TIMER_STATE_COPY_KEYS:
         copied[key] = source_state.get(key)
     copied["enabled"] = False
-    copied["auto_start_enabled"] = False
     copied["updated_at"] = _now_iso()
     copied["last_evaluated_at"] = None
     copied["last_result"] = None
@@ -400,15 +341,15 @@ def _schedule_signature(state: dict[str, Any]) -> str:
     year = _as_int(state.get("year"))
     month = _as_int(state.get("month"))
     ym = f"{year:04d}-{month:02d}" if year is not None and month is not None and 1 <= month <= 12 else ""
+    action_key = _normalize_action_key(state.get("action_key"))
+    card_id = _normalize_card_id(state.get("card_id"))
     items = [
-        str(state.get("mode") or ""),
+        card_id,
+        action_key,
         ym,
         str(state.get("run_date") or ""),
         str(state.get("run_time") or ""),
         str(state.get("recurrence") or "once"),
-        "1" if bool(state.get("auth_handoff")) else "0",
-        "1" if bool(state.get("auto_receipt_name")) else "0",
-        "1" if bool(state.get("mf_draft_create")) else "0",
         str(state.get("mfcloud_url") or ""),
         str(state.get("notes") or ""),
     ]
@@ -429,15 +370,20 @@ def _scheduled_month_from_state(state: dict[str, Any], scheduled: datetime | Non
 
 def _build_run_payload(state: dict[str, Any], *, scheduled: datetime | None = None) -> dict[str, Any]:
     year, month = _scheduled_month_from_state(state, scheduled=scheduled)
+    action_key = _normalize_action_key(state.get("action_key"))
+    card_id = _normalize_card_id(state.get("card_id"))
     payload = {
         "year": year,
         "month": month,
-        "mode": _normalize_mode(state.get("mode")),
+        "mode": action_key,
         "mfcloud_url": _normalize_text(state.get("mfcloud_url"), max_len=2000),
         "notes": _normalize_text(state.get("notes"), max_len=2000),
-        "auth_handoff": bool(state.get("auth_handoff")),
-        "auto_receipt_name": bool(state.get("auto_receipt_name", True)),
-        "mf_draft_create": bool(state.get("mf_draft_create", True)),
+        # Scheduler runs are unattended by default.
+        "auth_handoff": False,
+        "auto_receipt_name": True,
+        "mf_draft_create": True,
+        "_scheduler_card_id": card_id,
+        "_scheduler_action_key": action_key,
     }
     if payload["mode"] == "mf_reconcile" and not payload["mfcloud_url"]:
         raise HTTPException(status_code=400, detail="Scheduler requires MF Cloud URL for mf_reconcile.")
@@ -497,9 +443,6 @@ def _enrich_state(
         view["template_id"] = _normalize_template_id(template_id)
     if template_timers_count is not None:
         view["template_timers_count"] = template_timers_count
-    view["autostart_supported"] = _autostart_supported()
-    view["autostart_path"] = str(_autostart_script_path())
-    view["auto_start_active"] = _autostart_active()
     return view
 
 
@@ -651,7 +594,8 @@ def update_state(payload: dict[str, Any] | None, template_id: str | None = None)
     keys = set(body.keys())
     mutable = {
         "enabled",
-        "mode",
+        "card_id",
+        "action_key",
         "year",
         "month",
         "mfcloud_url",
@@ -660,10 +604,6 @@ def update_state(payload: dict[str, Any] | None, template_id: str | None = None)
         "run_time",
         "catch_up_policy",
         "recurrence",
-        "auth_handoff",
-        "auto_receipt_name",
-        "mf_draft_create",
-        "auto_start_enabled",
     }
     unknown = sorted([k for k in keys if k not in mutable])
     if unknown:
@@ -678,8 +618,10 @@ def update_state(payload: dict[str, Any] | None, template_id: str | None = None)
             timer_state["enabled"] = bool(body.get("enabled"))
             if timer_state["enabled"]:
                 rearm = True
-        if "mode" in body:
-            timer_state["mode"] = _normalize_mode(body.get("mode"))
+        if "card_id" in body:
+            timer_state["card_id"] = _normalize_card_id(body.get("card_id"))
+        if "action_key" in body:
+            timer_state["action_key"] = _normalize_action_key(body.get("action_key"))
         if "year" in body:
             year = _as_int(body.get("year"))
             timer_state["year"] = year
@@ -698,16 +640,6 @@ def update_state(payload: dict[str, Any] | None, template_id: str | None = None)
             timer_state["catch_up_policy"] = _normalize_catch_up_policy(body.get("catch_up_policy"))
         if "recurrence" in body:
             timer_state["recurrence"] = _normalize_recurrence(body.get("recurrence"))
-        if "auth_handoff" in body:
-            timer_state["auth_handoff"] = bool(body.get("auth_handoff"))
-        if "auto_receipt_name" in body:
-            timer_state["auto_receipt_name"] = bool(body.get("auto_receipt_name"))
-        if "mf_draft_create" in body:
-            timer_state["mf_draft_create"] = bool(body.get("mf_draft_create"))
-        if "auto_start_enabled" in body:
-            auto_start_enabled = bool(body.get("auto_start_enabled"))
-            _set_autostart_enabled(auto_start_enabled)
-            timer_state["auto_start_enabled"] = auto_start_enabled
 
         if rearm:
             timer_state["last_result"] = None

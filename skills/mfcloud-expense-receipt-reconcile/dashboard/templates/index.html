@@ -89,7 +89,7 @@
               <div class="muted">このフォームの年月・URLがウィザード実行に使われます。</div>
             </div>
           </form>
-          <div class="scheduler-panel" id="scheduler-panel">
+          <div class="scheduler-panel" id="scheduler-panel" data-scheduler-card-id="workflow-status" data-scheduler-action-key="preflight">
             <div class="scheduler-head">
               <h3>タイマー自動実行</h3>
               <label
@@ -97,7 +97,7 @@
                 data-tooltip="有効時のみ、タイマー自動実行の保存内容が実行対象になります。"
               >
                 有効
-                <input type="checkbox" id="scheduler-enabled" />
+                <input type="checkbox" id="scheduler-toggle" />
               </label>
             </div>
             <div class="scheduler-grid">
@@ -109,14 +109,7 @@
                 実行時刻
                 <input type="time" id="scheduler-run-time" value="09:00" />
               </label>
-              <label data-tooltip="手順0（準備タスク）を実行するモードを選択します。">
-                実行モード
-                <select id="scheduler-mode" data-bound-step-id="step-preflight">
-                  <option value="preflight">手順0 準備</option>
-                  <option value="preflight_mf">手順0 MF再取得のみ</option>
-                </select>
-              </label>
-              <label data-tooltip="Windows起動時やサービス停止時など、未実行時の振る舞いを指定します。">
+<label data-tooltip="Windows起動時やサービス停止時など、未実行時の振る舞いを指定します。">
                 取りこぼし補完
                 <select id="scheduler-catch-up">
                   <option value="run_on_startup">次回起動時に実行</option>
@@ -132,14 +125,8 @@
                   <option value="monthly">毎月（同日）</option>
                 </select>
               </label>
-              <label class="inline-check" data-tooltip="ログイン画面操作が必要なタスクを含む場合のみ手動で本人確認を介入します。">
-                ログイン画面を開いて実行（有人）
-                <input type="checkbox" id="scheduler-auth-handoff" />
-              </label>
-              <label class="inline-check" data-tooltip="PC起動時にダッシュボード自動実行を立ち上げます。">
-                Windowsログイン時にダッシュボード自動起動
-                <input type="checkbox" id="scheduler-autostart" />
-              </label>
+
+
             </div>
             <div class="scheduler-actions">
               <button type="button" class="secondary" id="scheduler-refresh">状態更新</button>

@@ -137,14 +137,13 @@ def test_index_page_shows_manual_archive_button(monkeypatch: pytest.MonkeyPatch,
     assert "/workspace" in res.text
     assert "\u672a\u5b9f\u884c" in res.text
     assert 'id="scheduler-panel"' in res.text
-    assert 'id="scheduler-enabled"' in res.text
+    assert 'id="scheduler-toggle"' in res.text
     assert 'id="scheduler-run-date"' in res.text
     assert 'id="scheduler-run-time"' in res.text
-    assert 'id="scheduler-mode"' in res.text
     assert 'id="scheduler-catch-up"' in res.text
     assert 'id="scheduler-recurrence"' in res.text
-    assert 'id="scheduler-auth-handoff"' in res.text
-    assert 'id="scheduler-autostart"' in res.text
+    assert "data-scheduler-card-id" in res.text
+    assert "data-scheduler-action-key" in res.text
     assert 'id="scheduler-refresh"' in res.text
     assert 'id="scheduler-save"' in res.text
     assert "/static/js/scheduler.js" in res.text
@@ -207,29 +206,33 @@ def test_expense_workflow_copy_page_shows_shared_wizard(monkeypatch: pytest.Monk
     assert 'id="run-form"' in res.text
     assert 'name="template_name"' in res.text
     assert 'name="template_id"' in res.text
-    assert 'id="workflow-template-save"' in res.text
+    assert 'id="workflow-page-create"' in res.text
+    assert 'id="workflow-create-preview-list"' in res.text
     assert "data-workflow-template" in res.text
     assert 'data-template-steps-list' in res.text
     assert 'id="template-step-add"' in res.text
     assert 'id="scheduler-recurrence"' in res.text
+    assert 'id="scheduler-toggle"' in res.text
     assert 'id="template-steps-list"' in res.text
+    assert "data-template-step-mvp-note" in res.text
     assert "/static/js/index.js" in res.text
     assert "/static/js/scheduler.js" in res.text
-    assert 'data-bound-step-list="template-steps-list"' in res.text
+    assert "/static/js/template-step-timer.js" not in res.text
+    assert "data-scheduler-card-id" in res.text
+    assert "data-scheduler-action-key" in res.text
 
     match = re.search(r"data-sidebar-links='(.*?)'", res.text)
     assert match is not None
     links = json.loads(match.group(1))
     assert any(
         link.get("href") == "/expense-workflow-copy"
-        and link.get("label") == "WFテンプレート"
         and link.get("tab") == "wizard-copy"
         and link.get("section") == "admin"
         for link in links
     )
 
 
-def test_expense_workflow_copy_scheduler_mode_rebuilds_from_template_step_actions(
+def test_expense_workflow_copy_scheduler_uses_context_keys_without_mode_selector(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
@@ -237,12 +240,12 @@ def test_expense_workflow_copy_scheduler_mode_rebuilds_from_template_step_action
         _workflow_template_store(tmp_path),
         [
             {
-                "id": "scheduler-mode-template",
+                "id": "scheduler-context-template",
                 "name": "Action Driven Template",
                 "year": 2026,
                 "month": 3,
                 "mfcloud_url": "https://example.com/mf",
-                "notes": "for scheduler mode test",
+                "notes": "for scheduler context test",
                 "rakuten_orders_url": "https://example.com/orders",
                 "steps": [
                     {"id": "step-1", "title": "Amazon 取得", "action": "amazon_download"},
@@ -254,11 +257,12 @@ def test_expense_workflow_copy_scheduler_mode_rebuilds_from_template_step_action
         ],
     )
     client = _create_client(monkeypatch, tmp_path)
-    res = client.get("/expense-workflow-copy?template=scheduler-mode-template")
+    res = client.get("/expense-workflow-copy?template=scheduler-context-template")
     assert res.status_code == 200
     assert 'id="template-steps-list"' in res.text
-    assert 'id="scheduler-mode"' in res.text
-    assert 'data-bound-step-list="template-steps-list"' in res.text
+    assert 'id="scheduler-toggle"' in res.text
+    assert "data-scheduler-card-id" in res.text
+    assert "data-scheduler-action-key" in res.text
 
     scheduler_js = (
         Path(__file__).resolve().parents[1]
@@ -267,10 +271,9 @@ def test_expense_workflow_copy_scheduler_mode_rebuilds_from_template_step_action
         / "js"
         / "scheduler.js"
     ).read_text(encoding="utf-8")
-    assert "collectTemplateStepActions()" in scheduler_js
-    assert "ensureSchedulerModeOptionList" in scheduler_js
-    assert "Array.from(listEl.querySelectorAll(\"[data-template-step-action]\"))" in scheduler_js
-    assert "const dedupedActions = actions.length ? actions : [DEFAULT_SCHEDULER_MODE];" in scheduler_js
+    assert "resolveSchedulerCardId" in scheduler_js
+    assert "resolveSchedulerActionKey" in scheduler_js
+    assert "scheduler-context-changed" in scheduler_js
 
 
 def test_expense_workflow_copy_step_card_script_supports_timer_and_default_clone(
@@ -290,9 +293,15 @@ def test_expense_workflow_copy_step_card_script_supports_timer_and_default_clone
     ).read_text(encoding="utf-8")
     assert "TEMPLATE_STEP_TIMER_DEFAULT_MINUTES" in index_js
     assert "data-template-step-timer" in index_js
-    assert "scheduleTemplateStepRow" in index_js
+    assert "data-template-step-auto-run" in index_js
+    assert "template-step-drag-handle" in index_js
+    assert "ensureTemplateStepDnDBindings" in index_js
+    assert "validateTemplateStepRows" in index_js
     assert "addTemplateStepFromDefaultCard" in index_js
-    assert "scheduler-state-updated" in index_js
+    assert "buildWorkflowStepPreviewLines" in index_js
+    assert "renderWorkflowCreatePreview" in index_js
+    assert "renderWorkflowPageStepVersionLabel" in index_js
+    assert "shouldSyncYmQueryParams" in index_js
 
 
 def test_index_page_exposes_latest_run_status_hooks(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -538,19 +547,20 @@ def test_expense_workflow_copy_page_prefills_template_and_sidebar_link(monkeypat
     assert res.status_code == 200
     assert 'value="copy-source"' in res.text
     assert 'value="Monthly Copy Source"' in res.text
-    assert 'value="2026"' in res.text
-    assert 'value="2"' in res.text
-    assert 'value="https://example.com/mf"' in res.text
+    assert 'name="template_mode" value="edit"' in res.text
+    assert 'name="template_updated_at" value="2026-02-01T00:00:00"' in res.text
+    assert "https://example.com/mf" in res.text
 
     match = re.search(r"data-sidebar-links='(.*?)'", res.text)
     assert match is not None
     links = json.loads(match.group(1))
-    assert {
-        "href": "/expense-workflow-copy?template=copy-source",
-        "label": "Monthly Copy Source (2026-02)",
-        "tab": "wizard-copy",
-        "section": "admin",
-    } in links
+    assert any(
+        link.get("href") == "/expense-workflow-copy"
+        and link.get("tab") == "wizard-copy"
+        and link.get("section") == "admin"
+        for link in links
+    )
+    assert not any(str(link.get("href") or "").startswith("/expense-workflow-copy?template=") for link in links)
 
 
 def test_expense_workflow_copy_page_copy_mode_prefills_and_clears_template_id_for_create(
@@ -575,8 +585,8 @@ def test_expense_workflow_copy_page_copy_mode_prefills_and_clears_template_id_fo
     client = _create_client(monkeypatch, tmp_path)
     res = client.get("/expense-workflow-copy?template=copy-source&mode=copy")
     assert res.status_code == 200
-    assert 'name="template_id" value=""' in res.text
-    assert 'name="template_mode" value="copy"' in res.text
+    assert 'name="template_id" value="copy-source"' in res.text
+    assert 'name="template_mode" value="edit"' in res.text
     assert 'name="template_updated_at" value="2026-02-01T12:34:56"' in res.text
     assert 'value="Monthly Copy Source"' in res.text
-    assert 'value="https://example.com/mf"' in res.text
+    assert "https://example.com/mf" in res.text

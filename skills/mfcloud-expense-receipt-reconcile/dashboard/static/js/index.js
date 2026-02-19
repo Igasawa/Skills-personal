@@ -1,4 +1,4 @@
-(function () {
+﻿(function () {
   // UI copy is centralized in this file.
   const Common = window.DashboardCommon || {};
   const showToast = Common.showToast || (() => {});
@@ -39,36 +39,36 @@
   const YM_PATTERN = /^(\d{4})-(\d{2})$/;
   const TEMPLATE_STEP_DEFAULT_ACTION = "preflight";
   // Canonical action list is mirror of API validation (`WORKFLOW_TEMPLATE_ALLOWED_STEP_ACTIONS`)
-  // and scheduler mode whitelist (`SCHEDULER_ALLOWED_MODES`).
+  // and scheduler action whitelist (`SCHEDULER_ALLOWED_ACTION_KEYS`).
   const TEMPLATE_STEP_ACTIONS = [
-    { value: "preflight", label: "手順0（準備）" },
-    { value: "preflight_mf", label: "手順0（MFのみ）" },
-    { value: "amazon_download", label: "手順1（Amazon取得）" },
-    { value: "rakuten_download", label: "手順2（楽天取得）" },
-    { value: "amazon_print", label: "Amazon除外判断・印刷" },
-    { value: "rakuten_print", label: "楽天除外判断・印刷" },
-    { value: "provider_ingest", label: "手順3（共通フォルダ取り込み）" },
-    { value: "mf_bulk_upload_task", label: "手順4（MF一括アップロード）" },
-    { value: "mf_reconcile", label: "MF突合" },
-    { value: "month_close", label: "手順6（月次クローズ）" },
+    { value: "preflight", label: "謇矩・・域ｺ門ｙ・・ },
+    { value: "preflight_mf", label: "謇矩・・・F縺ｮ縺ｿ・・ },
+    { value: "amazon_download", label: "謇矩・・・mazon蜿門ｾ暦ｼ・ },
+    { value: "rakuten_download", label: "謇矩・・域･ｽ螟ｩ蜿門ｾ暦ｼ・ },
+    { value: "amazon_print", label: "Amazon髯､螟門愛譁ｭ繝ｻ蜊ｰ蛻ｷ" },
+    { value: "rakuten_print", label: "讌ｽ螟ｩ髯､螟門愛譁ｭ繝ｻ蜊ｰ蛻ｷ" },
+    { value: "provider_ingest", label: "謇矩・・亥・騾壹ヵ繧ｩ繝ｫ繝蜿悶ｊ霎ｼ縺ｿ・・ },
+    { value: "mf_bulk_upload_task", label: "謇矩・・・F荳諡ｬ繧｢繝・・繝ｭ繝ｼ繝会ｼ・ },
+    { value: "mf_reconcile", label: "MF遯∝粋" },
+    { value: "month_close", label: "謇矩・・域怦谺｡繧ｯ繝ｭ繝ｼ繧ｺ・・ },
   ];
   const TEMPLATE_STEP_ACTION_LABELS = Object.fromEntries(TEMPLATE_STEP_ACTIONS.map((item) => [item.value, item.label]));
   const TEMPLATE_REQUIRED_STEPS = [
-    { action: "preflight", title: "手順0 準備（ログイン確認・MF連携更新）" },
-    { action: "mf_reconcile", title: "手順5 MF突合・下書き作成" },
+    { action: "preflight", title: "謇矩・ 貅門ｙ・医Ο繧ｰ繧､繝ｳ遒ｺ隱阪・MF騾｣謳ｺ譖ｴ譁ｰ・・ },
+    { action: "mf_reconcile", title: "謇矩・ MF遯∝粋繝ｻ荳区嶌縺堺ｽ懈・" },
   ];
   const TEMPLATE_REQUIRED_STEP_ACTION_SET = new Set(TEMPLATE_REQUIRED_STEPS.map((row) => row.action));
   const TEMPLATE_STEP_DEFAULT_TITLES = {
-    preflight: "手順0 準備（ログイン確認・MF連携更新）",
-    preflight_mf: "手順0 MF再取得のみ",
-    amazon_download: "手順1 Amazon領収書取得",
-    amazon_print: "手順1 Amazon除外判断・印刷",
-    rakuten_download: "手順2 楽天領収書取得",
-    rakuten_print: "手順2 楽天除外判断・印刷",
-    provider_ingest: "手順3 共通フォルダ取り込み",
-    mf_bulk_upload_task: "手順4 MF一括アップロード",
-    mf_reconcile: "手順5 MF突合・下書き作成",
-    month_close: "手順6 月次クローズ",
+    preflight: "謇矩・ 貅門ｙ・医Ο繧ｰ繧､繝ｳ遒ｺ隱阪・MF騾｣謳ｺ譖ｴ譁ｰ・・,
+    preflight_mf: "謇矩・ MF蜀榊叙蠕励・縺ｿ",
+    amazon_download: "謇矩・ Amazon鬆伜庶譖ｸ蜿門ｾ・,
+    amazon_print: "謇矩・ Amazon髯､螟門愛譁ｭ繝ｻ蜊ｰ蛻ｷ",
+    rakuten_download: "謇矩・ 讌ｽ螟ｩ鬆伜庶譖ｸ蜿門ｾ・,
+    rakuten_print: "謇矩・ 讌ｽ螟ｩ髯､螟門愛譁ｭ繝ｻ蜊ｰ蛻ｷ",
+    provider_ingest: "謇矩・ 蜈ｱ騾壹ヵ繧ｩ繝ｫ繝蜿悶ｊ霎ｼ縺ｿ",
+    mf_bulk_upload_task: "謇矩・ MF荳諡ｬ繧｢繝・・繝ｭ繝ｼ繝・,
+    mf_reconcile: "謇矩・ MF遯∝粋繝ｻ荳区嶌縺堺ｽ懈・",
+    month_close: "謇矩・ 譛域ｬ｡繧ｯ繝ｭ繝ｼ繧ｺ",
   };
   const WORKFLOW_STEP_BLOCK_KEYS_BY_ACTION = {
     preflight: "preflight",
@@ -112,13 +112,14 @@
   const TEMPLATE_STEP_ACTION_VALUES = new Set(TEMPLATE_STEP_ACTIONS.map((item) => item.value));
   const templateSaveState = { inFlight: false };
   const workflowPageCreateState = { inFlight: false };
+  let activeTemplateStepDragRow = null;
   const TEMPLATE_MODE_CONFIG = {
     edit: {
-      chip: "編集",
-      saveLabel: "作成テンプレートを更新",
-      description: "作成元テンプレートを編集中です。保存すると現在のテンプレート設定を更新します。",
-      summary: "フォームモード: 編集",
-      successMessage: "作成テンプレートを更新しました。",
+      chip: "邱ｨ髮・,
+      saveLabel: "菴懈・繝・Φ繝励Ξ繝ｼ繝医ｒ譖ｴ譁ｰ",
+      description: "菴懈・蜈・ユ繝ｳ繝励Ξ繝ｼ繝医ｒ邱ｨ髮・ｸｭ縺ｧ縺吶ゆｿ晏ｭ倥☆繧九→迴ｾ蝨ｨ縺ｮ繝・Φ繝励Ξ繝ｼ繝郁ｨｭ螳壹ｒ譖ｴ譁ｰ縺励∪縺吶・,
+      summary: "繝輔か繝ｼ繝繝｢繝ｼ繝・ 邱ｨ髮・,
+      successMessage: "菴懈・繝・Φ繝励Ξ繝ｼ繝医ｒ譖ｴ譁ｰ縺励∪縺励◆縲・,
     },
   };
 
@@ -174,7 +175,50 @@
     const normalizedAction = String(action || "").trim();
     const fallbackTitle = String(fallback || "").trim();
     if (fallbackTitle) return fallbackTitle;
-    return TEMPLATE_STEP_DEFAULT_TITLES[normalizedAction] || TEMPLATE_STEP_ACTION_LABELS[normalizedAction] || "手順";
+    return TEMPLATE_STEP_DEFAULT_TITLES[normalizedAction] || TEMPLATE_STEP_ACTION_LABELS[normalizedAction] || "Task";
+  }
+
+  function normalizeTemplateStepAutoRun(value) {
+    if (typeof value === "boolean") return value;
+    const text = String(value ?? "").trim().toLowerCase();
+    if (!text) return false;
+    return ["1", "true", "yes", "on"].includes(text);
+  }
+
+  function normalizeTemplateStepOrder(value, fallback = 1) {
+    const parsed = Number.parseInt(String(value ?? "").trim(), 10);
+    if (!Number.isInteger(parsed) || parsed < 1) return fallback;
+    return parsed;
+  }
+
+  function normalizeTemplateStepExecutionLog(value) {
+    const rows = Array.isArray(value) ? value : [];
+    const normalized = [];
+    rows.forEach((row) => {
+      if (!(row && typeof row === "object")) return;
+      const rawResult = String(row.result || "").trim().toLowerCase();
+      const result = rawResult === "failed" ? "failed" : "success";
+      const executedAt = String(row.executed_at ?? row.executedAt ?? "").trim();
+      const message = String(row.message || "").trim().slice(0, TEMPLATE_STEP_EXECUTION_LOG_MESSAGE_MAX_CHARS);
+      if (!executedAt && !message) return;
+      normalized.push({
+        executed_at: executedAt,
+        result,
+        message,
+      });
+    });
+    if (normalized.length > TEMPLATE_STEP_EXECUTION_LOG_MAX_ITEMS) {
+      return normalized.slice(-TEMPLATE_STEP_EXECUTION_LOG_MAX_ITEMS);
+    }
+    return normalized;
+  }
+
+  function normalizeTemplateStepTimerForAutoRun(value) {
+    const normalized = normalizeTemplateStepTimerMinutes(value, TEMPLATE_STEP_TIMER_DEFAULT_MINUTES);
+    if (!Number.isInteger(normalized) || normalized < TEMPLATE_STEP_TIMER_REQUIRED_MINUTES) {
+      return TEMPLATE_STEP_TIMER_DEFAULT_MINUTES;
+    }
+    return normalized;
   }
 
   function normalizeWorkflowStepRows(rawRows, options = {}) {
@@ -188,11 +232,26 @@
       const raw = row && typeof row === "object" ? row : {};
       const action = normalizeTemplateStepAction(raw.action);
       if (!action || seen.has(action)) return;
-      const title = String(raw.title || "").trim() || defaultTitleForStepAction(action, `手順${index + 1}`);
+      const title = String(raw.title || "").trim() || defaultTitleForStepAction(action, `Task ${index + 1}`);
       const id = String(raw.id || "").trim() || generateTemplateStepId();
-      const timerMinutes = normalizeTemplateStepTimerMinutes(raw.timer_minutes ?? raw.timer, TEMPLATE_STEP_TIMER_DEFAULT_MINUTES);
+      const autoRun = normalizeTemplateStepAutoRun(raw.auto_run ?? raw.autoRun);
+      const timerRaw = raw.timer_minutes ?? raw.timer;
+      const timerProvided = Object.prototype.hasOwnProperty.call(raw, "timer_minutes") || Object.prototype.hasOwnProperty.call(raw, "timer");
+      let timerMinutes = timerProvided ? normalizeTemplateStepTimerMinutes(timerRaw, null) : null;
+      if (autoRun) {
+        timerMinutes = normalizeTemplateStepTimerForAutoRun(timerMinutes);
+      }
+      const executionLog = normalizeTemplateStepExecutionLog(raw.execution_log ?? raw.executionLog);
+      const order = normalizeTemplateStepOrder(raw.order, index + 1);
       seen.add(action);
-      const nextRow = { id, title, action };
+      const nextRow = {
+        id,
+        order,
+        title,
+        action,
+        auto_run: autoRun,
+        execution_log: executionLog,
+      };
       if (includeTimer) {
         nextRow.timer_minutes = timerMinutes;
       }
@@ -208,9 +267,11 @@
           id: generateTemplateStepId(),
           title: defaultTitleForStepAction(requiredStep.action, requiredStep.title),
           action: requiredStep.action,
+          auto_run: false,
+          execution_log: [],
         };
         if (includeTimer) {
-          nextRow.timer_minutes = TEMPLATE_STEP_TIMER_DEFAULT_MINUTES;
+          nextRow.timer_minutes = null;
         }
         return nextRow;
       });
@@ -225,13 +286,18 @@
         id: generateTemplateStepId(),
         title: defaultTitleForStepAction(fallbackAction),
         action: fallbackAction,
+        auto_run: false,
+        execution_log: [],
       };
       if (includeTimer) {
-        nextRow.timer_minutes = TEMPLATE_STEP_TIMER_DEFAULT_MINUTES;
+        nextRow.timer_minutes = null;
       }
       limited.push(nextRow);
     }
-    return limited;
+    return limited.map((row, index) => ({
+      ...row,
+      order: index + 1,
+    }));
   }
 
   function isRequiredTemplateStepAction(action) {
@@ -272,7 +338,7 @@
     const nameInput = form?.querySelector("[name=template_name]");
     const subheadingInput = form?.querySelector("[name=template_subheading]");
     if (!titleEl && !subheadingEl && !nameInput && !subheadingInput) return;
-    const fallbackTitle = String(titleEl?.dataset.defaultTitle || "").trim() || "ワークフロー作成テンプレート";
+    const fallbackTitle = String(titleEl?.dataset.defaultTitle || "").trim() || "繝ｯ繝ｼ繧ｯ繝輔Ο繝ｼ菴懈・繝・Φ繝励Ξ繝ｼ繝・;
     const title = String(nameInput?.value || workflowTemplate?.name || "").trim() || fallbackTitle;
     const subheading = String(subheadingInput?.value || workflowTemplate?.subheading || "").trim();
 
@@ -335,10 +401,10 @@
   }
 
   function showConfirmModal({
-    title = "確認",
+    title = "遒ｺ隱・,
     lines = [],
-    confirmLabel = "実行",
-    cancelLabel = "キャンセル",
+    confirmLabel = "螳溯｡・,
+    cancelLabel = "繧ｭ繝｣繝ｳ繧ｻ繝ｫ",
   }) {
     return new Promise((resolve) => {
       const { overlay, modal, panel } = createModalShell(title);
@@ -382,13 +448,13 @@
 
   function showWorkflowSettingsModal({ name = "", subheading = "" }) {
     return new Promise((resolve) => {
-      const { overlay, modal, panel } = createModalShell("ページ設定");
+      const { overlay, modal, panel } = createModalShell("繝壹・繧ｸ險ｭ螳・);
       const formEl = document.createElement("form");
       formEl.className = "dialog-form";
 
       const nameLabel = document.createElement("label");
       nameLabel.className = "dialog-field";
-      nameLabel.textContent = "ワークフロー名";
+      nameLabel.textContent = "繝ｯ繝ｼ繧ｯ繝輔Ο繝ｼ蜷・;
       const nameInput = document.createElement("input");
       nameInput.type = "text";
       nameInput.required = true;
@@ -398,7 +464,7 @@
 
       const subheadingLabel = document.createElement("label");
       subheadingLabel.className = "dialog-field";
-      subheadingLabel.textContent = "補足説明（任意）";
+      subheadingLabel.textContent = "陬懆ｶｳ隱ｬ譏趣ｼ井ｻｻ諢擾ｼ・;
       const subheadingInput = document.createElement("input");
       subheadingInput.type = "text";
       subheadingInput.value = String(subheading || "");
@@ -411,12 +477,12 @@
       const cancelButton = document.createElement("button");
       cancelButton.type = "button";
       cancelButton.className = "secondary";
-      cancelButton.textContent = "キャンセル";
+      cancelButton.textContent = "繧ｭ繝｣繝ｳ繧ｻ繝ｫ";
 
       const saveButton = document.createElement("button");
       saveButton.type = "submit";
       saveButton.className = "primary";
-      saveButton.textContent = "保存";
+      saveButton.textContent = "菫晏ｭ・;
 
       const close = bindModalDismiss(overlay, modal, resolve);
 
@@ -426,7 +492,7 @@
         const nextName = String(nameInput.value || "").trim();
         const nextSubheading = String(subheadingInput.value || "").trim();
         if (!nextName) {
-          nameInput.setCustomValidity("ワークフロー名を入力してください。");
+          nameInput.setCustomValidity("繝ｯ繝ｼ繧ｯ繝輔Ο繝ｼ蜷阪ｒ蜈･蜉帙＠縺ｦ縺上□縺輔＞縲・);
           nameInput.reportValidity();
           return;
         }
@@ -518,7 +584,7 @@
       labelEl.textContent = `URL ${index + 1}`;
       const input = row.querySelector("[data-source-url-input]");
       if (input) {
-        input.setAttribute("aria-label", `ソースURL ${index + 1}`);
+        input.setAttribute("aria-label", `繧ｽ繝ｼ繧ｹURL ${index + 1}`);
       }
     });
   }
@@ -531,7 +597,7 @@
       const value = String(input.value || "").trim();
       const valid = isValidHttpUrl(value);
       input.classList.toggle("is-invalid", !valid);
-      input.setCustomValidity(valid ? "" : "http:// もしくは https:// のURLを入力してください。");
+      input.setCustomValidity(valid ? "" : "http:// 繧ゅ＠縺上・ https:// 縺ｮURL繧貞・蜉帙＠縺ｦ縺上□縺輔＞縲・);
       if (!valid && !firstInvalid) {
         firstInvalid = input;
       }
@@ -581,7 +647,7 @@
     removeButton.type = "button";
     removeButton.className = "secondary";
     removeButton.dataset.sourceUrlRemove = "1";
-    removeButton.setAttribute("aria-label", "このURL行を削除");
+    removeButton.setAttribute("aria-label", "縺薙・URL陦後ｒ蜑企勁");
     removeButton.textContent = "-";
     removeButton.addEventListener("click", () => {
       row.remove();
@@ -638,7 +704,10 @@
 
   const TEMPLATE_STEP_TIMER_DEFAULT_MINUTES = 5;
   const TEMPLATE_STEP_TIMER_MIN_MINUTES = 0;
+  const TEMPLATE_STEP_TIMER_REQUIRED_MINUTES = 1;
   const TEMPLATE_STEP_TIMER_MAX_MINUTES = 7 * 24 * 60;
+  const TEMPLATE_STEP_EXECUTION_LOG_MAX_ITEMS = 20;
+  const TEMPLATE_STEP_EXECUTION_LOG_MESSAGE_MAX_CHARS = 200;
 
   function normalizeTemplateStepTimerMinutes(value, fallback = TEMPLATE_STEP_TIMER_DEFAULT_MINUTES) {
     const parsed = Number.parseInt(String(value ?? "").trim(), 10);
@@ -648,18 +717,105 @@
     return parsed;
   }
 
+  function parseTemplateStepExecutionLogFromRow(row) {
+    const raw = String(row?.dataset?.templateStepExecutionLog || "").trim();
+    if (!raw) return [];
+    try {
+      const parsed = JSON.parse(raw);
+      return normalizeTemplateStepExecutionLog(parsed);
+    } catch {
+      return [];
+    }
+  }
+
+  function formatTemplateStepLatestExecutionLog(executionLog) {
+    const rows = normalizeTemplateStepExecutionLog(executionLog);
+    const latest = rows.length ? rows[rows.length - 1] : null;
+    if (!latest) {
+      return { text: "No runs yet", status: "none" };
+    }
+    const result = String(latest.result || "").trim().toLowerCase() === "failed" ? "failed" : "success";
+    const label = result === "failed" ? "Failed" : "Success";
+    const executedAt = String(latest.executed_at || "").trim() || "-";
+    const message = String(latest.message || "").trim();
+    const summary = message ? `${label} ${executedAt} (${message})` : `${label} ${executedAt}`;
+    return {
+      text: summary,
+      status: result,
+    };
+  }
+
+  function setTemplateStepExecutionLogOnRow(row, executionLog) {
+    if (!(row instanceof HTMLElement)) return;
+    const normalized = normalizeTemplateStepExecutionLog(executionLog);
+    row.dataset.templateStepExecutionLog = JSON.stringify(normalized);
+  }
+
+  function getTemplateStepDragAfterRow(listEl, pointerY) {
+    const rows = getTemplateStepRows().filter((row) => row !== activeTemplateStepDragRow);
+    let closestOffset = Number.NEGATIVE_INFINITY;
+    let closestRow = null;
+    rows.forEach((row) => {
+      const rect = row.getBoundingClientRect();
+      const offset = pointerY - rect.top - rect.height / 2;
+      if (offset < 0 && offset > closestOffset) {
+        closestOffset = offset;
+        closestRow = row;
+      }
+    });
+    return closestRow;
+  }
+
+  function ensureTemplateStepDnDBindings(listEl) {
+    if (!(listEl instanceof HTMLElement)) return;
+    if (listEl.dataset.templateStepDndBound === "1") return;
+    listEl.dataset.templateStepDndBound = "1";
+
+    listEl.addEventListener("dragover", (event) => {
+      if (!(activeTemplateStepDragRow instanceof HTMLElement)) return;
+      event.preventDefault();
+      const afterRow = getTemplateStepDragAfterRow(listEl, event.clientY);
+      if (!afterRow) {
+        listEl.appendChild(activeTemplateStepDragRow);
+        return;
+      }
+      if (afterRow !== activeTemplateStepDragRow) {
+        listEl.insertBefore(activeTemplateStepDragRow, afterRow);
+      }
+    });
+
+    listEl.addEventListener("drop", (event) => {
+      if (!(activeTemplateStepDragRow instanceof HTMLElement)) return;
+      event.preventDefault();
+      refreshTemplateStepRows();
+    });
+  }
+
   function parseTemplateStepRow(row, index = 0) {
     const rowId = String(row?.dataset?.templateStepId || "").trim();
     const action = normalizeTemplateStepAction(row?.querySelector("[data-template-step-action]")?.value);
     const title =
       String(row?.querySelector("[data-template-step-title]")?.value || "").trim() ||
-      defaultTitleForStepAction(action, `手順${index + 1}`);
-    const timerMinutes = normalizeTemplateStepTimerMinutes(row?.querySelector("[data-template-step-timer]")?.value);
+      defaultTitleForStepAction(action, `Task ${index + 1}`);
+    const order = normalizeTemplateStepOrder(row?.dataset?.templateStepOrder, index + 1);
+    const autoRun = Boolean(row?.querySelector("[data-template-step-auto-run]")?.checked);
+    const timerInput = row?.querySelector("[data-template-step-timer]");
+    const timerRaw = String(timerInput?.value || "").trim();
+    let timerMinutes = null;
+    if (autoRun) {
+      timerMinutes = normalizeTemplateStepTimerForAutoRun(timerRaw);
+    } else if (timerRaw) {
+      timerMinutes = normalizeTemplateStepTimerMinutes(timerRaw, null);
+    }
+    const executionLog = parseTemplateStepExecutionLogFromRow(row);
     return {
       id: rowId || generateTemplateStepId(),
+      order,
       title,
       action,
+      auto_run: autoRun,
       timer_minutes: timerMinutes,
+      execution_log: executionLog,
     };
   }
 
@@ -685,26 +841,32 @@
       const parsed = parsedRows[index] || {
         action: TEMPLATE_STEP_DEFAULT_ACTION,
         title: "",
-        timer_minutes: TEMPLATE_STEP_TIMER_DEFAULT_MINUTES,
+        auto_run: false,
+        timer_minutes: null,
+        execution_log: [],
       };
       const action = normalizeTemplateStepAction(parsed.action);
       const requiredAction = isRequiredTemplateStepAction(action) ? action : "";
 
-      let indexEl = row.querySelector("[data-template-step-index]");
-      if (!indexEl) {
-        indexEl = document.createElement("span");
-        indexEl.className = "muted";
-        indexEl.dataset.templateStepIndex = "1";
-        row.insertBefore(indexEl, row.firstChild);
+      row.dataset.templateStepOrder = String(index + 1);
+      setTemplateStepExecutionLogOnRow(row, parsed.execution_log);
+
+      const handleEl = row.querySelector("[data-template-step-drag-handle]");
+      if (handleEl) {
+        handleEl.setAttribute("aria-label", `Move Task ${index + 1}`);
       }
-      indexEl.textContent = `手順${index + 1}`;
+
+      const indexEl = row.querySelector("[data-template-step-index]");
+      if (indexEl) {
+        indexEl.textContent = `Task ${index + 1}`;
+      }
 
       const titleEl = row.querySelector("[data-template-step-title]");
       if (titleEl) {
         if (!String(titleEl.value || "").trim()) {
-          titleEl.value = defaultTitleForStepAction(action, `手順${index + 1}`);
+          titleEl.value = defaultTitleForStepAction(action, `Task ${index + 1}`);
         }
-        titleEl.setAttribute("aria-label", `手順${index + 1}のタイトル`);
+        titleEl.setAttribute("aria-label", `Task ${index + 1} title`);
       }
 
       const actionEl = row.querySelector("[data-template-step-action]");
@@ -713,21 +875,47 @@
           row.dataset.requiredAction = requiredAction;
           actionEl.value = requiredAction;
           actionEl.disabled = true;
-          actionEl.title = "必須手順は変更できません。";
         } else {
           delete row.dataset.requiredAction;
           actionEl.disabled = false;
-          actionEl.title = "";
         }
         const duplicated = (actionCounts.get(action) || 0) > 1;
         hasDuplicates = hasDuplicates || duplicated;
         actionEl.classList.toggle("is-invalid", duplicated);
-        actionEl.setCustomValidity(duplicated ? "同じ処理は1回だけ追加できます。" : "");
+        actionEl.setCustomValidity(duplicated ? "Each action can only be used once." : "");
+      }
+
+      const autoRunEl = row.querySelector("[data-template-step-auto-run]");
+      const autoRunEnabled = autoRunEl ? Boolean(autoRunEl.checked) : Boolean(parsed.auto_run);
+      if (autoRunEl) {
+        autoRunEl.checked = autoRunEnabled;
+        autoRunEl.setAttribute("aria-label", `Task ${index + 1} auto run`);
       }
 
       const timerEl = row.querySelector("[data-template-step-timer]");
       if (timerEl) {
-        timerEl.value = String(normalizeTemplateStepTimerMinutes(timerEl.value, parsed.timer_minutes));
+        timerEl.disabled = !autoRunEnabled;
+        timerEl.required = autoRunEnabled;
+        timerEl.min = autoRunEnabled ? String(TEMPLATE_STEP_TIMER_REQUIRED_MINUTES) : String(TEMPLATE_STEP_TIMER_MIN_MINUTES);
+        timerEl.max = String(TEMPLATE_STEP_TIMER_MAX_MINUTES);
+        timerEl.setAttribute("aria-label", `Task ${index + 1} timer minutes`);
+        if (autoRunEnabled) {
+          const nextTimer = normalizeTemplateStepTimerForAutoRun(
+            String(timerEl.value || "").trim() || parsed.timer_minutes,
+          );
+          timerEl.value = String(nextTimer);
+        } else if (String(timerEl.value || "").trim()) {
+          timerEl.value = String(normalizeTemplateStepTimerMinutes(timerEl.value, 0));
+        }
+        timerEl.setCustomValidity("");
+      }
+
+      const logEl = row.querySelector("[data-template-step-log]");
+      if (logEl) {
+        const summary = formatTemplateStepLatestExecutionLog(parsed.execution_log);
+        logEl.textContent = summary.text;
+        logEl.classList.toggle("is-success", summary.status === "success");
+        logEl.classList.toggle("is-failed", summary.status === "failed");
       }
 
       const removeButton = row.querySelector("[data-template-step-remove]");
@@ -735,12 +923,51 @@
         const locked = Boolean(requiredAction) || optionalRowsCount <= 0;
         removeButton.hidden = locked;
         removeButton.disabled = locked;
-        removeButton.title = requiredAction ? "必須手順は削除できません。" : "";
+        removeButton.title = requiredAction ? "Required task cannot be removed." : "";
       }
     });
 
     listEl.dataset.stepHasDuplicates = hasDuplicates ? "1" : "0";
     emitTemplateStepsChanged();
+  }
+
+  function validateTemplateStepRows() {
+    const listEl = getTemplateStepsListEl();
+    if (!listEl) return true;
+    if (listEl.dataset.stepHasDuplicates === "1") {
+      showToast("Please remove duplicate actions.", "error");
+      return false;
+    }
+    const rows = getTemplateStepRows();
+    for (let index = 0; index < rows.length; index += 1) {
+      const row = rows[index];
+      const titleEl = row.querySelector("[data-template-step-title]");
+      if (titleEl && !String(titleEl.value || "").trim()) {
+        titleEl.setCustomValidity("Title is required.");
+        titleEl.reportValidity();
+        return false;
+      }
+      if (titleEl) titleEl.setCustomValidity("");
+
+      const autoRunEnabled = Boolean(row.querySelector("[data-template-step-auto-run]")?.checked);
+      const timerEl = row.querySelector("[data-template-step-timer]");
+      if (!timerEl) continue;
+      if (!autoRunEnabled) {
+        timerEl.setCustomValidity("");
+        continue;
+      }
+      const timerValue = Number.parseInt(String(timerEl.value || "").trim(), 10);
+      const validTimer = Number.isInteger(timerValue)
+        && timerValue >= TEMPLATE_STEP_TIMER_REQUIRED_MINUTES
+        && timerValue <= TEMPLATE_STEP_TIMER_MAX_MINUTES;
+      if (!validTimer) {
+        timerEl.setCustomValidity(`Timer must be ${TEMPLATE_STEP_TIMER_REQUIRED_MINUTES}-${TEMPLATE_STEP_TIMER_MAX_MINUTES} minutes when auto run is enabled.`);
+        timerEl.reportValidity();
+        return false;
+      }
+      timerEl.setCustomValidity("");
+    }
+    return true;
   }
 
   function collectTemplateSteps() {
@@ -765,9 +992,11 @@
     addTemplateStepRow(
       {
         id: "",
-        title: defaultTitleForStepAction(action, `手順${nextIndex}`),
+        title: defaultTitleForStepAction(action, `Task ${nextIndex}`),
         action,
-        timer_minutes: TEMPLATE_STEP_TIMER_DEFAULT_MINUTES,
+        auto_run: false,
+        timer_minutes: null,
+        execution_log: [],
       },
       options,
     );
@@ -776,19 +1005,46 @@
   function addTemplateStepRow(rawStep = {}, options = {}) {
     const listEl = getTemplateStepsListEl();
     if (!listEl) return;
+    ensureTemplateStepDnDBindings(listEl);
+
     const shouldFocus = options.focus !== false;
     const title = String(rawStep?.title || "").trim();
     const action = normalizeTemplateStepAction(rawStep?.action);
     const requiredAction = isRequiredTemplateStepAction(action) ? action : "";
+    const autoRun = normalizeTemplateStepAutoRun(rawStep?.auto_run ?? rawStep?.autoRun);
+    const executionLog = normalizeTemplateStepExecutionLog(rawStep?.execution_log ?? rawStep?.executionLog);
+    const rawTimer = rawStep?.timer_minutes ?? rawStep?.timer;
+    const timerMinutes = autoRun
+      ? normalizeTemplateStepTimerForAutoRun(rawTimer)
+      : normalizeTemplateStepTimerMinutes(rawTimer, null);
 
     const row = document.createElement("div");
     row.className = "template-step-row";
     row.dataset.templateStepRow = "1";
     row.dataset.templateStepId = String(rawStep?.id || generateTemplateStepId()).trim();
+    row.dataset.templateStepOrder = String(normalizeTemplateStepOrder(rawStep?.order, getTemplateStepRows().length + 1));
     row.dataset.lastAction = action;
+    row.draggable = true;
+    setTemplateStepExecutionLogOnRow(row, executionLog);
     if (requiredAction) {
       row.dataset.requiredAction = requiredAction;
     }
+
+    const dragHandle = document.createElement("button");
+    dragHandle.type = "button";
+    dragHandle.className = "template-step-drag-handle";
+    dragHandle.dataset.templateStepDragHandle = "1";
+    dragHandle.setAttribute("aria-label", "Move task");
+    dragHandle.textContent = "::";
+    dragHandle.addEventListener("pointerdown", () => {
+      row.dataset.dragReady = "1";
+    });
+    dragHandle.addEventListener("pointerup", () => {
+      delete row.dataset.dragReady;
+    });
+    dragHandle.addEventListener("pointercancel", () => {
+      delete row.dataset.dragReady;
+    });
 
     const indexEl = document.createElement("span");
     indexEl.className = "muted";
@@ -798,7 +1054,7 @@
     titleEl.type = "text";
     titleEl.className = "template-step-title";
     titleEl.value = title;
-    titleEl.placeholder = "手順名";
+    titleEl.placeholder = "Task title";
     titleEl.dataset.templateStepTitle = "1";
     titleEl.required = true;
 
@@ -807,28 +1063,85 @@
     actionEl.dataset.templateStepAction = "1";
     actionEl.innerHTML = getTemplateStepActionOptionsHtml(action);
 
+    const autoRunLabel = document.createElement("label");
+    autoRunLabel.className = "template-step-auto-run";
+    const autoRunEl = document.createElement("input");
+    autoRunEl.type = "checkbox";
+    autoRunEl.dataset.templateStepAutoRun = "1";
+    autoRunEl.checked = autoRun;
+    const autoRunText = document.createElement("span");
+    autoRunText.textContent = "Auto";
+    autoRunLabel.appendChild(autoRunEl);
+    autoRunLabel.appendChild(autoRunText);
+
+    const timerEl = document.createElement("input");
+    timerEl.type = "number";
+    timerEl.className = "template-step-timer";
+    timerEl.dataset.templateStepTimer = "1";
+    timerEl.step = "1";
+    timerEl.min = String(TEMPLATE_STEP_TIMER_MIN_MINUTES);
+    timerEl.max = String(TEMPLATE_STEP_TIMER_MAX_MINUTES);
+    timerEl.placeholder = "minutes";
+    timerEl.value = timerMinutes === null ? "" : String(timerMinutes);
+
     const removeButton = document.createElement("button");
     removeButton.type = "button";
     removeButton.className = "secondary";
     removeButton.dataset.templateStepRemove = "1";
-    removeButton.setAttribute("aria-label", "この手順を削除");
+    removeButton.setAttribute("aria-label", "Remove task");
     removeButton.textContent = "-";
     removeButton.addEventListener("click", () => {
       if (row.dataset.requiredAction) {
-        showToast("必須手順は削除できません。", "error");
+        showToast("Required task cannot be removed.", "error");
         return;
       }
       row.remove();
       refreshTemplateStepRows();
     });
 
-    row.appendChild(indexEl);
-    row.appendChild(titleEl);
-    row.appendChild(actionEl);
-    row.appendChild(removeButton);
-    listEl.appendChild(row);
+    const logEl = document.createElement("span");
+    logEl.className = "muted template-step-log";
+    logEl.dataset.templateStepLog = "1";
+
+    row.addEventListener("dragstart", (event) => {
+      const fromHandle = row.dataset.dragReady === "1" || Boolean(event.target?.closest?.("[data-template-step-drag-handle]"));
+      if (!fromHandle) {
+        event.preventDefault();
+        return;
+      }
+      activeTemplateStepDragRow = row;
+      row.classList.add("is-dragging");
+      if (event.dataTransfer) {
+        event.dataTransfer.effectAllowed = "move";
+        event.dataTransfer.setData("text/plain", row.dataset.templateStepId || "");
+      }
+    });
+
+    row.addEventListener("dragend", () => {
+      row.classList.remove("is-dragging");
+      delete row.dataset.dragReady;
+      activeTemplateStepDragRow = null;
+      refreshTemplateStepRows();
+    });
 
     titleEl.addEventListener("input", refreshTemplateStepRows);
+    autoRunEl.addEventListener("change", () => {
+      if (autoRunEl.checked && !String(timerEl.value || "").trim()) {
+        timerEl.value = String(TEMPLATE_STEP_TIMER_DEFAULT_MINUTES);
+      }
+      refreshTemplateStepRows();
+    });
+    timerEl.addEventListener("input", () => {
+      timerEl.setCustomValidity("");
+    });
+    timerEl.addEventListener("change", () => {
+      if (autoRunEl.checked) {
+        timerEl.value = String(normalizeTemplateStepTimerForAutoRun(timerEl.value));
+      } else if (String(timerEl.value || "").trim()) {
+        timerEl.value = String(normalizeTemplateStepTimerMinutes(timerEl.value, 0));
+      }
+      refreshTemplateStepRows();
+    });
     actionEl.addEventListener("change", () => {
       const lockedAction = String(row.dataset.requiredAction || "").trim();
       const previousAction = String(row.dataset.lastAction || "").trim() || action;
@@ -847,13 +1160,24 @@
       });
       if (duplicated) {
         actionEl.value = previousAction;
-        showToast("同じ処理は1回だけ追加できます。", "error");
+        showToast("Each action can only be used once.", "error");
         refreshTemplateStepRows();
         return;
       }
       row.dataset.lastAction = nextAction;
       refreshTemplateStepRows();
     });
+
+    row.appendChild(dragHandle);
+    row.appendChild(indexEl);
+    row.appendChild(titleEl);
+    row.appendChild(actionEl);
+    row.appendChild(autoRunLabel);
+    row.appendChild(timerEl);
+    row.appendChild(removeButton);
+    row.appendChild(logEl);
+    listEl.appendChild(row);
+
     refreshTemplateStepRows();
     if (shouldFocus) {
       titleEl.focus();
@@ -881,9 +1205,20 @@
             includeTimer: true,
           });
     rowsToRender.forEach((row, index) => {
-      const title = String(row?.title || "").trim() || defaultTitleForStepAction(row?.action, `手順${index + 1}`);
+      const title = String(row?.title || "").trim() || defaultTitleForStepAction(row?.action, `Task ${index + 1}`);
       const action = normalizeTemplateStepAction(row?.action);
-      addTemplateStepRow({ id: row?.id, title, action }, { focus: false });
+      addTemplateStepRow(
+        {
+          id: row?.id,
+          order: row?.order,
+          title,
+          action,
+          auto_run: row?.auto_run,
+          timer_minutes: row?.timer_minutes,
+          execution_log: row?.execution_log,
+        },
+        { focus: false },
+      );
     });
 
     refreshTemplateStepRows();
@@ -926,13 +1261,13 @@
     if (descEl) {
       descEl.textContent = hasTemplateTarget
         ? config.description
-        : "新規テンプレート作成は無効です。既存テンプレートを選択して更新してください。";
+        : "譁ｰ隕上ユ繝ｳ繝励Ξ繝ｼ繝井ｽ懈・縺ｯ辟｡蜉ｹ縺ｧ縺吶よ里蟄倥ユ繝ｳ繝励Ξ繝ｼ繝医ｒ驕ｸ謚槭＠縺ｦ譖ｴ譁ｰ縺励※縺上□縺輔＞縲・;
     }
     if (summaryEl) summaryEl.textContent = config.summary;
     if (saveButton) {
-      saveButton.textContent = hasTemplateTarget ? config.saveLabel : "テンプレート更新（対象なし）";
+      saveButton.textContent = hasTemplateTarget ? config.saveLabel : "繝・Φ繝励Ξ繝ｼ繝域峩譁ｰ・亥ｯｾ雎｡縺ｪ縺暦ｼ・;
       saveButton.disabled = !hasTemplateTarget;
-      saveButton.title = hasTemplateTarget ? "" : "更新対象のテンプレートがありません。";
+      saveButton.title = hasTemplateTarget ? "" : "譖ｴ譁ｰ蟇ｾ雎｡縺ｮ繝・Φ繝励Ξ繝ｼ繝医′縺ゅｊ縺ｾ縺帙ｓ縲・;
     }
 
     const sourceMeta = document.getElementById("workflow-template-source-meta");
@@ -977,7 +1312,15 @@
     return String(form.querySelector("[name=template_updated_at]")?.value || "").trim();
   }
 
+  function shouldSyncYmQueryParams() {
+    const activeTab = String(pageEl?.dataset?.activeTab || "").trim();
+    const isTemplatePage = activeTab === "wizard-copy";
+    const isWorkflowPage = Boolean(String(workflowPage?.id || "").trim());
+    return !isTemplatePage && !isWorkflowPage;
+  }
+
   function readYmFromQueryString() {
+    if (!shouldSyncYmQueryParams()) return "";
     if (typeof window === "undefined") return "";
     try {
       const params = new URLSearchParams(window.location.search || "");
@@ -1010,6 +1353,13 @@
     }
     try {
       const url = new URL(window.location.href);
+      if (!shouldSyncYmQueryParams()) {
+        url.searchParams.delete("year");
+        url.searchParams.delete("month");
+        const nextUrl = `${url.pathname}${url.search}${url.hash}`;
+        window.history.replaceState(window.history.state, "", nextUrl);
+        return;
+      }
       url.searchParams.set("year", String(parsed.year));
       url.searchParams.set("month", String(parsed.month));
       const nextUrl = `${url.pathname}${url.search}${url.hash}`;
@@ -1021,6 +1371,11 @@
 
   function restoreYmSelection() {
     if (!form) return;
+    if (!shouldSyncYmQueryParams()) {
+      const normalized = resolveFormYearMonth();
+      persistYmSelection(normalizeYm(normalized.year, normalized.month));
+      return;
+    }
     const queryYm = readYmFromQueryString();
     const savedYm = queryYm || readYmFromLocalStorage() || getYmFromForm();
     if (savedYm) setYmToForm(savedYm);
@@ -1342,10 +1697,12 @@
     });
     return rows.map((row, index) => {
       const action = String(row.action || "").trim();
-      const actionLabel = TEMPLATE_STEP_ACTION_LABELS[action] || action || "(未設定)";
-      const title = String(row.title || "").trim() || defaultTitleForStepAction(action, `手順${index + 1}`);
-      const timer = normalizeTemplateStepTimerMinutes(row.timer_minutes);
-      return `${index + 1}. ${title} / ${actionLabel} / ${timer}分`;
+      const actionLabel = TEMPLATE_STEP_ACTION_LABELS[action] || action || "(譛ｪ險ｭ螳・";
+      const title = String(row.title || "").trim() || defaultTitleForStepAction(action, `Task ${index + 1}`);
+      const autoRun = normalizeTemplateStepAutoRun(row.auto_run);
+      const timer = autoRun ? normalizeTemplateStepTimerForAutoRun(row.timer_minutes) : null;
+      const mode = autoRun ? `auto ${timer}m` : "manual";
+      return `${index + 1}. ${title} / ${actionLabel} / ${mode}`;
     });
   }
 
@@ -1353,14 +1710,14 @@
     const listEl = document.getElementById("workflow-create-preview-list");
     if (!listEl) return;
     const currentPayload = payload || buildWorkflowPagePayload() || {};
-    const name = String(currentPayload.name || "").trim() || "(未入力)";
-    const subheading = String(currentPayload.subheading || "").trim() || "(なし)";
+    const name = String(currentPayload.name || "").trim() || "(譛ｪ蜈･蜉・";
+    const subheading = String(currentPayload.subheading || "").trim() || "(縺ｪ縺・";
     const stepLines = buildWorkflowStepPreviewLines(currentPayload.steps);
-    const lines = [`ワークフロー名: ${name}`, `補足説明: ${subheading}`, "作成される手順:"];
+    const lines = [`繝ｯ繝ｼ繧ｯ繝輔Ο繝ｼ蜷・ ${name}`, `陬懆ｶｳ隱ｬ譏・ ${subheading}`, "菴懈・縺輔ｌ繧区焔鬆・"];
     if (stepLines.length > 0) {
       lines.push(...stepLines.map((line) => `  ${line}`));
     } else {
-      lines.push("  (手順なし)");
+      lines.push("  (謇矩・↑縺・");
     }
     listEl.innerHTML = "";
     lines.forEach((line) => {
@@ -1374,34 +1731,35 @@
   async function createWorkflowPage() {
     if (!form || workflowPageCreateState.inFlight) return;
     if (!validateTemplateSourceUrls()) return;
+    if (!validateTemplateStepRows()) return;
     const payload = buildWorkflowPagePayload();
     if (!payload) return;
     if (!payload.name) {
-      const message = "ワークフロー名を入力してください。";
+      const message = "繝ｯ繝ｼ繧ｯ繝輔Ο繝ｼ蜷阪ｒ蜈･蜉帙＠縺ｦ縺上□縺輔＞縲・;
       showError(message);
       showToast(message, "error");
       return;
     }
     const confirmed = await showConfirmModal({
-      title: "ワークフロー作成の確認",
+      title: "繝ｯ繝ｼ繧ｯ繝輔Ο繝ｼ菴懈・縺ｮ遒ｺ隱・,
       lines: [
-        "新しいワークフローページを作成します。",
-        `ページ名: ${payload.name}`,
-        `補足説明: ${payload.subheading || "(なし)"}`,
-        ...buildWorkflowStepPreviewLines(payload.steps).map((line) => `手順: ${line}`),
-        "テンプレートの手順定義と自動実行設定を引き継ぎます。",
+        "譁ｰ縺励＞繝ｯ繝ｼ繧ｯ繝輔Ο繝ｼ繝壹・繧ｸ繧剃ｽ懈・縺励∪縺吶・,
+        `繝壹・繧ｸ蜷・ ${payload.name}`,
+        `陬懆ｶｳ隱ｬ譏・ ${payload.subheading || "(縺ｪ縺・"}`,
+        ...buildWorkflowStepPreviewLines(payload.steps).map((line) => `謇矩・ ${line}`),
+        "繝・Φ繝励Ξ繝ｼ繝医・謇矩・ｮ夂ｾｩ縺ｨ閾ｪ蜍募ｮ溯｡瑚ｨｭ螳壹ｒ蠑輔″邯吶℃縺ｾ縺吶・,
       ],
-      confirmLabel: "作成して開く",
-      cancelLabel: "戻る",
+      confirmLabel: "菴懈・縺励※髢九￥",
+      cancelLabel: "謌ｻ繧・,
     });
     if (!confirmed) return;
 
     const createButton = document.getElementById("workflow-page-create");
-    const originalLabel = createButton ? String(createButton.textContent || "").trim() : "ワークフローを作成";
+    const originalLabel = createButton ? String(createButton.textContent || "").trim() : "繝ｯ繝ｼ繧ｯ繝輔Ο繝ｼ繧剃ｽ懈・";
     workflowPageCreateState.inFlight = true;
     if (createButton) {
       createButton.disabled = true;
-      createButton.textContent = "作成中...";
+      createButton.textContent = "菴懈・荳ｭ...";
       createButton.dataset.busy = "1";
     }
     clearError();
@@ -1414,7 +1772,7 @@
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        const message = toFriendlyMessage(data.detail) || "ワークフローページの作成に失敗しました。";
+        const message = toFriendlyMessage(data.detail) || "繝ｯ繝ｼ繧ｯ繝輔Ο繝ｼ繝壹・繧ｸ縺ｮ菴懈・縺ｫ螟ｱ謨励＠縺ｾ縺励◆縲・;
         showError(message);
         showToast(message, "error");
         return;
@@ -1423,19 +1781,19 @@
       const workflowPage = data.workflow_page || null;
       const workflowPageId = String(workflowPage?.id || "").trim();
       if (data.scheduler_copied === true) {
-        showToast("ワークフローを作成しました。自動実行設定も引き継ぎました。", "success");
+        showToast("繝ｯ繝ｼ繧ｯ繝輔Ο繝ｼ繧剃ｽ懈・縺励∪縺励◆縲り・蜍募ｮ溯｡瑚ｨｭ螳壹ｂ蠑輔″邯吶℃縺ｾ縺励◆縲・, "success");
       } else {
-        showToast("ワークフローページを作成しました。", "success");
+        showToast("繝ｯ繝ｼ繧ｯ繝輔Ο繝ｼ繝壹・繧ｸ繧剃ｽ懈・縺励∪縺励◆縲・, "success");
       }
       if (workflowPageId) {
         window.location.href = `/workflow/${encodeURIComponent(workflowPageId)}`;
         return;
       }
-      const message = "作成は完了しましたが、遷移先が見つかりませんでした。";
+      const message = "菴懈・縺ｯ螳御ｺ・＠縺ｾ縺励◆縺後・・遘ｻ蜈医′隕九▽縺九ｊ縺ｾ縺帙ｓ縺ｧ縺励◆縲・;
       showError(message);
       showToast(message, "error");
     } catch {
-      const message = "ワークフローページの作成に失敗しました。";
+      const message = "繝ｯ繝ｼ繧ｯ繝輔Ο繝ｼ繝壹・繧ｸ縺ｮ菴懈・縺ｫ螟ｱ謨励＠縺ｾ縺励◆縲・;
       showError(message);
       showToast(message, "error");
     } finally {
@@ -1461,14 +1819,14 @@
     if (!nextValues) return;
     const nextName = String(nextValues.name || "").trim();
     if (!nextName) {
-      const message = "ワークフロー名を入力してください。";
+      const message = "繝ｯ繝ｼ繧ｯ繝輔Ο繝ｼ蜷阪ｒ蜈･蜉帙＠縺ｦ縺上□縺輔＞縲・;
       showError(message);
       showToast(message, "error");
       return;
     }
     const nextSubheading = String(nextValues.subheading || "").trim();
     if (nextName === currentName && nextSubheading === currentSubheading) {
-      showToast("変更はありません。", "info");
+      showToast("螟画峩縺ｯ縺ゅｊ縺ｾ縺帙ｓ縲・, "info");
       return;
     }
     const updates = {
@@ -1484,15 +1842,15 @@
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        const message = toFriendlyMessage(data.detail) || "ページ設定の更新に失敗しました。";
+        const message = toFriendlyMessage(data.detail) || "繝壹・繧ｸ險ｭ螳壹・譖ｴ譁ｰ縺ｫ螟ｱ謨励＠縺ｾ縺励◆縲・;
         showError(message);
         showToast(message, "error");
         return;
       }
-      showToast("ページ設定を更新しました。", "success");
+      showToast("繝壹・繧ｸ險ｭ螳壹ｒ譖ｴ譁ｰ縺励∪縺励◆縲・, "success");
       window.location.reload();
     } catch {
-      const message = "ページ設定の更新に失敗しました。";
+      const message = "繝壹・繧ｸ險ｭ螳壹・譖ｴ譁ｰ縺ｫ螟ｱ謨励＠縺ｾ縺励◆縲・;
       showError(message);
       showToast(message, "error");
     }
@@ -1502,13 +1860,13 @@
     const workflowPageId = String(workflowPage?.id || "").trim();
     if (!workflowPageId) return;
     const confirmed = await showConfirmModal({
-      title: "ワークフローのアーカイブ",
+      title: "繝ｯ繝ｼ繧ｯ繝輔Ο繝ｼ縺ｮ繧｢繝ｼ繧ｫ繧､繝・,
       lines: [
-        "このワークフローをサイドバーから非表示にします。",
-        "必要な場合は WF作成テンプレート画面から復元できます。",
+        "縺薙・繝ｯ繝ｼ繧ｯ繝輔Ο繝ｼ繧偵し繧､繝峨ヰ繝ｼ縺九ｉ髱櫁｡ｨ遉ｺ縺ｫ縺励∪縺吶・,
+        "蠢・ｦ√↑蝣ｴ蜷医・ WF菴懈・繝・Φ繝励Ξ繝ｼ繝育判髱｢縺九ｉ蠕ｩ蜈・〒縺阪∪縺吶・,
       ],
-      confirmLabel: "アーカイブする",
-      cancelLabel: "キャンセル",
+      confirmLabel: "繧｢繝ｼ繧ｫ繧､繝悶☆繧・,
+      cancelLabel: "繧ｭ繝｣繝ｳ繧ｻ繝ｫ",
     });
     if (!confirmed) return;
     try {
@@ -1522,15 +1880,15 @@
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        const message = toFriendlyMessage(data.detail) || "アーカイブに失敗しました。";
+        const message = toFriendlyMessage(data.detail) || "繧｢繝ｼ繧ｫ繧､繝悶↓螟ｱ謨励＠縺ｾ縺励◆縲・;
         showError(message);
         showToast(message, "error");
         return;
       }
-      showToast("ワークフローをアーカイブしました。", "success");
+      showToast("繝ｯ繝ｼ繧ｯ繝輔Ο繝ｼ繧偵い繝ｼ繧ｫ繧､繝悶＠縺ｾ縺励◆縲・, "success");
       window.location.href = "/";
     } catch {
-      const message = "アーカイブに失敗しました。";
+      const message = "繧｢繝ｼ繧ｫ繧､繝悶↓螟ｱ謨励＠縺ｾ縺励◆縲・;
       showError(message);
       showToast(message, "error");
     }
@@ -1555,7 +1913,7 @@
       const titleEl = document.createElement("input");
       titleEl.type = "text";
       titleEl.dataset.templateStepTitle = "1";
-      titleEl.value = String(row.title || "").trim() || defaultTitleForStepAction(row.action, `手順${index + 1}`);
+      titleEl.value = String(row.title || "").trim() || defaultTitleForStepAction(row.action, `謇矩・{index + 1}`);
       const actionEl = document.createElement("select");
       actionEl.dataset.templateStepAction = "1";
       actionEl.innerHTML = getTemplateStepActionOptionsHtml(row.action);
@@ -1578,7 +1936,7 @@
     const versions = Array.isArray(workflowPage?.step_versions) ? workflowPage.step_versions : [];
     const currentRow = versions.find((row) => Number.parseInt(String(row?.version || 0), 10) === safeVersion);
     const updatedAt = String(currentRow?.updated_at || "").trim();
-    labelEl.textContent = updatedAt ? `手順版 v${safeVersion} (${updatedAt})` : `手順版 v${safeVersion}`;
+    labelEl.textContent = updatedAt ? `謇矩・沿 v${safeVersion} (${updatedAt})` : `謇矩・沿 v${safeVersion}`;
   }
 
   function applyWorkflowPageStepLayout(stepRowsInput = null) {
@@ -1676,12 +2034,12 @@
 
   function showWorkflowPageStepEditorModal(initialSteps = []) {
     return new Promise((resolve) => {
-      const { overlay, modal, panel } = createModalShell("手順編集");
+      const { overlay, modal, panel } = createModalShell("謇矩・ｷｨ髮・);
       const body = document.createElement("div");
       body.className = "dialog-body";
       const note = document.createElement("p");
       note.className = "muted";
-      note.textContent = "必須手順（preflight / mf_reconcile）は削除・変更できません。";
+      note.textContent = "蠢・域焔鬆・ｼ・reflight / mf_reconcile・峨・蜑企勁繝ｻ螟画峩縺ｧ縺阪∪縺帙ｓ縲・;
       body.appendChild(note);
 
       const listEl = document.createElement("div");
@@ -1693,7 +2051,7 @@
       const addButton = document.createElement("button");
       addButton.type = "button";
       addButton.className = "secondary";
-      addButton.textContent = "+ 手順を追加";
+      addButton.textContent = "+ 謇矩・ｒ霑ｽ蜉";
       addWrap.appendChild(addButton);
       body.appendChild(addWrap);
       panel.appendChild(body);
@@ -1703,11 +2061,11 @@
       const cancelButton = document.createElement("button");
       cancelButton.type = "button";
       cancelButton.className = "secondary";
-      cancelButton.textContent = "キャンセル";
+      cancelButton.textContent = "繧ｭ繝｣繝ｳ繧ｻ繝ｫ";
       const saveButton = document.createElement("button");
       saveButton.type = "button";
       saveButton.className = "primary";
-      saveButton.textContent = "保存";
+      saveButton.textContent = "菫晏ｭ・;
       actionBar.appendChild(cancelButton);
       actionBar.appendChild(saveButton);
       panel.appendChild(actionBar);
@@ -1736,12 +2094,12 @@
 
           const indexEl = document.createElement("span");
           indexEl.className = "muted";
-          indexEl.textContent = `手順${index + 1}`;
+          indexEl.textContent = `謇矩・{index + 1}`;
 
           const titleEl = document.createElement("input");
           titleEl.type = "text";
           titleEl.required = true;
-          titleEl.value = String(row.title || "").trim() || defaultTitleForStepAction(row.action, `手順${index + 1}`);
+          titleEl.value = String(row.title || "").trim() || defaultTitleForStepAction(row.action, `謇矩・{index + 1}`);
           titleEl.addEventListener("input", () => {
             state[index].title = String(titleEl.value || "").trim() || defaultTitleForStepAction(state[index].action);
           });
@@ -1750,13 +2108,13 @@
           actionEl.innerHTML = getTemplateStepActionOptionsHtml(row.action);
           const requiredAction = isRequiredTemplateStepAction(row.action);
           actionEl.disabled = requiredAction;
-          actionEl.title = requiredAction ? "必須手順は変更できません。" : "";
+          actionEl.title = requiredAction ? "蠢・域焔鬆・・螟画峩縺ｧ縺阪∪縺帙ｓ縲・ : "";
           actionEl.addEventListener("change", () => {
             const nextAction = normalizeTemplateStepAction(actionEl.value);
             const duplicated = state.some((step, stepIndex) => stepIndex !== index && step.action === nextAction);
             if (duplicated) {
               actionEl.value = state[index].action;
-              showToast("同じ処理は1回だけ追加できます。", "error");
+              showToast("蜷後§蜃ｦ逅・・1蝗槭□縺題ｿｽ蜉縺ｧ縺阪∪縺吶・, "error");
               return;
             }
             state[index].action = nextAction;
@@ -1772,7 +2130,7 @@
           timerEl.max = String(TEMPLATE_STEP_TIMER_MAX_MINUTES);
           timerEl.step = "1";
           timerEl.value = String(normalizeTemplateStepTimerMinutes(row.timer_minutes));
-          timerEl.title = "タイマー（分）";
+          timerEl.title = "繧ｿ繧､繝槭・・亥・・・;
           timerEl.addEventListener("change", () => {
             state[index].timer_minutes = normalizeTemplateStepTimerMinutes(timerEl.value);
             timerEl.value = String(state[index].timer_minutes);
@@ -1784,7 +2142,7 @@
           removeButton.textContent = "-";
           removeButton.hidden = requiredAction || optionalCount <= 0;
           removeButton.disabled = requiredAction || optionalCount <= 0;
-          removeButton.title = requiredAction ? "必須手順は削除できません。" : "";
+          removeButton.title = requiredAction ? "蠢・域焔鬆・・蜑企勁縺ｧ縺阪∪縺帙ｓ縲・ : "";
           removeButton.addEventListener("click", () => {
             if (requiredAction) return;
             state.splice(index, 1);
@@ -1812,7 +2170,9 @@
           id: generateTemplateStepId(),
           title: defaultTitleForStepAction(action),
           action,
-          timer_minutes: TEMPLATE_STEP_TIMER_DEFAULT_MINUTES,
+          auto_run: false,
+          timer_minutes: null,
+          execution_log: [],
         });
         renderState(state.length - 1);
       });
@@ -1827,7 +2187,7 @@
     });
   }
 
-  async function saveWorkflowPageSteps(nextSteps, { successMessage = "手順を更新しました。" } = {}) {
+  async function saveWorkflowPageSteps(nextSteps, { successMessage = "謇矩・ｒ譖ｴ譁ｰ縺励∪縺励◆縲・ } = {}) {
     const workflowPageId = String(workflowPage?.id || "").trim();
     if (!workflowPageId) return false;
     const payload = {
@@ -1846,7 +2206,7 @@
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        const message = toFriendlyMessage(data.detail) || "手順の更新に失敗しました。";
+        const message = toFriendlyMessage(data.detail) || "謇矩・・譖ｴ譁ｰ縺ｫ螟ｱ謨励＠縺ｾ縺励◆縲・;
         showError(message);
         showToast(message, "error");
         return false;
@@ -1858,7 +2218,7 @@
       showToast(successMessage, "success");
       return true;
     } catch {
-      const message = "手順の更新に失敗しました。";
+      const message = "謇矩・・譖ｴ譁ｰ縺ｫ螟ｱ謨励＠縺ｾ縺励◆縲・;
       showError(message);
       showToast(message, "error");
       return false;
@@ -1879,11 +2239,11 @@
       includeTimer: true,
     });
     if (JSON.stringify(currentSteps) === JSON.stringify(normalizedNext)) {
-      showToast("変更はありません。", "info");
+      showToast("螟画峩縺ｯ縺ゅｊ縺ｾ縺帙ｓ縲・, "info");
       return;
     }
     const saved = await saveWorkflowPageSteps(normalizedNext, {
-      successMessage: "手順を更新しました。",
+      successMessage: "謇矩・ｒ譖ｴ譁ｰ縺励∪縺励◆縲・,
     });
     if (saved) {
       refreshSteps({ force: true });
@@ -1895,7 +2255,7 @@
     if (!workflowPageId) return;
     const versions = Array.isArray(workflowPage?.step_versions) ? workflowPage.step_versions : [];
     if (versions.length < 2) {
-      showToast("戻せる前版がありません。", "info");
+      showToast("謌ｻ縺帙ｋ蜑咲沿縺後≠繧翫∪縺帙ｓ縲・, "info");
       return;
     }
     const currentVersion = Number.parseInt(String(workflowPage?.step_version || 1), 10) || 1;
@@ -1912,7 +2272,7 @@
       targetRow = versions.length >= 2 ? versions[versions.length - 2] : null;
     }
     if (!targetRow) {
-      showToast("戻せる前版がありません。", "info");
+      showToast("謌ｻ縺帙ｋ蜑咲沿縺後≠繧翫∪縺帙ｓ縲・, "info");
       return;
     }
     const targetVersion = Number.parseInt(String(targetRow.version || 0), 10) || 1;
@@ -1921,18 +2281,18 @@
       includeTimer: true,
     });
     const confirmed = await showConfirmModal({
-      title: "手順を前版に戻す",
+      title: "謇矩・ｒ蜑咲沿縺ｫ謌ｻ縺・,
       lines: [
-        `現在版: v${currentVersion}`,
-        `戻し先: v${targetVersion}`,
-        ...buildWorkflowStepPreviewLines(targetSteps).map((line) => `手順: ${line}`),
+        `迴ｾ蝨ｨ迚・ v${currentVersion}`,
+        `謌ｻ縺怜・: v${targetVersion}`,
+        ...buildWorkflowStepPreviewLines(targetSteps).map((line) => `謇矩・ ${line}`),
       ],
-      confirmLabel: "前版を反映",
-      cancelLabel: "キャンセル",
+      confirmLabel: "蜑咲沿繧貞渚譏",
+      cancelLabel: "繧ｭ繝｣繝ｳ繧ｻ繝ｫ",
     });
     if (!confirmed) return;
     const saved = await saveWorkflowPageSteps(targetSteps, {
-      successMessage: `手順を前版(v${targetVersion})の内容で復元しました。`,
+      successMessage: `謇矩・ｒ蜑咲沿(v${targetVersion})縺ｮ蜀・ｮｹ縺ｧ蠕ｩ蜈・＠縺ｾ縺励◆縲Ａ,
     });
     if (saved) {
       refreshSteps({ force: true });
@@ -1942,22 +2302,23 @@
   async function saveWorkflowTemplate() {
     if (!form || templateSaveState.inFlight) return;
     if (!validateTemplateSourceUrls()) return;
+    if (!validateTemplateStepRows()) return;
     const payload = buildTemplatePayload();
     if (!payload) return;
     if (!payload.name) {
-      const message = "ワークフロー名を入力してください。";
+      const message = "繝ｯ繝ｼ繧ｯ繝輔Ο繝ｼ蜷阪ｒ蜈･蜉帙＠縺ｦ縺上□縺輔＞縲・;
       showError(message);
       showToast(message, "error");
       return;
     }
     if (!String(payload.template_id || "").trim()) {
-      const message = "新規テンプレート作成は無効です。既存テンプレートを選択してください。";
+      const message = "譁ｰ隕上ユ繝ｳ繝励Ξ繝ｼ繝井ｽ懈・縺ｯ辟｡蜉ｹ縺ｧ縺吶よ里蟄倥ユ繝ｳ繝励Ξ繝ｼ繝医ｒ驕ｸ謚槭＠縺ｦ縺上□縺輔＞縲・;
       showError(message);
       showToast(message, "error");
       return;
     }
     if (!String(payload.base_updated_at || "").trim()) {
-      const message = "テンプレート更新情報が不足しています。テンプレートを再読み込みしてください。";
+      const message = "繝・Φ繝励Ξ繝ｼ繝域峩譁ｰ諠・ｱ縺御ｸ崎ｶｳ縺励※縺・∪縺吶ゅユ繝ｳ繝励Ξ繝ｼ繝医ｒ蜀崎ｪｭ縺ｿ霎ｼ縺ｿ縺励※縺上□縺輔＞縲・;
       showError(message);
       showToast(message, "error");
       return;
@@ -1969,12 +2330,12 @@
     const templateModeInput = form.querySelector("[name=template_mode]");
     const templateUpdatedAtInput = form.querySelector("[name=template_updated_at]");
     const originalButtonLabel =
-      config.saveLabel || (saveButton ? String(saveButton.textContent || "").trim() : "作成テンプレートを更新");
+      config.saveLabel || (saveButton ? String(saveButton.textContent || "").trim() : "菴懈・繝・Φ繝励Ξ繝ｼ繝医ｒ譖ｴ譁ｰ");
     templateSaveState.inFlight = true;
     if (saveButton) {
       saveButton.disabled = true;
       saveButton.dataset.busy = "1";
-      saveButton.textContent = "保存中...";
+      saveButton.textContent = "菫晏ｭ倅ｸｭ...";
     }
     clearError();
 
@@ -1986,7 +2347,7 @@
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        const message = toFriendlyMessage(data.detail) || "テンプレートの保存に失敗しました。";
+        const message = toFriendlyMessage(data.detail) || "繝・Φ繝励Ξ繝ｼ繝医・菫晏ｭ倥↓螟ｱ謨励＠縺ｾ縺励◆縲・;
         showError(message);
         showToast(message, "error");
         return;
@@ -2013,7 +2374,7 @@
       }
       showError("");
     } catch {
-      const message = "テンプレートの保存に失敗しました。";
+      const message = "繝・Φ繝励Ξ繝ｼ繝医・菫晏ｭ倥↓螟ｱ謨励＠縺ｾ縺励◆縲・;
       showError(message);
       showToast(message, "error");
     } finally {
@@ -2671,21 +3032,21 @@
     if (!el) return;
     el.classList.remove("done", "running", "pending");
     if (id === "mf_reconcile" && state !== "running") {
-      el.textContent = "未実行";
+      el.textContent = "譛ｪ螳溯｡・;
       el.classList.add("pending");
       return;
     }
     if (state === "done") {
-      el.textContent = "完了";
+      el.textContent = "螳御ｺ・;
       el.classList.add("done");
       return;
     }
     if (state === "running") {
-      el.textContent = "実行中";
+      el.textContent = "螳溯｡御ｸｭ";
       el.classList.add("running");
       return;
     }
-    el.textContent = "未実行";
+    el.textContent = "譛ｪ螳溯｡・;
     el.classList.add("pending");
   }
 
@@ -2694,16 +3055,16 @@
     if (!el) return;
     el.classList.remove("done", "running", "pending");
     if (state === "done") {
-      el.textContent = "完了";
+      el.textContent = "螳御ｺ・;
       el.classList.add("done");
       return;
     }
     if (state === "running") {
-      el.textContent = "実行中";
+      el.textContent = "螳溯｡御ｸｭ";
       el.classList.add("running");
       return;
     }
-    el.textContent = "未実行";
+    el.textContent = "譛ｪ螳溯｡・;
     el.classList.add("pending");
   }
 
@@ -2941,131 +3302,131 @@
     const nextStepReasonCode = String(data?.next_step_reason || "").trim();
     const nextStepGuidance = {
       preflight: {
-        message: "準備フローを確認してください。",
-        reason: "対象ワークフローの実行条件を確認してから次の工程へ進めてください。",
-        linkLabel: "準備工程へ",
+        message: "貅門ｙ繝輔Ο繝ｼ繧堤｢ｺ隱阪＠縺ｦ縺上□縺輔＞縲・,
+        reason: "蟇ｾ雎｡繝ｯ繝ｼ繧ｯ繝輔Ο繝ｼ縺ｮ螳溯｡梧擅莉ｶ繧堤｢ｺ隱阪＠縺ｦ縺九ｉ谺｡縺ｮ蟾･遞九∈騾ｲ繧√※縺上□縺輔＞縲・,
+        linkLabel: "貅門ｙ蟾･遞九∈",
       },
       amazon_or_rakuten_download: {
-        message: "まずは Amazon か楽天のいずれかの領収書取得を先に実行してください。",
-        reason: "少なくとも1社分の領収書取得が必要です。未取得があると次の処理に進めません。",
-        linkLabel: "Amazon／楽天 取得へ",
+        message: "縺ｾ縺壹・ Amazon 縺区･ｽ螟ｩ縺ｮ縺・★繧後°縺ｮ鬆伜庶譖ｸ蜿門ｾ励ｒ蜈医↓螳溯｡後＠縺ｦ縺上□縺輔＞縲・,
+        reason: "蟆代↑縺上→繧・遉ｾ蛻・・鬆伜庶譖ｸ蜿門ｾ励′蠢・ｦ√〒縺吶よ悴蜿門ｾ励′縺ゅｋ縺ｨ谺｡縺ｮ蜃ｦ逅・↓騾ｲ繧√∪縺帙ｓ縲・,
+        linkLabel: "Amazon・乗･ｽ螟ｩ 蜿門ｾ励∈",
       },
       amazon_download: {
-        message: "Amazon の領収書を取得してください。",
-        reason: "Amazon 側の対象月データを取得して、次の除外判断・印刷へ進みます。",
-        linkLabel: "Amazon 取得へ",
+        message: "Amazon 縺ｮ鬆伜庶譖ｸ繧貞叙蠕励＠縺ｦ縺上□縺輔＞縲・,
+        reason: "Amazon 蛛ｴ縺ｮ蟇ｾ雎｡譛医ョ繝ｼ繧ｿ繧貞叙蠕励＠縺ｦ縲∵ｬ｡縺ｮ髯､螟門愛譁ｭ繝ｻ蜊ｰ蛻ｷ縺ｸ騾ｲ縺ｿ縺ｾ縺吶・,
+        linkLabel: "Amazon 蜿門ｾ励∈",
       },
       amazon_decide_print: {
-        message: "Amazon の除外設定・印刷対象を確認してください。",
-        reason: "除外対象を確定して印刷完了まで進めると状態が保存されます。",
-        linkLabel: "Amazon 除外・印刷へ",
+        message: "Amazon 縺ｮ髯､螟冶ｨｭ螳壹・蜊ｰ蛻ｷ蟇ｾ雎｡繧堤｢ｺ隱阪＠縺ｦ縺上□縺輔＞縲・,
+        reason: "髯､螟門ｯｾ雎｡繧堤｢ｺ螳壹＠縺ｦ蜊ｰ蛻ｷ螳御ｺ・∪縺ｧ騾ｲ繧√ｋ縺ｨ迥ｶ諷九′菫晏ｭ倥＆繧後∪縺吶・,
+        linkLabel: "Amazon 髯､螟悶・蜊ｰ蛻ｷ縺ｸ",
       },
       amazon_print: {
-        message: "Amazonの印刷完了待ちステータスを確認してください。",
-        reason: "Amazonの印刷処理が完了し、必要に応じて確認・反映を行ってください。",
-        linkLabel: "Amazonの印刷ステータスへ",
+        message: "Amazon縺ｮ蜊ｰ蛻ｷ螳御ｺ・ｾ・■繧ｹ繝・・繧ｿ繧ｹ繧堤｢ｺ隱阪＠縺ｦ縺上□縺輔＞縲・,
+        reason: "Amazon縺ｮ蜊ｰ蛻ｷ蜃ｦ逅・′螳御ｺ・＠縲∝ｿ・ｦ√↓蠢懊§縺ｦ遒ｺ隱阪・蜿肴丐繧定｡後▲縺ｦ縺上□縺輔＞縲・,
+        linkLabel: "Amazon縺ｮ蜊ｰ蛻ｷ繧ｹ繝・・繧ｿ繧ｹ縺ｸ",
       },
       rakuten_download: {
-        message: "楽天の領収書を取得してください。",
-        reason: "楽天側の対象月データを取得して、次の除外判断・印刷へ進みます。",
-        linkLabel: "楽天 取得へ",
+        message: "讌ｽ螟ｩ縺ｮ鬆伜庶譖ｸ繧貞叙蠕励＠縺ｦ縺上□縺輔＞縲・,
+        reason: "讌ｽ螟ｩ蛛ｴ縺ｮ蟇ｾ雎｡譛医ョ繝ｼ繧ｿ繧貞叙蠕励＠縺ｦ縲∵ｬ｡縺ｮ髯､螟門愛譁ｭ繝ｻ蜊ｰ蛻ｷ縺ｸ騾ｲ縺ｿ縺ｾ縺吶・,
+        linkLabel: "讌ｽ螟ｩ 蜿門ｾ励∈",
       },
       rakuten_print: {
-        message: "楽天の印刷完了待ちステータスを確認してください。",
-        reason: "楽天の印刷処理が完了し、必要に応じて確認・反映を行ってください。",
-        linkLabel: "楽天の印刷ステータスへ",
+        message: "讌ｽ螟ｩ縺ｮ蜊ｰ蛻ｷ螳御ｺ・ｾ・■繧ｹ繝・・繧ｿ繧ｹ繧堤｢ｺ隱阪＠縺ｦ縺上□縺輔＞縲・,
+        reason: "讌ｽ螟ｩ縺ｮ蜊ｰ蛻ｷ蜃ｦ逅・′螳御ｺ・＠縲∝ｿ・ｦ√↓蠢懊§縺ｦ遒ｺ隱阪・蜿肴丐繧定｡後▲縺ｦ縺上□縺輔＞縲・,
+        linkLabel: "讌ｽ螟ｩ縺ｮ蜊ｰ蛻ｷ繧ｹ繝・・繧ｿ繧ｹ縺ｸ",
       },
       rakuten_decide_print: {
-        message: "楽天の除外設定・印刷対象を確認してください。",
-        reason: "除外対象を確定して印刷完了まで進めると状態が保存されます。",
-        linkLabel: "楽天 除外・印刷へ",
+        message: "讌ｽ螟ｩ縺ｮ髯､螟冶ｨｭ螳壹・蜊ｰ蛻ｷ蟇ｾ雎｡繧堤｢ｺ隱阪＠縺ｦ縺上□縺輔＞縲・,
+        reason: "髯､螟門ｯｾ雎｡繧堤｢ｺ螳壹＠縺ｦ蜊ｰ蛻ｷ螳御ｺ・∪縺ｧ騾ｲ繧√ｋ縺ｨ迥ｶ諷九′菫晏ｭ倥＆繧後∪縺吶・,
+        linkLabel: "讌ｽ螟ｩ 髯､螟悶・蜊ｰ蛻ｷ縺ｸ",
       },
       provider_ingest: {
-        message: "外部CSVの取り込みを実行してください。",
-        reason: "Amazon/楽天で取得しきれない分を、共通フォルダ経由で取り込むフェーズです。",
-        linkLabel: "共通フォルダ取込へ",
+        message: "螟夜ΚCSV縺ｮ蜿悶ｊ霎ｼ縺ｿ繧貞ｮ溯｡後＠縺ｦ縺上□縺輔＞縲・,
+        reason: "Amazon/讌ｽ螟ｩ縺ｧ蜿門ｾ励＠縺阪ｌ縺ｪ縺・・繧偵∝・騾壹ヵ繧ｩ繝ｫ繝邨檎罰縺ｧ蜿悶ｊ霎ｼ繧繝輔ぉ繝ｼ繧ｺ縺ｧ縺吶・,
+        linkLabel: "蜈ｱ騾壹ヵ繧ｩ繝ｫ繝蜿冶ｾｼ縺ｸ",
       },
       mf_reconcile: {
-        message: "MF連携の突合せ実行へ進めてください。",
-        reason: "取り込み済みデータをMFの下書き作成へ反映します。",
-        linkLabel: "MF 突合作業へ",
+        message: "MF騾｣謳ｺ縺ｮ遯∝粋縺帛ｮ溯｡後∈騾ｲ繧√※縺上□縺輔＞縲・,
+        reason: "蜿悶ｊ霎ｼ縺ｿ貂医∩繝・・繧ｿ繧樽F縺ｮ荳区嶌縺堺ｽ懈・縺ｸ蜿肴丐縺励∪縺吶・,
+        linkLabel: "MF 遯∝粋菴懈･ｭ縺ｸ",
       },
       preflight_mf: {
-        message: "MF再取得のみのステップを完了してください。",
-        reason: "MF再取得後、ダッシュボードの最新状態を確認して次の作業に進んでください。",
-        linkLabel: "MF再取得を確認",
+        message: "MF蜀榊叙蠕励・縺ｿ縺ｮ繧ｹ繝・ャ繝励ｒ螳御ｺ・＠縺ｦ縺上□縺輔＞縲・,
+        reason: "MF蜀榊叙蠕怜ｾ後√ム繝・す繝･繝懊・繝峨・譛譁ｰ迥ｶ諷九ｒ遒ｺ隱阪＠縺ｦ谺｡縺ｮ菴懈･ｭ縺ｫ騾ｲ繧薙〒縺上□縺輔＞縲・,
+        linkLabel: "MF蜀榊叙蠕励ｒ遒ｺ隱・,
       },
       mf_bulk_upload_task: {
-        message: "Step 4: MF一括アップロード手順があります。",
-        reason: "MF向けの手入力ファイルが用意できている場合、取り込みを実行してください。",
-        linkLabel: "MF一括アップロードを開く",
+        message: "Step 4: MF荳諡ｬ繧｢繝・・繝ｭ繝ｼ繝画焔鬆・′縺ゅｊ縺ｾ縺吶・,
+        reason: "MF蜷代￠縺ｮ謇句・蜉帙ヵ繧｡繧､繝ｫ縺檎畑諢上〒縺阪※縺・ｋ蝣ｴ蜷医∝叙繧願ｾｼ縺ｿ繧貞ｮ溯｡後＠縺ｦ縺上□縺輔＞縲・,
+        linkLabel: "MF荳諡ｬ繧｢繝・・繝ｭ繝ｼ繝峨ｒ髢九￥",
       },
       import_provider_receipts: {
-        message: "Provider取り込みステップを実行してください。",
-        reason: "外部ベンダーの未処理CSVをMF突合前に取り込んで反映してください。",
-        linkLabel: "Provider取り込みへ進む",
+        message: "Provider蜿悶ｊ霎ｼ縺ｿ繧ｹ繝・ャ繝励ｒ螳溯｡後＠縺ｦ縺上□縺輔＞縲・,
+        reason: "螟夜Κ繝吶Φ繝繝ｼ縺ｮ譛ｪ蜃ｦ逅・SV繧樽F遯∝粋蜑阪↓蜿悶ｊ霎ｼ繧薙〒蜿肴丐縺励※縺上□縺輔＞縲・,
+        linkLabel: "Provider蜿悶ｊ霎ｼ縺ｿ縺ｸ騾ｲ繧",
       },
       mf_bulk_upload: {
-        message: "MF一括アップロードを実行してください。",
-        reason: "MFのインポート画面を開いて、対象月の下書き対象を確認してください。",
-        linkLabel: "MF一括アップロードを開く",
+        message: "MF荳諡ｬ繧｢繝・・繝ｭ繝ｼ繝峨ｒ螳溯｡後＠縺ｦ縺上□縺輔＞縲・,
+        reason: "MF縺ｮ繧､繝ｳ繝昴・繝育判髱｢繧帝幕縺・※縲∝ｯｾ雎｡譛医・荳区嶌縺榊ｯｾ雎｡繧堤｢ｺ隱阪＠縺ｦ縺上□縺輔＞縲・,
+        linkLabel: "MF荳諡ｬ繧｢繝・・繝ｭ繝ｼ繝峨ｒ髢九￥",
       },
       mf_csv_import: {
-        message: "MF CSVインポートを実行してください。",
-        reason: "CSVをMF形式へ揃えたうえで取り込みを実行してください。",
-        linkLabel: "MF CSVインポートを開く",
+        message: "MF CSV繧､繝ｳ繝昴・繝医ｒ螳溯｡後＠縺ｦ縺上□縺輔＞縲・,
+        reason: "CSV繧樽F蠖｢蠑上∈謠・∴縺溘≧縺医〒蜿悶ｊ霎ｼ縺ｿ繧貞ｮ溯｡後＠縺ｦ縺上□縺輔＞縲・,
+        linkLabel: "MF CSV繧､繝ｳ繝昴・繝医ｒ髢九￥",
       },
       done: {
-        message: "すべて完了しました。月次アーカイブを実行できます。",
-        reason: "最後に月次クローズやアーカイブを実行して、次月運用に備えます。",
-        linkLabel: "月次クローズへ",
+        message: "縺吶∋縺ｦ螳御ｺ・＠縺ｾ縺励◆縲よ怦谺｡繧｢繝ｼ繧ｫ繧､繝悶ｒ螳溯｡後〒縺阪∪縺吶・,
+        reason: "譛蠕後↓譛域ｬ｡繧ｯ繝ｭ繝ｼ繧ｺ繧・い繝ｼ繧ｫ繧､繝悶ｒ螳溯｡後＠縺ｦ縲∵ｬ｡譛磯°逕ｨ縺ｫ蛯吶∴縺ｾ縺吶・,
+        linkLabel: "譛域ｬ｡繧ｯ繝ｭ繝ｼ繧ｺ縺ｸ",
       },
       fallback: {
-        message: "処理の取得に時間がかかっています。更新を待ってください。",
-        reason: "バックエンドから最新状態を反映するまで数秒待って再取得してください。",
+        message: "蜃ｦ逅・・蜿門ｾ励↓譎る俣縺後°縺九▲縺ｦ縺・∪縺吶よ峩譁ｰ繧貞ｾ・▲縺ｦ縺上□縺輔＞縲・,
+        reason: "繝舌ャ繧ｯ繧ｨ繝ｳ繝峨°繧画怙譁ｰ迥ｶ諷九ｒ蜿肴丐縺吶ｋ縺ｾ縺ｧ謨ｰ遘貞ｾ・▲縺ｦ蜀榊叙蠕励＠縺ｦ縺上□縺輔＞縲・,
       },
     };
 
     const runningModeGuidance = {
       preflight: {
-        message: "準備処理を実行中です。",
-        reason: "処理が完了するまで待機してください。完了後に次の操作が自動で更新されます。",
-        linkLabel: "準備工程へ",
+        message: "貅門ｙ蜃ｦ逅・ｒ螳溯｡御ｸｭ縺ｧ縺吶・,
+        reason: "蜃ｦ逅・′螳御ｺ・☆繧九∪縺ｧ蠕・ｩ溘＠縺ｦ縺上□縺輔＞縲ょｮ御ｺ・ｾ後↓谺｡縺ｮ謫堺ｽ懊′閾ｪ蜍輔〒譖ｴ譁ｰ縺輔ｌ縺ｾ縺吶・,
+        linkLabel: "貅門ｙ蟾･遞九∈",
       },
       preflight_mf: {
-        message: "MF再取得を実行中です。",
-        reason: "MF再取得処理を完了するまで、進行完了後の状態更新を待ってください。",
-        linkLabel: "準備工程へ",
+        message: "MF蜀榊叙蠕励ｒ螳溯｡御ｸｭ縺ｧ縺吶・,
+        reason: "MF蜀榊叙蠕怜・逅・ｒ螳御ｺ・☆繧九∪縺ｧ縲・ｲ陦悟ｮ御ｺ・ｾ後・迥ｶ諷区峩譁ｰ繧貞ｾ・▲縺ｦ縺上□縺輔＞縲・,
+        linkLabel: "貅門ｙ蟾･遞九∈",
       },
       amazon_download: {
-        message: "Amazon 領収書取得を実行中です。",
-        reason: "取得が完了すると次の工程へ進める状態になります。完了までお待ちください。",
-        linkLabel: "Amazon 取得進行状況へ",
+        message: "Amazon 鬆伜庶譖ｸ蜿門ｾ励ｒ螳溯｡御ｸｭ縺ｧ縺吶・,
+        reason: "蜿門ｾ励′螳御ｺ・☆繧九→谺｡縺ｮ蟾･遞九∈騾ｲ繧√ｋ迥ｶ諷九↓縺ｪ繧翫∪縺吶ょｮ御ｺ・∪縺ｧ縺雁ｾ・■縺上□縺輔＞縲・,
+        linkLabel: "Amazon 蜿門ｾ鈴ｲ陦檎憾豕√∈",
       },
       amazon_print: {
-        message: "Amazon 印刷処理を実行中です。",
-        reason: "除外・印刷の進行中です。完了後に状態が反映され、次の案内へ進みます。",
-        linkLabel: "Amazon 印刷状況へ",
+        message: "Amazon 蜊ｰ蛻ｷ蜃ｦ逅・ｒ螳溯｡御ｸｭ縺ｧ縺吶・,
+        reason: "髯､螟悶・蜊ｰ蛻ｷ縺ｮ騾ｲ陦御ｸｭ縺ｧ縺吶ょｮ御ｺ・ｾ後↓迥ｶ諷九′蜿肴丐縺輔ｌ縲∵ｬ｡縺ｮ譯亥・縺ｸ騾ｲ縺ｿ縺ｾ縺吶・,
+        linkLabel: "Amazon 蜊ｰ蛻ｷ迥ｶ豕√∈",
       },
       rakuten_download: {
-        message: "楽天領収書取得を実行中です。",
-        reason: "取得が完了すると次の工程へ進める状態になります。完了までお待ちください。",
-        linkLabel: "楽天 取得進行状況へ",
+        message: "讌ｽ螟ｩ鬆伜庶譖ｸ蜿門ｾ励ｒ螳溯｡御ｸｭ縺ｧ縺吶・,
+        reason: "蜿門ｾ励′螳御ｺ・☆繧九→谺｡縺ｮ蟾･遞九∈騾ｲ繧√ｋ迥ｶ諷九↓縺ｪ繧翫∪縺吶ょｮ御ｺ・∪縺ｧ縺雁ｾ・■縺上□縺輔＞縲・,
+        linkLabel: "讌ｽ螟ｩ 蜿門ｾ鈴ｲ陦檎憾豕√∈",
       },
       rakuten_print: {
-        message: "楽天 印刷処理を実行中です。",
-        reason: "除外・印刷の進行中です。完了後に状態が反映され、次の案内へ進みます。",
-        linkLabel: "楽天 印刷状況へ",
+        message: "讌ｽ螟ｩ 蜊ｰ蛻ｷ蜃ｦ逅・ｒ螳溯｡御ｸｭ縺ｧ縺吶・,
+        reason: "髯､螟悶・蜊ｰ蛻ｷ縺ｮ騾ｲ陦御ｸｭ縺ｧ縺吶ょｮ御ｺ・ｾ後↓迥ｶ諷九′蜿肴丐縺輔ｌ縲∵ｬ｡縺ｮ譯亥・縺ｸ騾ｲ縺ｿ縺ｾ縺吶・,
+        linkLabel: "讌ｽ螟ｩ 蜊ｰ蛻ｷ迥ｶ豕√∈",
       },
       provider_ingest: {
-        message: "共通フォルダ取り込みを実行中です。",
-        reason: "取り込み処理完了後に突合せ可能かどうかを再評価します。",
-        linkLabel: "共通フォルダ取込へ",
+        message: "蜈ｱ騾壹ヵ繧ｩ繝ｫ繝蜿悶ｊ霎ｼ縺ｿ繧貞ｮ溯｡御ｸｭ縺ｧ縺吶・,
+        reason: "蜿悶ｊ霎ｼ縺ｿ蜃ｦ逅・ｮ御ｺ・ｾ後↓遯∝粋縺帛庄閭ｽ縺九←縺・°繧貞・隧穂ｾ｡縺励∪縺吶・,
+        linkLabel: "蜈ｱ騾壹ヵ繧ｩ繝ｫ繝蜿冶ｾｼ縺ｸ",
       },
       mf_reconcile: {
-        message: "MF突合せを実行中です。",
-        reason: "突合せ完了まで暫くお待ちください。完了後に下書きの作成状況が更新されます。",
-        linkLabel: "MF突合状況へ",
+        message: "MF遯∝粋縺帙ｒ螳溯｡御ｸｭ縺ｧ縺吶・,
+        reason: "遯∝粋縺帛ｮ御ｺ・∪縺ｧ證ｫ縺上♀蠕・■縺上□縺輔＞縲ょｮ御ｺ・ｾ後↓荳区嶌縺阪・菴懈・迥ｶ豕√′譖ｴ譁ｰ縺輔ｌ縺ｾ縺吶・,
+        linkLabel: "MF遯∝粋迥ｶ豕√∈",
       },
       import_provider_receipts: {
         message: "Provider receipt import is running.",
@@ -3118,50 +3479,50 @@
         });
       }
       return {
-        message: runningGuidance?.message || `${runningMode} を実行中です。`,
+        message: runningGuidance?.message || `${runningMode} 繧貞ｮ溯｡御ｸｭ縺ｧ縺吶Ａ,
         reason:
           runningGuidance?.reason ||
-          "別の処理が進行中です。完了するまで待機してください。",
+          "蛻･縺ｮ蜃ｦ逅・′騾ｲ陦御ｸｭ縺ｧ縺吶ょｮ御ｺ・☆繧九∪縺ｧ蠕・ｩ溘＠縺ｦ縺上□縺輔＞縲・,
         href: runningTargetHref,
-        linkLabel: runningGuidance?.linkLabel || (runningTargetHref === FALLBACK_WIZARD_HREF ? "手順を確認" : "進捗を確認"),
+        linkLabel: runningGuidance?.linkLabel || (runningTargetHref === FALLBACK_WIZARD_HREF ? "謇矩・ｒ遒ｺ隱・ : "騾ｲ謐励ｒ遒ｺ隱・),
       };
     }
 
     const reasonHint = {
       preflight_required: {
-        reason: "準備フローが未完了です。まず前提設定の完了が必要です。",
+        reason: "貅門ｙ繝輔Ο繝ｼ縺梧悴螳御ｺ・〒縺吶ゅ∪縺壼燕謠占ｨｭ螳壹・螳御ｺ・′蠢・ｦ√〒縺吶・,
       },
       source_download_required: {
-        message: "Amazon か楽天のどちらかの領収書取得を先に実行してください。",
-        reason: "少なくとも1社分の対象月データを取得してください。",
+        message: "Amazon 縺区･ｽ螟ｩ縺ｮ縺ｩ縺｡繧峨°縺ｮ鬆伜庶譖ｸ蜿門ｾ励ｒ蜈医↓螳溯｡後＠縺ｦ縺上□縺輔＞縲・,
+        reason: "蟆代↑縺上→繧・遉ｾ蛻・・蟇ｾ雎｡譛医ョ繝ｼ繧ｿ繧貞叙蠕励＠縺ｦ縺上□縺輔＞縲・,
       },
       amazon_download_required: {
-        message: "Amazon の領収書を取得してください。",
-        reason: "対象月分を取得すると次の除外・印刷工程へ進めます。",
+        message: "Amazon 縺ｮ鬆伜庶譖ｸ繧貞叙蠕励＠縺ｦ縺上□縺輔＞縲・,
+        reason: "蟇ｾ雎｡譛亥・繧貞叙蠕励☆繧九→谺｡縺ｮ髯､螟悶・蜊ｰ蛻ｷ蟾･遞九∈騾ｲ繧√∪縺吶・,
       },
       rakuten_download_required: {
-        message: "楽天の領収書を取得してください。",
-        reason: "対象月分を取得すると次の除外・印刷工程へ進めます。",
+        message: "讌ｽ螟ｩ縺ｮ鬆伜庶譖ｸ繧貞叙蠕励＠縺ｦ縺上□縺輔＞縲・,
+        reason: "蟇ｾ雎｡譛亥・繧貞叙蠕励☆繧九→谺｡縺ｮ髯､螟悶・蜊ｰ蛻ｷ蟾･遞九∈騾ｲ繧√∪縺吶・,
       },
       amazon_print_pending: {
-        message: "Amazon の除外設定・印刷対象を確認してください。",
-        reason: "除外対象の確定と印刷完了を行うと次工程へ進みます。",
+        message: "Amazon 縺ｮ髯､螟冶ｨｭ螳壹・蜊ｰ蛻ｷ蟇ｾ雎｡繧堤｢ｺ隱阪＠縺ｦ縺上□縺輔＞縲・,
+        reason: "髯､螟門ｯｾ雎｡縺ｮ遒ｺ螳壹→蜊ｰ蛻ｷ螳御ｺ・ｒ陦後≧縺ｨ谺｡蟾･遞九∈騾ｲ縺ｿ縺ｾ縺吶・,
       },
       rakuten_print_pending: {
-        message: "楽天の除外設定・印刷対象を確認してください。",
-        reason: "除外対象の確定と印刷完了を行うと次工程へ進みます。",
+        message: "讌ｽ螟ｩ縺ｮ髯､螟冶ｨｭ螳壹・蜊ｰ蛻ｷ蟇ｾ雎｡繧堤｢ｺ隱阪＠縺ｦ縺上□縺輔＞縲・,
+        reason: "髯､螟門ｯｾ雎｡縺ｮ遒ｺ螳壹→蜊ｰ蛻ｷ螳御ｺ・ｒ陦後≧縺ｨ谺｡蟾･遞九∈騾ｲ縺ｿ縺ｾ縺吶・,
       },
       provider_ingest_pending: {
-        message: "外部CSVの取り込みを実行してください。",
-        reason: "Amazon/楽天で取得しきれない分を共通フォルダから取り込んでください。",
+        message: "螟夜ΚCSV縺ｮ蜿悶ｊ霎ｼ縺ｿ繧貞ｮ溯｡後＠縺ｦ縺上□縺輔＞縲・,
+        reason: "Amazon/讌ｽ螟ｩ縺ｧ蜿門ｾ励＠縺阪ｌ縺ｪ縺・・繧貞・騾壹ヵ繧ｩ繝ｫ繝縺九ｉ蜿悶ｊ霎ｼ繧薙〒縺上□縺輔＞縲・,
       },
       mf_reconcile_ready: {
-        message: "MF連携の突合せ実行へ進めてください。",
-        reason: "取り込み済みデータをMFの下書き作成へ反映する準備が整いました。",
+        message: "MF騾｣謳ｺ縺ｮ遯∝粋縺帛ｮ溯｡後∈騾ｲ繧√※縺上□縺輔＞縲・,
+        reason: "蜿悶ｊ霎ｼ縺ｿ貂医∩繝・・繧ｿ繧樽F縺ｮ荳区嶌縺堺ｽ懈・縺ｸ蜿肴丐縺吶ｋ貅門ｙ縺梧紛縺・∪縺励◆縲・,
       },
       workflow_complete: {
-        message: "すべて完了しました。月次アーカイブを実行できます。",
-        reason: "最終確認として月次クローズやアーカイブで次月準備に進んでください。",
+        message: "縺吶∋縺ｦ螳御ｺ・＠縺ｾ縺励◆縲よ怦谺｡繧｢繝ｼ繧ｫ繧､繝悶ｒ螳溯｡後〒縺阪∪縺吶・,
+        reason: "譛邨ら｢ｺ隱阪→縺励※譛域ｬ｡繧ｯ繝ｭ繝ｼ繧ｺ繧・い繝ｼ繧ｫ繧､繝悶〒谺｡譛域ｺ門ｙ縺ｫ騾ｲ繧薙〒縺上□縺輔＞縲・,
       },
     };
 
@@ -3204,7 +3565,7 @@
       message: guidance.message,
       reason: guidance.reason,
       href,
-      linkLabel: guidance.linkLabel || (href === FALLBACK_WIZARD_HREF ? "手順を確認" : ""),
+      linkLabel: guidance.linkLabel || (href === FALLBACK_WIZARD_HREF ? "謇矩・ｒ遒ｺ隱・ : ""),
     };
   }
   function inferAllowedModes(data) {
@@ -3552,7 +3913,7 @@
       parts.push(`Failed: ${failed}`);
     }
 
-    const prefix = manualActionRequired || failed > 0 ? "⚠ Import completed with warnings: " : "Import completed: ";
+    const prefix = manualActionRequired || failed > 0 ? "笞 Import completed with warnings: " : "Import completed: ";
     const summary = parts.length > 0 ? parts.join(" / ") : "No rows were detected.";
     const reason = manualActionReason ? ` (reason: ${manualActionReason})` : "";
     return `${prefix}${summary}${reason}${updatedText}`;
@@ -3717,14 +4078,14 @@
       setTaskStatus("rakuten", taskStates.rakuten);
 
       const labels = {
-        preflight: "事前準備",
-        amazon_download: "Amazon取り込み",
-        amazon_decide_print: "Amazon印刷判定",
-        rakuten_download: "楽天取り込み",
-        rakuten_decide_print: "楽天印刷判定",
-        provider_ingest: "プロバイダ受領分の取り込み",
-        mf_bulk_upload_task: "MF一括アップロード",
-        mf_reconcile: "MF突合",
+        preflight: "莠句燕貅門ｙ",
+        amazon_download: "Amazon蜿悶ｊ霎ｼ縺ｿ",
+        amazon_decide_print: "Amazon蜊ｰ蛻ｷ蛻､螳・,
+        rakuten_download: "讌ｽ螟ｩ蜿悶ｊ霎ｼ縺ｿ",
+        rakuten_decide_print: "讌ｽ螟ｩ蜊ｰ蛻ｷ蛻､螳・,
+        provider_ingest: "繝励Ο繝舌う繝蜿鈴伜・縺ｮ蜿悶ｊ霎ｼ縺ｿ",
+        mf_bulk_upload_task: "MF荳諡ｬ繧｢繝・・繝ｭ繝ｼ繝・,
+        mf_reconcile: "MF遯∝粋",
       };
       if (!window.__stepState) {
         window.__stepState = stepStates;
@@ -3732,7 +4093,7 @@
         Object.keys(stepStates).forEach((key) => {
           if (key === "mf_reconcile") return;
           if (window.__stepState[key] && window.__stepState[key] !== "done" && stepStates[key] === "done") {
-            showToast(`${labels[key]}が完了しました。`, "success");
+            showToast(`${labels[key]}縺悟ｮ御ｺ・＠縺ｾ縺励◆縲Ａ, "success");
           }
         });
       }

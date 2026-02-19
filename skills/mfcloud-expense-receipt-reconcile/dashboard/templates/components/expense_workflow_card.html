@@ -11,7 +11,7 @@
             <span class="step-title">対象設定（実行依頼）</span>
             <span class="step-status pending">未実行</span>
           </div>
-          <div class="scheduler-panel" id="scheduler-panel">
+          <div class="scheduler-panel" id="scheduler-panel" data-scheduler-card-id="workflow-template-card" data-scheduler-action-key="preflight">
             <div class="scheduler-head">
               <h3>タイマー自動実行</h3>
             </div>
@@ -24,19 +24,7 @@
                 実行時刻
                 <input type="time" id="scheduler-run-time" value="09:00" />
               </label>
-              <label>
-                実行モード
-                <select id="scheduler-mode" data-bound-step-list="template-steps-list">
-                  <option value="preflight">手順0</option>
-                  <option value="preflight_mf">手順0（MFのみ）</option>
-                  <option value="amazon_download">手順1</option>
-                  <option value="rakuten_download">手順2</option>
-                  <option value="provider_ingest">手順3</option>
-                  <option value="mf_bulk_upload_task">手順4</option>
-                  <option value="mf_reconcile">手順5</option>
-                </select>
-              </label>
-              <label>
+<label>
                 再実行条件
                 <select id="scheduler-catch-up">
                   <option value="run_on_startup">次回起動時に実行</option>
@@ -52,16 +40,10 @@
                   <option value="monthly">毎月（同日）</option>
                 </select>
               </label>
+
+
               <label class="inline-check">
-                <input type="checkbox" id="scheduler-auth-handoff" />
-                ログイン画面を開いて実行
-              </label>
-              <label class="inline-check">
-                <input type="checkbox" id="scheduler-autostart" />
-                起動時自動実行
-              </label>
-              <label class="inline-check">
-                <input type="checkbox" id="scheduler-enabled" />
+                <input type="checkbox" id="scheduler-toggle" />
                 自動実行を有効化
               </label>
             </div>
@@ -80,6 +62,7 @@
           </div>
           <div class="template-steps-list-wrap">
             <div id="template-steps-list" class="template-steps" data-template-steps-list></div>
+            <p class="muted" data-template-step-mvp-note>タイマーはMVPでは自動実行されません（UI保存のみ）。</p>
             <div class="form-row">
               <button type="button" id="template-step-add" class="secondary">+ 手順を追加</button>
             </div>

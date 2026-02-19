@@ -206,3 +206,25 @@
 - **レビュー期限**: -
 - **ソース**: llm
 
+## [2026-02-18] Commit: c40c2d71d91e251828b539124a1d6d9d249085cf
+- **要約**: ダッシュボードにおけるワークフロー管理機能の改善（タイマー設定の追加、正規化処理の徹底、アーカイブ管理の分離）
+- **獲得した知識**: ワークフローのステップ情報（タイトル、アクション、タイマー等）は、API返却前に必ず _normalize_workflow_template_steps 等の正規化関数を通すこと。, サイドバーのリンク情報は HTML の data-sidebar-links 属性を介した JSON 形式での受け渡しを維持する。, ワークフローのステップタイマー設定（timer_minutes）を適切に処理・保存し、テストコードで検証すること。
+- **守るべきルール**: アクティブなワークフローとアーカイブ済みワークフローの表示・操作ロジックを同一の JS ファイルやテンプレートに混在させること。, API レスポンスにおいて、正規化されていない生の DB 行データをそのままフロントエンドに返却すること。
+- **未解決の文脈**: 正規化ロジック（_normalize_workflow_template_steps 等）が複数の API エンドポイントで重複定義されている可能性があるため、共通ユーティリティへの集約が必要。
+- **対象範囲**: skills/mfcloud-expense-receipt-reconcile/dashboard/routes/, skills/mfcloud-expense-receipt-reconcile/dashboard/static/js/, skills/mfcloud-expense-receipt-reconcile/dashboard/templates/
+- **確度**: 0.9
+- **重要度**: medium
+- **レビュー期限**: -
+- **ソース**: llm
+
+## [2026-02-19] Commit: b10b43fc01d02b897d795b7ef12cbdc73ae4aae2
+- **要約**: ドキュメントの鮮度確認（freshness check）をKIL依存のターゲットから、環境変数で指定されたディレクトリ配下のファイルベースのチェックに移行しました。
+- **獲得した知識**: ドキュメント監視対象のルートディレクトリは環境変数 `AX_DOC_FRESHNESS_ROOTS` で定義する。, ドキュメント鮮度確認API（/api/errors/document-freshness）は `limit` クエリパラメータによる取得件数の制限をサポートしなければならない。, フロントエンドの表示ロジックは、サマリー情報（total, displayed, hidden）に基づいて、表示制限がかかっている状態をユーザーに通知する設計にする。
+- **守るべきルール**: 監視対象のドキュメントパスをソースコード内にハードコードすること。, 大量のドキュメントが存在する環境で、リミットを設けずに全件のメタデータを一度に取得・表示しようとすること。
+- **未解決の文脈**: 既存のKILターゲットベースのロジックが他のコンポーネントに残存していないかの確認が必要。, 正規表現によるファイル抽出ロジックが複雑なディレクトリ構造において意図通り動作するかの検証。
+- **対象範囲**: skills/mfcloud-expense-receipt-reconcile/dashboard/routes/api_runs.py, skills/mfcloud-expense-receipt-reconcile/dashboard/static/js/errors.js, skills/mfcloud-expense-receipt-reconcile/dashboard/templates/errors.html
+- **確度**: 0.9
+- **重要度**: low
+- **レビュー期限**: -
+- **ソース**: llm
+

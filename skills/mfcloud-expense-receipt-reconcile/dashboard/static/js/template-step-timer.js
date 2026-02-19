@@ -153,9 +153,11 @@
         cache: "no-store",
       }).catch(() => null);
       const currentState = currentRes && currentRes.ok ? await currentRes.json().catch(() => ({})) : {};
+      const cardId = String(row.dataset.templateStepId || row.dataset.templateStepCardId || `workflow-step:${action}`).trim();
       const payload = {
         enabled: true,
-        mode: action,
+        card_id: cardId,
+        action_key: action,
         year: ym.year,
         month: ym.month,
         mfcloud_url: String(currentState?.mfcloud_url || resolvePrimarySourceUrl() || "").trim(),
@@ -164,9 +166,6 @@
         run_time: runTime,
         catch_up_policy: String(currentState?.catch_up_policy || "run_on_startup"),
         recurrence: "once",
-        auth_handoff: Boolean(currentState?.auth_handoff),
-        auto_receipt_name: currentState?.auto_receipt_name !== false,
-        mf_draft_create: currentState?.mf_draft_create !== false,
       };
 
       const res = await fetch(schedulerUrl, {

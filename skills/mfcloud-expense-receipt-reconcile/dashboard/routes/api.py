@@ -57,6 +57,10 @@ def create_api_router() -> APIRouter:
     WORKFLOW_TEMPLATE_MAX_STEP_TITLE_CHARS = 80
     WORKFLOW_TEMPLATE_MAX_STEP_ACTION_CHARS = 48
     WORKFLOW_TEMPLATE_MAX_STEP_TIMER_MINUTES = 7 * 24 * 60
+    WORKFLOW_TEMPLATE_MIN_STEP_TIMER_MINUTES = 1
+    WORKFLOW_TEMPLATE_DEFAULT_STEP_TIMER_MINUTES = 5
+    WORKFLOW_TEMPLATE_MAX_STEP_EXECUTION_LOG_ITEMS = 20
+    WORKFLOW_TEMPLATE_MAX_STEP_EXECUTION_LOG_MESSAGE_CHARS = 200
     WORKFLOW_TEMPLATE_STEP_DEFAULT_ACTION = "preflight"
     WORKFLOW_TEMPLATE_REQUIRED_STEP_ACTIONS = (
         "preflight",
@@ -2273,13 +2277,54 @@ def create_api_router() -> APIRouter:
                 break
         return normalized
 
-    def _normalize_workflow_template_step_timer_minutes(value: Any) -> int:
+    def _normalize_workflow_template_step_timer_minutes(value: Any) -> int | None:
+        if value is None:
+            return None
+        if isinstance(value, str) and not value.strip():
+            return None
         timer_minutes = core._safe_non_negative_int(value, default=0)
         if timer_minutes < 0:
             return 0
         if timer_minutes > WORKFLOW_TEMPLATE_MAX_STEP_TIMER_MINUTES:
             return WORKFLOW_TEMPLATE_MAX_STEP_TIMER_MINUTES
         return timer_minutes
+
+    def _normalize_workflow_template_step_order(value: Any, *, default: int) -> int:
+        order = core._safe_non_negative_int(value, default=default)
+        if order < 1:
+            return default
+        return order
+
+    def _normalize_workflow_template_step_auto_run(value: Any) -> bool:
+        if isinstance(value, bool):
+            return value
+        text = str(value or "").strip().lower()
+        if not text:
+            return False
+        return text in {"1", "true", "yes", "on"}
+
+    def _normalize_workflow_template_step_execution_log(value: Any) -> list[dict[str, str]]:
+        rows = value if isinstance(value, list) else []
+        normalized: list[dict[str, str]] = []
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            result_raw = str(row.get("result") or "").strip().lower()
+            result = "failed" if result_raw == "failed" else "success"
+            executed_at = str(row.get("executed_at") or row.get("executedAt") or "").strip()
+            message = str(row.get("message") or "").strip()[:WORKFLOW_TEMPLATE_MAX_STEP_EXECUTION_LOG_MESSAGE_CHARS]
+            if not executed_at and not message:
+                continue
+            normalized.append(
+                {
+                    "executed_at": executed_at,
+                    "result": result,
+                    "message": message,
+                }
+            )
+            if len(normalized) >= WORKFLOW_TEMPLATE_MAX_STEP_EXECUTION_LOG_ITEMS:
+                break
+        return normalized
 
     def _default_workflow_template_step_title(action: str) -> str:
         action_key = str(action or "").strip()
@@ -2309,12 +2354,15 @@ def create_api_router() -> APIRouter:
         normalized: list[dict[str, Any]] = []
         seen_ids: set[str] = set()
         used_actions: set[str] = set()
-        for row in raw_values:
+        for index, row in enumerate(raw_values):
             has_timer_field = False
             raw_id = ""
             raw_title = ""
             raw_action = ""
-            raw_timer_minutes: Any = 0
+            raw_timer_minutes: Any = None
+            raw_order: Any = index + 1
+            raw_auto_run: Any = False
+            raw_execution_log: Any = []
             if isinstance(row, dict):
                 has_timer_field = "timer_minutes" in row or "timer" in row
                 raw_id = str(row.get("id") or "").strip()
@@ -2327,6 +2375,15 @@ def create_api_router() -> APIRouter:
                     raw_timer_minutes = row.get("timer_minutes")
                 elif "timer" in row:
                     raw_timer_minutes = row.get("timer")
+                raw_order = row.get("order")
+                if "auto_run" in row:
+                    raw_auto_run = row.get("auto_run")
+                elif "autoRun" in row:
+                    raw_auto_run = row.get("autoRun")
+                if "execution_log" in row:
+                    raw_execution_log = row.get("execution_log")
+                elif "executionLog" in row:
+                    raw_execution_log = row.get("executionLog")
             else:
                 raw_title = row
 
@@ -2339,12 +2396,22 @@ def create_api_router() -> APIRouter:
             title = " ".join(str(raw_title or "").strip().split())
             if not title:
                 title = _default_workflow_template_step_title(action)
+            auto_run = _normalize_workflow_template_step_auto_run(raw_auto_run)
+            timer_minutes = _normalize_workflow_template_step_timer_minutes(raw_timer_minutes) if has_timer_field else None
+            if auto_run and (
+                timer_minutes is None or timer_minutes < WORKFLOW_TEMPLATE_MIN_STEP_TIMER_MINUTES
+            ):
+                timer_minutes = WORKFLOW_TEMPLATE_DEFAULT_STEP_TIMER_MINUTES
+            order = _normalize_workflow_template_step_order(raw_order, default=index + 1)
+            execution_log = _normalize_workflow_template_step_execution_log(raw_execution_log)
             normalized_row: dict[str, Any] = {
                 "title": title[:WORKFLOW_TEMPLATE_MAX_STEP_TITLE_CHARS],
                 "action": action[:WORKFLOW_TEMPLATE_MAX_STEP_ACTION_CHARS],
+                "order": order,
+                "auto_run": auto_run,
+                "timer_minutes": timer_minutes,
+                "execution_log": execution_log,
             }
-            if has_timer_field:
-                normalized_row["timer_minutes"] = _normalize_workflow_template_step_timer_minutes(raw_timer_minutes)
 
             step_id = raw_id[:24]
             if not step_id:
@@ -2387,9 +2454,15 @@ def create_api_router() -> APIRouter:
                     "id": step_id,
                     "title": _default_workflow_template_step_title(required_action),
                     "action": required_action,
+                    "order": len(normalized) + 1,
+                    "auto_run": False,
+                    "timer_minutes": None,
+                    "execution_log": [],
                 }
             )
             used_actions.add(required_action)
+        for index, row in enumerate(normalized, start=1):
+            row["order"] = index
         return normalized
 
     def _normalize_workflow_template_year(value: Any) -> int:

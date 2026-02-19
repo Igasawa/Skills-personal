@@ -17,7 +17,10 @@ WORKFLOW_PAGE_SIDEBAR_LABEL_LIMIT = 38
 WORKFLOW_PAGE_SIDEBAR_LINK_LIMIT = 60
 WORKFLOW_TEMPLATE_STEP_DEFAULT_ACTION = "preflight"
 WORKFLOW_TEMPLATE_STEP_DEFAULT_TIMER_MINUTES = 5
+WORKFLOW_TEMPLATE_STEP_MIN_TIMER_MINUTES = 1
 WORKFLOW_TEMPLATE_STEP_MAX_TIMER_MINUTES = 7 * 24 * 60
+WORKFLOW_TEMPLATE_STEP_MAX_EXECUTION_LOG_ITEMS = 20
+WORKFLOW_TEMPLATE_STEP_MAX_EXECUTION_LOG_MESSAGE_CHARS = 200
 WORKFLOW_TEMPLATE_REQUIRED_STEP_ACTIONS = (
     "preflight",
     "mf_reconcile",
@@ -172,7 +175,7 @@ def _read_workflow_pages(*, include_archived: bool = False) -> list[dict[str, ob
     return pages
 
 
-def _normalize_template_steps_for_view(value: Any) -> list[dict[str, Any]]:
+def _normalize_template_steps_for_view_legacy(value: Any) -> list[dict[str, Any]]:
     raw_values = value if isinstance(value, list) else []
     normalized: list[dict[str, Any]] = []
     seen_actions: set[str] = set()
@@ -236,6 +239,146 @@ def _normalize_template_steps_for_view(value: Any) -> list[dict[str, Any]]:
             }
         )
         seen_actions.add(required_action)
+    return normalized
+
+
+def _normalize_template_steps_for_view(value: Any) -> list[dict[str, Any]]:
+    raw_values = value if isinstance(value, list) else []
+    normalized: list[dict[str, Any]] = []
+    seen_actions: set[str] = set()
+    seen_ids: set[str] = set()
+    fallback_index = 0
+
+    def _normalize_auto_run(raw: Any) -> bool:
+        if isinstance(raw, bool):
+            return raw
+        text = str(raw or "").strip().lower()
+        if not text:
+            return False
+        return text in {"1", "true", "yes", "on"}
+
+    def _normalize_execution_log(raw: Any) -> list[dict[str, str]]:
+        rows = raw if isinstance(raw, list) else []
+        out: list[dict[str, str]] = []
+        for item in rows:
+            if not isinstance(item, dict):
+                continue
+            result_raw = str(item.get("result") or "").strip().lower()
+            result = "failed" if result_raw == "failed" else "success"
+            executed_at = str(item.get("executed_at") or item.get("executedAt") or "").strip()
+            message = str(item.get("message") or "").strip()[:WORKFLOW_TEMPLATE_STEP_MAX_EXECUTION_LOG_MESSAGE_CHARS]
+            if not executed_at and not message:
+                continue
+            out.append(
+                {
+                    "executed_at": executed_at,
+                    "result": result,
+                    "message": message,
+                }
+            )
+            if len(out) >= WORKFLOW_TEMPLATE_STEP_MAX_EXECUTION_LOG_ITEMS:
+                break
+        return out
+
+    for index, row in enumerate(raw_values):
+        raw_id = ""
+        raw_title = ""
+        raw_action = ""
+        raw_timer_minutes: Any = None
+        raw_order: Any = index + 1
+        raw_auto_run: Any = False
+        raw_execution_log: Any = []
+        if isinstance(row, dict):
+            raw_id = str(row.get("id") or "").strip()
+            raw_title = row.get("title") or row.get("name")
+            raw_action = str(row.get("action") or "").strip()
+            if "timer_minutes" in row:
+                raw_timer_minutes = row.get("timer_minutes")
+            elif "timer" in row:
+                raw_timer_minutes = row.get("timer")
+            raw_order = row.get("order")
+            if "auto_run" in row:
+                raw_auto_run = row.get("auto_run")
+            elif "autoRun" in row:
+                raw_auto_run = row.get("autoRun")
+            if "execution_log" in row:
+                raw_execution_log = row.get("execution_log")
+            elif "executionLog" in row:
+                raw_execution_log = row.get("executionLog")
+        else:
+            raw_title = row
+
+        action = raw_action if raw_action in WORKFLOW_TEMPLATE_ALLOWED_STEP_ACTIONS else ""
+        if not action:
+            for candidate in WORKFLOW_TEMPLATE_FALLBACK_ACTION_ORDER[fallback_index:]:
+                if candidate not in seen_actions and candidate in WORKFLOW_TEMPLATE_ALLOWED_STEP_ACTIONS:
+                    action = candidate
+                    break
+            if not action:
+                action = WORKFLOW_TEMPLATE_STEP_DEFAULT_ACTION
+        fallback_index += 1
+        if action in seen_actions:
+            continue
+
+        title = " ".join(str(raw_title or "").strip().split())
+        if not title:
+            title = WORKFLOW_TEMPLATE_REQUIRED_STEP_TITLES.get(action, f"Task {index + 1}")
+
+        timer_minutes: int | None = None
+        if raw_timer_minutes is not None and str(raw_timer_minutes).strip():
+            timer_minutes = core._safe_non_negative_int(raw_timer_minutes, default=0)
+            if timer_minutes > WORKFLOW_TEMPLATE_STEP_MAX_TIMER_MINUTES:
+                timer_minutes = WORKFLOW_TEMPLATE_STEP_MAX_TIMER_MINUTES
+
+        auto_run = _normalize_auto_run(raw_auto_run)
+        if auto_run and (timer_minutes is None or timer_minutes < WORKFLOW_TEMPLATE_STEP_MIN_TIMER_MINUTES):
+            timer_minutes = WORKFLOW_TEMPLATE_STEP_DEFAULT_TIMER_MINUTES
+
+        order = core._safe_non_negative_int(raw_order, default=index + 1)
+        if order < 1:
+            order = index + 1
+
+        step_id = raw_id.strip()
+        if not step_id:
+            step_id = f"step-{index + 1}"
+        while step_id in seen_ids:
+            step_id = f"{step_id}-{len(seen_ids) + 1}"
+        seen_ids.add(step_id)
+        seen_actions.add(action)
+        normalized.append(
+            {
+                "id": step_id,
+                "order": order,
+                "title": title,
+                "action": action,
+                "auto_run": auto_run,
+                "timer_minutes": timer_minutes,
+                "execution_log": _normalize_execution_log(raw_execution_log),
+            }
+        )
+
+    for required_action in WORKFLOW_TEMPLATE_REQUIRED_STEP_ACTIONS:
+        if required_action in seen_actions:
+            continue
+        step_id = f"step-required-{required_action}"
+        while step_id in seen_ids:
+            step_id = f"{step_id}-{len(seen_ids) + 1}"
+        seen_ids.add(step_id)
+        normalized.append(
+            {
+                "id": step_id,
+                "order": len(normalized) + 1,
+                "title": WORKFLOW_TEMPLATE_REQUIRED_STEP_TITLES.get(required_action, required_action),
+                "action": required_action,
+                "auto_run": False,
+                "timer_minutes": None,
+                "execution_log": [],
+            }
+        )
+        seen_actions.add(required_action)
+
+    for order, row in enumerate(normalized, start=1):
+        row["order"] = order
     return normalized
 
 

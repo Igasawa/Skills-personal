@@ -289,51 +289,76 @@ def register_api_workspace_routes(
     @router.post("/api/workflow-templates")
     def api_save_workflow_template(payload: dict[str, Any]) -> JSONResponse:
         payload = payload if isinstance(payload, dict) else {}
-        requested_mode = str(payload.get("template_mode") or "").strip().lower()
-        if requested_mode and requested_mode != "edit":
-            raise HTTPException(status_code=400, detail="Template create/copy is disabled. Use edit mode only.")
-        requested_template_id = normalize_workflow_template_id(payload.get("template_id") or payload.get("id"))
-        if not requested_template_id:
-            raise HTTPException(status_code=400, detail="Template id is required. Creating new templates is disabled.")
-        payload = dict(payload)
-        payload["template_mode"] = "edit"
         payload = normalize_workflow_template_payload(payload)
         template_id = str(payload.get("id") or "")
         source_template_id = normalize_workflow_template_id(payload.get("source_template_id"))
+        template_mode = str(payload.get("template_mode") or "new").strip().lower()
+        allow_duplicate_name = bool(payload.get("allow_duplicate_name"))
         base_updated_at = normalize_workflow_template_timestamp(payload.get("base_updated_at"))
         existing = read_workflow_templates()
-        template_exists = any(str(row.get("id") or "") == template_id for row in existing)
-        if not template_exists:
-            raise HTTPException(status_code=404, detail="Template not found.")
-        updated = False
-        saved: dict[str, Any] = {}
-        for index, template in enumerate(existing):
-            if str(template.get("id")) == template_id:
-                if base_updated_at and str(template.get("updated_at") or "") != base_updated_at:
-                    raise HTTPException(
-                        status_code=409,
-                        detail="Template was updated by another action. Reload and try again.",
-                    )
-                payload["created_at"] = str(template.get("created_at") or workflow_template_timestamp_now())
-                payload["updated_at"] = workflow_template_timestamp_now()
-                sanitized = dict(payload)
-                sanitized.pop("allow_duplicate_name", None)
-                sanitized.pop("base_updated_at", None)
-                sanitized.pop("template_mode", None)
-                if source_template_id:
-                    sanitized["source_template_id"] = source_template_id
-                existing[index] = dict(template, **sanitized)
-                saved = dict(existing[index])
-                saved.pop("allow_duplicate_name", None)
-                saved.pop("base_updated_at", None)
-                updated = True
-                break
+        source_template: dict[str, Any] | None = None
+        if template_mode == "copy":
+            source_template = next((row for row in existing if str(row.get("id") or "") == source_template_id), None)
+            if source_template is None:
+                raise HTTPException(status_code=404, detail="template_source_id not found.")
+            source_updated_at = str(source_template.get("updated_at") or "")
+            if base_updated_at and source_updated_at and source_updated_at != base_updated_at:
+                raise HTTPException(
+                    status_code=409,
+                    detail="Template was updated by another action. Reload and try again.",
+                )
 
-        if not updated:
-            raise HTTPException(status_code=404, detail="Template not found.")
+        existing_template_index = next(
+            (index for index, row in enumerate(existing) if str(row.get("id") or "") == template_id),
+            -1,
+        )
+        is_update = existing_template_index >= 0 and template_mode != "copy"
+        allow_existing_id = template_id if is_update else None
+        if not allow_duplicate_name and template_name_taken(
+            existing,
+            str(payload.get("name") or ""),
+            allow_existing_id=allow_existing_id,
+        ):
+            raise HTTPException(status_code=409, detail="Template name already exists.")
+
+        now = workflow_template_timestamp_now()
+        sanitized = dict(payload)
+        sanitized.pop("allow_duplicate_name", None)
+        sanitized.pop("base_updated_at", None)
+        sanitized.pop("template_mode", None)
+        if source_template_id:
+            sanitized["source_template_id"] = source_template_id
+
+        updated = False
+        saved: dict[str, Any]
+        if is_update:
+            existing_template = existing[existing_template_index]
+            existing_updated_at = str(existing_template.get("updated_at") or "")
+            if base_updated_at and existing_updated_at and existing_updated_at != base_updated_at:
+                raise HTTPException(
+                    status_code=409,
+                    detail="Template was updated by another action. Reload and try again.",
+                )
+            sanitized["created_at"] = str(existing_template.get("created_at") or now)
+            sanitized["updated_at"] = now
+            existing[existing_template_index] = dict(existing_template, **sanitized)
+            saved = dict(existing[existing_template_index])
+            updated = True
+        else:
+            created = dict(sanitized)
+            created["created_at"] = str(created.get("created_at") or now)
+            created["updated_at"] = now
+            existing.append(created)
+            saved = dict(created)
 
         existing.sort(key=lambda row: str(row.get("updated_at") or row.get("created_at") or ""), reverse=True)
         write_workflow_templates(existing)
+
+        if not updated and template_mode == "copy" and source_template is not None:
+            try:
+                core_scheduler.copy_timer_state(str(source_template.get("id") or source_template_id), str(saved.get("id") or ""))
+            except Exception:
+                pass
 
         return JSONResponse(
             {"status": "ok", "template": saved, "count": len(existing), "updated": updated},

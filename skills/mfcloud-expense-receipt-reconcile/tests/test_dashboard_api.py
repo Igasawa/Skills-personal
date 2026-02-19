@@ -15,7 +15,6 @@ import pytest
 
 from dashboard.routes import api as api_routes
 from dashboard.services import core_runs
-from dashboard.services import core_scheduler
 from services import core_scheduler as public_core_scheduler
 
 
@@ -2029,65 +2028,50 @@ def test_api_scheduler_state_get_returns_default(monkeypatch: pytest.MonkeyPatch
     body = res.json()
     assert body["status"] == "ok"
     assert body["enabled"] is False
-    assert body["mode"] == "preflight"
+    assert body["action_key"] == "preflight"
+    assert body["card_id"] == ""
     assert body["recurrence"] == "once"
     assert body["run_time"] == "09:00"
     assert body["catch_up_policy"] == "run_on_startup"
     assert body["next_run_at"] is None
 
 
-def test_api_scheduler_state_post_persists_and_toggles_autostart(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
+def test_api_scheduler_state_post_persists_context_fields(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     client = _create_client(monkeypatch, tmp_path)
-    startup_dir = tmp_path / "startup"
-    monkeypatch.setenv("AX_DASHBOARD_STARTUP_DIR", str(startup_dir))
-    monkeypatch.setattr(core_scheduler, "_autostart_supported", lambda: True)
 
     post_res = client.post(
         "/api/scheduler/state",
         json={
             "enabled": False,
-            "mode": "preflight_mf",
+            "card_id": "workflow-status",
+            "action_key": "preflight_mf",
             "year": 2026,
             "month": 1,
             "run_date": "2026-03-01",
             "run_time": "08:30",
             "catch_up_policy": "run_on_startup",
             "recurrence": "daily",
-            "auth_handoff": False,
-            "auto_start_enabled": True,
         },
     )
     assert post_res.status_code == 200
     body = post_res.json()
     assert body["status"] == "ok"
-    assert body["mode"] == "preflight_mf"
+    assert body["action_key"] == "preflight_mf"
+    assert body["card_id"] == "workflow-status"
     assert body["year"] == 2026
     assert body["month"] == 1
     assert body["run_date"] == "2026-03-01"
     assert body["run_time"] == "08:30"
     assert body["recurrence"] == "daily"
-    assert body["auto_start_enabled"] is True
-    assert body["auto_start_active"] is True
-
-    autostart_path = Path(str(body["autostart_path"]))
-    assert autostart_path.exists()
 
     state_path = _artifact_root(tmp_path) / "_scheduler" / "scheduler_state.json"
     assert state_path.exists()
     persisted = json.loads(state_path.read_text(encoding="utf-8"))
-    assert persisted["mode"] == "preflight_mf"
+    assert persisted["action_key"] == "preflight_mf"
+    assert persisted["card_id"] == "workflow-status"
     assert persisted["run_date"] == "2026-03-01"
     assert persisted["run_time"] == "08:30"
     assert persisted["recurrence"] == "daily"
-    assert persisted["auto_start_enabled"] is True
-
-    off_res = client.post("/api/scheduler/state", json={"enabled": False, "auto_start_enabled": False})
-    assert off_res.status_code == 200
-    assert off_res.json()["auto_start_enabled"] is False
-    assert off_res.json()["auto_start_active"] is False
-    assert not autostart_path.exists()
 
 
 def test_api_scheduler_state_post_rejects_enable_without_schedule(
@@ -2098,7 +2082,7 @@ def test_api_scheduler_state_post_rejects_enable_without_schedule(
         "/api/scheduler/state",
         json={
             "enabled": True,
-            "mode": "preflight",
+            "action_key": "preflight",
             "year": 2026,
             "month": 1,
             "run_date": "",
@@ -2128,14 +2112,14 @@ def test_api_scheduler_state_daily_recurrence_advances_run_date(monkeypatch: pyt
         "/api/scheduler/state",
         json={
             "enabled": True,
-            "mode": "preflight",
+            "action_key": "preflight",
+            "card_id": "daily-test-card",
             "year": now.year,
             "month": now.month,
             "run_date": run_date,
             "run_time": run_time,
             "recurrence": "daily",
             "catch_up_policy": "run_on_startup",
-            "auth_handoff": False,
         },
     )
     assert post_res.status_code == 200
@@ -2147,6 +2131,8 @@ def test_api_scheduler_state_daily_recurrence_advances_run_date(monkeypatch: pyt
     assert run_payloads
     assert run_payloads[0]["year"] == now.year
     assert run_payloads[0]["month"] == now.month
+    assert run_payloads[0]["mode"] == "preflight"
+    assert run_payloads[0]["auth_handoff"] is False
 
     expected_next = now + timedelta(days=1)
     assert body["run_date"] == expected_next.strftime("%Y-%m-%d")
@@ -2284,13 +2270,40 @@ def test_api_save_workflow_template_allows_empty_year_month(monkeypatch: pytest.
     template = res.json()["template"]
     assert template["year"] == 0
     assert template["month"] == 0
-    assert template["steps"] == [{"title": "Step 1"}, {"title": "Step 2"}]
+    steps = template["steps"]
+    assert isinstance(steps, list)
+    assert len(steps) >= 2
+    assert any(
+        str(step.get("title") or "") == "Step 1"
+        and str(step.get("action") or "") == "preflight"
+        and int(step.get("order") or 0) >= 1
+        and bool(step.get("auto_run")) is False
+        and step.get("timer_minutes") is None
+        and isinstance(step.get("execution_log"), list)
+        for step in steps
+        if isinstance(step, dict)
+    )
+    assert any(
+        str(step.get("title") or "") == "Step 2"
+        and int(step.get("order") or 0) >= 1
+        for step in steps
+        if isinstance(step, dict)
+    )
 
     rows = json.loads(_workflow_template_store(tmp_path).read_text(encoding="utf-8"))
     assert isinstance(rows, list) and rows
     assert rows[0]["year"] == 0
     assert rows[0]["month"] == 0
-    assert rows[0]["steps"] == [{"title": "Step 1"}, {"title": "Step 2"}]
+    stored_steps = rows[0]["steps"]
+    assert isinstance(stored_steps, list)
+    assert len(stored_steps) == len(steps)
+    assert any(
+        str(step.get("title") or "") == "Step 1"
+        and str(step.get("action") or "") == "preflight"
+        and isinstance(step.get("execution_log"), list)
+        for step in stored_steps
+        if isinstance(step, dict)
+    )
 
 
 def test_api_save_workflow_template_persists_step_timer_minutes(
@@ -2421,14 +2434,14 @@ def test_api_save_workflow_template_copy_mode_copies_source_scheduler_state(monk
         f"/api/scheduler/state?template_id={source_template_id}",
         json={
             "enabled": True,
-            "mode": "preflight_mf",
+            "card_id": "source-card",
+            "action_key": "preflight_mf",
             "year": 2026,
             "month": 1,
             "run_date": "2099-01-01",
             "run_time": "08:30",
             "catch_up_policy": "run_on_startup",
             "recurrence": "daily",
-            "auth_handoff": False,
         },
     )
     assert scheduler_res.status_code == 200
@@ -2462,16 +2475,15 @@ def test_api_save_workflow_template_copy_mode_copies_source_scheduler_state(monk
     assert copied_template_id in timers
 
     copied_timer = timers[copied_template_id]
-    assert copied_timer["mode"] == source_timer_state["mode"]
+    assert copied_timer["action_key"] == source_timer_state["action_key"]
+    assert copied_timer["card_id"] == source_timer_state["card_id"]
     assert copied_timer["run_date"] == source_timer_state["run_date"]
     assert copied_timer["run_time"] == source_timer_state["run_time"]
     assert copied_timer["catch_up_policy"] == source_timer_state["catch_up_policy"]
     assert copied_timer["recurrence"] == source_timer_state["recurrence"]
     assert copied_timer["year"] == source_timer_state["year"]
     assert copied_timer["month"] == source_timer_state["month"]
-    assert copied_timer["auth_handoff"] == source_timer_state["auth_handoff"]
     assert copied_timer["enabled"] is False
-    assert copied_timer["auto_start_enabled"] is False
     assert copied_timer["last_result"] is None
     assert copied_timer["last_triggered_signature"] == ""
 
@@ -2539,16 +2551,14 @@ def test_api_delete_workflow_template_removes_template_timer_and_clears_referenc
         f"/api/scheduler/state?template_id={base_template_id}",
         json={
             "enabled": True,
-            "mode": "preflight_mf",
+            "card_id": "base-card",
+            "action_key": "preflight_mf",
             "year": 2026,
             "month": 1,
             "run_date": "2099-01-01",
             "run_time": "08:30",
             "catch_up_policy": "run_on_startup",
             "recurrence": "daily",
-            "auth_handoff": True,
-            "auto_receipt_name": False,
-            "mf_draft_create": False,
         },
     )
     assert state_res.status_code == 200
