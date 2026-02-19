@@ -3,9 +3,9 @@ name: docs-knowledge-refresh
 description: ドキュメントの鮮度（最終確認日・期限切れ・要更新）を定期監査するスキル。Markdown群を走査し、更新期限超過を検出してレポート化する。「この資料が古くないか確認」「ナレッジの定期更新を仕組み化したい」「更新期限を超えたドキュメントを一覧化して」といった依頼で使用。
 ---
 
-# Docs Knowledge Refresh
+# ドキュメント鮮度監査スキル
 
-## Overview
+## 概要
 
 `scripts/run.py` で Markdown ドキュメントをスキャンし、更新期限超過を検出する。
 既定は `--dry-run` で、`--apply --write-report` のときだけレポートを確定します。
@@ -46,7 +46,7 @@ python skills/docs-knowledge-refresh/scripts/run.py `
 
 前提:
 - 対象リポジトリに `docs/` があること
-- 監査ルールファイルが `docs/knowledge_refresh_registry.json` であること（なければ defaults を使う）
+- 監査ルールファイルが `docs/knowledge_refresh_registry.json` であること（なければ既定値を使う）
 
 おすすめ実行手順（PowerShell）:
 ```powershell
@@ -100,8 +100,8 @@ python $runScript `
 4. 週次実行
    - `--fail-on-stale` を付与し、失敗時はジョブを再実行前に `--dry-run` で原因を特定
 5. 追加ドキュメント受け入れ時
-   - 追加直後に step2 を必ず実施
-   - 追加が多数ある場合は step3 へ進む前に issue だけを一覧化
+   - 追加直後に手順2を必ず実施
+   - 追加が多数ある場合は手順3へ進む前に issue だけを一覧化
 
 ## 実行パスの取り違え対策（推奨）
 

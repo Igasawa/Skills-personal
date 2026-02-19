@@ -3,22 +3,22 @@ name: kintone-inventory-export
 description: kintone にログイン済みセッション（またはID/パスワード）で接続し、アプリ一覧と（アプリに紐づく）スペース情報を収集して JSON で保存・出力する。「kintoneのスペース/アプリ構成を棚卸し」「どんなアプリがあるか調べて」「投稿先追加のために現状把握したい」等の依頼で使用。
 ---
 
-# kintone アプリ/スペース棚卸し（export）
+# kintone アプリ/スペース棚卸し（エクスポート）
 
 ## できること / 制限
 
 - アプリ一覧: REST API `GET /k/v1/apps.json` で取得（最大100件/回なのでページングして全件取得）
-- スペース一覧: 「アプリが属する spaceId」から推定して `GET /k/v1/space.json?id=...` を取得
+- スペース一覧: 「アプリが属する `spaceId`」から推定して `GET /k/v1/space.json?id=...` を取得
   - 注意: アプリが1つも紐づかないスペースは、この方法では検出できない可能性がある
-  - private space は権限がないと取得に失敗する（失敗は結果JSONに記録して継続）
+  - プライベートスペースは権限がないと取得に失敗する（失敗は結果JSONに記録して継続）
 
 ## 認証（秘密情報をリポジトリに置かない）
 
 優先順位:
 1. `KINTONE_USERNAME` / `KINTONE_PASSWORD`（`AX_HOME/secrets/kintone.env` など）
-2. Playwright の storage_state（既定: `AX_HOME/sessions/kintone.storage.json`）
+2. Playwright の保存済みセッション（`storage_state`、既定: `AX_HOME/sessions/kintone.storage.json`）
 
-storage_state の作成例（手動ログイン）:
+保存済みセッション（`storage_state`）の作成例（手動ログイン）:
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/ax.ps1 playwright login --name kintone --url "https://5atx9.cybozu.com/k/"
 ```
@@ -26,7 +26,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/ax.ps1 playwright lo
 ## 実行例
 
 ```powershell
-# secrets を読み込んで実行（推奨）
+# 認証情報を読み込んで実行（推奨）
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/ax.ps1 secrets exec --service kintone -- `
   python skills/kintone-inventory-export/scripts/run.py --subdomain 5atx9
 ```

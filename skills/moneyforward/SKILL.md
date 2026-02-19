@@ -1,85 +1,85 @@
 ---
 name: moneyforward
-description: "Guidance for MoneyForward expense workflows: invoice/accounting operations, file input flows, and practical reconciliation support."
+description: "MoneyForward の経費ワークフロー向けガイダンス。請求/会計運用、ファイル取込フロー、実務的な突合支援を扱う。"
 category: finance, accounting, expense
 dependencies:
-  - MoneyForward web portal access
-  - Expense data source (CSV/API/manual upload path)
-  - OCR output file handling
+  - MoneyForward Webポータルへのアクセス
+  - 経費データ入力元（CSV/API/手動アップロード）
+  - OCR出力ファイルの取り扱い
 updated: 2026-02-16
 ---
 
-# MoneyForward
+# MoneyForward 運用ガイド
 
-## What this skill is for
+## このスキルの用途
 
-Use this skill when working with MoneyForward expense operations:
+MoneyForward の経費運用で次を実施する際に使う:
 
-- Receipt capture and invoice processing flow
-- Expense record import (including CSV/manual upload)
-- Account/category assignment and reconciliation support
-- Report preparation with traceability
-- Operational runbooks for regular finance tasks
+- 領収書取り込みと請求処理フロー
+- 経費レコードの取込（CSV/手動アップロード含む）
+- 勘定科目/カテゴリ割り当てと突合支援
+- トレーサビリティを担保したレポート作成
+- 定期財務業務の運用ランブック整備
 
-## Core workflow
+## 基本ワークフロー
 
-1. Prepare source data and expected mapping (vendor, amount, date, tax, category).
-2. Confirm authentication/session state and permissions.
-3. Apply import method:
-   - web upload path
-   - API/path-based import (if available in environment)
-   - OCR-assisted data intake
-4. Validate imported records against source totals.
-5. Apply manual correction rules.
-6. Export or archive results with run log and evidence.
+1. 元データと想定マッピング（vendor, amount, date, tax, category）を準備する。
+2. 認証/セッション状態と権限を確認する。
+3. 取込方式を適用する:
+   - Webアップロード
+   - API/パス指定取込（環境対応時）
+   - OCR補助取り込み
+4. 取込後レコードを元データ合計と突合する。
+5. 手動補正ルールを適用する。
+6. 実行ログと根拠を添えて結果をエクスポートまたは保管する。
 
-## Configuration and operation notes
+## 設定・運用メモ
 
-- Keep tenant/account scope explicit per environment.
-- Maintain template mapping for:
-  - header normalization
-  - default account/category rules
-  - duplicate detection keys
-- Use non-destructive sync in first pass; do write-only on confirmed records.
+- テナント/アカウント範囲は環境ごとに明示する。
+- 次のテンプレートマッピングを維持する:
+  - ヘッダー正規化
+  - 既定の科目/カテゴリ規則
+  - 重複検知キー
+- 初回は非破壊同期を使い、確定レコードのみ書き込みを行う。
 
-## Error handling
+## エラーハンドリング
 
-- Keep invalid rows in a rejection bucket with reason code.
-- Retry transient failures only (network, temporary UI/API instability).
-- For auth/session issues, re-auth and re-run from checkpoint.
-- Validate amount/date tax parsing before import commit.
-- Keep idempotent behavior where possible (run-key + source row hash).
+- 不正行は理由コード付きで rejection bucket に隔離する。
+- リトライ対象は一時障害のみ（ネットワーク、UI/API一時不安定）。
+- 認証/セッション異常は再認証し、チェックポイントから再開する。
+- 取込確定前に amount/date/tax の解析結果を検証する。
+- 可能な範囲で冪等性（run-key + source row hash）を維持する。
 
-## Verification checklist
+## 検証チェックリスト
 
-1. Confirm all required columns exist (or are safely defaulted).
-2. Verify totals by currency and period after import.
-3. Confirm duplicate/overlap detection works for reruns.
-4. Spot-check at least one representative sample per batch.
-5. Confirm evidence logs include source file, timestamp, and operator.
+1. 必須列がすべて存在するか（または安全に既定値補完されるか）確認する。
+2. 取込後に通貨別・期間別合計を確認する。
+3. 再実行時に重複/重なり検知が機能することを確認する。
+4. バッチごとに代表サンプルを最低1件目視確認する。
+5. 根拠ログに元ファイル、時刻、実行者が入っていることを確認する。
 
-## Troubleshooting
+## トラブルシュート
 
-- **Upload blocked / permission error**: verify role permissions and tenant access.
-- **OCR mismatch**: compare image/text extraction against original receipt and adjust template rules.
-- **Tax misclassification**: inspect tax/category mapping table before reconciliation.
-- **Missing imports**: check encoding (CSV/UTF-8), date format, and delimiter.
+- **Upload blocked / permission error**: 権限ロールとテナントアクセスを確認する。
+- **OCR mismatch**: 元の領収書と抽出結果を比較し、テンプレート規則を調整する。
+- **Tax misclassification**: 突合前に tax/category マッピング表を確認する。
+- **Missing imports**: 文字コード（CSV/UTF-8）、日付形式、区切り文字を確認する。
 
-## Operational logging
+## 運用ログ
 
-- Log at least:
+- 最低限、次をログに残す:
   - source file name
   - job start/end
   - processed/failed counts
   - unresolved exception rows
   - operator notes
 
-## Security and audit
+## セキュリティと監査
 
-- Do not log user credentials.
-- Store session artifacts in controlled directories.
-- Keep retention policy for exports and logs consistent with finance policy.
+- ユーザー認証情報をログ出力しない。
+- セッション成果物は管理されたディレクトリに保存する。
+- エクスポートとログの保管ポリシーは財務ポリシーと一致させる。
 
-## References
+## 参照
 
-- `references/official_sources.md` for latest MoneyForward official manuals and account/feature pages.
+- `references/official_sources.md` に最新の MoneyForward 公式マニュアルと機能ページをまとめている。

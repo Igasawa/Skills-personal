@@ -1,62 +1,62 @@
 ---
 name: "spreadsheet"
-description: "Use when tasks involve creating, editing, analyzing, or formatting spreadsheets (`.xlsx`, `.csv`, `.tsv`) using Python (`openpyxl`, `pandas`), especially when formulas, references, and formatting need to be preserved and verified."
+description: "Python（`openpyxl`, `pandas`）でスプレッドシート（`.xlsx`, `.csv`, `.tsv`）を作成・編集・分析・整形する作業に使う。特に数式、参照、書式の保持と検証が必要な場合に有効。"
 ---
 
 
-# Spreadsheet Skill (Create, Edit, Analyze, Visualize)
+# Spreadsheet スキル（作成・編集・分析・可視化）
 
-## When to use
-- Build new workbooks with formulas, formatting, and structured layouts.
-- Read or analyze tabular data (filter, aggregate, pivot, compute metrics).
-- Modify existing workbooks without breaking formulas or references.
-- Visualize data with charts/tables and sensible formatting.
+## 利用する場面
+- 数式・書式・構造化レイアウトを備えた新規ブックを作る。
+- 表形式データを読み取り/分析する（フィルタ、集計、ピボット、指標計算）。
+- 既存ブックを、数式や参照を壊さずに修正する。
+- 図表で可視化し、読みやすい書式を整える。
 
-IMPORTANT: System and user instructions always take precedence.
+重要: システム指示とユーザー指示が常に最優先。
 
-## Workflow
-1. Confirm the file type and goals (create, edit, analyze, visualize).
-2. Use `openpyxl` for `.xlsx` edits and `pandas` for analysis and CSV/TSV workflows.
-3. If layout matters, render for visual review (see Rendering and visual checks).
-4. Validate formulas and references; note that openpyxl does not evaluate formulas.
-5. Save outputs and clean up intermediate files.
+## ワークフロー
+1. ファイル種別と目的（作成、編集、分析、可視化）を確認する。
+2. `.xlsx` 編集は `openpyxl`、分析や CSV/TSV は `pandas` を使う。
+3. レイアウトが重要な場合はレンダリングして目視確認する（「レンダリングと目視チェック」参照）。
+4. 数式と参照を検証する（`openpyxl` は数式計算を行わない点に注意）。
+5. 成果物を保存し、中間ファイルを削除する。
 
-## Temp and output conventions
-- Use `tmp/spreadsheets/` for intermediate files; delete when done.
-- Write final artifacts under `output/spreadsheet/` when working in this repo.
-- Keep filenames stable and descriptive.
+## 一時ファイルと出力のルール
+- 中間ファイルは `tmp/spreadsheets/` を使い、作業後に削除する。
+- このリポジトリでは最終成果物を `output/spreadsheet/` 配下に出力する。
+- ファイル名は安定かつ説明的にする。
 
-## Primary tooling
-- Use `openpyxl` for creating/editing `.xlsx` files and preserving formatting.
-- Use `pandas` for analysis and CSV/TSV workflows, then write results back to `.xlsx` or `.csv`.
-- If you need charts, prefer `openpyxl.chart` for native Excel charts.
+## 主なツール
+- `.xlsx` の作成/編集と書式保持には `openpyxl` を使う。
+- 分析や CSV/TSV 処理には `pandas` を使い、結果を `.xlsx` または `.csv` に戻す。
+- グラフが必要な場合は、Excel ネイティブ互換の `openpyxl.chart` を優先する。
 
-## Rendering and visual checks
-- If LibreOffice (`soffice`) and Poppler (`pdftoppm`) are available, render sheets for visual review:
+## レンダリングと目視チェック
+- LibreOffice（`soffice`）と Poppler（`pdftoppm`）が使える場合、シートをレンダリングして目視確認する:
   - `soffice --headless --convert-to pdf --outdir $OUTDIR $INPUT_XLSX`
   - `pdftoppm -png $OUTDIR/$BASENAME.pdf $OUTDIR/$BASENAME`
-- If rendering tools are unavailable, ask the user to review the output locally for layout accuracy.
+- レンダリングツールが使えない場合は、ユーザーにローカルでレイアウト確認してもらう。
 
-## Dependencies (install if missing)
-Prefer `uv` for dependency management.
+## 依存関係（不足時にインストール）
+依存管理は `uv` を優先する。
 
-Python packages:
+Python パッケージ:
 ```
 uv pip install openpyxl pandas
 ```
-If `uv` is unavailable:
+`uv` が使えない場合:
 ```
 python3 -m pip install openpyxl pandas
 ```
-Optional (chart-heavy or PDF review workflows):
+任意（グラフ中心または PDF レビューが多い場合）:
 ```
 uv pip install matplotlib
 ```
-If `uv` is unavailable:
+`uv` が使えない場合:
 ```
 python3 -m pip install matplotlib
 ```
-System tools (for rendering):
+システムツール（レンダリング用）:
 ```
 # macOS (Homebrew)
 brew install libreoffice poppler
@@ -65,75 +65,75 @@ brew install libreoffice poppler
 sudo apt-get install -y libreoffice poppler-utils
 ```
 
-If installation isn't possible in this environment, tell the user which dependency is missing and how to install it locally.
+この環境でインストールできない場合は、不足依存とローカル導入方法をユーザーへ案内する。
 
-## Environment
-No required environment variables.
+## 環境変数
+必須環境変数なし。
 
-## Examples
-- Runnable Codex examples (openpyxl): `references/examples/openpyxl/`
+## 例
+- 実行可能な Codex 例（openpyxl）: `references/examples/openpyxl/`
 
-## Formula requirements
-- Use formulas for derived values rather than hardcoding results.
-- Keep formulas simple and legible; use helper cells for complex logic.
-- Avoid volatile functions like INDIRECT and OFFSET unless required.
-- Prefer cell references over magic numbers (e.g., `=H6*(1+$B$3)` not `=H6*1.04`).
-- Guard against errors (#REF!, #DIV/0!, #VALUE!, #N/A, #NAME?) with validation and checks.
-- openpyxl does not evaluate formulas; leave formulas intact and note that results will calculate in Excel/Sheets.
+## 数式に関する要件
+- 派生値はハードコードせず、数式で表現する。
+- 数式は簡潔で読みやすくし、複雑ロジックは補助セルへ分離する。
+- `INDIRECT` や `OFFSET` などの揮発性関数は必要時のみ使う。
+- マジックナンバーよりセル参照を優先する（例: `=H6*(1+$B$3)`、`=H6*1.04` ではなく）。
+- #REF!, #DIV/0!, #VALUE!, #N/A, #NAME? は検証で防ぐ。
+- `openpyxl` は数式評価しないため、数式は保持し、計算結果は Excel/Sheets 側で確定する。
 
-## Citation requirements
-- Cite sources inside the spreadsheet using plain text URLs.
-- For financial models, cite sources of inputs in cell comments.
-- For tabular data sourced from the web, include a Source column with URLs.
+## 出典記載の要件
+- スプレッドシート内にプレーンテキストURLで出典を記載する。
+- 財務モデルでは入力値の出典をセルコメントに残す。
+- Web由来の表データには URL 付き Source 列を追加する。
 
-## Formatting requirements (existing formatted spreadsheets)
-- Render and inspect a provided spreadsheet before modifying it when possible.
-- Preserve existing formatting and style exactly.
-- Match styles for any newly filled cells that were previously blank.
+## 書式要件（既存の整形済みシート）
+- 可能なら、修正前に提供シートをレンダリングして確認する。
+- 既存の書式・スタイルを厳密に維持する。
+- 空欄だったセルに新規入力する場合も周辺スタイルへ合わせる。
 
-## Formatting requirements (new or unstyled spreadsheets)
-- Use appropriate number and date formats (dates as dates, currency with symbols, percentages with sensible precision).
-- Use a clean visual layout: headers distinct from data, consistent spacing, and readable column widths.
-- Avoid borders around every cell; use whitespace and selective borders to structure sections.
-- Ensure text does not spill into adjacent cells.
+## 書式要件（新規または未整形シート）
+- 数値・日付を適切に書式化する（日付は日付型、通貨は記号付き、率は妥当な小数精度）。
+- 見やすいレイアウトにする（ヘッダーとデータを明確に分離、間隔を統一、列幅を可読に）。
+- 全セル罫線は避け、余白と必要箇所の罫線で構造化する。
+- テキストが隣接セルにはみ出さないようにする。
 
-## Color conventions (if no style guidance)
-- Blue: user input
-- Black: formulas/derived values
-- Green: linked/imported values
-- Gray: static constants
-- Orange: review/caution
-- Light red: error/flag
-- Purple: control/logic
-- Teal: visualization anchors (key KPIs or chart drivers)
+## 色の規約（スタイル指定がない場合）
+- Blue: ユーザー入力
+- Black: 数式/派生値
+- Green: 連携/取込値
+- Gray: 固定定数
+- Orange: 要確認/注意
+- Light red: エラー/フラグ
+- Purple: 制御/ロジック
+- Teal: 可視化の基点（主要KPIやチャート駆動値）
 
-## Finance-specific requirements
-- Format zeros as "-".
-- Negative numbers should be red and in parentheses.
-- Always specify units in headers (e.g., "Revenue ($mm)").
-- Cite sources for all raw inputs in cell comments.
+## 財務向け要件
+- ゼロは `-` 表示にする。
+- 負数は赤色かつ括弧付きで表示する。
+- ヘッダーに単位を明記する（例: `Revenue ($mm)`）。
+- すべての生データ入力にセルコメントで出典を付ける。
 
-## Investment banking layouts
-If the spreadsheet is an IB-style model (LBO, DCF, 3-statement, valuation):
-- Totals should sum the range directly above.
-- Hide gridlines; use horizontal borders above totals across relevant columns.
-- Section headers should be merged cells with dark fill and white text.
-- Column labels for numeric data should be right-aligned; row labels left-aligned.
-- Indent submetrics under their parent line items.
+## 投資銀行系レイアウト
+対象が IB スタイルモデル（LBO, DCF, 3-statement, valuation）の場合:
+- 合計行は直上レンジを直接合算する。
+- グリッド線は非表示にし、該当列の合計行上に横罫線を使う。
+- セクション見出しはセル結合し、濃色背景＋白文字にする。
+- 数値列ラベルは右寄せ、行ラベルは左寄せにする。
+- サブ指標は親行項目の下でインデントする。
 
-## Role Resolution: `spreadsheet` vs `xlsx`
+## 役割分担: `spreadsheet` と `xlsx`
 
-To avoid overlap between these two spreadsheet skills, apply this split:
+2つのスプレッドシートスキルの重複を避けるため、次の分担を使う:
 
-- `spreadsheet`: default for general spreadsheet work, especially `.csv`/`.tsv` transformation, exploratory analysis, simple formatting, and data cleaning.
-- `xlsx`: default for advanced workbook behavior (formula-heavy financial modeling, strict output conventions, template-conformant production formatting, and recalculation-heavy workflows).
+- `spreadsheet`: 一般的な表計算作業の既定。特に `.csv`/`.tsv` 変換、探索分析、簡易整形、データクリーニング向け。
+- `xlsx`: 高度なブック挙動の既定。数式中心の財務モデリング、厳格な出力規約、テンプレート準拠の本番整形、再計算中心ワークフロー向け。
 
-### Selection Rules
-1) If the task is financial modeling, valuation, or requires strict audit-style cell conventions -> use `xlsx`.
-2) If the task is lightweight data manipulation/analysis and no financial-modeling constraints are stated -> use `spreadsheet`.
-3) If the task involves `.xlsx`/`.xlsm` but only basic I/O/formatting -> prefer `spreadsheet`.
-4) If uncertainty remains, prefer `xlsx` when accuracy, traceability, or reproducible business reporting is the primary objective.
+### 選択ルール
+1) 財務モデリング、バリュエーション、監査向け厳格セル規約が必要なら `xlsx` を使う。
+2) 軽量なデータ加工/分析で、財務モデル制約がないなら `spreadsheet` を使う。
+3) `.xlsx`/`.xlsm` でも基本I/O/整形のみなら `spreadsheet` を優先する。
+4) 判断が迷う場合は、正確性・追跡可能性・再現可能な業務レポートを優先し `xlsx` を選ぶ。
 
-### Conflict Resolution
-- Before starting any spreadsheet task, choose one skill explicitly.
-- If both paths seem applicable, complete with `spreadsheet` first for rapid exploration, then finalize with `xlsx` when quality controls or strict conventions are needed.
+### 競合時の扱い
+- スプレッドシート作業前に、どちらのスキルを使うかを明示して決める。
+- 両方が適用可能なら、まず `spreadsheet` で素早く探索し、品質管理や厳格規約が必要な段階で `xlsx` で仕上げる。

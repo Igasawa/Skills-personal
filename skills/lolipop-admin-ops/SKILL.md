@@ -1,84 +1,84 @@
 ---
 name: lolipop-admin-ops
-description: Execute LoLipop admin UI operations as repeatable UI playbooks. Includes dry-run first, and apply mode for real changes.
+description: LoLipop 管理UIの操作を再現可能な UI playbook として実行する。まず dry-run で確認し、実変更は apply モードで実行する。
 ---
-# lolipop admin ops
+# lolipop 管理運用
 
-This skill executes LoLipop admin tasks through JSON playbooks so the same steps are reproducible.
+このスキルは LoLipop 管理作業を JSON playbook で実行し、同じ手順を再現できるようにする。
 
-## Safe-guard rules
-- `--dry-run` is default and should be used before any write operations.
-- `--apply` triggers `run-playbook` and executes mutating steps.
-- `--allow-production` is required for write operations on production environment.
-- `--action validate` runs read-only checks.
+## 安全ルール
+- `--dry-run` が既定で、書き込み前に必ず使う。
+- `--apply` で `run-playbook` が実行され、変更操作が有効になる。
+- 本番環境への書き込みには `--allow-production` が必須。
+- `--action validate` は読み取り専用チェックを実行する。
 
-## Requirements
-- Prepare AX dirs
+## 事前準備
+- AXディレクトリの初期化
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/ax.ps1 secrets init
 ```
-- Install Playwright browser
+- Playwright ブラウザの導入
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/ax.ps1 playwright install --browser chromium
 ```
-- Save login session (recommended)
+- ログインセッション保存（推奨）
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/ax.ps1 playwright login --name lolipop --url "https://secure.lolipop.jp/"
 ```
-  - Default session path: `C:\Users\<user>\.ax\sessions\lolipop.storage.json`
-- If session file is unavailable, the command can fall back to `LOLIPOP_USERNAME` and `LOLIPOP_PASSWORD` secrets, but this is secondary to session-based execution.
+  - 既定のセッションパス: `C:\Users\<user>\.ax\sessions\lolipop.storage.json`
+- セッションファイルが使えない場合は `LOLIPOP_USERNAME` / `LOLIPOP_PASSWORD` へフォールバック可能だが、セッション利用を優先する。
 
-## Run
+## 実行
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/ax.ps1 secrets exec --service lolipop -- `
   python skills/lolipop-admin-ops/scripts/run.py --domain example.lolipop.jp --playbook .\skills\lolipop-admin-ops\playbooks\ssl_renewal.json --dry-run
 ```
-- Check dry-run output and screenshots.
-- Then run with `--apply`.
+- dry-run の出力とスクリーンショットを確認する。
+- 問題なければ `--apply` で本実行する。
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/ax.ps1 secrets exec --service lolipop -- `
   python skills/lolipop-admin-ops/scripts/run.py --domain example.lolipop.jp --playbook .\skills\lolipop-admin-ops\playbooks\ssl_renewal.json --apply --allow-production
 ```
 
-## Parameters
-- `--domain` target domain (required)
-- `--base-url` admin base URL (default: `https://secure.lolipop.jp`)
-- `--environment` `production` or `staging`
-- `--playbook` path to playbook JSON
-- `--action` `validate` or `run-playbook`
-- `--dry-run` read-only plan mode
-- `--apply` execute writes (requires allow-production on production)
-- `--allow-production` explicit approval for production
-- `--session-name` storage_state name (default `lolipop`)
-- `--storage-state` explicit storage_state path
+## パラメータ
+- `--domain` 対象ドメイン（必須）
+- `--base-url` 管理画面のベースURL（既定: `https://secure.lolipop.jp`）
+- `--environment` `production` または `staging`
+- `--playbook` playbook JSONのパス
+- `--action` `validate` または `run-playbook`
+- `--dry-run` 読み取り専用の計画モード
+- `--apply` 変更を実行（production は allow-production が必要）
+- `--allow-production` 本番実行の明示承認
+- `--session-name` storage_state 名（既定 `lolipop`）
+- `--storage-state` storage_state パスを明示指定
 
-## Playbook files
+## Playbook ファイル
 - `playbooks/ssl_renewal.json`
 - `playbooks/php_version_change.json`
 - `playbooks/cron_check.json`
 
-### SSL renewal
+### SSL更新
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/ax.ps1 secrets exec --service lolipop -- `
   python skills/lolipop-admin-ops/scripts/run.py --environment staging --domain example.lolipop.jp --playbook .\skills\lolipop-admin-ops\playbooks\ssl_renewal.json --dry-run
 ```
 
-### PHP version
+### PHPバージョン変更
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/ax.ps1 secrets exec --service lolipop -- `
   python skills/lolipop-admin-ops/scripts/run.py --environment staging --domain example.lolipop.jp --playbook .\skills\lolipop-admin-ops\playbooks\php_version_change.json --dry-run
 ```
 
-### Cron check
+### Cron確認
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/ax.ps1 secrets exec --service lolipop -- `
   python skills/lolipop-admin-ops/scripts/run.py --environment production --domain example.lolipop.jp --playbook .\skills\lolipop-admin-ops\playbooks\cron_check.json --dry-run
 ```
 
-## Result JSON
+## 返却JSON
 - `status`: `success` or `error`
 - `data`: execution context and step results
 - `error`: type/message if failed
 
-No credentials are emitted in output.
+出力に認証情報は含めない。

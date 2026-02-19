@@ -214,17 +214,17 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "scripts\start_dashboard.ps1
 - UI文言を追加・変更する際は、日本語表示になっていることを確認してから反映する。
 - `workflow：経費精算（複製）` 画面を含むすべてのダッシュボード表示項目は、既定で日本語表示とする。
 
-## Official manual review (automated)
-- Run periodic checks: `npm run review:manual -- --review-type weekly`
-- You can run from repository root; script defaults to `skills/mfcloud-expense-receipt-reconcile/references/...` paths.
-- Monthly run: `npm run review:manual -- --review-type monthly --max-age-days 30`
-- Optional resilience: `npm run review:manual -- --review-type weekly --url-retries 2 --url-retry-delay-seconds 1.5`
-- Use PowerShell wrapper: `pwsh -File scripts\review_official_manual.ps1 -ReviewType weekly`
-- Output log: `references/review_logs/official_manual_review_<review_type>_YYYY-MM-DD_HHMMSS.md`
-- Always align findings into `references/official_manual_alignment_notes.md` and `references/official_manual_knowledge.yaml`.
-- CI workflow: `.github/workflows/official-manual-review.yml`
-  - defaults to `review_type=weekly`, `max_age_days=14`, `skip_url_check=true`
-  - manual run can override these fields from workflow_dispatch inputs
+## 公式マニュアルレビュー（自動実行）
+- 定期チェック実行: `npm run review:manual -- --review-type weekly`
+- 実行場所はリポジトリルートでよい（スクリプトは既定で `skills/mfcloud-expense-receipt-reconcile/references/...` を参照）
+- 月次実行: `npm run review:manual -- --review-type monthly --max-age-days 30`
+- URL確認の再試行を有効化する場合: `npm run review:manual -- --review-type weekly --url-retries 2 --url-retry-delay-seconds 1.5`
+- PowerShellラッパー: `pwsh -File scripts\review_official_manual.ps1 -ReviewType weekly`
+- 出力ログ: `references/review_logs/official_manual_review_<review_type>_YYYY-MM-DD_HHMMSS.md`
+- 指摘事項は必ず `references/official_manual_alignment_notes.md` と `references/official_manual_knowledge.yaml` の両方へ反映する
+- CIワークフロー: `.github/workflows/official-manual-review.yml`
+  - 既定値: `review_type=weekly`, `max_age_days=14`, `skip_url_check=true`
+  - 手動実行時は workflow_dispatch の inputs で上書き可能
 
 ## Official manual review（月次運用テンプレ）
 - 1. 月初1営業日: `Set-Location C:\Users\...\Skillpersonal` で実行環境に移動

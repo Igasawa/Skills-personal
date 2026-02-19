@@ -1,60 +1,60 @@
 ---
 name: error-plan
-description: Analyze unresolved error incidents from `skills/mfcloud-expense-receipt-reconcile/reports/error_inbox` and create a detailed remediation plan in `reports/error_plans/incident_id/`. Use when the user asks to check failures, inspect logs, identify root cause hypotheses, or produce a structured fix plan before execution. This skill is planning-only and should not implement code changes.
+description: `skills/mfcloud-expense-receipt-reconcile/reports/error_inbox` の未解決インシデントを分析し、`reports/error_plans/incident_id/` に詳細な復旧計画を作成する。失敗確認、ログ調査、根本原因仮説の整理、実装前の修正計画作成を依頼されたときに使う。これは計画専用スキルで、コード変更は実施しない。
 ---
 
-# Error Plan
+# エラープラン
 
-Generate remediation plans from incident bundles and prepare a clean handoff for execution.
+インシデント束から復旧計画を作成し、実行フェーズに引き渡せる状態を作る。
 
-## Workflow
+## ワークフロー
 
-1. Select incident.
-- Prefer an incident id from the user.
-- If no id is provided, choose the newest unresolved incident from:
+1. インシデントを選択する。
+- ユーザーから `incident_id` が指定された場合はそれを優先する。
+- 指定がない場合は、次の場所から未解決の最新インシデントを選ぶ:
   - `skills/mfcloud-expense-receipt-reconcile/reports/error_inbox`
-- Inspect queue with:
+- キュー確認コマンド:
 ```powershell
 python skills/mfcloud-expense-receipt-reconcile/scripts/error_status.py --json
 ```
 
-2. Load evidence files in this order.
+2. 根拠ファイルを次の順で読む。
 - `incident.json`
 - `status.txt`
 - `log_tail.txt`
 - `audit_tail.jsonl`
 - `context.json`
-- If a file is missing, keep going and mark it as an assumption gap.
+- 欠損ファイルがあっても処理を止めず、前提不足として明示する。
 
-3. Build plan outputs.
-- Write:
+3. 計画成果物を作る。
+- 出力先:
   - `skills/mfcloud-expense-receipt-reconcile/reports/error_plans/<incident_id>/plan.md`
   - `skills/mfcloud-expense-receipt-reconcile/reports/error_plans/<incident_id>/plan.json`
-- Follow schema and examples in `references/workflow.md`.
-- Include:
-  - root cause hypotheses tied to evidence
-  - prioritized actions (`P0`, `P1`, `P2`)
-  - exact verification commands
-  - rollback note
-  - done criteria
+- 形式は `references/workflow.md` のスキーマと例に従う。
+- 計画には次を含める:
+  - 根拠に紐づく根本原因仮説
+  - 優先度付き対応（`P0`, `P1`, `P2`）
+  - 正確な検証コマンド
+  - ロールバック方針
+  - 完了条件
 
-4. Update incident state to planned.
-- Update `skills/mfcloud-expense-receipt-reconcile/reports/error_inbox/<incident_id>/status.txt` to `planned`.
-- Update `incident.json` with:
+4. インシデント状態を `planned` に更新する。
+- `skills/mfcloud-expense-receipt-reconcile/reports/error_inbox/<incident_id>/status.txt` を `planned` に更新。
+- `incident.json` の更新項目:
   - `status: "planned"`
   - `plan_path`
   - `planned_at`
   - `updated_at`
 
-5. Return a concise decision package.
-- Summarize top three actions.
-- Highlight first execution command.
-- Request explicit execution approval:
+5. 実行判断用の要約を返す。
+- 上位3アクションを要約する。
+- 最初に実行すべきコマンドを明示する。
+- 実行承認を明示的に求める:
   - `GO <incident_id>`
 
-## Guardrails
+## ガードレール
 
-- Keep this skill planning-only. Do not implement code changes.
-- Do not archive incidents in this skill.
-- Keep planned code scope inside:
+- このスキルは計画専用とし、コード変更を実施しない。
+- このスキル内でインシデントをアーカイブしない。
+- 計画対象のコード範囲は次に限定する:
   - `skills/mfcloud-expense-receipt-reconcile/**`

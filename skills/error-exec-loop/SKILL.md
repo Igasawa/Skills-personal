@@ -1,64 +1,64 @@
 ---
 name: error-exec-loop
-description: Execute approved remediation plans for incidents in `skills/mfcloud-expense-receipt-reconcile/reports/error_inbox` after an explicit `GO incident_id` command. Use when the user requests autonomous implementation loops that continue until the incident is resolved or escalated, with bounded retries and runtime.
+description: 明示的な `GO incident_id` 指示を受けた後、`skills/mfcloud-expense-receipt-reconcile/reports/error_inbox` のインシデントに対して承認済み復旧計画を実行する。制限付きリトライ・制限付き実行時間で、解消またはエスカレーションまで自律ループを回す依頼に使用する。
 ---
 
-# Error Exec Loop
+# エラー実行ループ
 
-Run bounded fix loops and close incidents by moving them out of inbox.
+上限付きの修正ループを実行し、インシデントを inbox からクローズする。
 
-## Preconditions
+## 事前条件
 
-- Require explicit user approval:
+- 明示的なユーザー承認が必須:
   - `GO <incident_id>`
-- Require existing plan:
+- 既存の計画が必須:
   - `skills/mfcloud-expense-receipt-reconcile/reports/error_plans/<incident_id>/plan.json`
-- Require incident folder in:
+- インシデントフォルダが次に存在すること:
   - `skills/mfcloud-expense-receipt-reconcile/reports/error_inbox/<incident_id>/`
 
-## Loop Policy
+## ループ方針
 
 - `max_loops = 8`
 - `max_runtime_minutes = 45`
 - `same_error_limit = 3`
-- code-change scope:
+- コード変更範囲:
   - `skills/mfcloud-expense-receipt-reconcile/**`
 
-If any limit is hit, close as `escalated`.
+いずれかの上限に到達した場合、結果は `escalated` として終了する。
 
-## Execution Workflow
+## 実行ワークフロー
 
-1. Mark incident running.
-- Set `status.txt` to `running`.
-- Update `incident.json.status` and `incident.json.updated_at`.
+1. インシデントを実行中にする。
+- `status.txt` を `running` に更新。
+- `incident.json.status` と `incident.json.updated_at` を更新。
 
-2. Execute loop iteration.
-- Pick highest-priority remaining action from `plan.json`.
-- Apply minimal code or config changes.
-- Run listed verification commands.
-- Persist iteration output to:
+2. ループ1回分を実行する。
+- `plan.json` から最優先の未対応アクションを選ぶ。
+- 最小限のコード/設定変更を適用する。
+- 計画記載の検証コマンドを実行する。
+- 試行結果を次へ保存:
   - `skills/mfcloud-expense-receipt-reconcile/reports/error_runs/<incident_id>/attempt_XX.json`
 
-3. Evaluate iteration result.
-- If verification passes and target error does not reproduce, finish `resolved`.
-- If failure repeats with same signature, increment repeat counter.
-- If repeat counter reaches `same_error_limit`, finish `escalated`.
+3. 試行結果を判定する。
+- 検証が通り、対象エラーが再現しなければ `resolved` で終了。
+- 同一シグネチャの失敗が続く場合は反復カウンタを増やす。
+- 反復カウンタが `same_error_limit` に達したら `escalated` で終了。
 
-4. Close incident.
-- On success:
+4. インシデントをクローズする。
+- 成功時:
 ```powershell
 python skills/mfcloud-expense-receipt-reconcile/scripts/error_archive.py --incident-id <incident_id> --result resolved --reason "loop completed"
 ```
-- On escalation:
+- エスカレーション時:
 ```powershell
 python skills/mfcloud-expense-receipt-reconcile/scripts/error_archive.py --incident-id <incident_id> --result escalated --reason "needs manual intervention"
 ```
 
-5. Write final loop summary.
+5. 最終サマリを出力する。
 - `skills/mfcloud-expense-receipt-reconcile/reports/error_runs/<incident_id>/run_result.json`
 
-## Guardrails
+## ガードレール
 
-- Never use destructive git commands.
-- Never run month-close completion actions inside autonomous loop.
-- If blocked by auth/session/credentials, escalate quickly with clear manual steps.
+- 破壊的な git コマンドは使わない。
+- 自律ループ内で月次締め処理の完了操作を実行しない。
+- 認証/セッション/資格情報で詰まった場合は、手動手順を明確にして速やかにエスカレーションする。

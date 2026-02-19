@@ -64,7 +64,7 @@ JSON入力（`config` / `params`）またはCLI引数を受け取り、`status/d
 
 主なパラメータ:
 - `--csv-path`: 検証対象CSV
-- `--mode validate|watch|download`:
+- `--mode validate|watch|download`（動作モード）:
   - `validate`: 指定CSVを検証
   - `watch`: 新規CSV出現待ち
   - `download`: Playwrightで画面を開いてCSVダウンロード待機（セッション再利用）
@@ -80,7 +80,7 @@ JSON入力（`config` / `params`）またはCLI引数を受け取り、`status/d
 
 ## 運用前提
 
-- secrets はリポジトリに置かない（`AX_HOME` 配下で管理）
+- 認証情報はリポジトリに置かない（`AX_HOME` 配下で管理）
 - 本スキルはCSVの検証・正規化を担い、MF画面でのログイン/ダウンロード操作は手動または別自動化で実施
 
 ## 参照

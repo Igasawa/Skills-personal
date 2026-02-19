@@ -34,23 +34,23 @@ python scripts/fetch_gas_price.py {年} {月} {日}
 
 取得結果（価格）が想定より安い/高い場合は、実際に参照したURL（`scripts/run.py` の出力 `data.source_url`）を開いて確認すること。
 
-### 2. 投稿前preflightチェック（本番投稿の前提）
+### 2. 投稿前プリフライトチェック（本番投稿の前提）
 
-`scripts/run.py --post` は、本番スレッド投稿の前に以下の sandbox スレッドへ疎通確認コメントを投稿する。
+`scripts/run.py --post` は、本番スレッド投稿の前に以下のサンドボックススレッドへ疎通確認コメントを投稿する。
 
-- Space: `https://5atx9.cybozu.com/k/#/space/81`
-- Thread: `https://5atx9.cybozu.com/k/#/space/81/thread/131`
+- スペースURL: `https://5atx9.cybozu.com/k/#/space/81`
+- スレッドURL: `https://5atx9.cybozu.com/k/#/space/81/thread/131`
 - サブドメイン: `5atx9`
 - スペースID: `81`
 - スレッドID: `131`
 
-preflight 投稿に失敗した場合、本番投稿は実行しない。
+プリフライト投稿に失敗した場合、本番投稿は実行しない。
 
 ```bash
-# 既定では preflight 実行後に本番投稿
+# 既定ではプリフライト実行後に本番投稿
 python scripts/run.py --year 2026 --month 1 --day 10 --post
 
-# 緊急時/または sandbox 単体テスト時のみ preflight を明示スキップ
+# 緊急時またはサンドボックス単体テスト時のみ、プリフライトを明示スキップ
 python scripts/run.py --year 2026 --month 1 --day 10 --post --skip-preflight
 ```
 
@@ -81,12 +81,12 @@ export KINTONE_PASSWORD="パスワード"
 
 ## サンドボックスでの投稿確認（推奨）
 
-このリポジトリの運用ルールとして、各スキルは最低限のアウトプット確認として sandbox のスレッドへの書き込みができるかをチェックしてから本番の動作へ進める。
+このリポジトリの運用ルールとして、各スキルは最低限のアウトプット確認としてサンドボックススレッドへの書き込み可否をチェックしてから本番の動作へ進める。
 
-sandbox スレッド（space=81/thread=131）へ直接投稿して確認したい場合、preflight 先と投稿先が同一になり二重投稿になるため、`--skip-preflight` を付けて 1 回だけ投稿する。
+サンドボックススレッド（space=81/thread=131）へ直接投稿して確認したい場合、プリフライト先と投稿先が同一になり二重投稿になるため、`--skip-preflight` を付けて 1 回だけ投稿する。
 
 ```powershell
-# sandbox 単体で「実投稿」確認（preflight も同じスレッドなのでスキップして1回だけ投稿）
+# サンドボックス単体で「実投稿」確認（プリフライトも同じスレッドなのでスキップして1回だけ投稿）
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/ax.ps1 secrets exec --service kintone -- `
   python skills/kintone-gas-price-notification/scripts/run.py --year 2026 --month 2 --day 10 --space-id 81 --thread-id 131 --post --skip-preflight
 ```

@@ -14,12 +14,12 @@ description: アスクル購入CSVをテナント（部署/拠点）単位で集
 ## 2. 実行
 
 ```powershell
-# 1) dry-run（実行はしない）
+# 1) ドライラン（実行はしない）
 python skills/askul-tenant-purchase-aggregation/scripts/run.py `
   --csv-path "C:\work\askul_purchase.csv" `
   --dry-run
 
-# 2) ルールを指定してdry-run
+# 2) ルールを指定してドライラン
 python skills/askul-tenant-purchase-aggregation/scripts/run.py `
   --csv-path "C:\work\askul_purchase.csv" `
   --tenant-default "UNKNOWN" `
@@ -28,7 +28,7 @@ python skills/askul-tenant-purchase-aggregation/scripts/run.py `
   --tenant-rule "本部:本部" `
   --apply
 
-# 3) tenant_map.jsonを使う
+# 3) tenant_map.json を使う
 python skills/askul-tenant-purchase-aggregation/scripts/run.py `
   --csv-path "C:\work\askul_purchase.csv" `
   --tenant-map ".\tenant_map.json" `
@@ -50,7 +50,7 @@ python skills/askul-tenant-purchase-aggregation/scripts/run.py `
 - `--tenant-column`
   - CSVに直接テナント列がある場合に指定。
 - `--tenant-default`
-  - 未分類時のデフォルトテナント名。
+  - 未分類時の既定テナント名。
 - `--tenant-rule "tenant:pattern[:field1,field2,...]"`
   - ルール追加。patternは正規表現可。fieldは未指定なら商品名/コメント/備考を対象。
 - `--tenant-map <path>`

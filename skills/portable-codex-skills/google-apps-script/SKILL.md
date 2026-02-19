@@ -1,43 +1,43 @@
 ---
 name: google-apps-script
-description: Comprehensive guide for Google Apps Script development covering all built-in services (SpreadsheetApp, DocumentApp, GmailApp, DriveApp, CalendarApp, FormApp, SlidesApp), triggers, authorization, error handling, and performance optimization. Use when automating Google Sheets operations, creating Google Docs, managing Gmail/email, working with Google Drive files, automating Calendar events, implementing triggers (time-based, event-based), building custom functions, creating add-ons, handling OAuth scopes, optimizing Apps Script performance, working with UrlFetchApp for API calls, using PropertiesService for persistent storage, or implementing CacheService for temporary data. Covers batch operations, error recovery, and JavaScript ES6+ runtime.
+description: Google Apps Script 開発の包括ガイド。組み込みサービス（SpreadsheetApp, DocumentApp, GmailApp, DriveApp, CalendarApp, FormApp, SlidesApp）、トリガー、認可、エラーハンドリング、性能最適化を扱う。Google Sheets 自動化、Google Docs 生成、Gmail 管理、Drive 操作、Calendar 自動化、トリガー実装、カスタム関数、アドオン作成、OAuth スコープ管理、UrlFetchApp でのAPI呼び出し、PropertiesService 永続化、CacheService 一時保存に使用する。バッチ処理、障害復旧、JavaScript ES6+ 実行環境を含む。
 ---
 
 # Google Apps Script
 
-## Overview
+## 概要
 
-Cloud-based JavaScript platform for automating Google Workspace services. Server-side V8 runtime with automatic OAuth integration across Sheets, Docs, Gmail, Drive, Calendar, and more.
+Google Workspace サービスを自動化するクラウド型 JavaScript プラットフォーム。サーバーサイド V8 ランタイムで、Sheets/Docs/Gmail/Drive/Calendar などへ OAuth 連携する。
 
-## When to Use This Skill
+## このスキルを使う場面
 
-Invoke this skill when:
+次のケースで利用する:
 
-- Automating Google Sheets operations (reading, writing, formatting)
-- Creating or editing Google Docs programmatically
-- Managing Gmail messages and sending emails
-- Working with Google Drive files and folders
-- Automating Google Calendar events
-- Implementing triggers (time-based or event-based)
-- Building custom functions for Sheets
-- Creating Google Workspace add-ons
-- Handling OAuth scopes and authorisation
-- Making HTTP requests to external APIs with UrlFetchApp
-- Using persistent storage with PropertiesService
-- Implementing caching strategies with CacheService
-- Optimising performance with batch operations
-- Debugging Apps Script code or authorisation issues
+- Google Sheets 操作の自動化（読み取り、書き込み、書式）
+- Google Docs のプログラム生成/編集
+- Gmail メッセージ管理とメール送信
+- Google Drive のファイル/フォルダ操作
+- Google Calendar イベント自動化
+- トリガー実装（時間ベース/イベントベース）
+- Sheets カスタム関数の作成
+- Google Workspace アドオンの作成
+- OAuth スコープ/認可対応
+- UrlFetchApp による外部API呼び出し
+- PropertiesService による永続データ管理
+- CacheService によるキャッシュ戦略
+- バッチ処理による性能最適化
+- Apps Script コードや認可問題のデバッグ
 
-## Core Services
+## 主要サービス
 
-1. **SpreadsheetApp** - Google Sheets automation (read, write, format, data validation)
-2. **DocumentApp** - Google Docs creation and editing
-3. **GmailApp & MailApp** - Email operations (send, search, manage labels)
-4. **DriveApp** - File and folder management, sharing, permissions
-5. **CalendarApp** - Calendar events, recurring appointments, reminders
-6. **Triggers & ScriptApp** - Time-based and event-driven automation
+1. **SpreadsheetApp** - Google Sheets 自動化（読み書き、書式、データ検証）
+2. **DocumentApp** - Google Docs 作成/編集
+3. **GmailApp & MailApp** - メール操作（送信、検索、ラベル管理）
+4. **DriveApp** - ファイル/フォルダ管理、共有、権限
+5. **CalendarApp** - カレンダーイベント、定期予定、リマインダー
+6. **Triggers & ScriptApp** - 時間ベース/イベント駆動自動化
 
-## Quick Start
+## クイックスタート
 
 ```javascript
 function generateWeeklyReport() {
@@ -59,56 +59,57 @@ function generateWeeklyReport() {
 }
 ```
 
-## Best Practices
+## ベストプラクティス
 
-- **Batch operations** - read/write ranges in bulk, never cell-by-cell in loops
-- **Cache data** - use CacheService (25 min TTL) for frequently accessed data
-- **Error handling** - wrap operations in try/catch, log errors to a sheet for audit trails
-- **Respect limits** - 6-minute execution timeout; split large jobs across triggers
-- **Minimise scopes** - request only necessary OAuth permissions in `appscript.json`
-- **Persistent storage** - use PropertiesService for configuration and state
-- **Validate inputs** - always check objects exist before accessing properties
+- **Batch operations** - ループ内のセル単位処理を避け、範囲をまとめて読み書きする
+- **Cache data** - 高頻度データは CacheService（TTL 25分）を使う
+- **Error handling** - try/catch で囲み、監査向けにエラーをシートへ記録する
+- **Respect limits** - 実行上限6分を前提に、大規模処理はトリガー分割する
+- **Minimise scopes** - `appscript.json` では必要最小限の OAuth 権限のみ要求する
+- **Persistent storage** - 設定と状態は PropertiesService で保持する
+- **Validate inputs** - プロパティ参照前にオブジェクト存在を検証する
 
-See [references/best-practices.md](references/best-practices.md) for detailed examples of each practice.
+各項目の詳細例は [references/best-practices.md](references/best-practices.md) を参照。
 
-## Validation & Testing
+## 検証とテスト
 
-Use the validation scripts in `scripts/` for pre-deployment checks:
+デプロイ前チェックには `scripts/` の検証スクリプトを使う:
 
-- **scripts/validators.py** - Validate spreadsheet operations, range notations, and data structures
+- **scripts/validators.py** - スプレッドシート操作、範囲指定、データ構造を検証
 
-Debug with `Logger.log()` and view output via View > Logs (Cmd/Ctrl + Enter). Use breakpoints in the Apps Script editor for step-through debugging.
+`Logger.log()` でデバッグし、View > Logs（Cmd/Ctrl + Enter）で出力確認する。Apps Script エディタのブレークポイントでステップ実行する。
 
-## Integration with Other Skills
+## 他スキルとの連携
 
-- **google-ads-scripts** - Export Google Ads data to Sheets for reporting
-- **gtm-datalayer** - Coordinate with GTM for tracking events triggered by Apps Script
-- **ga4-bigquery** - Query BigQuery from Apps Script and write results to Sheets
+- **google-ads-scripts** - Google Ads データを Sheets に出力してレポート化
+- **gtm-datalayer** - Apps Script 起点イベントを GTM 連携で追跡
+- **ga4-bigquery** - Apps Script から BigQuery を問い合わせ、結果を Sheets へ書き込み
 
-## Troubleshooting
+## トラブルシュート
 
-| Issue | Solution |
+| 問題 | 対応 |
 |-------|----------|
-| Execution timeout | Split work into smaller batches or use multiple triggers |
-| Authorisation error | Check OAuth scopes in manifest file |
-| Quota exceeded | Reduce API call frequency, use caching |
-| Null reference error | Validate objects exist before accessing properties |
+| Execution timeout | 処理を小さなバッチへ分割するか、複数トリガーを使う |
+| Authorisation error | マニフェストの OAuth スコープを確認する |
+| Quota exceeded | API 呼び出し頻度を下げ、キャッシュを使う |
+| Null reference error | プロパティ参照前にオブジェクト存在を確認する |
 
-## References
+## 参照
 
-Detailed content is available in reference files (loaded on demand):
+詳細は参照ファイルに分離されており、必要時に読み込む:
 
-- [references/apps-script-api-reference.md](references/apps-script-api-reference.md) - Complete API reference for all built-in services, triggers, authorisation, and performance optimisation
-- [references/examples.md](references/examples.md) - Production-ready code examples (spreadsheet reports, Gmail auto-responder, document generation, trigger setup)
-- [references/best-practices.md](references/best-practices.md) - Detailed best practices with code blocks for batch operations, caching, error handling, scopes, and persistence
-- [references/patterns.md](references/patterns.md) - Common reusable patterns (data validation, retry logic, form response processing)
-## Dashboard/Webhook Integration (Expense Reconcile)
+- [references/apps-script-api-reference.md](references/apps-script-api-reference.md) - 組み込みサービス、トリガー、認可、性能最適化を含む API リファレンス
+- [references/examples.md](references/examples.md) - 本番向けコード例（スプレッドシートレポート、Gmail自動返信、文書生成、トリガー設定）
+- [references/best-practices.md](references/best-practices.md) - バッチ処理、キャッシュ、エラーハンドリング、スコープ、永続化の実践例
+- [references/patterns.md](references/patterns.md) - 再利用パターン（データ検証、リトライロジック、フォーム回答処理）
 
-Use this pattern when a GAS workflow must report monthly import status to the workflow dashboard card.
+## ダッシュボード/Webhook 連携（Expense Reconcile）
 
-- Store dashboard base URL in Script Properties: `AX_EXPENSE_DASHBOARD_BASE_URL`
-- Optional token: `AX_PROVIDER_IMPORT_WEBHOOK_TOKEN` (send as `x-provider-import-token`)
-- POST endpoint format: `POST /api/provider-import/{ym}/result` (`ym = YYYY-MM`)
-- Keep payload aligned with backend fields (`found_files`, `found_pdfs`, `imported`, `imported_missing_amount`, `skipped_duplicates`, `failed`, `provider_counts`, `manual_action_required`, etc.)
-- Use 5th day monthly trigger: `everyMonths(1).onMonthDay(5).atHour(4)`
-- See `references/examples.md` for implementation code.
+GAS ワークフローから月次インポート状態をワークフローダッシュボードカードへ報告する場合、次のパターンを使う。
+
+- Script Properties にダッシュボードのベースURLを保存: `AX_EXPENSE_DASHBOARD_BASE_URL`
+- 任意トークン: `AX_PROVIDER_IMPORT_WEBHOOK_TOKEN`（`x-provider-import-token` として送信）
+- POST エンドポイント形式: `POST /api/provider-import/{ym}/result`（`ym = YYYY-MM`）
+- ペイロードはバックエンド項目（`found_files`, `found_pdfs`, `imported`, `imported_missing_amount`, `skipped_duplicates`, `failed`, `provider_counts`, `manual_action_required` など）へ合わせる
+- 月次トリガーは毎月5日を使用: `everyMonths(1).onMonthDay(5).atHour(4)`
+- 実装コードは `references/examples.md` を参照。
