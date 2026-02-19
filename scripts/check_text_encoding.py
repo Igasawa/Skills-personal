@@ -89,26 +89,35 @@ def _get_staged_files() -> list[str]:
             "--name-only",
             "--diff-filter=ACMR",
             "--no-ext-diff",
+            "-z",
         ],
         check=False,
         capture_output=True,
-        text=True,
+        text=False,
     )
     if result.returncode != 0:
         raise RuntimeError(f"failed to list staged files: {result.stderr.strip()}")
-    return [line.strip() for line in result.stdout.splitlines() if line.strip()]
+    return [
+        path.decode("utf-8")
+        for path in result.stdout.split(b"\0")
+        if path
+    ]
 
 
 def _get_tracked_files() -> list[str]:
     result = subprocess.run(
-        ["git", "ls-files"],
+        ["git", "ls-files", "-z"],
         check=False,
         capture_output=True,
-        text=True,
+        text=False,
     )
     if result.returncode != 0:
         raise RuntimeError(f"failed to list tracked files: {result.stderr.strip()}")
-    return [line.strip() for line in result.stdout.splitlines() if line.strip()]
+    return [
+        path.decode("utf-8")
+        for path in result.stdout.split(b"\0")
+        if path
+    ]
 
 
 def _iter_text_files(path: Path) -> Iterable[Path]:
