@@ -1,4 +1,4 @@
-﻿  async function fetchStatus(runId) {
+  async function fetchStatus(runId) {
     return apiGetJson(`/api/runs/${runId}`);
   }
 

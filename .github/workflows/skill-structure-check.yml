@@ -1,0 +1,21 @@
+name: Skill Structure Check
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  structure:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Run skill structure check
+        run: |
+          python scripts/check_skill_structure.py --strict
