@@ -18,6 +18,8 @@ from .api_helpers import (
     _try_year_month,
 )
 from .api_folder_endpoints import register_api_folder_endpoints
+from .api_ai_chat_routes import register_api_ai_chat_routes
+from .api_ai_skill_routes import register_api_ai_skill_routes
 from .api_kil_review_routes import register_api_kil_review_routes
 from .api_print_endpoints import register_api_print_endpoints
 from .api_run_endpoints import register_api_run_endpoints
@@ -38,6 +40,8 @@ def create_api_router() -> APIRouter:
     register_api_print_endpoints(router=router)
     register_api_run_endpoints(router=router)
     register_api_workflow_endpoints(router=router)
+    register_api_ai_chat_routes(router=router)
+    register_api_ai_skill_routes(router=router)
 
     register_builtin_api_run_routes(
         router=router,

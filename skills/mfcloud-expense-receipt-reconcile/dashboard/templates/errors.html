@@ -29,6 +29,7 @@
         <button type="button" class="pill" data-errors-tab="document-targets" id="errors-tab-document-targets">対象ドキュメント</button>
         <button type="button" class="pill" data-errors-tab="workflow-archive" id="errors-tab-workflow-archive">WFアーカイブ管理</button>
         <button type="button" class="pill" data-errors-tab="kil-review" id="errors-tab-kil-review">KIL Review</button>
+        <button type="button" class="pill" data-errors-tab="ai-skills" id="errors-tab-ai-skills">AI Skill権限</button>
       </div>
 
       <section class="errors-tab-panel" data-errors-tab-panel="incidents">
@@ -355,6 +356,30 @@
           <ul id="kil-review-data-files" class="muted">
             <li>AGENT_BRAIN_INDEX.jsonl / AGENT_BRAIN.md</li>
           </ul>
+        </section>
+      </section>
+
+      <section class="errors-tab-panel hidden" data-errors-tab-panel="ai-skills">
+        <section class="card">
+          <div class="section-header">
+            <h2>AI Skill 実行権限</h2>
+            <button type="button" class="secondary" id="errors-ai-skills-refresh">一覧を更新</button>
+          </div>
+          <p id="errors-ai-skills-summary" class="muted">スキル権限を読み込み中...</p>
+          <p id="errors-ai-skills-env-policy" class="muted">環境制限を確認中...</p>
+          <div class="errors-ai-skills-table-wrap">
+            <table class="errors-ai-skills-table">
+              <thead>
+                <tr>
+                  <th scope="col">Skill</th>
+                  <th scope="col">説明</th>
+                  <th scope="col">状態</th>
+                  <th scope="col">実行許可</th>
+                </tr>
+              </thead>
+              <tbody id="errors-ai-skills-list"></tbody>
+            </table>
+          </div>
         </section>
       </section>
     </div>

@@ -58,6 +58,10 @@
   const docTargetsSummaryEl = document.getElementById("errors-doc-targets-summary");
   const docTargetsStatsEl = document.getElementById("errors-doc-targets-stats");
   const docTargetsListEl = document.getElementById("errors-doc-targets-list");
+  const aiSkillsRefreshButton = document.getElementById("errors-ai-skills-refresh");
+  const aiSkillsSummaryEl = document.getElementById("errors-ai-skills-summary");
+  const aiSkillsEnvPolicyEl = document.getElementById("errors-ai-skills-env-policy");
+  const aiSkillsListEl = document.getElementById("errors-ai-skills-list");
 
   let incidents = [];
   let selectedIncidentId = "";
@@ -65,6 +69,8 @@
   let busy = false;
   let docStatusLoaded = false;
   let docTargetsLoaded = false;
+  let aiSkillsLoaded = false;
+  const aiSkillPending = new Set();
   const tabNames = new Set(
     Array.from(tabButtons)
       .map((button) => String(button.dataset.errorsTab || "").trim())
@@ -179,6 +185,18 @@
 
     document.querySelectorAll("[data-error-action]").forEach((button) => {
       button.disabled = busy || !selectedIncidentId;
+    });
+    updateAiSkillControlsDisabled();
+  }
+
+  function updateAiSkillControlsDisabled() {
+    if (aiSkillsRefreshButton) {
+      aiSkillsRefreshButton.disabled = busy || aiSkillPending.size > 0;
+    }
+    if (!aiSkillsListEl) return;
+    aiSkillsListEl.querySelectorAll("[data-ai-skill-toggle]").forEach((input) => {
+      const skillId = String(input?.dataset?.aiSkillToggle || "").trim();
+      input.disabled = busy || !skillId || aiSkillPending.has(skillId);
     });
   }
 
@@ -446,6 +464,135 @@
     });
   }
 
+  function buildAiSkillEffectiveState(row) {
+    if (!row || typeof row !== "object") return "不明";
+    const hasRunner = Boolean(row.has_runner);
+    const envAllowed = Boolean(row.env_allowed);
+    const adminEnabled = Boolean(row.admin_enabled);
+    const allowed = Boolean(row.allowed);
+    if (!hasRunner) return "実行不可（runnerなし）";
+    if (!envAllowed) return "実行不可（環境制限）";
+    if (!adminEnabled) return "実行不可（管理画面）";
+    return allowed ? "実行可能" : "実行不可";
+  }
+
+  function renderAiSkills(payload) {
+    if (!aiSkillsListEl || !aiSkillsSummaryEl) return;
+    const skills = Array.isArray(payload?.skills) ? payload.skills.filter((row) => row && typeof row === "object") : [];
+    const runnableCount = skills.filter((row) => Boolean(row.has_runner)).length;
+    const allowedCount = skills.filter((row) => Boolean(row.allowed)).length;
+    const blockedCount = Math.max(0, runnableCount - allowedCount);
+    setText(aiSkillsSummaryEl, `実行可能 ${runnableCount}件 / 許可 ${allowedCount}件 / 制限中 ${blockedCount}件`);
+
+    const permissions = payload?.permissions && typeof payload.permissions === "object" ? payload.permissions : {};
+    const envAllowlistEnabled = Boolean(permissions.env_allowlist_enabled);
+    const envAllowlist = Array.isArray(permissions.env_allowlist) ? permissions.env_allowlist : [];
+    if (aiSkillsEnvPolicyEl) {
+      if (envAllowlistEnabled) {
+        setText(
+          aiSkillsEnvPolicyEl,
+          `環境変数 AX_AI_CHAT_SKILL_ALLOWLIST により ${envAllowlist.length}件へ制限中`,
+        );
+      } else {
+        setText(aiSkillsEnvPolicyEl, "環境変数による追加制限はありません");
+      }
+    }
+
+    aiSkillsListEl.innerHTML = "";
+    if (!skills.length) {
+      const emptyRow = document.createElement("tr");
+      const emptyCell = document.createElement("td");
+      emptyCell.colSpan = 4;
+      emptyCell.className = "muted";
+      emptyCell.textContent = "利用可能な skill が見つかりません。";
+      emptyRow.appendChild(emptyCell);
+      aiSkillsListEl.appendChild(emptyRow);
+      updateAiSkillControlsDisabled();
+      return;
+    }
+
+    skills.forEach((row) => {
+      const skillId = toText(row.id, "-");
+      const skillName = toText(row.name, skillId);
+      const description = toText(row.description, "-");
+      const hasRunner = Boolean(row.has_runner);
+      const adminEnabled = hasRunner ? Boolean(row.admin_enabled) : false;
+
+      const tr = document.createElement("tr");
+
+      const skillCell = document.createElement("td");
+      const skillTitle = document.createElement("div");
+      skillTitle.className = "errors-ai-skills-name";
+      skillTitle.textContent = `${skillName} (${skillId})`;
+      skillCell.appendChild(skillTitle);
+      tr.appendChild(skillCell);
+
+      const descCell = document.createElement("td");
+      descCell.className = "errors-ai-skills-desc";
+      descCell.textContent = description;
+      tr.appendChild(descCell);
+
+      const stateCell = document.createElement("td");
+      stateCell.textContent = buildAiSkillEffectiveState(row);
+      tr.appendChild(stateCell);
+
+      const toggleCell = document.createElement("td");
+      const label = document.createElement("label");
+      label.className = "errors-ai-skills-toggle";
+
+      const input = document.createElement("input");
+      input.type = "checkbox";
+      input.checked = adminEnabled;
+      input.dataset.aiSkillToggle = skillId;
+      input.disabled = !hasRunner;
+      input.addEventListener("change", () => {
+        const enabled = Boolean(input.checked);
+        void updateAiSkillPermission(skillId, enabled);
+      });
+      label.appendChild(input);
+
+      const caption = document.createElement("span");
+      caption.textContent = adminEnabled ? "許可" : "禁止";
+      label.appendChild(caption);
+      toggleCell.appendChild(label);
+      tr.appendChild(toggleCell);
+
+      aiSkillsListEl.appendChild(tr);
+    });
+    updateAiSkillControlsDisabled();
+  }
+
+  async function refreshAiSkills() {
+    const payload = await apiGetJson("/api/ai/skills");
+    renderAiSkills(payload);
+    aiSkillsLoaded = true;
+    return payload;
+  }
+
+  async function updateAiSkillPermission(skillId, enabled) {
+    const resolvedSkillId = String(skillId || "").trim().toLowerCase();
+    if (!resolvedSkillId) return;
+    aiSkillPending.add(resolvedSkillId);
+    updateAiSkillControlsDisabled();
+    try {
+      await apiPostJson("/api/ai/skills/permissions", {
+        skill: resolvedSkillId,
+        enabled: Boolean(enabled),
+      });
+      await refreshAiSkills();
+      setStatus("", "");
+      showToast(`skill権限を更新しました: ${resolvedSkillId}`, "success");
+    } catch (error) {
+      await refreshAiSkills().catch(() => {});
+      const message = toFriendlyMessage(error?.message || "skill権限の更新に失敗しました");
+      setStatus(message, "error");
+      showToast(message, "error");
+    } finally {
+      aiSkillPending.delete(resolvedSkillId);
+      updateAiSkillControlsDisabled();
+    }
+  }
+
   async function refreshDocumentStatus() {
     const payload = await apiGetJson(`/api/kil-review?source=all&limit=${KIL_REVIEW_STATUS_LIMIT}`);
     renderDocumentStatus(payload);
@@ -624,6 +771,26 @@
     });
   }
 
+  if (aiSkillsRefreshButton) {
+    aiSkillsRefreshButton.addEventListener("click", () => {
+      if (busy || aiSkillPending.size > 0) return;
+      setBusy(true);
+      refreshAiSkills()
+        .then(() => {
+          setStatus("", "");
+          showToast("AI skill権限を更新しました", "success");
+        })
+        .catch((error) => {
+          const message = toFriendlyMessage(error?.message || "処理に失敗しました");
+          setStatus(message, "error");
+          showToast(message, "error");
+        })
+        .finally(() => {
+          setBusy(false);
+        });
+    });
+  }
+
   function lazyLoadTabData(tabName) {
     if (tabName === "document-update" && !docStatusLoaded) {
       void refreshDocumentStatus().catch((error) => {
@@ -638,6 +805,12 @@
         setStatus(message, "error");
       });
       return;
+    }
+    if (tabName === "ai-skills" && !aiSkillsLoaded) {
+      void refreshAiSkills().catch((error) => {
+        const message = toFriendlyMessage(error?.message || "読み込みに失敗しました");
+        setStatus(message, "error");
+      });
     }
   }
 
@@ -663,6 +836,8 @@
         tasks.push({ name: "ドキュメント更新", run: () => refreshDocumentStatus() });
       } else if (initialTab === "document-targets") {
         tasks.push({ name: "対象ドキュメント", run: () => refreshDocumentTargets() });
+      } else if (initialTab === "ai-skills") {
+        tasks.push({ name: "AI skill権限", run: () => refreshAiSkills() });
       }
 
       const settled = await Promise.allSettled(tasks.map((task) => Promise.resolve().then(() => task.run())));

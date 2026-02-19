@@ -14,7 +14,26 @@
     { href: "/errors", label: "\u7ba1\u7406\u30bb\u30f3\u30bf\u30fc", tab: "errors", section: "admin" },
     { href: "/pptx-polish", label: "PowerPoint整形", tab: "pptx-polish", section: "admin" },
   ]);
+  const AI_CHAT_STORAGE_KEY = "dashboard-ai-chat-v1";
+  const AI_CHAT_MAX_MESSAGES = 40;
+  const AI_CHAT_STATUS_ENDPOINT = "/api/ai/chat/status";
+  const AI_CHAT_ENDPOINT = "/api/ai/chat";
+  const SIDEBAR_STATE_STORAGE_KEY = "dashboard-sidebar-state";
+  const SIDEBAR_MODE_STORAGE_KEY = "dashboard-sidebar-mode";
+  const SIDEBAR_WIDTH_STORAGE_KEY = "dashboard-sidebar-width";
+  const SIDEBAR_MODE_AUTO = "auto";
+  const SIDEBAR_MODE_FIXED = "fixed";
+  const SIDEBAR_STATE_EXPANDED = "expanded";
+  const SIDEBAR_STATE_COLLAPSED = "collapsed";
+  const SIDEBAR_STATE_HIDDEN = "hidden";
+  const SIDEBAR_MODE_VALUES = new Set([SIDEBAR_MODE_AUTO, SIDEBAR_MODE_FIXED]);
+  const SIDEBAR_STATE_VALUES = new Set([SIDEBAR_STATE_EXPANDED, SIDEBAR_STATE_COLLAPSED, SIDEBAR_STATE_HIDDEN]);
+  const SIDEBAR_WIDTH_MIN = 240;
+  const SIDEBAR_WIDTH_MAX = 360;
+  const SIDEBAR_BREAKPOINT_DESKTOP = 1280;
+  const SIDEBAR_BREAKPOINT_TABLET = 960;
   let currentThemeSelection = THEME_SYSTEM;
+  let inMemoryAiChatMessages = [];
 
   function showToast(message, type = "info") {
     if (!toastEl || !message) return;
@@ -123,6 +142,92 @@
     } catch {
       // localStorage blocked: ignore.
     }
+  }
+
+  function normalizeSidebarWidth(value) {
+    const width = Number(value);
+    if (!Number.isFinite(width)) return null;
+    const rounded = Math.round(width);
+    return Math.max(SIDEBAR_WIDTH_MIN, Math.min(SIDEBAR_WIDTH_MAX, rounded));
+  }
+
+  function readStoredSidebarMode() {
+    try {
+      const mode = String(window.localStorage.getItem(SIDEBAR_MODE_STORAGE_KEY) || "").trim().toLowerCase();
+      if (SIDEBAR_MODE_VALUES.has(mode)) return mode;
+    } catch (_error) {
+      // localStorage unavailable.
+    }
+    return SIDEBAR_MODE_AUTO;
+  }
+
+  function storeSidebarMode(mode) {
+    if (!SIDEBAR_MODE_VALUES.has(mode)) return;
+    try {
+      window.localStorage.setItem(SIDEBAR_MODE_STORAGE_KEY, mode);
+    } catch (_error) {
+      // localStorage unavailable.
+    }
+  }
+
+  function readStoredSidebarState() {
+    try {
+      const state = String(window.localStorage.getItem(SIDEBAR_STATE_STORAGE_KEY) || "").trim().toLowerCase();
+      if (SIDEBAR_STATE_VALUES.has(state)) return state;
+    } catch (_error) {
+      // localStorage unavailable.
+    }
+    return SIDEBAR_STATE_EXPANDED;
+  }
+
+  function storeSidebarState(state) {
+    if (!SIDEBAR_STATE_VALUES.has(state)) return;
+    try {
+      window.localStorage.setItem(SIDEBAR_STATE_STORAGE_KEY, state);
+    } catch (_error) {
+      // localStorage unavailable.
+    }
+  }
+
+  function readStoredSidebarWidth() {
+    try {
+      const raw = window.localStorage.getItem(SIDEBAR_WIDTH_STORAGE_KEY);
+      return normalizeSidebarWidth(raw);
+    } catch (_error) {
+      // localStorage unavailable.
+    }
+    return null;
+  }
+
+  function storeSidebarWidth(width) {
+    const normalized = normalizeSidebarWidth(width);
+    if (normalized === null) return;
+    try {
+      window.localStorage.setItem(SIDEBAR_WIDTH_STORAGE_KEY, String(normalized));
+    } catch (_error) {
+      // localStorage unavailable.
+    }
+  }
+
+  function getSidebarViewportKind() {
+    const width = Number(window.innerWidth || 0);
+    if (width >= SIDEBAR_BREAKPOINT_DESKTOP) return "desktop";
+    if (width >= SIDEBAR_BREAKPOINT_TABLET) return "tablet";
+    return "mobile";
+  }
+
+  function getDefaultSidebarState(viewportKind) {
+    if (viewportKind === "desktop") return SIDEBAR_STATE_EXPANDED;
+    if (viewportKind === "tablet") return SIDEBAR_STATE_COLLAPSED;
+    return SIDEBAR_STATE_HIDDEN;
+  }
+
+  function normalizeSidebarStateForViewport(state, viewportKind) {
+    const safeState = SIDEBAR_STATE_VALUES.has(state) ? state : getDefaultSidebarState(viewportKind);
+    if (viewportKind === "mobile" && safeState === SIDEBAR_STATE_COLLAPSED) {
+      return SIDEBAR_STATE_HIDDEN;
+    }
+    return safeState;
   }
 
   function applyTheme(theme) {
@@ -260,7 +365,10 @@
       const item = document.createElement("a");
       item.href = linkConfig.href;
       item.className = "dashboard-sidebar-link";
-      item.textContent = linkConfig.label;
+      const labelText = String(linkConfig.label || "");
+      item.textContent = labelText;
+      item.title = labelText;
+      item.dataset.shortLabel = labelText.replace(/\s+/g, "").slice(0, 2) || "\u2022";
       let isActive = linkConfig.tab === activeTab;
       try {
         const url = new URL(String(linkConfig?.href || ""), window.location.origin);
@@ -309,6 +417,35 @@
     return section;
   }
 
+  function buildSidebarModeSection() {
+    const section = document.createElement("div");
+    section.className = "dashboard-sidebar-section dashboard-sidebar-settings";
+
+    const heading = document.createElement("div");
+    heading.className = "dashboard-sidebar-section-title";
+    heading.textContent = "Sidebar mode";
+    section.appendChild(heading);
+
+    const group = document.createElement("div");
+    group.className = "dashboard-sidebar-mode-group";
+    section.appendChild(group);
+
+    const options = [
+      { value: SIDEBAR_MODE_AUTO, label: "Auto" },
+      { value: SIDEBAR_MODE_FIXED, label: "Fixed" },
+    ];
+    options.forEach(({ value, label }) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "dashboard-sidebar-mode-button";
+      button.dataset.sidebarMode = value;
+      button.textContent = label;
+      button.setAttribute("aria-pressed", "false");
+      group.appendChild(button);
+    });
+    return section;
+  }
+
   function buildDashboardSidebar() {
     const page = document.querySelector(".page");
     const activeTab = page?.dataset?.activeTab || getActiveDashboardTab(window.location.pathname);
@@ -317,7 +454,17 @@
 
     const sidebar = document.createElement("aside");
     sidebar.className = "dashboard-sidebar";
+    sidebar.id = "dashboard-sidebar-panel";
+    sidebar.setAttribute("tabindex", "-1");
     sidebar.setAttribute("aria-label", "ワークフロー");
+
+    const closeButton = document.createElement("button");
+    closeButton.type = "button";
+    closeButton.className = "dashboard-sidebar-close";
+    closeButton.dataset.sidebarClose = "1";
+    closeButton.setAttribute("aria-label", "Close sidebar");
+    closeButton.textContent = "\u00d7";
+    sidebar.appendChild(closeButton);
 
     const title = document.createElement("div");
     title.className = "dashboard-sidebar-title";
@@ -334,17 +481,42 @@
     if (adminSection) {
       sidebar.appendChild(adminSection);
     }
+    sidebar.appendChild(buildSidebarModeSection());
+
+    const resizer = document.createElement("div");
+    resizer.className = "dashboard-sidebar-resizer";
+    resizer.dataset.sidebarResizer = "1";
+    resizer.setAttribute("role", "separator");
+    resizer.setAttribute("aria-orientation", "vertical");
+    resizer.setAttribute("aria-label", "Resize sidebar width");
+    resizer.tabIndex = 0;
+    sidebar.appendChild(resizer);
+
     return sidebar;
   }
 
   function mountDashboardSidebar() {
     const page = document.querySelector(".page");
-    if (!page || page.querySelector(".dashboard-shell")) return;
-    if (!page.children.length) return;
+    if (!page || page.querySelector(".dashboard-shell")) return null;
+    if (!page.children.length) return null;
 
     const sidebar = buildDashboardSidebar();
     const mainContent = document.createElement("div");
     mainContent.className = "dashboard-main-content";
+
+    const shellActions = document.createElement("div");
+    shellActions.className = "dashboard-shell-actions";
+
+    const sidebarToggle = document.createElement("button");
+    sidebarToggle.type = "button";
+    sidebarToggle.className = "dashboard-sidebar-toggle";
+    sidebarToggle.dataset.sidebarToggle = "1";
+    sidebarToggle.setAttribute("aria-controls", sidebar.id);
+    sidebarToggle.setAttribute("aria-expanded", "false");
+    sidebarToggle.setAttribute("aria-label", "Toggle sidebar");
+    sidebarToggle.textContent = "Sidebar";
+    shellActions.appendChild(sidebarToggle);
+    mainContent.appendChild(shellActions);
 
     while (page.firstChild) {
       mainContent.appendChild(page.firstChild);
@@ -355,6 +527,553 @@
     shell.appendChild(sidebar);
     shell.appendChild(mainContent);
     page.appendChild(shell);
+
+    const backdrop = document.createElement("button");
+    backdrop.type = "button";
+    backdrop.className = "dashboard-sidebar-backdrop";
+    backdrop.dataset.sidebarBackdrop = "1";
+    backdrop.setAttribute("aria-label", "Close sidebar");
+    backdrop.hidden = true;
+    page.appendChild(backdrop);
+
+    return {
+      page,
+      shell,
+      sidebar,
+      mainContent,
+      sidebarToggle,
+      backdrop,
+    };
+  }
+
+  function initSidebarLayout(sidebarLayout) {
+    if (!sidebarLayout || !sidebarLayout.shell || !sidebarLayout.sidebar) return;
+    const { page, shell, sidebar, sidebarToggle, backdrop } = sidebarLayout;
+    const closeButton = sidebar.querySelector("[data-sidebar-close]");
+    const resizer = sidebar.querySelector("[data-sidebar-resizer]");
+    const modeButtons = Array.from(sidebar.querySelectorAll("[data-sidebar-mode]"));
+
+    let mode = readStoredSidebarMode();
+    let state = readStoredSidebarState();
+    let lastFocusedElement = null;
+    let resizeSession = null;
+    let resizePending = false;
+
+    const storedWidth = readStoredSidebarWidth();
+    if (storedWidth !== null) {
+      page.style.setProperty("--sidebar-width-expanded", `${storedWidth}px`);
+    }
+
+    function updateModeButtons() {
+      modeButtons.forEach((button) => {
+        const isActive = button.dataset.sidebarMode === mode;
+        button.classList.toggle("is-active", isActive);
+        button.setAttribute("aria-pressed", String(isActive));
+      });
+    }
+
+    function getCurrentExpandedWidth() {
+      const inlineValue = normalizeSidebarWidth(page.style.getPropertyValue("--sidebar-width-expanded"));
+      if (inlineValue !== null) return inlineValue;
+      const computed = getComputedStyle(page).getPropertyValue("--sidebar-width-expanded");
+      const computedValue = normalizeSidebarWidth(parseFloat(computed));
+      if (computedValue !== null) return computedValue;
+      const measured = normalizeSidebarWidth(sidebar.getBoundingClientRect().width);
+      return measured !== null ? measured : SIDEBAR_WIDTH_MIN;
+    }
+
+    function setExpandedWidth(nextWidth, persist = false) {
+      const normalized = normalizeSidebarWidth(nextWidth);
+      if (normalized === null) return;
+      page.style.setProperty("--sidebar-width-expanded", `${normalized}px`);
+      if (persist) {
+        storeSidebarWidth(normalized);
+      }
+    }
+
+    function updateSidebarToggleLabel(viewportKind, isOpen) {
+      if (viewportKind === "mobile") {
+        sidebarToggle.textContent = isOpen ? "Hide menu" : "Show menu";
+        return;
+      }
+      if (viewportKind === "tablet") {
+        sidebarToggle.textContent = isOpen ? "Collapse menu" : "Expand menu";
+        return;
+      }
+      if (state === SIDEBAR_STATE_COLLAPSED) {
+        sidebarToggle.textContent = "Expand sidebar";
+        return;
+      }
+      if (state === SIDEBAR_STATE_HIDDEN) {
+        sidebarToggle.textContent = "Show sidebar";
+        return;
+      }
+      sidebarToggle.textContent = "Collapse sidebar";
+    }
+
+    function applySidebarLayout(options = {}) {
+      const { persist = false, focusSidebar = false } = options;
+      const viewportKind = getSidebarViewportKind();
+      if (mode === SIDEBAR_MODE_AUTO) {
+        state = getDefaultSidebarState(viewportKind);
+      } else {
+        state = normalizeSidebarStateForViewport(state, viewportKind);
+      }
+
+      const overlayMode = viewportKind === "mobile" || (viewportKind === "tablet" && state === SIDEBAR_STATE_EXPANDED);
+      const isOpen = viewportKind === "mobile"
+        ? state !== SIDEBAR_STATE_HIDDEN
+        : viewportKind === "tablet"
+          ? state === SIDEBAR_STATE_EXPANDED
+          : state !== SIDEBAR_STATE_HIDDEN;
+      const isCollapsed = !overlayMode && state === SIDEBAR_STATE_COLLAPSED;
+      const isHidden = !overlayMode && state === SIDEBAR_STATE_HIDDEN;
+
+      shell.classList.toggle("is-sidebar-overlay", overlayMode);
+      shell.classList.toggle("is-sidebar-open", overlayMode && isOpen);
+      shell.classList.toggle("is-sidebar-collapsed", isCollapsed);
+      shell.classList.toggle("is-sidebar-hidden", isHidden);
+
+      const backdropVisible = overlayMode && isOpen;
+      backdrop.classList.toggle("is-visible", backdropVisible);
+      backdrop.hidden = !backdropVisible;
+
+      const ariaExpanded = state === SIDEBAR_STATE_EXPANDED;
+      sidebarToggle.setAttribute("aria-expanded", String(ariaExpanded));
+      sidebarToggle.dataset.sidebarState = state;
+      page.dataset.sidebarState = state;
+      page.dataset.sidebarMode = mode;
+      updateSidebarToggleLabel(viewportKind, isOpen);
+      updateModeButtons();
+
+      if (persist && mode === SIDEBAR_MODE_FIXED) {
+        storeSidebarState(state);
+      }
+
+      if (focusSidebar && overlayMode && isOpen) {
+        const firstFocusable = sidebar.querySelector(
+          "a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled])"
+        );
+        if (firstFocusable && typeof firstFocusable.focus === "function") {
+          firstFocusable.focus();
+        } else {
+          sidebar.focus();
+        }
+      }
+    }
+
+    function closeOverlay(options = {}) {
+      const { restoreFocus = true } = options;
+      const viewportKind = getSidebarViewportKind();
+      if (viewportKind === "mobile") {
+        state = SIDEBAR_STATE_HIDDEN;
+      } else if (viewportKind === "tablet") {
+        state = SIDEBAR_STATE_COLLAPSED;
+      } else if (state === SIDEBAR_STATE_HIDDEN) {
+        return;
+      }
+      applySidebarLayout({ persist: true });
+      if (restoreFocus && lastFocusedElement && typeof lastFocusedElement.focus === "function") {
+        lastFocusedElement.focus();
+      }
+    }
+
+    function toggleSidebar() {
+      const viewportKind = getSidebarViewportKind();
+      const wasExpanded = state === SIDEBAR_STATE_EXPANDED;
+      if (!wasExpanded) {
+        lastFocusedElement = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+      }
+
+      if (viewportKind === "desktop") {
+        if (state === SIDEBAR_STATE_EXPANDED) {
+          state = SIDEBAR_STATE_COLLAPSED;
+        } else if (state === SIDEBAR_STATE_COLLAPSED) {
+          state = SIDEBAR_STATE_HIDDEN;
+        } else {
+          state = SIDEBAR_STATE_EXPANDED;
+        }
+      } else if (viewportKind === "tablet") {
+        state = state === SIDEBAR_STATE_EXPANDED ? SIDEBAR_STATE_COLLAPSED : SIDEBAR_STATE_EXPANDED;
+      } else {
+        state = state === SIDEBAR_STATE_HIDDEN ? SIDEBAR_STATE_EXPANDED : SIDEBAR_STATE_HIDDEN;
+      }
+      applySidebarLayout({ persist: true, focusSidebar: !wasExpanded });
+    }
+
+    function canResizeSidebar() {
+      return getSidebarViewportKind() === "desktop" && state === SIDEBAR_STATE_EXPANDED;
+    }
+
+    function stopSidebarResize() {
+      if (!resizeSession) return;
+      const finalWidth = resizeSession.width;
+      resizeSession = null;
+      window.removeEventListener("pointermove", onSidebarResizeMove);
+      window.removeEventListener("pointerup", onSidebarResizeEnd);
+      window.removeEventListener("pointercancel", onSidebarResizeEnd);
+      if (finalWidth !== null) {
+        setExpandedWidth(finalWidth, true);
+      }
+    }
+
+    function onSidebarResizeMove(event) {
+      if (!resizeSession) return;
+      const nextWidth = resizeSession.startWidth + (event.clientX - resizeSession.startX);
+      resizeSession.width = normalizeSidebarWidth(nextWidth);
+      if (resizeSession.width !== null) {
+        setExpandedWidth(resizeSession.width);
+      }
+    }
+
+    function onSidebarResizeEnd() {
+      stopSidebarResize();
+    }
+
+    if (resizer) {
+      resizer.addEventListener("pointerdown", (event) => {
+        if (!canResizeSidebar()) return;
+        if (event.button !== 0) return;
+        event.preventDefault();
+        resizeSession = {
+          startX: event.clientX,
+          startWidth: getCurrentExpandedWidth(),
+          width: null,
+        };
+        window.addEventListener("pointermove", onSidebarResizeMove);
+        window.addEventListener("pointerup", onSidebarResizeEnd);
+        window.addEventListener("pointercancel", onSidebarResizeEnd);
+      });
+
+      resizer.addEventListener("keydown", (event) => {
+        if (!canResizeSidebar()) return;
+        if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+        event.preventDefault();
+        const delta = event.key === "ArrowRight" ? 12 : -12;
+        const nextWidth = getCurrentExpandedWidth() + delta;
+        setExpandedWidth(nextWidth, true);
+      });
+    }
+
+    sidebarToggle.addEventListener("click", () => {
+      toggleSidebar();
+    });
+
+    modeButtons.forEach((button) => {
+      button.addEventListener("click", () => {
+        const nextMode = button.dataset.sidebarMode;
+        if (!SIDEBAR_MODE_VALUES.has(nextMode)) return;
+        mode = nextMode;
+        storeSidebarMode(mode);
+        if (mode === SIDEBAR_MODE_AUTO) {
+          state = getDefaultSidebarState(getSidebarViewportKind());
+        }
+        applySidebarLayout({ persist: true });
+      });
+    });
+
+    if (closeButton) {
+      closeButton.addEventListener("click", () => {
+        closeOverlay();
+      });
+    }
+
+    backdrop.addEventListener("click", () => {
+      closeOverlay();
+    });
+
+    document.addEventListener("keydown", (event) => {
+      if (event.key !== "Escape") return;
+      if (!shell.classList.contains("is-sidebar-overlay")) return;
+      if (!shell.classList.contains("is-sidebar-open")) return;
+      event.preventDefault();
+      closeOverlay();
+    });
+
+    window.addEventListener("resize", () => {
+      if (resizePending) return;
+      resizePending = true;
+      window.requestAnimationFrame(() => {
+        resizePending = false;
+        applySidebarLayout();
+      });
+    });
+
+    applySidebarLayout();
+  }
+
+  function sanitizeAiChatMessage(value) {
+    const row = value && typeof value === "object" ? value : {};
+    const role = String(row.role || "").trim().toLowerCase();
+    if (role !== "user" && role !== "assistant") return null;
+    const content = String(row.content || "").trim();
+    if (!content) return null;
+    return { role, content: content.slice(0, 4000) };
+  }
+
+  function normalizeAiChatMessages(value) {
+    if (!Array.isArray(value)) return [];
+    const out = [];
+    value.forEach((row) => {
+      const normalized = sanitizeAiChatMessage(row);
+      if (!normalized) return;
+      out.push(normalized);
+    });
+    if (out.length > AI_CHAT_MAX_MESSAGES) {
+      return out.slice(out.length - AI_CHAT_MAX_MESSAGES);
+    }
+    return out;
+  }
+
+  function readAiChatMessages() {
+    try {
+      const raw = window.localStorage.getItem(AI_CHAT_STORAGE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        const normalized = normalizeAiChatMessages(parsed);
+        inMemoryAiChatMessages = normalized;
+        return normalized;
+      }
+    } catch (_error) {
+      // localStorage unavailable: fall back to in-memory buffer.
+    }
+    return normalizeAiChatMessages(inMemoryAiChatMessages);
+  }
+
+  function writeAiChatMessages(messages) {
+    const normalized = normalizeAiChatMessages(messages);
+    inMemoryAiChatMessages = normalized;
+    try {
+      window.localStorage.setItem(AI_CHAT_STORAGE_KEY, JSON.stringify(normalized));
+    } catch (_error) {
+      // localStorage unavailable: keep in-memory state.
+    }
+    return normalized;
+  }
+
+  function pushAiChatMessage(messages, role, content) {
+    const merged = [...normalizeAiChatMessages(messages), { role, content }];
+    return writeAiChatMessages(merged);
+  }
+
+  function buildAiChatSidebar() {
+    const root = document.createElement("aside");
+    root.className = "dashboard-ai-chat";
+    root.setAttribute("aria-label", "AIチャット");
+
+    const head = document.createElement("div");
+    head.className = "dashboard-ai-chat-head";
+    root.appendChild(head);
+
+    const title = document.createElement("div");
+    title.className = "dashboard-ai-chat-title";
+    title.textContent = "AIチャット";
+    head.appendChild(title);
+
+    const status = document.createElement("div");
+    status.className = "dashboard-ai-chat-status";
+    status.textContent = "初期化中...";
+    status.dataset.state = "loading";
+    head.appendChild(status);
+
+    const log = document.createElement("div");
+    log.className = "dashboard-ai-chat-log";
+    log.setAttribute("aria-live", "polite");
+    root.appendChild(log);
+
+    const form = document.createElement("form");
+    form.className = "dashboard-ai-chat-form";
+    root.appendChild(form);
+
+    const input = document.createElement("textarea");
+    input.className = "dashboard-ai-chat-input";
+    input.rows = 4;
+    input.maxLength = 4000;
+    input.placeholder = "メッセージを入力（例: /skill list）";
+    form.appendChild(input);
+
+    const actions = document.createElement("div");
+    actions.className = "dashboard-ai-chat-actions";
+    form.appendChild(actions);
+
+    const clearButton = document.createElement("button");
+    clearButton.type = "button";
+    clearButton.className = "secondary dashboard-ai-chat-clear";
+    clearButton.textContent = "履歴クリア";
+    actions.appendChild(clearButton);
+
+    const sendButton = document.createElement("button");
+    sendButton.type = "submit";
+    sendButton.className = "primary dashboard-ai-chat-send";
+    sendButton.textContent = "送信";
+    actions.appendChild(sendButton);
+
+    return {
+      root,
+      status,
+      log,
+      form,
+      input,
+      clearButton,
+      sendButton,
+      ready: false,
+      pending: false,
+      messages: readAiChatMessages(),
+    };
+  }
+
+  function setAiChatStatus(ui, text, state = "info") {
+    if (!ui || !ui.status) return;
+    ui.status.textContent = String(text || "");
+    ui.status.dataset.state = state;
+  }
+
+  function renderAiChatMessages(ui) {
+    if (!ui || !ui.log) return;
+    ui.log.innerHTML = "";
+    if (!ui.messages.length) {
+      const empty = document.createElement("div");
+      empty.className = "dashboard-ai-chat-empty";
+      empty.textContent = "履歴はまだありません。";
+      ui.log.appendChild(empty);
+      return;
+    }
+    ui.messages.forEach((row) => {
+      const item = document.createElement("div");
+      item.className = `dashboard-ai-chat-item is-${row.role}`;
+
+      const bubble = document.createElement("div");
+      bubble.className = "dashboard-ai-chat-bubble";
+      bubble.textContent = String(row.content || "");
+      item.appendChild(bubble);
+      ui.log.appendChild(item);
+    });
+    ui.log.scrollTop = ui.log.scrollHeight;
+  }
+
+  function setAiChatFormEnabled(ui, enabled) {
+    const active = Boolean(enabled);
+    ui.input.disabled = !active;
+    ui.sendButton.disabled = !active;
+  }
+
+  async function fetchAiChatStatus() {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 9000);
+    try {
+      const res = await fetch(AI_CHAT_STATUS_ENDPOINT, {
+        method: "GET",
+        cache: "no-store",
+        signal: controller.signal,
+      });
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        return { ready: false, reason: String(payload?.detail || `status=${res.status}`) };
+      }
+      return payload && typeof payload === "object" ? payload : { ready: false, reason: "invalid payload" };
+    } catch (error) {
+      return { ready: false, reason: String(error || "status request failed") };
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
+  function collectAiChatPageContext() {
+    const page = document.querySelector(".page");
+    const context = {
+      path: String(window.location.pathname || "").slice(0, 200),
+      active_tab: String(page?.dataset?.activeTab || "").slice(0, 200),
+      title: String(document.title || "").slice(0, 200),
+    };
+    return context;
+  }
+
+  async function sendAiChat(ui) {
+    if (!ui || ui.pending) return;
+    const text = String(ui.input.value || "").trim();
+    if (!text) return;
+    if (!ui.ready) {
+      showToast("AI APIが利用できません。設定を確認してください。", "error");
+      return;
+    }
+
+    ui.pending = true;
+    ui.messages = pushAiChatMessage(ui.messages, "user", text);
+    ui.input.value = "";
+    renderAiChatMessages(ui);
+    setAiChatStatus(ui, "回答を生成中...", "loading");
+    setAiChatFormEnabled(ui, false);
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 25000);
+    try {
+      const res = await fetch(AI_CHAT_ENDPOINT, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          messages: ui.messages,
+          page_context: collectAiChatPageContext(),
+        }),
+        signal: controller.signal,
+      });
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(String(payload?.detail || `status=${res.status}`));
+      }
+      const reply = sanitizeAiChatMessage(payload?.reply || {});
+      if (!reply || reply.role !== "assistant") {
+        throw new Error("AI response is invalid.");
+      }
+      ui.messages = pushAiChatMessage(ui.messages, "assistant", reply.content);
+      renderAiChatMessages(ui);
+      setAiChatStatus(ui, `接続中: ${String(payload?.model || "gemini")}`, "success");
+    } catch (error) {
+      setAiChatStatus(ui, "送信に失敗しました。", "error");
+      showToast(toFriendlyMessage(error), "error");
+    } finally {
+      clearTimeout(timeout);
+      ui.pending = false;
+      setAiChatFormEnabled(ui, ui.ready);
+      ui.input.focus();
+    }
+  }
+
+  async function initAiChatSidebar() {
+    const shell = document.querySelector(".dashboard-shell");
+    if (!shell || shell.querySelector(".dashboard-ai-chat")) return;
+
+    const ui = buildAiChatSidebar();
+    shell.appendChild(ui.root);
+    renderAiChatMessages(ui);
+
+    ui.form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      await sendAiChat(ui);
+    });
+
+    ui.input.addEventListener("keydown", async (event) => {
+      if (event.key !== "Enter" || event.shiftKey) return;
+      event.preventDefault();
+      await sendAiChat(ui);
+    });
+
+    ui.clearButton.addEventListener("click", () => {
+      ui.messages = writeAiChatMessages([]);
+      renderAiChatMessages(ui);
+      setAiChatStatus(ui, ui.ready ? "履歴をクリアしました。" : "履歴をクリアしました（未接続）。", "info");
+    });
+
+    const status = await fetchAiChatStatus();
+    ui.ready = Boolean(status?.ready);
+    if (ui.ready) {
+      const model = String(status?.model || "gemini");
+      setAiChatStatus(ui, `接続中: ${model}`, "success");
+      setAiChatFormEnabled(ui, true);
+    } else {
+      const reason = String(status?.reason || "AI APIの設定が必要です。");
+      setAiChatStatus(ui, `未接続: ${reason}`, "error");
+      setAiChatFormEnabled(ui, false);
+    }
   }
 
   function bindSystemThemeSync() {
@@ -380,12 +1099,16 @@
   }
 
   initThemeToggle();
-  mountDashboardSidebar();
+  const sidebarLayout = mountDashboardSidebar();
   mountThemeToggle();
+  initSidebarLayout(sidebarLayout);
+  initAiChatSidebar();
 
   window.DashboardCommon = {
     applyTheme,
     bindCopyButtons,
+    fetchAiChatStatus,
+    initAiChatSidebar,
     initThemeToggle,
     normalizeSearchText,
     showToast,

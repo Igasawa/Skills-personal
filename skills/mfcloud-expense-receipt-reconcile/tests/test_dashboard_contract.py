@@ -20,6 +20,11 @@ def test_api_router_registers_expected_routes() -> None:
 
     expected_paths = {
         "/api/archive/{ym}",
+        "/api/ai/chat",
+        "/api/ai/chat/status",
+        "/api/ai/skills",
+        "/api/ai/skills/permissions",
+        "/api/ai/skills/execute",
         "/api/errors/doc-update/run",
         "/api/errors/document-freshness",
         "/api/errors/incidents",
@@ -91,12 +96,14 @@ def test_create_api_router_delegates_to_registrar_modules(monkeypatch: pytest.Mo
     monkeypatch.setattr(api_routes, "register_api_print_endpoints", _record("print"))
     monkeypatch.setattr(api_routes, "register_api_run_endpoints", _record("run"))
     monkeypatch.setattr(api_routes, "register_api_workflow_endpoints", _record("workflow"))
+    monkeypatch.setattr(api_routes, "register_api_ai_chat_routes", _record("ai-chat"))
+    monkeypatch.setattr(api_routes, "register_api_ai_skill_routes", _record("ai-skill"))
     monkeypatch.setattr(api_routes, "register_builtin_api_run_routes", _record("builtin"))
     monkeypatch.setattr(api_routes, "register_api_kil_review_routes", _record("kil"))
 
     api_routes.create_api_router()
 
-    assert calls == ["folder", "print", "run", "workflow", "builtin", "kil"]
+    assert calls == ["folder", "print", "run", "workflow", "ai-chat", "ai-skill", "builtin", "kil"]
 
 
 def test_create_api_router_injects_provider_source_status_resolver(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -113,6 +120,12 @@ def test_create_api_router_injects_provider_source_status_resolver(monkeypatch: 
         return None
 
     def _fake_workflow_endpoints(*, router):
+        return None
+
+    def _fake_ai_chat_routes(*, router):
+        return None
+
+    def _fake_ai_skill_routes(*, router):
         return None
 
     def _fake_builtin_routes(
@@ -135,6 +148,8 @@ def test_create_api_router_injects_provider_source_status_resolver(monkeypatch: 
     monkeypatch.setattr(api_routes, "register_api_print_endpoints", _fake_print_endpoints)
     monkeypatch.setattr(api_routes, "register_api_run_endpoints", _fake_run_endpoints)
     monkeypatch.setattr(api_routes, "register_api_workflow_endpoints", _fake_workflow_endpoints)
+    monkeypatch.setattr(api_routes, "register_api_ai_chat_routes", _fake_ai_chat_routes)
+    monkeypatch.setattr(api_routes, "register_api_ai_skill_routes", _fake_ai_skill_routes)
     monkeypatch.setattr(api_routes, "register_builtin_api_run_routes", _fake_builtin_routes)
     monkeypatch.setattr(api_routes, "register_api_kil_review_routes", _fake_kil_routes)
 

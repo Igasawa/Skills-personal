@@ -63,6 +63,7 @@ ERRORS_INITIAL_TAB_VALUES = {
     "document-targets",
     "workflow-archive",
     "kil-review",
+    "ai-skills",
 }
 
 
