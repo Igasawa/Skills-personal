@@ -190,7 +190,20 @@
             <button type="button" class="secondary" id="errors-doc-targets-refresh">対象を再読み込み</button>
           </div>
           <p id="errors-doc-targets-summary" class="muted">対象ドキュメントを読み込み中...</p>
-          <ul id="errors-doc-targets-list" class="muted"></ul>
+          <div id="errors-doc-targets-stats" class="errors-doc-targets-stats muted"></div>
+          <div class="errors-doc-targets-table-wrap">
+            <table class="errors-doc-targets-table">
+              <thead>
+                <tr>
+                  <th scope="col">状態</th>
+                  <th scope="col">文書</th>
+                  <th scope="col">最終更新</th>
+                  <th scope="col">経過日数</th>
+                </tr>
+              </thead>
+              <tbody id="errors-doc-targets-list"></tbody>
+            </table>
+          </div>
         </section>
       </section>
 

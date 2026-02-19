@@ -38,8 +38,10 @@
   const planJsonEl = document.getElementById("errors-plan-json");
   const runResultJsonEl = document.getElementById("errors-run-result-json");
 
-  const DOCUMENT_TARGET_LIMIT = 200;
-  const DOCUMENT_TARGET_SUMMARY_MAX = 160;
+  const KIL_REVIEW_STATUS_LIMIT = 200;
+  const DOCUMENT_TARGET_LIMIT = 500;
+  const DOCUMENT_TARGET_FRESH_DAYS = 30;
+  const DOCUMENT_TARGET_WARNING_DAYS = 60;
 
   const docRefreshButton = document.getElementById("errors-doc-refresh");
   const docRunButton = document.getElementById("errors-doc-run");
@@ -54,6 +56,7 @@
   const docFilesEl = document.getElementById("errors-doc-files");
   const docRunResultEl = document.getElementById("errors-doc-run-result");
   const docTargetsSummaryEl = document.getElementById("errors-doc-targets-summary");
+  const docTargetsStatsEl = document.getElementById("errors-doc-targets-stats");
   const docTargetsListEl = document.getElementById("errors-doc-targets-list");
 
   let incidents = [];
@@ -61,6 +64,7 @@
   let selectedDetail = null;
   let busy = false;
   let docStatusLoaded = false;
+  let docTargetsLoaded = false;
   const tabNames = new Set(
     Array.from(tabButtons)
       .map((button) => String(button.dataset.errorsTab || "").trim())
@@ -120,44 +124,22 @@
     return text || String(fallback);
   }
 
-  function truncateText(value, maxLength) {
+  function formatDateTime(value) {
     const text = toText(value);
-    const limit = Number(maxLength) || 0;
-    if (!text || limit <= 0 || text.length <= limit) {
-      return text;
+    if (!text) return "-";
+    const normalized = text.replace("T", " ").replace("Z", "");
+    if (normalized.length > 19) {
+      return normalized.slice(0, 19);
     }
-    return `${text.slice(0, Math.max(limit - 1, 1))}…`;
+    return normalized;
   }
 
-  function inferDocumentName(item) {
-    if (!item || typeof item !== "object") return "名称未取得";
-
-    const candidates = [
-      item.document_name,
-      item.document,
-      item.title,
-      item.name,
-      item.path,
-      item.file,
-      item.file_path,
-      item.source_file,
-      item.source_path,
-      item.source_name,
-    ];
-
-    for (const candidate of candidates) {
-      const name = toText(candidate);
-      if (name) return name;
-    }
-
-    const source = toText(item.source);
-    const commit = toText(item.commit);
-    if (source && commit) {
-      return `${source} / ${commit.slice(0, 8)}`;
-    }
-    if (source) return source;
-    if (commit) return `コミット ${commit.slice(0, 8)}`;
-    return "名称未取得";
+  function freshnessChipLabel(freshness) {
+    const key = toText(freshness).toLowerCase();
+    if (key === "stale") return "要更新";
+    if (key === "warning") return "注意";
+    if (key === "fresh") return "最新";
+    return "不明";
   }
 
   function pretty(value) {
@@ -371,54 +353,110 @@
 
     const items = Array.isArray(payload?.items) ? payload.items : [];
     const safeItems = items.filter((item) => item && typeof item === "object");
+    const summary = payload?.summary && typeof payload.summary === "object" ? payload.summary : {};
+    const total = toInt(summary.total, safeItems.length);
+    const staleCount = toInt(summary.stale, 0);
+    const warningCount = toInt(summary.warning, 0);
+    const freshCount = toInt(summary.fresh, 0);
+    const unknownCount = toInt(summary.unknown, 0);
+    const hiddenCount = toInt(summary.hidden, 0);
 
     docTargetsListEl.innerHTML = "";
-    setText(docTargetsSummaryEl, `対象ドキュメント: ${safeItems.length}件`);
+    setText(
+      docTargetsSummaryEl,
+      `対象 ${total}件 / 要更新 ${staleCount}件 / 注意 ${warningCount}件 / 最新 ${freshCount}件`
+    );
+
+    if (docTargetsStatsEl) {
+      docTargetsStatsEl.innerHTML = "";
+      [
+        { label: "要更新", value: staleCount, className: "is-stale" },
+        { label: "注意", value: warningCount, className: "is-warning" },
+        { label: "最新", value: freshCount, className: "is-fresh" },
+        { label: "不明", value: unknownCount, className: "is-unknown" },
+      ].forEach((item) => {
+        const chip = document.createElement("span");
+        chip.className = `errors-doc-targets-chip ${item.className}`;
+        chip.textContent = `${item.label}: ${item.value}件`;
+        docTargetsStatsEl.appendChild(chip);
+      });
+      if (hiddenCount > 0) {
+        const note = document.createElement("span");
+        note.className = "muted";
+        note.textContent = `表示上限で ${hiddenCount}件は省略`;
+        docTargetsStatsEl.appendChild(note);
+      }
+    }
 
     if (!safeItems.length) {
-      const empty = document.createElement("li");
-      empty.textContent = "対象のドキュメントはありません。";
-      docTargetsListEl.appendChild(empty);
+      const emptyRow = document.createElement("tr");
+      const emptyCell = document.createElement("td");
+      emptyCell.colSpan = 4;
+      emptyCell.className = "muted";
+      emptyCell.textContent = "対象のドキュメントはありません。";
+      emptyRow.appendChild(emptyCell);
+      docTargetsListEl.appendChild(emptyRow);
       return;
     }
 
     safeItems.forEach((item) => {
-      const name = inferDocumentName(item);
-      const source = toText(item.source);
-      const date = toText(item.date);
-      const commit = toText(item.commit);
-      const summary = truncateText(item.summary || "", DOCUMENT_TARGET_SUMMARY_MAX);
+      const name = toText(item.name || item.document_name || item.path, "-");
+      const path = toText(item.path, "-");
+      const area = toText(item.area);
+      const updatedAt = formatDateTime(item.updated_at);
+      const daysValue = Number.isFinite(Number(item.days_since_update))
+        ? Math.max(0, toInt(item.days_since_update, 0))
+        : null;
+      const freshness = toText(item.freshness, "unknown").toLowerCase();
+      const freshnessLabel = toText(item.freshness_label, freshnessChipLabel(freshness));
 
-      const li = document.createElement("li");
+      const row = document.createElement("tr");
 
+      const statusCell = document.createElement("td");
+      const statusChip = document.createElement("span");
+      statusChip.className = `errors-doc-targets-chip is-${freshness}`;
+      statusChip.textContent = freshnessLabel;
+      statusCell.appendChild(statusChip);
+      row.appendChild(statusCell);
+
+      const docCell = document.createElement("td");
       const nameEl = document.createElement("div");
-      nameEl.textContent = `文書名: ${name}`;
-      nameEl.style.fontWeight = "bold";
-      li.appendChild(nameEl);
+      nameEl.className = "errors-doc-targets-name";
+      nameEl.textContent = name;
+      docCell.appendChild(nameEl);
+      const pathEl = document.createElement("div");
+      pathEl.className = "muted errors-doc-targets-path";
+      pathEl.textContent = area ? `${path} (${area})` : path;
+      docCell.appendChild(pathEl);
+      row.appendChild(docCell);
 
-      const summaryEl = document.createElement("div");
-      summaryEl.className = "muted";
-      summaryEl.textContent = `要約: ${summary || "要約がありません"}`;
-      li.appendChild(summaryEl);
+      const updatedCell = document.createElement("td");
+      updatedCell.textContent = updatedAt;
+      row.appendChild(updatedCell);
 
-      const metaEl = document.createElement("div");
-      metaEl.className = "muted";
-      const bits = [];
-      if (source) bits.push(`種別: ${source}`);
-      if (date && date !== "-") bits.push(`更新日: ${date}`);
-      if (commit && commit !== "-") bits.push(`コミット: ${commit.slice(0, 8)}`);
-      metaEl.textContent = bits.join(" / ");
-      li.appendChild(metaEl);
+      const daysCell = document.createElement("td");
+      daysCell.textContent = daysValue == null ? "-" : `${daysValue}日`;
+      row.appendChild(daysCell);
 
-      docTargetsListEl.appendChild(li);
+      docTargetsListEl.appendChild(row);
     });
   }
 
   async function refreshDocumentStatus() {
-    const payload = await apiGetJson(`/api/kil-review?source=all&limit=${DOCUMENT_TARGET_LIMIT}`);
+    const payload = await apiGetJson(`/api/kil-review?source=all&limit=${KIL_REVIEW_STATUS_LIMIT}`);
     renderDocumentStatus(payload);
-    renderDocumentTargets(payload);
     docStatusLoaded = true;
+    return payload;
+  }
+
+  async function refreshDocumentTargets() {
+    const params = new URLSearchParams();
+    params.set("limit", String(DOCUMENT_TARGET_LIMIT));
+    params.set("fresh_days", String(DOCUMENT_TARGET_FRESH_DAYS));
+    params.set("warning_days", String(DOCUMENT_TARGET_WARNING_DAYS));
+    const payload = await apiGetJson(`/api/errors/document-freshness?${params.toString()}`);
+    renderDocumentTargets(payload);
+    docTargetsLoaded = true;
     return payload;
   }
 
@@ -564,11 +602,39 @@
 
   if (docTargetsRefreshButton) {
     docTargetsRefreshButton.addEventListener("click", () => {
-      runDocAction(async () => {
-        await refreshDocumentStatus();
-        showToast("対象ドキュメント一覧を更新しました", "success");
-      });
+      if (busy) return;
+      setBusy(true);
+      refreshDocumentTargets()
+        .then(() => {
+          setStatus("", "");
+          showToast("対象ドキュメント一覧を更新しました", "success");
+        })
+        .catch((error) => {
+          const message = toFriendlyMessage(error?.message || "処理に失敗しました");
+          setStatus(message, "error");
+          showToast(message, "error");
+        })
+        .finally(() => {
+          setBusy(false);
+        });
     });
+  }
+
+  function lazyLoadTabData(tabName) {
+    if (tabName === "document-update" && !docStatusLoaded) {
+      void refreshDocumentStatus().catch((error) => {
+        const message = toFriendlyMessage(error?.message || "読み込みに失敗しました");
+        setStatus(message, "error");
+      });
+      return;
+    }
+    if (tabName === "document-targets" && !docTargetsLoaded) {
+      void refreshDocumentTargets().catch((error) => {
+        const message = toFriendlyMessage(error?.message || "読み込みに失敗しました");
+        setStatus(message, "error");
+      });
+      return;
+    }
   }
 
   tabButtons.forEach((button) => {
@@ -577,9 +643,7 @@
       if (!target) return;
       setActiveTab(target);
       syncTabToQuery(target);
-      if ((target === "document-update" || target === "document-targets") && !docStatusLoaded) {
-        void refreshDocumentStatus();
-      }
+      lazyLoadTabData(target);
     });
   });
 
@@ -590,10 +654,13 @@
   (async function init() {
     setBusy(true);
     try {
-      await Promise.all([
-        refreshIncidents({ keepSelection: false }),
-        refreshDocumentStatus(),
-      ]);
+      const initTasks = [refreshIncidents({ keepSelection: false })];
+      if (initialTab === "document-update") {
+        initTasks.push(refreshDocumentStatus());
+      } else if (initialTab === "document-targets") {
+        initTasks.push(refreshDocumentTargets());
+      }
+      await Promise.all(initTasks);
       if (!selectedIncidentId) {
         setStatus("", "");
       } else {

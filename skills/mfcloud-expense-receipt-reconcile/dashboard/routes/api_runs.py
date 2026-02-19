@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 from datetime import datetime
+import os
+import re
 import subprocess
 import sys
 from pathlib import Path
 from typing import Any, Callable
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
 from services import core
 
@@ -15,6 +17,147 @@ TryYearMonth = Callable[[dict[str, Any]], tuple[int, int] | None]
 ErrorToolRunner = Callable[..., dict[str, Any]]
 GetErrorReportsRoot = Callable[[], Path]
 GetReviewScriptPath = Callable[[], Path]
+
+DOCUMENT_FRESHNESS_ALLOWED_SUFFIXES = {
+    ".md",
+    ".markdown",
+    ".txt",
+    ".yaml",
+    ".yml",
+}
+DOCUMENT_FRESHNESS_EXCLUDED_EXACT_NAMES = {
+    "AGENT_BRAIN.md",
+    "AGENT_BRAIN_INDEX.jsonl",
+    "AGENT_BRAIN_REVIEW.jsonl",
+    "KIL_MINI_RULES.md",
+    "KIL_PLAN.md",
+}
+DOCUMENT_FRESHNESS_EXCLUDED_PREFIXES = (
+    "AGENT_BRAIN",
+    "KIL_",
+)
+
+
+def _resolve_document_freshness_roots() -> list[tuple[str, Path]]:
+    env_value = str(os.environ.get("AX_DOC_FRESHNESS_ROOTS") or "").strip()
+    if env_value:
+        roots: list[tuple[str, Path]] = []
+        for raw in [segment.strip() for segment in env_value.split(os.pathsep)]:
+            if not raw:
+                continue
+            root = Path(raw).expanduser()
+            label = root.name.strip() or "knowledge"
+            roots.append((label, root))
+        if roots:
+            return roots
+
+    return [
+        ("docs", core.SKILL_ROOT.parent.parent / "docs"),
+        ("references", core.SKILL_ROOT / "references"),
+    ]
+
+
+def _is_excluded_document_target(path: Path) -> bool:
+    name = path.name
+    upper_name = name.upper()
+    lower_name = name.lower()
+    if name in DOCUMENT_FRESHNESS_EXCLUDED_EXACT_NAMES:
+        return True
+    if any(upper_name.startswith(prefix) for prefix in DOCUMENT_FRESHNESS_EXCLUDED_PREFIXES):
+        return True
+    return bool(re.search(r"(^|[_\-\s])kil([_\-\s.]|$)", lower_name))
+
+
+def _iter_document_freshness_targets() -> tuple[list[dict[str, str]], list[tuple[str, Path]]]:
+    roots = _resolve_document_freshness_roots()
+    diagnostics: list[dict[str, str]] = []
+    targets: list[tuple[str, Path]] = []
+    seen: set[str] = set()
+    for label, root in roots:
+        exists = root.exists()
+        is_dir = root.is_dir() if exists else False
+        diagnostics.append(
+            {
+                "label": label,
+                "path": str(root),
+                "status": "ok" if is_dir else ("missing" if not exists else "not_directory"),
+            }
+        )
+        if not is_dir:
+            continue
+
+        for candidate in sorted(root.rglob("*")):
+            if not candidate.is_file():
+                continue
+            if candidate.suffix.lower() not in DOCUMENT_FRESHNESS_ALLOWED_SUFFIXES:
+                continue
+            if _is_excluded_document_target(candidate):
+                continue
+            key = str(candidate.resolve()).lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            targets.append((label, candidate))
+    return diagnostics, targets
+
+
+def _git_last_updated_at(path: Path, repo_root: Path) -> str | None:
+    try:
+        path.relative_to(repo_root)
+    except ValueError:
+        return None
+
+    try:
+        result = subprocess.run(
+            ["git", "log", "-1", "--format=%cI", "--", str(path)],
+            cwd=str(repo_root),
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=6,
+        )
+    except Exception:
+        return None
+
+    if result.returncode != 0:
+        return None
+    lines = [line.strip() for line in str(result.stdout or "").splitlines() if line.strip()]
+    if not lines:
+        return None
+    return lines[0]
+
+
+def _normalize_datetime_iso(text: str | None) -> datetime | None:
+    raw = str(text or "").strip()
+    if not raw:
+        return None
+    try:
+        return datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    except Exception:
+        return None
+
+
+def _resolve_document_updated_at(path: Path, repo_root: Path) -> tuple[str | None, str]:
+    git_iso = _git_last_updated_at(path, repo_root)
+    git_dt = _normalize_datetime_iso(git_iso)
+    if git_dt is not None:
+        return git_dt.isoformat(timespec="seconds"), "git"
+
+    try:
+        mtime_dt = datetime.fromtimestamp(path.stat().st_mtime)
+        return mtime_dt.isoformat(timespec="seconds"), "filesystem"
+    except Exception:
+        return None, "unknown"
+
+
+def _classify_document_freshness(days: int | None, *, fresh_days: int, warning_days: int) -> str:
+    if days is None:
+        return "unknown"
+    if days <= fresh_days:
+        return "fresh"
+    if days <= warning_days:
+        return "warning"
+    return "stale"
 
 
 def register_api_run_routes(
@@ -126,6 +269,91 @@ def register_api_run_routes(
     def api_get_error_incidents() -> JSONResponse:
         payload = run_error_tool("error_status.py", ["--json"], timeout_seconds=30)
         return JSONResponse(payload, headers={"Cache-Control": "no-store"})
+
+    @router.get("/api/errors/document-freshness")
+    def api_get_document_freshness(
+        limit: int = Query(default=500, ge=1, le=2000),
+        fresh_days: int = Query(default=30, ge=1, le=3650),
+        warning_days: int = Query(default=60, ge=1, le=3650),
+    ) -> JSONResponse:
+        if warning_days < fresh_days:
+            warning_days = fresh_days
+
+        repo_root = core.SKILL_ROOT.parent.parent
+        today = datetime.now().date()
+        roots, targets = _iter_document_freshness_targets()
+
+        items: list[dict[str, Any]] = []
+        for area, path in targets:
+            updated_at, source = _resolve_document_updated_at(path, repo_root)
+            updated_dt = _normalize_datetime_iso(updated_at)
+            days_since_update = max(0, (today - updated_dt.date()).days) if updated_dt is not None else None
+            freshness = _classify_document_freshness(
+                days_since_update,
+                fresh_days=fresh_days,
+                warning_days=warning_days,
+            )
+            freshness_label_map = {
+                "fresh": "最新",
+                "warning": "注意",
+                "stale": "要更新",
+                "unknown": "不明",
+            }
+            freshness_label = freshness_label_map.get(freshness, "不明")
+            try:
+                display_path = str(path.relative_to(repo_root)).replace("\\", "/")
+            except ValueError:
+                display_path = str(path)
+
+            items.append(
+                {
+                    "area": area,
+                    "name": path.name,
+                    "path": display_path,
+                    "updated_at": updated_at,
+                    "days_since_update": days_since_update,
+                    "freshness": freshness,
+                    "freshness_label": freshness_label,
+                    "updated_source": source,
+                }
+            )
+
+        summary = {"fresh": 0, "warning": 0, "stale": 0, "unknown": 0}
+        for item in items:
+            key = str(item.get("freshness") or "unknown")
+            if key not in summary:
+                key = "unknown"
+            summary[key] += 1
+
+        priority = {"stale": 0, "warning": 1, "fresh": 2, "unknown": 3}
+        items.sort(
+            key=lambda row: (
+                priority.get(str(row.get("freshness") or "unknown"), 9),
+                -(int(row["days_since_update"]) if isinstance(row.get("days_since_update"), int) else -1),
+                str(row.get("path") or ""),
+            )
+        )
+        limited_items = items[:limit]
+
+        return JSONResponse(
+            {
+                "status": "ok",
+                "generated_at": datetime.now().isoformat(timespec="seconds"),
+                "thresholds": {
+                    "fresh_days": fresh_days,
+                    "warning_days": warning_days,
+                },
+                "roots": roots,
+                "summary": {
+                    "total": len(items),
+                    "displayed": len(limited_items),
+                    "hidden": max(0, len(items) - len(limited_items)),
+                    **summary,
+                },
+                "items": limited_items,
+            },
+            headers={"Cache-Control": "no-store"},
+        )
     
     @router.post("/api/errors/incidents/plan-all")
     def api_build_all_error_plans(payload: dict[str, Any] | None = None) -> JSONResponse:
@@ -300,7 +528,7 @@ def register_api_run_routes(
                 status=result_value,
                 actor=actor_from_request(request),
                 details={"incident_id": safe_incident_id, "reason": reason},
-        )
+            )
         return JSONResponse(result, headers={"Cache-Control": "no-store"})
     
     @router.post("/api/errors/doc-update/run")
@@ -350,4 +578,3 @@ def register_api_run_routes(
             headers={"Cache-Control": "no-store"},
         )
     
-

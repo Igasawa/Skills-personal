@@ -1006,6 +1006,101 @@
   margin-top: 14px;
 }
 
+.errors-doc-targets-stats {
+  margin-top: 8px;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.errors-doc-targets-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 28px;
+  padding: 0 10px;
+  border-radius: 999px;
+  border: 1px solid rgb(var(--semantic-field-border-default));
+  background: rgb(var(--surface-1));
+  color: rgb(var(--text-secondary));
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.errors-doc-targets-chip.is-stale {
+  border-color: rgb(var(--semantic-feedback-danger-surface) / 0.54);
+  background: rgb(var(--semantic-feedback-danger-surface) / 0.2);
+  color: rgb(var(--semantic-feedback-danger-text));
+}
+
+.errors-doc-targets-chip.is-warning {
+  border-color: rgb(var(--semantic-feedback-warning-surface) / 0.58);
+  background: rgb(var(--semantic-feedback-warning-surface) / 0.22);
+  color: rgb(var(--semantic-feedback-warning-text));
+}
+
+.errors-doc-targets-chip.is-fresh {
+  border-color: rgb(var(--semantic-feedback-success-surface) / 0.5);
+  background: rgb(var(--semantic-feedback-success-surface) / 0.18);
+  color: rgb(var(--semantic-feedback-success-text));
+}
+
+.errors-doc-targets-chip.is-unknown {
+  border-color: rgb(var(--semantic-field-border-default));
+  background: rgb(var(--surface-1));
+  color: rgb(var(--text-secondary));
+}
+
+.errors-doc-targets-table-wrap {
+  margin-top: 12px;
+  border-radius: 12px;
+  border: 1px solid rgb(var(--semantic-field-border-default));
+  background: rgb(var(--surface-2));
+  overflow: auto;
+}
+
+.errors-doc-targets-table {
+  width: 100%;
+  min-width: 640px;
+  border-collapse: collapse;
+}
+
+.errors-doc-targets-table th,
+.errors-doc-targets-table td {
+  padding: 10px 12px;
+  text-align: left;
+  border-bottom: 1px solid rgb(var(--semantic-field-border-default) / 0.6);
+  vertical-align: top;
+  font-size: 13px;
+}
+
+.errors-doc-targets-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: rgb(var(--surface-1));
+  color: rgb(var(--text-secondary));
+  font-weight: 700;
+  font-size: 12px;
+}
+
+.errors-doc-targets-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.errors-doc-targets-name {
+  font-weight: 700;
+  word-break: break-word;
+}
+
+.errors-doc-targets-path {
+  margin-top: 4px;
+  font-size: 12px;
+  word-break: break-all;
+}
+
 .errors-doc-stat {
   padding: 12px;
   border-radius: 12px;
@@ -1166,6 +1261,10 @@
 
   .errors-doc-grid {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .errors-doc-targets-table {
+    min-width: 560px;
   }
 }
 

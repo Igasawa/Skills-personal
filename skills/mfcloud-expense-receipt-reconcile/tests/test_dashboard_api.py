@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -2650,3 +2651,76 @@ def test_api_delete_workflow_template_invalid_id(monkeypatch: pytest.MonkeyPatch
     res = client.delete(f"/api/workflow-templates/{invalid_id}")
     assert res.status_code == 400
     assert str(res.json().get("detail") or "") == "Invalid template id."
+
+
+def test_api_document_freshness_filters_kil_and_classifies(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    client = _create_client(monkeypatch, tmp_path)
+    docs_root = tmp_path / "knowledge_docs"
+    refs_root = tmp_path / "knowledge_refs"
+
+    now = datetime.now()
+
+    def _write_target(path: Path, *, days_ago: int) -> None:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("test", encoding="utf-8")
+        ts = (now - timedelta(days=days_ago)).timestamp()
+        os.utime(path, (ts, ts))
+
+    _write_target(docs_root / "fresh_guide.md", days_ago=5)
+    _write_target(docs_root / "warning_guide.md", days_ago=45)
+    _write_target(refs_root / "stale_guide.md", days_ago=95)
+    _write_target(docs_root / "KIL_PLAN.md", days_ago=1)
+    _write_target(refs_root / "AGENT_BRAIN.md", days_ago=1)
+
+    monkeypatch.setenv(
+        "AX_DOC_FRESHNESS_ROOTS",
+        os.pathsep.join([str(docs_root), str(refs_root)]),
+    )
+
+    res = client.get("/api/errors/document-freshness?fresh_days=30&warning_days=60")
+    assert res.status_code == 200
+    body = res.json()
+    summary = body.get("summary") or {}
+    items = body.get("items") if isinstance(body.get("items"), list) else []
+    by_name = {str(item.get("name") or ""): item for item in items}
+
+    assert summary.get("total") == 3
+    assert summary.get("stale") == 1
+    assert summary.get("warning") == 1
+    assert summary.get("fresh") == 1
+    assert "KIL_PLAN.md" not in by_name
+    assert "AGENT_BRAIN.md" not in by_name
+
+    assert by_name["stale_guide.md"]["freshness"] == "stale"
+    assert by_name["warning_guide.md"]["freshness"] == "warning"
+    assert by_name["fresh_guide.md"]["freshness"] == "fresh"
+
+    freshness_order = [str(item.get("freshness") or "") for item in items]
+    assert freshness_order[0] == "stale"
+    assert freshness_order[1] == "warning"
+    assert freshness_order[2] == "fresh"
+
+
+def test_api_document_freshness_respects_limit(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    client = _create_client(monkeypatch, tmp_path)
+    docs_root = tmp_path / "knowledge_docs"
+    docs_root.mkdir(parents=True, exist_ok=True)
+
+    for index in range(4):
+        target = docs_root / f"doc_{index}.md"
+        target.write_text("test", encoding="utf-8")
+        ts = (datetime.now() - timedelta(days=(index + 1) * 10)).timestamp()
+        os.utime(target, (ts, ts))
+
+    monkeypatch.setenv("AX_DOC_FRESHNESS_ROOTS", str(docs_root))
+
+    res = client.get("/api/errors/document-freshness?limit=2")
+    assert res.status_code == 200
+    body = res.json()
+    summary = body.get("summary") or {}
+    items = body.get("items") if isinstance(body.get("items"), list) else []
+
+    assert summary.get("total") == 4
+    assert summary.get("displayed") == 2
+    assert summary.get("hidden") == 2
+    assert len(items) == 2
