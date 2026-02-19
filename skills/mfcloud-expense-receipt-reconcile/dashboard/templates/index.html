@@ -1,8 +1,8 @@
 <!DOCTYPE html>
 <html lang="ja">
   <head>
-    {% set page_title = workflow_page.name if workflow_page and workflow_page.name else "workflow" %}
-    {% set page_subheading = workflow_page.subheading if workflow_page and workflow_page.subheading else ("MF Cloud / Amazon / Rakuten" if not workflow_page else "") %}
+    {% set page_title = workflow_page.name if workflow_page and workflow_page.name else "workflow：経費精算" %}
+    {% set page_subheading = workflow_page.subheading if workflow_page and workflow_page.subheading else ("MF経費精算 / Amazon / 楽天" if not workflow_page else "") %}
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>{{ page_title }}</title>
@@ -20,16 +20,17 @@
           <p class="eyebrow" {% if not page_subheading %}hidden{% endif %}>{{ page_subheading }}</p>
           <h1>{{ page_title }}</h1>
           <p class="subtitle">
-            謌先棡迚ｩ縺ｮ遒ｺ隱阪→螳溯｡後ｒ縺ｾ縺ｨ繧√※邂｡逅・＠縺ｾ縺吶ゅΟ繝ｼ繧ｫ繝ｫ蟆ら畑・・27.0.0.1・峨・          </p>
+            成果物の確認と実行をまとめて管理します。ローカル専用（127.0.0.1）。
+          </p>
           <div class="step-actions">
             {% if workflow_page and workflow_page.id %}
-              <button type="button" class="secondary" id="workflow-page-edit">繝壹・繧ｸ險ｭ螳・/button>
-              <button type="button" class="secondary" id="workflow-page-edit-steps">謇矩・ｷｨ髮・/button>
-              <button type="button" class="secondary" id="workflow-page-rollback-steps">蜑咲沿縺ｫ謌ｻ縺・/button>
+              <button type="button" class="secondary" id="workflow-page-edit">ページ設定</button>
+              <button type="button" class="secondary" id="workflow-page-edit-steps">手順編集</button>
+              <button type="button" class="secondary" id="workflow-page-rollback-steps">前版に戻す</button>
               <span class="muted" id="workflow-page-step-version"></span>
-              <button type="button" class="secondary" id="workflow-page-archive">繧｢繝ｼ繧ｫ繧､繝・/button>
+              <button type="button" class="secondary" id="workflow-page-archive">アーカイブ</button>
             {% endif %}
-            <a class="secondary" href="/status">繧ｹ繝・・繧ｿ繧ｹ繝壹・繧ｸ繧帝幕縺・/a>
+            <a class="secondary" href="/status">ステータスページを開く</a>
           </div>
         </div>
       </header>
@@ -40,12 +41,12 @@
         data-ym=""
         data-archive-href-template="/runs/__YM__/archived-receipts"
       >
-        <h2>邨瑚ｲｻ邊ｾ邂励せ繝・ャ繝励え繧｣繧ｶ繝ｼ繝・/h2>
+        <h2>経費精算ステップウィザード</h2>
         <div class="wizard-step">
           <div class="step-head">
             <span class="step-num">-</span>
-            <span class="step-title">蟇ｾ雎｡險ｭ螳夲ｼ亥ｮ溯｡御ｾ晞ｼ・・/span>
-            <span class="step-status pending">蜈･蜉・/span>
+            <span class="step-title">対象設定（実行依頼）</span>
+            <span class="step-status pending">入力</span>
           </div>
           <div id="error-box" class="error-box hidden"></div>
           <form id="run-form" class="form">
@@ -55,19 +56,21 @@
             {% endif %}
             <div class="form-row">
               <label>
-                蟷ｴ
+                年
                 <input type="number" name="year" value="{{ defaults.year }}" min="2000" max="2100" required />
               </label>
               <label>
-                譛・                <input type="number" name="month" value="{{ safe_month }}" min="1" max="12" required />
+                月
+                <input type="number" name="month" value="{{ safe_month }}" min="1" max="12" required />
               </label>
             </div>
             <label>
-              MF繧ｯ繝ｩ繧ｦ繝臥ｵ瑚ｲｻ荳隕ｧURL
+              MFクラウド経費一覧URL
               <input type="url" name="mfcloud_url" value="{{ defaults.mfcloud_url }}" required />
             </label>
             <label>
-              繝｡繝｢・井ｻｻ諢擾ｼ・              <input type="text" name="notes" value="{{ defaults.notes }}" placeholder="遞守炊螢ｫ謠仙・逕ｨ縺ｮ陬懆ｶｳ繧・ｾ句､門ｯｾ蠢懊↑縺ｩ" />
+              メモ（任意）
+              <input type="text" name="notes" value="{{ defaults.notes }}" placeholder="税理士提出用の補足や例外対応など" />
             </label>
             <input type="hidden" name="rakuten_orders_url" value="{{ defaults.rakuten_orders_url }}" />
             {% if workflow_page and workflow_page.steps %}
@@ -87,19 +90,19 @@
               </div>
             {% endif %}
             <div class="form-row">
-              <div class="muted">縺薙・繝輔か繝ｼ繝縺ｮ蟷ｴ譛医・URL縺後え繧｣繧ｶ繝ｼ繝牙ｮ溯｡後↓菴ｿ繧上ｌ縺ｾ縺吶・/div>
+              <div class="muted">このフォームの年月・URLがウィザード実行に使われます。</div>
             </div>
           </form>
           <div id="step-preflight" class="wizard-step preflight-inline" data-step-id="preflight">
             <div class="step-head">
               <span class="step-num">0</span>
-              <span class="step-title">謇矩・ 貅門ｙ・医Ο繧ｰ繧､繝ｳ遒ｺ隱阪・MF騾｣謳ｺ譖ｴ譁ｰ・・/span>
-              <span class="step-status" data-step-status="preflight">譛ｪ螳溯｡・/span>
+              <span class="step-title">手順0 準備（ログイン確認・MF連携更新）</span>
+              <span class="step-status" data-step-status="preflight">未実行</span>
             </div>
             <div class="step-actions">
-              <button type="button" class="primary" data-step-action="preflight">貅門ｙ繧貞ｮ溯｡・/button>
-              <button type="button" class="secondary" data-step-action="preflight_mf">MF蜀榊叙蠕励・縺ｿ</button>
-              <span class="muted">蜷・し繧､繝医・繝ｭ繧ｰ繧､繝ｳ縺ｨMF騾｣謳ｺ縺ｮ蜀榊叙蠕励ｒ縺ｾ縺ｨ繧√※螳溯｡後＠縺ｾ縺吶・/span>
+              <button type="button" class="primary" data-step-action="preflight">準備を実行</button>
+              <button type="button" class="secondary" data-step-action="preflight_mf">MF再取得のみ</button>
+              <span class="muted">各サイトのログインとMF連携の再取得をまとめて実行します。</span>
             </div>
           </div>
         </div>
@@ -107,130 +110,135 @@
           <div id="step-amazon-task" class="wizard-step wizard-task" data-task-id="amazon">
             <div class="task-head">
               <span class="step-num">1</span>
-              <span class="step-title">謇矩・ Amazon・亥叙蠕冷・髯､螟門愛譁ｭ竊貞魂蛻ｷ螳御ｺ・ｼ・/span>
-              <span class="task-status" data-task-status="amazon">譛ｪ螳溯｡・/span>
+              <span class="step-title">手順1 Amazon（取得→除外判断→印刷完了）</span>
+              <span class="task-status" data-task-status="amazon">未実行</span>
             </div>
             <div id="step-amazon-download" class="task-process-row" data-process-id="amazon_download">
               <div class="task-process-label">
-                <span class="process-title">蜿門ｾ・/span>
-                <span class="process-desc">Amazon鬆伜庶譖ｸ繧貞叙蠕・/span>
+                <span class="process-title">取得</span>
+                <span class="process-desc">Amazon領収書を取得</span>
               </div>
               <div class="step-actions">
-                <button type="button" class="primary" data-step-action="amazon_download">Amazon鬆伜庶譖ｸ繧貞叙蠕・/button>
-                <button type="button" class="step-reset" data-step-reset="amazon_download">繝ｪ繧ｻ繝・ヨ</button>
+                <button type="button" class="primary" data-step-action="amazon_download">Amazon領収書を取得</button>
+                <button type="button" class="step-reset" data-step-reset="amazon_download">リセット</button>
               </div>
-              <span class="step-status process-status" data-step-status="amazon_download">譛ｪ螳溯｡・/span>
+              <span class="step-status process-status" data-step-status="amazon_download">未実行</span>
             </div>
             <div id="step-amazon-decide-print" class="task-process-row" data-process-id="amazon_decide_print">
               <div class="task-process-label">
-                <span class="process-title">髯､螟門愛譁ｭ繝ｻ蜊ｰ蛻ｷ・亥ｮ御ｺ・ｨ倬鹸縺ｾ縺ｧ・・/span>
-                <span class="process-desc">髯､螟門ｯｾ雎｡繧呈ｱｺ繧√※蜊ｰ蛻ｷ縺励∝ｮ御ｺ・ｒ險倬鹸</span>
+                <span class="process-title">除外判断・印刷（完了記録まで）</span>
+                <span class="process-desc">除外対象を決めて印刷し、完了を記録</span>
               </div>
               <div class="step-actions">
-                <a class="secondary" data-step-link="amazon_exclude" href="#">髯､螟悶・蜊ｰ蛻ｷ・亥ｮ御ｺ・ｨ倬鹸縺ｾ縺ｧ・峨ｒ髢九￥</a>
-                <button type="button" class="step-reset" data-step-reset="amazon_decide_print">繝ｪ繧ｻ繝・ヨ</button>
+                <a class="secondary" data-step-link="amazon_exclude" href="#">除外・印刷（完了記録まで）を開く</a>
+                <button type="button" class="step-reset" data-step-reset="amazon_decide_print">リセット</button>
               </div>
-              <span class="step-status process-status" data-step-status="amazon_decide_print">譛ｪ螳溯｡・/span>
+              <span class="step-status process-status" data-step-status="amazon_decide_print">未実行</span>
             </div>
           </div>
           <div id="step-rakuten-task" class="wizard-step wizard-task" data-task-id="rakuten">
             <div class="task-head">
               <span class="step-num">2</span>
-              <span class="step-title">謇矩・ 讌ｽ螟ｩ・亥叙蠕冷・髯､螟門愛譁ｭ竊貞魂蛻ｷ螳御ｺ・ｼ・/span>
-              <span class="task-status" data-task-status="rakuten">譛ｪ螳溯｡・/span>
+              <span class="step-title">手順2 楽天（取得→除外判断→印刷完了）</span>
+              <span class="task-status" data-task-status="rakuten">未実行</span>
             </div>
             <div id="step-rakuten-download" class="task-process-row" data-process-id="rakuten_download">
               <div class="task-process-label">
-                <span class="process-title">蜿門ｾ・/span>
-                <span class="process-desc">讌ｽ螟ｩ鬆伜庶譖ｸ繧貞叙蠕・/span>
+                <span class="process-title">取得</span>
+                <span class="process-desc">楽天領収書を取得</span>
               </div>
               <div class="step-actions">
-                <button type="button" class="primary" data-step-action="rakuten_download">讌ｽ螟ｩ鬆伜庶譖ｸ繧貞叙蠕・/button>
-                <button type="button" class="step-reset" data-step-reset="rakuten_download">繝ｪ繧ｻ繝・ヨ</button>
+                <button type="button" class="primary" data-step-action="rakuten_download">楽天領収書を取得</button>
+                <button type="button" class="step-reset" data-step-reset="rakuten_download">リセット</button>
               </div>
-              <span class="step-status process-status" data-step-status="rakuten_download">譛ｪ螳溯｡・/span>
+              <span class="step-status process-status" data-step-status="rakuten_download">未実行</span>
             </div>
             <div id="step-rakuten-decide-print" class="task-process-row" data-process-id="rakuten_decide_print">
               <div class="task-process-label">
-                <span class="process-title">髯､螟門愛譁ｭ繝ｻ蜊ｰ蛻ｷ・亥ｮ御ｺ・ｨ倬鹸縺ｾ縺ｧ・・/span>
-                <span class="process-desc">髯､螟門ｯｾ雎｡繧呈ｱｺ繧√※蜊ｰ蛻ｷ縺励∝ｮ御ｺ・ｒ險倬鹸</span>
+                <span class="process-title">除外判断・印刷（完了記録まで）</span>
+                <span class="process-desc">除外対象を決めて印刷し、完了を記録</span>
               </div>
               <div class="step-actions">
-                <a class="secondary" data-step-link="rakuten_exclude" href="#">髯､螟悶・蜊ｰ蛻ｷ・亥ｮ御ｺ・ｨ倬鹸縺ｾ縺ｧ・峨ｒ髢九￥</a>
-                <button type="button" class="step-reset" data-step-reset="rakuten_decide_print">繝ｪ繧ｻ繝・ヨ</button>
+                <a class="secondary" data-step-link="rakuten_exclude" href="#">除外・印刷（完了記録まで）を開く</a>
+                <button type="button" class="step-reset" data-step-reset="rakuten_decide_print">リセット</button>
               </div>
-              <span class="step-status process-status" data-step-status="rakuten_decide_print">譛ｪ螳溯｡・/span>
+              <span class="step-status process-status" data-step-status="rakuten_decide_print">未実行</span>
             </div>
           </div>
           <div id="step-provider-ingest" class="wizard-step" data-step-id="provider_ingest">
             <div class="step-head">
               <span class="step-num">3</span>
-              <span class="step-title">謇矩・ 蜈ｱ騾壹ヵ繧ｩ繝ｫ繝蜿悶ｊ霎ｼ縺ｿ・域焔蜍募叙蠕怜・・・/span>
-              <span class="step-status" data-step-status="provider_ingest">譛ｪ螳溯｡・/span>
+              <span class="step-title">手順3 共通フォルダ取り込み（手動取得分）</span>
+              <span class="step-status" data-step-status="provider_ingest">未実行</span>
             </div>
             <div class="step-actions">
               <button type="button" class="secondary" data-provider-action="open_provider_source">
-                騾｣謳ｺ蜈・ヵ繧ｩ繝ｫ繝繧帝幕縺・              </button>
+                連携元フォルダを開く
+              </button>
               <button type="button" class="secondary" data-provider-action="open_shared_inbox">
-                蜈ｱ騾壹ヵ繧ｩ繝ｫ繝繧帝幕縺・              </button>
+                共通フォルダを開く
+              </button>
               <button type="button" class="primary" data-provider-action="import_provider_receipts">
-                蜈ｱ騾壹ヵ繧ｩ繝ｫ繝縺九ｉ蜿悶ｊ霎ｼ縺ｿ
+                共通フォルダから取り込み
               </button>
               <button type="button" class="secondary" data-provider-action="print_provider_receipts">
-                荳諡ｬ蜊ｰ蛻ｷ・育ｵ仙粋PDF繧帝幕縺擾ｼ・              </button>
-              <span class="muted">閾ｪ蜍募叙蠕励＆繧後↑縺・伜庶譖ｸ・・qua Voice / Claude / ChatGPT / Gamma 縺ｪ縺ｩ・峨ｒ蜈ｱ騾壹ヵ繧ｩ繝ｫ繝縺ｮ逶ｴ荳九↓蜈･繧後※蜿悶ｊ霎ｼ縺ｿ縺ｾ縺吶・a href="/workspace" target="_blank" rel="noopener noreferrer">繝ｯ繝ｼ繧ｯ繧ｹ繝壹・繧ｹ繧帝幕縺・/a></span>
+                一括印刷（結合PDFを開く）
+              </button>
+              <span class="muted">自動取得されない領収書（Aqua Voice / Claude / ChatGPT / Gamma など）を共通フォルダの直下に入れて取り込みます。<a href="/workspace" target="_blank" rel="noopener noreferrer">ワークスペースを開く</a></span>
               <span class="muted" data-provider-source-summary>Provider source folder status will appear here.</span>
               <span class="muted" data-provider-import-summary>Provider import result will appear here.</span>
               <span class="muted" data-provider-source-setup-guide hidden>
-                `AX_MANUAL_RECEIPT_SOURCE_DIR` 繧定ｨｭ螳壹＠縺ｦ縺上□縺輔＞縲・a href="#" target="_blank" rel="noopener noreferrer">繧ｻ繝・ヨ繧｢繝・・謇矩・/a>
+                `AX_MANUAL_RECEIPT_SOURCE_DIR` を設定してください。<a href="#" target="_blank" rel="noopener noreferrer">セットアップ手順</a>
               </span>
             </div>
           </div>
           <div id="step-mf-bulk-upload-task" class="wizard-step" data-step-id="mf_bulk_upload_task">
             <div class="step-head">
               <span class="step-num">4</span>
-              <span class="step-title">謇矩・ MF荳諡ｬ繧｢繝・・繝ｭ繝ｼ繝会ｼ亥ｿ・ｦ√↑蝣ｴ蜷医・縺ｿ・・/span>
-              <span class="step-status" data-step-status="mf_bulk_upload_task">譛ｪ螳溯｡・/span>
+              <span class="step-title">手順4 MF一括アップロード（必要な場合のみ）</span>
+              <span class="step-status" data-step-status="mf_bulk_upload_task">未実行</span>
             </div>
             <div class="step-actions">
-              <button type="button" class="secondary" data-manual-action="open_mf_bulk_inbox">MF荳諡ｬ繧｢繝・・繝ｭ繝ｼ繝臥畑繝輔か繝ｫ繝繧帝幕縺・/button>
-              <button type="button" class="primary" data-manual-action="run_mf_bulk_upload">MF荳諡ｬ繧｢繝・・繝ｭ繝ｼ繝峨ｒ螳溯｡・/button>
-              <span class="muted">mf_bulk_upload/inbox 縺ｮ鬆伜庶譖ｸ繧樽F縺ｸ騾∽ｿ｡縺励∪縺吶る∽ｿ｡貂医∩繝輔ぃ繧､繝ｫ縺ｯ _uploaded 縺ｫ遘ｻ蜍輔＠縺ｾ縺吶・/span>
-              <button type="button" class="secondary" data-manual-action="open_mf_csv_inbox">莠､騾夊ｲｻCSV繧､繝ｳ繝昴・繝育畑繝輔か繝ｫ繝繧帝幕縺・/button>
-              <button type="button" class="primary" data-manual-action="run_mf_csv_import">莠､騾夊ｲｻCSV繧､繝ｳ繝昴・繝医ｒ螳溯｡・/button>
-              <span class="muted">mf_csv_import/inbox 縺ｮCSV繧剃ｺ､騾夊ｲｻ繧､繝ｳ繝昴・繝医∈騾∽ｿ｡縺励∪縺吶る∽ｿ｡貂医∩繝輔ぃ繧､繝ｫ縺ｯ _imported 縺ｫ遘ｻ蜍輔＠縺ｾ縺吶・/span>
+              <button type="button" class="secondary" data-manual-action="open_mf_bulk_inbox">MF一括アップロード用フォルダを開く</button>
+              <button type="button" class="primary" data-manual-action="run_mf_bulk_upload">MF一括アップロードを実行</button>
+              <span class="muted">mf_bulk_upload/inbox の領収書をMFへ送信します。送信済みファイルは _uploaded に移動します。</span>
+              <button type="button" class="secondary" data-manual-action="open_mf_csv_inbox">交通費CSVインポート用フォルダを開く</button>
+              <button type="button" class="primary" data-manual-action="run_mf_csv_import">交通費CSVインポートを実行</button>
+              <span class="muted">mf_csv_import/inbox のCSVを交通費インポートへ送信します。送信済みファイルは _imported に移動します。</span>
             </div>
           </div>
           <div id="step-month-close" class="wizard-step" data-step-id="month_close">
             <div class="step-head">
-            <span class="step-num">5</span>
-              <span class="step-title">謇矩・ 譛域ｬ｡繧ｯ繝ｭ繝ｼ繧ｺ・亥ｮ御ｺ・凾縺ｮ縺ｿ・・/span>
-              <span class="step-status pending">譛ｪ螳溯｡・/span>
+              <span class="step-num">5</span>
+              <span class="step-title">手順5 月次クローズ（完了時のみ）</span>
+              <span class="step-status pending">未実行</span>
             </div>
             <div class="step-actions">
               <button type="button" class="secondary" data-archive-action="archive_outputs">
-                繧｢繝ｼ繧ｫ繧､繝紋ｽ懈・・井ｿ晏ｭ倥・縺ｿ・・              </button>
+                アーカイブ作成（保存のみ）
+              </button>
               <button type="button" class="secondary" data-archive-action="month_close">
-                譛域ｬ｡繧ｯ繝ｭ繝ｼ繧ｺ・医い繝ｼ繧ｫ繧､繝・繧ｯ繝ｪ繝ｼ繝ｳ繧｢繝・・・・              </button>
+                月次クローズ（アーカイブ+クリーンアップ）
+              </button>
               <div class="month-close-checklist" data-month-close-checklist>
-                <div class="checklist-header">譛域ｬ｡繧ｯ繝ｭ繝ｼ繧ｺ蜑阪・遒ｺ隱埼・岼</div>
+                <div class="checklist-header">月次クローズ前の確認項目</div>
                 <div class="checklist-items">
                   <label class="checklist-item">
                     <input type="checkbox" data-checklist-item="expense_submission">
-                    <span>竭逕ｳ隲・/span>
+                    <span>①申請</span>
                   </label>
                   <label class="checklist-item">
                     <input type="checkbox" data-checklist-item="document_printout">
-                    <span>竭｡逕ｳ隲狗判髱｢繝励Μ繝ｳ繝医い繧ｦ繝・/span>
+                    <span>②申請画面プリントアウト</span>
                   </label>
                   <label class="checklist-item">
                     <input type="checkbox" data-checklist-item="mf_accounting_link">
-                    <span>竭｢・ｭ・ｦ莨夊ｨ医→騾｣謳ｺ</span>
+                    <span>③ＭＦ会計と連携</span>
                   </label>
                 </div>
               </div>
-              <span class="muted">譛域ｬ｡蜃ｦ逅・ｮ御ｺ・ｾ後∵・譫懃黄繧偵い繝ｼ繧ｫ繧､繝悶＠縲∫ｿ梧怦縺ｸ遘ｻ陦後＠縺ｾ縺吶・/span>
-              <span class="muted">縲梧怦谺｡繧ｯ繝ｭ繝ｼ繧ｺ縲榊ｮ溯｡悟ｾ後√ヵ繧ｩ繝ｼ繝縺ｮ蟷ｴ譛医′閾ｪ蜍慕噪縺ｫ鄙梧怦縺ｫ蛻・ｊ譖ｿ繧上ｊ縺ｾ縺吶・/span>
+              <span class="muted">月次処理完了後、成果物をアーカイブし、翌月へ移行します。</span>
+              <span class="muted">「月次クローズ」実行後、フォームの年月が自動的に翌月に切り替わります。</span>
             </div>
           </div>
         </div>
@@ -248,4 +256,3 @@
     <script src="/static/js/index.js"></script>
   </body>
 </html>
-

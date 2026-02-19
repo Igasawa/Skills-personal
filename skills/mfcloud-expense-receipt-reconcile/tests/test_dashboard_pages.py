@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import json
 from pathlib import Path
@@ -156,7 +156,7 @@ def test_index_page_shows_manual_archive_button(monkeypatch: pytest.MonkeyPatch,
     assert links[0].get("label") == "HOME"
     assert links[0].get("section") == "home"
     assert any(
-        link.get("href") == "/" and link.get("label") == "WorkFlow・夂ｵ瑚ｲｻ邊ｾ邂・ and link.get("section") == "workflow"
+        link.get("href") == "/" and link.get("label") == "WorkFlow：経費精算" and link.get("section") == "workflow"
         for link in links
     )
     assert not any(link.get("href") == "/kil-review" and link.get("section") == "admin" for link in links)
@@ -164,7 +164,7 @@ def test_index_page_shows_manual_archive_button(monkeypatch: pytest.MonkeyPatch,
     assert any(link.get("href") == "/errors" and link.get("section") == "admin" for link in links)
     assert any(
         link.get("href") == "/expense-workflow-copy"
-        and link.get("label") in {"WF繝・Φ繝励Ξ繝ｼ繝・, "WF菴懈・繝・Φ繝励Ξ繝ｼ繝・}
+        and link.get("label") in {"WFテンプレート", "WF作成テンプレート"}
         and link.get("section") == "admin"
         for link in links
     )
@@ -313,7 +313,7 @@ def test_index_page_shows_archive_history_links(monkeypatch: pytest.MonkeyPatch,
     assert 'class="archive-history"' in res.text
     assert 'data-archive-history-list' in res.text
     assert f"/runs/{ym}/archived-receipts" in res.text
-    assert "邨瑚ｲｻ邊ｾ邂励・繝ｼ繧ｸ縺ｸ謌ｻ繧・ in res.text
+    assert "経費精算ページへ戻る" in res.text
 
 
 def test_expense_workflow_copy_page_shows_shared_wizard(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -328,9 +328,6 @@ def test_expense_workflow_copy_page_shows_shared_wizard(monkeypatch: pytest.Monk
     assert 'id="workflow-create-preview-list"' in res.text
     assert "data-workflow-template" in res.text
     assert 'data-template-steps-list' in res.text
-    assert 'id="template-step-add"' in res.text
-    assert 'id="template-steps-list"' in res.text
-    assert "data-template-step-mvp-note" in res.text
     assert "id=\"scheduler-panel\"" not in res.text
     assert "id=\"scheduler-toggle\"" not in res.text
     assert "id=\"scheduler-run-date\"" not in res.text
@@ -339,6 +336,9 @@ def test_expense_workflow_copy_page_shows_shared_wizard(monkeypatch: pytest.Monk
     assert "id=\"scheduler-recurrence\"" not in res.text
     assert "data-scheduler-card-id" not in res.text
     assert "data-scheduler-action-key" not in res.text
+    assert 'id="template-step-add"' in res.text
+    assert 'id="template-steps-list"' in res.text
+    assert "data-template-step-mvp-note" in res.text
     assert "/static/js/index.js" in res.text
     assert "/static/js/scheduler.js" not in res.text
     assert "/static/js/template-step-timer.js" not in res.text
@@ -370,8 +370,8 @@ def test_expense_workflow_copy_template_loads_without_scheduler_panel(
                 "notes": "for scheduler context test",
                 "rakuten_orders_url": "https://example.com/orders",
                 "steps": [
-                    {"id": "step-1", "title": "Amazon 蜿門ｾ・, "action": "amazon_download"},
-                    {"id": "step-2", "title": "MF 遯∝粋", "action": "mf_reconcile"},
+                    {"id": "step-1", "title": "Amazon 取得", "action": "amazon_download"},
+                    {"id": "step-2", "title": "MF 突合", "action": "mf_reconcile"},
                 ],
                 "created_at": "2026-02-01T00:00:00",
                 "updated_at": "2026-02-01T00:00:00",
@@ -382,11 +382,10 @@ def test_expense_workflow_copy_template_loads_without_scheduler_panel(
     res = client.get("/expense-workflow-copy?template=scheduler-context-template")
     assert res.status_code == 200
     assert 'id="template-steps-list"' in res.text
-    assert 'id="template-step-add"' in res.text
+    assert "id=\"template-step-add\"" in res.text
+    assert "id=\"scheduler-panel\"" not in res.text
     assert "data-scheduler-card-id" not in res.text
     assert "data-scheduler-action-key" not in res.text
-    assert "id=\"scheduler-panel\"" not in res.text
-    assert "id=\"scheduler-toggle\"" not in res.text
     assert "/static/js/scheduler.js" not in res.text
 
 

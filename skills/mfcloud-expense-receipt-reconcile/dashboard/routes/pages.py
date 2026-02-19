@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from pathlib import Path
 import re
@@ -26,7 +26,7 @@ WORKFLOW_TEMPLATE_REQUIRED_STEP_ACTIONS = (
     "preflight",
 )
 WORKFLOW_TEMPLATE_REQUIRED_STEP_TITLES = {
-    "preflight": "謇矩・ 貅門ｙ・医Ο繧ｰ繧､繝ｳ遒ｺ隱阪・MF騾｣謳ｺ譖ｴ譁ｰ・・,
+    "preflight": "手順0 準備（ログイン確認・MF連携更新）",
 }
 WORKFLOW_TEMPLATE_FALLBACK_ACTION_ORDER = (
     "preflight",
@@ -53,8 +53,8 @@ WORKFLOW_TEMPLATE_ALLOWED_STEP_ACTIONS = (
 WORKFLOW_PAGE_MAX_STEP_VERSIONS = 30
 DEFAULT_SIDEBAR_LINKS = [
     {"href": "/workspace", "label": "HOME", "tab": "workspace", "section": "home"},
-    {"href": "/", "label": "WorkFlow・夂ｵ瑚ｲｻ邊ｾ邂・, "tab": "wizard", "section": "workflow"},
-    {"href": "/expense-workflow-copy", "label": "WF菴懈・繝・Φ繝励Ξ繝ｼ繝・, "tab": "wizard-copy", "section": "admin"},
+    {"href": "/", "label": "WorkFlow：経費精算", "tab": "wizard", "section": "workflow"},
+    {"href": "/expense-workflow-copy", "label": "WF作成テンプレート", "tab": "wizard-copy", "section": "admin"},
     {"href": "/errors", "label": "\u7ba1\u7406\u30bb\u30f3\u30bf\u30fc", "tab": "errors", "section": "admin"},
 ]
 ERRORS_INITIAL_TAB_VALUES = {
@@ -207,7 +207,7 @@ def _normalize_template_steps_for_view_legacy(value: Any) -> list[dict[str, Any]
 
         title = " ".join(str(raw_title or "").strip().split())
         if not title:
-            title = WORKFLOW_TEMPLATE_REQUIRED_STEP_TITLES.get(action, f"謇矩・index + 1}")
+            title = WORKFLOW_TEMPLATE_REQUIRED_STEP_TITLES.get(action, f"手順{index + 1}")
         timer_minutes = core._safe_non_negative_int(raw_timer_minutes, default=WORKFLOW_TEMPLATE_STEP_DEFAULT_TIMER_MINUTES)
         if timer_minutes > WORKFLOW_TEMPLATE_STEP_MAX_TIMER_MINUTES:
             timer_minutes = WORKFLOW_TEMPLATE_STEP_MAX_TIMER_MINUTES
@@ -486,7 +486,7 @@ def _workflow_template_sidebar_links() -> list[dict[str, object]]:
     links: list[dict[str, object]] = []
     for template in _read_workflow_templates()[:WORKFLOW_TEMPLATE_SIDEBAR_LINK_LIMIT]:
         template_id = str(template.get("id") or "").strip()
-        label = str(template.get("name") or "繝ｯ繝ｼ繧ｯ繝輔Ο繝ｼ菴懈・繝・Φ繝励Ξ繝ｼ繝・).strip()[:WORKFLOW_TEMPLATE_SIDEBAR_LABEL_LIMIT]
+        label = str(template.get("name") or "ワークフロー作成テンプレート").strip()[:WORKFLOW_TEMPLATE_SIDEBAR_LABEL_LIMIT]
         if not template_id:
             continue
         year = int(template.get("year") or 0)
@@ -768,9 +768,9 @@ def create_pages_router(templates: Jinja2Templates) -> APIRouter:
             row["mf_summary"] = summary if summary else " ".join([vendor, memo]).strip()
             amount = row.get("mf_amount_yen")
             if isinstance(amount, (int, float)):
-                row["mf_amount_label"] = f"{int(amount):,}蜀・
+                row["mf_amount_label"] = f"{int(amount):,}円"
             elif isinstance(amount, str) and amount.strip().isdigit():
-                row["mf_amount_label"] = f"{int(amount.strip()):,}蜀・
+                row["mf_amount_label"] = f"{int(amount.strip()):,}円"
             else:
                 row["mf_amount_label"] = "-"
 
@@ -822,13 +822,13 @@ def create_pages_router(templates: Jinja2Templates) -> APIRouter:
                 "rakuten_bulk_print_ready": rakuten_bulk_print_ready,
                 "mf_draft_actions_exists": mf_draft_actions.exists(),
                 "file_labels": {
-                    "missing_csv": "譛ｪ豺ｻ莉伜呵｣廚SV",
-                    "missing_json": "譛ｪ豺ｻ莉伜呵｣廱SON",
-                    "monthly_thread": "譛域ｬ｡繝｡繝｢",
-                    "run_config": "螳溯｡瑚ｨｭ螳・,
-                    "audit_log": "逶｣譟ｻ繝ｭ繧ｰ(JSONL)",
-                    "mf_draft_actions": "MF荳区嶌縺堺ｽ懈・繝ｭ繧ｰ(JSONL)",
-                    "print_script": "蜊ｰ蛻ｷ逕ｨ繧ｹ繧ｯ繝ｪ繝励ヨ",
+                    "missing_csv": "未添付候補CSV",
+                    "missing_json": "未添付候補JSON",
+                    "monthly_thread": "月次メモ",
+                    "run_config": "実行設定",
+                    "audit_log": "監査ログ(JSONL)",
+                    "mf_draft_actions": "MF下書き作成ログ(JSONL)",
+                    "print_script": "印刷用スクリプト",
                 },
             },
         )
