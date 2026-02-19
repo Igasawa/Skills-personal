@@ -18,11 +18,12 @@ All paths are relative to:
 - `error_archive/resolved/` : completed incidents
 - `error_archive/escalated/` : incidents that require manual intervention
 - `error_plans/` : generated remediation plans
+- `error_handoffs/` : prepared handoff packages for Antigravity execution
 - `error_runs/` : execution-loop artifacts
 
 ## State Model
 
-`new -> planned -> running -> resolved | escalated`
+`new -> plan_proposed -> approved -> handed_off -> running -> resolved | escalated`
 
 Rule:
 
@@ -63,6 +64,9 @@ Each incident uses:
 ### `status.txt` values
 
 - `new`
+- `plan_proposed`
+- `approved`
+- `handed_off`
 - `planned`
 - `running`
 - `resolved`
@@ -84,12 +88,59 @@ Plan outputs are written to:
   "incident_id": "incident_20260217_120000_run_abc",
   "generated_at": "2026-02-17T03:15:00+00:00",
   "summary": "Short problem summary",
+  "evidence": [
+    {
+      "id": "E1",
+      "source": "log_tail",
+      "path": "log_tail.txt",
+      "kind": "log_signal",
+      "excerpt": "AUTH_REQUIRED: provider login page detected"
+    }
+  ],
+  "evidence_quality": {
+    "total_count": 4,
+    "signal_count": 2,
+    "strong_signal_count": 1,
+    "weak_signal_count": 2,
+    "has_failure_signal": true,
+    "score": 0.63,
+    "assessment": "medium",
+    "strongest_evidence_ids": ["E1"]
+  },
   "root_cause_hypotheses": [
     {
       "id": "H1",
       "confidence": "medium",
-      "reason": "Selector changed in provider page"
+      "reason": "Selector changed in provider page",
+      "evidence_ids": ["E1"]
     }
+  ],
+  "hypothesis_evidence_map": [
+    {
+      "hypothesis_id": "H1",
+      "evidence_ids": ["E1"]
+    }
+  ],
+  "cause_analysis": [
+    {
+      "hypothesis_id": "H1",
+      "reason": "Selector changed in provider page",
+      "confidence": "medium",
+      "support_strength": "medium",
+      "evidence_ids": ["E1"],
+      "supporting_evidence": [
+        {
+          "id": "E1",
+          "path": "log_tail.txt",
+          "kind": "log_signal",
+          "excerpt": "AUTH_REQUIRED: provider login page detected"
+        }
+      ],
+      "gaps": ["Need full stderr to confirm exact selector failure point"]
+    }
+  ],
+  "unknowns": [
+    "Need full stderr to confirm exact selector failure point"
   ],
   "actions": [
     {
@@ -160,3 +211,25 @@ On closure, move the entire incident folder:
 - `error_inbox/<incident_id>/` -> `error_archive/escalated/<incident_id>/`
 
 Do not keep duplicate unresolved copies in `error_inbox/`.
+
+## Antigravity Handoff
+
+Handoff artifacts are written to:
+
+- `error_handoffs/<incident_id>/handoff.json`
+- `error_handoffs/<incident_id>/handoff.md`
+
+Optional external queue export:
+
+- Set `AX_ANTIGRAVITY_HANDOFF_DIR` or pass `--queue-dir` to `error_handoff_prepare.py`.
+- Queue payload file name: `<incident_id>.json`
+
+### Recommended API lifecycle
+
+1. `POST /api/errors/incidents/{incident_id}/plan`
+2. `POST /api/errors/incidents/{incident_id}/approve`
+3. `POST /api/errors/incidents/{incident_id}/handoff`
+
+Status transition:
+
+- `new -> plan_proposed -> approved -> handed_off`
