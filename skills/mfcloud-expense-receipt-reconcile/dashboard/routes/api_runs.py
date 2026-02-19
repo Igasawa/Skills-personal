@@ -181,6 +181,18 @@ def register_api_run_routes(
     error_reports_root: GetErrorReportsRoot,
     review_kil_script_path: GetReviewScriptPath,
 ) -> None:
+    def _incident_inbox_dir(incident_id: str) -> Path:
+        return error_reports_root() / "error_inbox" / incident_id
+
+    def _incident_plan_json_path(incident_id: str) -> Path:
+        return error_reports_root() / "error_plans" / incident_id / "plan.json"
+
+    def _set_incident_status(incident_dir: Path, status: str) -> None:
+        (incident_dir / "status.txt").write_text(f"{status}\n", encoding="utf-8")
+
+    def _read_incident_payload(incident_dir: Path) -> dict[str, Any]:
+        payload = core._read_json(incident_dir / "incident.json")
+        return payload if isinstance(payload, dict) else {}
 
     @router.post("/api/runs")
     def api_run(payload: dict[str, Any], request: Request) -> JSONResponse:
@@ -441,17 +453,53 @@ def register_api_run_routes(
             ["--json", "--incident-id", resolved_incident_id],
             timeout_seconds=30,
         )
+        incident_view = payload.get("incident") if isinstance(payload.get("incident"), dict) else {}
+        incident_path_text = str(incident_view.get("path") or "").strip()
+        incident_dir = Path(incident_path_text).expanduser() if incident_path_text else _incident_inbox_dir(resolved_incident_id)
+        if not incident_dir.exists():
+            incident_dir = _incident_inbox_dir(resolved_incident_id)
+        incident_payload = _read_incident_payload(incident_dir) if incident_dir.exists() else {}
+        if isinstance(incident_payload, dict):
+            merged_incident = dict(incident_view)
+            for key in (
+                "plan_state",
+                "plan_path",
+                "planned_at",
+                "approved_at",
+                "handoff_at",
+                "handoff_path",
+                "handoff_queue_path",
+                "execution_owner",
+                "approval_required",
+            ):
+                if key in merged_incident and str(merged_incident.get(key) or "").strip():
+                    continue
+                if key in incident_payload:
+                    merged_incident[key] = incident_payload.get(key)
+            payload["incident"] = merged_incident
         plan_dir = error_reports_root() / "error_plans" / resolved_incident_id
         plan_json = core._read_json(plan_dir / "plan.json")
         if isinstance(plan_json, dict):
             payload["plan"] = plan_json
             payload["plan_json_path"] = str(plan_dir / "plan.json")
             payload["plan_md_path"] = str(plan_dir / "plan.md")
+        plan_md_path = plan_dir / "plan.md"
+        if plan_md_path.exists():
+            try:
+                payload["plan_markdown"] = plan_md_path.read_text(encoding="utf-8", errors="ignore")
+            except Exception:
+                payload["plan_markdown"] = ""
         run_result = core._read_json(
             error_reports_root() / "error_runs" / resolved_incident_id / "run_result.json"
         )
         if isinstance(run_result, dict):
             payload["run_result"] = run_result
+        handoff_dir = error_reports_root() / "error_handoffs" / resolved_incident_id
+        handoff_json = core._read_json(handoff_dir / "handoff.json")
+        if isinstance(handoff_json, dict):
+            payload["handoff"] = handoff_json
+            payload["handoff_json_path"] = str(handoff_dir / "handoff.json")
+            payload["handoff_md_path"] = str(handoff_dir / "handoff.md")
         return JSONResponse(payload, headers={"Cache-Control": "no-store"})
     
     @router.post("/api/errors/incidents/{incident_id}/plan")
@@ -476,6 +524,92 @@ def register_api_run_routes(
                 details={
                     "incident_id": resolved_incident_id,
                     "plan_json": result.get("plan_json"),
+                },
+            )
+        return JSONResponse(result, headers={"Cache-Control": "no-store"})
+
+    @router.post("/api/errors/incidents/{incident_id}/approve")
+    def api_approve_error_plan(
+        incident_id: str,
+        request: Request,
+        payload: dict[str, Any] | None = None,
+    ) -> JSONResponse:
+        _ = payload
+        resolved_incident_id = safe_incident_id(incident_id)
+        incident_dir = _incident_inbox_dir(resolved_incident_id)
+        if not incident_dir.exists():
+            raise HTTPException(status_code=404, detail="Incident not found in unresolved inbox.")
+        plan_json_path = _incident_plan_json_path(resolved_incident_id)
+        if not plan_json_path.exists():
+            raise HTTPException(status_code=409, detail="Plan does not exist. Generate plan first.")
+
+        incident_payload = _read_incident_payload(incident_dir)
+        now = datetime.now().isoformat(timespec="seconds")
+        incident_payload["status"] = "approved"
+        incident_payload["plan_state"] = "approved"
+        incident_payload["approved_at"] = now
+        incident_payload["updated_at"] = now
+        incident_payload["plan_path"] = str(plan_json_path)
+        incident_payload["execution_owner"] = "antigravity"
+        core._write_json(incident_dir / "incident.json", incident_payload)
+        _set_incident_status(incident_dir, "approved")
+
+        ym = extract_incident_year_month(incident_payload)
+        if ym:
+            year, month = ym
+            core._append_audit_event(
+                year=year,
+                month=month,
+                event_type="error_incident",
+                action="plan_approve",
+                status="success",
+                actor=actor_from_request(request),
+                details={"incident_id": resolved_incident_id},
+            )
+
+        return JSONResponse(
+            {
+                "status": "ok",
+                "incident_id": resolved_incident_id,
+                "incident_status": "approved",
+                "approved_at": now,
+                "plan_json": str(plan_json_path),
+            },
+            headers={"Cache-Control": "no-store"},
+        )
+
+    @router.post("/api/errors/incidents/{incident_id}/handoff")
+    def api_handoff_error_incident_to_antigravity(
+        incident_id: str,
+        request: Request,
+        payload: dict[str, Any] | None = None,
+    ) -> JSONResponse:
+        resolved_incident_id = safe_incident_id(incident_id)
+        body = payload if isinstance(payload, dict) else {}
+        args = ["--incident-id", resolved_incident_id]
+        queue_dir = str(body.get("queue_dir") or "").strip()
+        if queue_dir:
+            args += ["--queue-dir", queue_dir]
+        if bool(body.get("allow_unapproved")):
+            args.append("--allow-unapproved")
+        if bool(body.get("force")):
+            args.append("--force")
+        result = run_error_tool("error_handoff_prepare.py", args, timeout_seconds=45)
+
+        ym = extract_incident_year_month(result)
+        if ym:
+            year, month = ym
+            core._append_audit_event(
+                year=year,
+                month=month,
+                event_type="error_incident",
+                action="handoff_antigravity",
+                status=str(result.get("handoff_status") or "unknown"),
+                actor=actor_from_request(request),
+                details={
+                    "incident_id": resolved_incident_id,
+                    "handoff_json": result.get("handoff_json"),
+                    "queue_payload": result.get("queue_payload"),
                 },
             )
         return JSONResponse(result, headers={"Cache-Control": "no-store"})

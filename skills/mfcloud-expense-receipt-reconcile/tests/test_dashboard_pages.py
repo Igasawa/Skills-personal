@@ -354,6 +354,8 @@ def test_expense_workflow_copy_page_shows_shared_wizard(monkeypatch: pytest.Monk
     assert 'id="template-step-add"' in res.text
     assert 'id="template-steps-list"' in res.text
     assert "data-template-step-mvp-note" in res.text
+    assert "初期状態はタイトルのみ表示します。" in res.text
+    assert "Title only by default." not in res.text
     assert "/static/js/index.js" in res.text
     assert "/static/js/scheduler.js" not in res.text
     assert "/static/js/template-step-timer.js" not in res.text
@@ -431,6 +433,32 @@ def test_expense_workflow_copy_step_card_script_supports_timer_and_default_clone
     assert "renderWorkflowPageStepVersionLabel" in index_js
     assert "shouldSyncYmQueryParams" in index_js
 
+    index_state_js = (
+        Path(__file__).resolve().parents[1]
+        / "dashboard"
+        / "static"
+        / "js"
+        / "index.state.js"
+    ).read_text(encoding="utf-8")
+    assert "手順タイトル" in index_state_js
+    assert "同じアクションは1回だけ選択できます。" in index_state_js
+    assert "Task title" not in index_state_js
+    assert "Each action can only be used once." not in index_state_js
+    assert "Required task cannot be removed." not in index_state_js
+    assert "No runs yet" not in index_state_js
+
+    index_api_js = (
+        Path(__file__).resolve().parents[1]
+        / "dashboard"
+        / "static"
+        / "js"
+        / "index.api.js"
+    ).read_text(encoding="utf-8")
+    assert "自動 ${timer}分" in index_api_js
+    assert '"手動"' in index_api_js
+    assert "auto ${timer}m" not in index_api_js
+    assert '"manual"' not in index_api_js
+
 
 def test_index_page_exposes_latest_run_status_hooks(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     client = _create_client(monkeypatch, tmp_path)
@@ -477,6 +505,12 @@ def test_workspace_page_shows_core_link_and_prompt_tools(
     assert 'id="workspace-link-undo"' in res.text
     assert 'id="workspace-prompt-editor"' in res.text
     assert 'id="workspace-save-prompt"' in res.text
+    assert 'id="workspace-optimize-prompt"' in res.text
+    assert 'id="workspace-prompt-undo"' in res.text
+    assert 'id="workspace-prompt-diff-modal"' in res.text
+    assert 'id="workspace-prompt-diff-before"' in res.text
+    assert 'id="workspace-prompt-diff-after"' in res.text
+    assert 'id="workspace-prompt-diff-apply"' in res.text
     assert "data-prompt-front" in res.text
     assert "data-workspace-link-note" in res.text
     assert "data-workspace-link-details" in res.text
@@ -499,9 +533,13 @@ def test_errors_page_shows_incident_controls(monkeypatch: pytest.MonkeyPatch, tm
     assert 'id="error-detail"' in res.text
     assert 'id="errors-plan-all"' in res.text
     assert 'id="errors-plan"' in res.text
+    assert 'id="errors-approve-plan"' in res.text
+    assert 'id="errors-handoff"' in res.text
     assert 'id="errors-go"' in res.text
     assert 'id="errors-archive-resolved"' in res.text
     assert 'id="errors-archive-escalated"' in res.text
+    assert 'id="errors-handoff-queue"' in res.text
+    assert 'id="errors-handoff-json"' in res.text
     assert 'id="errors-tab-workflow-archive"' in res.text
     assert 'id="errors-tab-kil-review"' in res.text
     assert 'id="workflow-archive-list"' in res.text
@@ -691,7 +729,12 @@ def test_expense_workflow_copy_page_prefills_template_and_sidebar_link(monkeypat
         and link.get("section") == "admin"
         for link in links
     )
-    assert not any(str(link.get("href") or "").startswith("/expense-workflow-copy?template=") for link in links)
+    assert any(
+        link.get("href") == "/expense-workflow-copy?template=copy-source"
+        and link.get("tab") == "wizard-copy"
+        and link.get("section") == "draft"
+        for link in links
+    )
 
 
 def test_expense_workflow_copy_page_does_not_auto_prefill_without_template_query(

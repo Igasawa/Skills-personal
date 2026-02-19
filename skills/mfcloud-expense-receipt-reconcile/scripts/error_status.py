@@ -44,16 +44,27 @@ def _status_for_single_incident(dirs: dict[str, Path], incident_id: str) -> dict
     if not target.exists():
         raise FileNotFoundError(f"incident not found: {incident_id}")
     payload = _read_incident_payload(target)
+    planner = payload.get("planner") if isinstance(payload.get("planner"), dict) else {}
     return {
         "incident_id": incident_id,
         "path": str(target),
         "status": str(payload.get("status") or "").strip(),
+        "plan_state": str(payload.get("plan_state") or "").strip(),
         "failure_class": str(payload.get("failure_class") or "").strip(),
         "step": str(payload.get("step") or "").strip(),
         "ym": str(payload.get("ym") or "").strip(),
         "run_id": str(payload.get("run_id") or "").strip(),
         "updated_at": str(payload.get("updated_at") or "").strip(),
         "message": str(payload.get("message") or "").strip(),
+        "plan_path": str(payload.get("plan_path") or "").strip(),
+        "planned_at": str(payload.get("planned_at") or "").strip(),
+        "approved_at": str(payload.get("approved_at") or "").strip(),
+        "handoff_at": str(payload.get("handoff_at") or "").strip(),
+        "handoff_path": str(payload.get("handoff_path") or "").strip(),
+        "handoff_queue_path": str(payload.get("handoff_queue_path") or "").strip(),
+        "execution_owner": str(payload.get("execution_owner") or "").strip(),
+        "approval_required": bool(payload.get("approval_required")),
+        "planner_mode": str(planner.get("mode") or "").strip(),
     }
 
 
@@ -115,4 +126,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

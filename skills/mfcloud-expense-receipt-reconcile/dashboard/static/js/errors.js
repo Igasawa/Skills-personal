@@ -465,15 +465,15 @@
   }
 
   function buildAiSkillEffectiveState(row) {
-    if (!row || typeof row !== "object") return "unknown";
+    if (!row || typeof row !== "object") return "不明";
     const hasRunner = Boolean(row.has_runner);
     const envAllowed = Boolean(row.env_allowed);
     const adminEnabled = Boolean(row.admin_enabled);
     const allowed = Boolean(row.allowed);
-    if (!hasRunner) return "API: unavailable (no runner) / Agent: available (SKILL.md)";
-    if (!envAllowed) return "API: blocked (env policy) / Agent: available (SKILL.md)";
-    if (!adminEnabled) return "API: blocked (dashboard policy) / Agent: available (SKILL.md)";
-    return allowed ? "API: allowed / Agent: available (SKILL.md)" : "API: unavailable / Agent: available (SKILL.md)";
+    if (!hasRunner) return "API: 実行不可（runnerなし） / Agent: 実行可（SKILL.md）";
+    if (!envAllowed) return "API: 環境ポリシーで制限中 / Agent: 実行可（SKILL.md）";
+    if (!adminEnabled) return "API: ダッシュボード設定で禁止 / Agent: 実行可（SKILL.md）";
+    return allowed ? "API: 実行可 / Agent: 実行可（SKILL.md）" : "API: 実行不可 / Agent: 実行可（SKILL.md）";
   }
 
   function renderAiSkills(payload) {
@@ -504,7 +504,7 @@
       const emptyCell = document.createElement("td");
       emptyCell.colSpan = 4;
       emptyCell.className = "muted";
-      emptyCell.textContent = "利用可能な skill が見つかりません。";
+      emptyCell.textContent = "利用可能なスキルが見つかりません。";
       emptyRow.appendChild(emptyCell);
       aiSkillsListEl.appendChild(emptyRow);
       updateAiSkillControlsDisabled();
@@ -548,12 +548,12 @@
       input.disabled = !hasRunner;
       if (!hasRunner) {
         input.title =
-          "API execution is unavailable because this skill has no runner (scripts/run.py|run.ps1|run.mjs|run.js). SKILL.md-based agent execution is still available.";
+          "このスキルは runner がないため API 実行できません（scripts/run.py|run.ps1|run.mjs|run.js）。SKILL.md ベースの Agent 実行は可能です。";
       } else if (!envAllowed) {
         input.title =
-          "Environment allowlist currently blocks API execution. This toggle controls dashboard policy only.";
+          "環境許可リストにより API 実行が制限されています。このトグルはダッシュボード側の許可設定のみ変更します。";
       } else {
-        input.title = "Toggle dashboard permission for API execution.";
+        input.title = "ダッシュボードの API 実行許可を切り替えます。";
       }
       label.title = input.title;
       input.addEventListener("change", () => {
@@ -592,10 +592,10 @@
       });
       await refreshAiSkills();
       setStatus("", "");
-      showToast(`skill権限を更新しました: ${resolvedSkillId}`, "success");
+      showToast(`スキル権限を更新しました: ${resolvedSkillId}`, "success");
     } catch (error) {
       await refreshAiSkills().catch(() => {});
-      const message = toFriendlyMessage(error?.message || "skill権限の更新に失敗しました");
+      const message = toFriendlyMessage(error?.message || "スキル権限の更新に失敗しました");
       setStatus(message, "error");
       showToast(message, "error");
     } finally {
@@ -789,7 +789,7 @@
       refreshAiSkills()
         .then(() => {
           setStatus("", "");
-          showToast("AI skill権限を更新しました", "success");
+          showToast("AIスキル権限を更新しました", "success");
         })
         .catch((error) => {
           const message = toFriendlyMessage(error?.message || "処理に失敗しました");
@@ -848,7 +848,7 @@
       } else if (initialTab === "document-targets") {
         tasks.push({ name: "対象ドキュメント", run: () => refreshDocumentTargets() });
       } else if (initialTab === "ai-skills") {
-        tasks.push({ name: "AI skill権限", run: () => refreshAiSkills() });
+        tasks.push({ name: "AIスキル権限", run: () => refreshAiSkills() });
       }
 
       const settled = await Promise.allSettled(tasks.map((task) => Promise.resolve().then(() => task.run())));

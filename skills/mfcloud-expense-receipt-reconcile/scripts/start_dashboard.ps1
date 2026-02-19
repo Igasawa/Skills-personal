@@ -27,8 +27,26 @@ function Resolve-AxHome {
   return Join-Path $env:USERPROFILE ".ax"
 }
 
+function Resolve-AntigravityHandoffDir {
+  param([string]$AxHomePath)
+  $candidates = @(
+    [string]$env:AX_ANTIGRAVITY_HANDOFF_DIR,
+    [string]([Environment]::GetEnvironmentVariable("AX_ANTIGRAVITY_HANDOFF_DIR", "User")),
+    [string]([Environment]::GetEnvironmentVariable("AX_ANTIGRAVITY_HANDOFF_DIR", "Machine"))
+  )
+  foreach ($candidate in $candidates) {
+    if ($candidate -and $candidate.Trim().Length -gt 0) {
+      return [Environment]::ExpandEnvironmentVariables($candidate.Trim())
+    }
+  }
+  return Join-Path $AxHomePath "antigravity\handoff_queue"
+}
+
 $axHome = Resolve-AxHome
 $env:AX_HOME = $axHome
+$handoffQueue = Resolve-AntigravityHandoffDir -AxHomePath $axHome
+New-Item -ItemType Directory -Force -Path $handoffQueue | Out-Null
+$env:AX_ANTIGRAVITY_HANDOFF_DIR = $handoffQueue
 
 if ($Port -lt 1 -or $Port -gt 65535) {
   throw "Invalid -Port: $Port (expected 1-65535)."

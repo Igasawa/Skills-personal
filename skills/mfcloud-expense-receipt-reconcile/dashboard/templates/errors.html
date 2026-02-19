@@ -29,7 +29,7 @@
         <button type="button" class="pill" data-errors-tab="document-targets" id="errors-tab-document-targets">対象ドキュメント</button>
         <button type="button" class="pill" data-errors-tab="workflow-archive" id="errors-tab-workflow-archive">WFアーカイブ管理</button>
         <button type="button" class="pill" data-errors-tab="kil-review" id="errors-tab-kil-review">KIL Review</button>
-        <button type="button" class="pill" data-errors-tab="ai-skills" id="errors-tab-ai-skills">AI Skill権限</button>
+        <button type="button" class="pill" data-errors-tab="ai-skills" id="errors-tab-ai-skills">AIスキル権限</button>
       </div>
 
       <section class="errors-tab-panel" data-errors-tab-panel="incidents">
@@ -96,28 +96,38 @@
 
             <div class="step-actions">
               <button type="button" class="secondary" id="errors-plan-all" data-error-action-global>未解決を一括計画</button>
-              <button type="button" class="primary" id="errors-plan" data-error-action>計画作成</button>
-              <button type="button" class="primary" id="errors-go" data-error-action>GO実行</button>
+              <button type="button" class="primary" id="errors-plan" data-error-action>AIプラン提案</button>
+              <button type="button" class="secondary" id="errors-approve-plan" data-error-action>計画承認</button>
+              <button type="button" class="primary" id="errors-handoff" data-error-action>Antigravityへ引き渡し</button>
+              <button type="button" class="secondary" id="errors-go" data-error-action>ローカルGO実行</button>
               <button type="button" class="secondary" id="errors-archive-resolved" data-error-action>解決済みに移動</button>
               <button type="button" class="secondary" id="errors-archive-escalated" data-error-action>エスカレートへ移動</button>
             </div>
 
             <div class="error-options">
               <label>
-                max_loops
+                Antigravityキュー保存先（antigravity_queue_dir）
+                <input
+                  type="text"
+                  id="errors-handoff-queue"
+                  placeholder="任意: 共有キューのパス (例 C:\\handoff\\queue)"
+                />
+              </label>
+              <label>
+                最大ループ回数（max_loops）
                 <input type="number" id="errors-max-loops" min="1" max="99" value="8" />
               </label>
               <label>
-                max_runtime_minutes
+                最大実行時間（分）（max_runtime_minutes）
                 <input type="number" id="errors-max-runtime" min="1" max="480" value="45" />
               </label>
               <label>
-                same_error_limit
+                同一エラー許容回数（same_error_limit）
                 <input type="number" id="errors-same-error-limit" min="1" max="20" value="3" />
               </label>
               <label class="inline-check">
                 <input type="checkbox" id="errors-single-iteration" />
-                single_iteration
+                1回のみ実行（single_iteration）
               </label>
             </div>
 
@@ -127,7 +137,12 @@
             <pre id="errors-plan-json" class="log error-log"></pre>
 
             <div class="section-divider">
-              <h3>実行結果JSON</h3>
+              <h3>Antigravity引き渡しJSON</h3>
+            </div>
+            <pre id="errors-handoff-json" class="log error-log"></pre>
+
+            <div class="section-divider">
+              <h3>ローカル実行結果JSON</h3>
             </div>
             <pre id="errors-run-result-json" class="log error-log"></pre>
           </div>
@@ -362,7 +377,7 @@
       <section class="errors-tab-panel hidden" data-errors-tab-panel="ai-skills">
         <section class="card">
           <div class="section-header">
-            <h2>AI Skill 実行権限</h2>
+            <h2>AIスキル実行権限</h2>
             <button type="button" class="secondary" id="errors-ai-skills-refresh">一覧を更新</button>
           </div>
           <p id="errors-ai-skills-summary" class="muted">スキル権限を読み込み中...</p>
@@ -371,7 +386,7 @@
             <table class="errors-ai-skills-table">
               <thead>
                 <tr>
-                  <th scope="col">Skill</th>
+                  <th scope="col">スキル</th>
                   <th scope="col">説明</th>
                   <th scope="col">状態</th>
                   <th scope="col">実行許可</th>

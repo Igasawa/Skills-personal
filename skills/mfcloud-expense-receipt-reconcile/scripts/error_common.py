@@ -17,8 +17,19 @@ INBOX_DIR_NAME = "error_inbox"
 ARCHIVE_DIR_NAME = "error_archive"
 PLANS_DIR_NAME = "error_plans"
 RUNS_DIR_NAME = "error_runs"
+HANDOFFS_DIR_NAME = "error_handoffs"
 
-STATUS_VALUES = {"new", "planned", "running", "resolved", "escalated"}
+# Keep "planned" for backward compatibility with existing incidents.
+STATUS_VALUES = {
+    "new",
+    "planned",
+    "plan_proposed",
+    "approved",
+    "handed_off",
+    "running",
+    "resolved",
+    "escalated",
+}
 ARCHIVE_RESULTS = {"resolved", "escalated"}
 SAFE_INCIDENT_ID_RE = re.compile(r"^[A-Za-z0-9._-]+$")
 
@@ -73,7 +84,8 @@ def ensure_error_dirs(reports_root: Path) -> dict[str, Path]:
     archive_escalated = archive_root / "escalated"
     plans = reports_root / PLANS_DIR_NAME
     runs = reports_root / RUNS_DIR_NAME
-    for path in (inbox, archive_resolved, archive_escalated, plans, runs):
+    handoffs = reports_root / HANDOFFS_DIR_NAME
+    for path in (inbox, archive_resolved, archive_escalated, plans, runs, handoffs):
         path.mkdir(parents=True, exist_ok=True)
     return {
         "reports_root": reports_root,
@@ -83,6 +95,7 @@ def ensure_error_dirs(reports_root: Path) -> dict[str, Path]:
         "archive_escalated": archive_escalated,
         "plans": plans,
         "runs": runs,
+        "handoffs": handoffs,
     }
 
 
@@ -197,6 +210,7 @@ def list_inbox_incidents(reports_root: Path) -> list[dict[str, Any]]:
             continue
         payload = read_json(child / "incident.json")
         payload = payload if isinstance(payload, dict) else {}
+        planner = payload.get("planner") if isinstance(payload.get("planner"), dict) else {}
         try:
             updated_at = str(payload.get("updated_at") or "").strip() or incident_updated_at_iso(child)
         except Exception:
@@ -204,11 +218,15 @@ def list_inbox_incidents(reports_root: Path) -> list[dict[str, Any]]:
         row = {
             "incident_id": child.name,
             "status": read_status(child),
+            "plan_state": str(payload.get("plan_state") or "").strip(),
             "step": str(payload.get("step") or "").strip(),
             "failure_class": str(payload.get("failure_class") or "").strip(),
             "run_id": str(payload.get("run_id") or "").strip(),
             "ym": str(payload.get("ym") or "").strip(),
             "message": str(payload.get("message") or "").strip(),
+            "execution_owner": str(payload.get("execution_owner") or "").strip(),
+            "approval_required": bool(payload.get("approval_required")),
+            "planner_mode": str(planner.get("mode") or "").strip(),
             "updated_at": updated_at,
             "path": str(child),
         }

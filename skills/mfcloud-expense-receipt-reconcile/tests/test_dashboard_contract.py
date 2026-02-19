@@ -30,7 +30,9 @@ def test_api_router_registers_expected_routes() -> None:
         "/api/errors/incidents",
         "/api/errors/incidents/{incident_id}",
         "/api/errors/incidents/{incident_id}/archive",
+        "/api/errors/incidents/{incident_id}/approve",
         "/api/errors/incidents/{incident_id}/go",
+        "/api/errors/incidents/{incident_id}/handoff",
         "/api/errors/incidents/{incident_id}/plan",
         "/api/errors/incidents/plan-all",
         "/api/exclusions/{ym}",
@@ -77,6 +79,7 @@ def test_api_router_registers_expected_routes() -> None:
         "/api/workflow-pages/{workflow_page_id}",
         "/api/workflow-templates",
         "/api/workflow-templates/{template_id}",
+        "/api/workspace/prompt/optimize",
         "/api/workspace/state",
     }
 
