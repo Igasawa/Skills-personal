@@ -638,3 +638,14 @@
 - **レビュー期限**: -
 - **ソース**: llm
 
+## [2026-02-19] Commit: 2a9c89646988677d398eab5d9389776fc918cd42
+- **要約**: ワークスペースAPIの実装、UIの統合、およびインシデント引き継ぎ（handoff）機能のテストカバレッジ向上
+- **獲得した知識**: ワークスペースのピン留め管理には 'pinned-groups' という命名・ID体系を統一して使用する, UIメッセージ（削除確認ダイアログ等）は日本語で実装する, 解決したインシデントは、メタデータやログを含めて reports/error_archive/resolved/ 配下にアーカイブする, インシデントの引き継ぎ状態は 'handed_off' ステータスと 'execution_owner' プロパティで管理する
+- **守るべきルール**: 開発時の一時ファイル（tmp_*、workspace_*.js、ws.diff、*.bak等）をコミットに含めること, ワークスペースのグループ管理に旧称の 'pinned-links' を使用すること
+- **未解決の文脈**: スケジューラー関連コンポーネントの整理（一部テストで削除された要素の整合性確認）, 不要になったJS/CSSのクリーンアップ
+- **対象範囲**: docs/, skills/mfcloud-expense-receipt-reconcile/dashboard/, skills/mfcloud-expense-receipt-reconcile/tests/
+- **確度**: 1.0
+- **重要度**: low
+- **レビュー期限**: -
+- **ソース**: llm
+

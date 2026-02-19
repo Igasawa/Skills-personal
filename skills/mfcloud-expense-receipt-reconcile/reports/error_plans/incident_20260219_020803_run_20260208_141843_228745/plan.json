@@ -1,0 +1,109 @@
+{
+  "incident_id": "incident_20260219_020803_run_20260208_141843_228745",
+  "generated_at": "2026-02-19T22:37:09+00:00",
+  "summary": "The rakuten_download worker failed with returncode 1, indicating a crash or unhandled exception during the scraping process.",
+  "confidence_score": 0.7,
+  "risk_summary": "Scraper failures often stem from UI changes or auth issues; repeated failed attempts may trigger account blocks.",
+  "card_summary": {
+    "plan": "Diagnose the rakuten_download worker crash by inspecting logs and verifying site selectors, followed by a logic fix.",
+    "first_step": "Inspect stderr logs for rakuten_download.mjs to identify the specific JS exception.",
+    "eta_minutes": 45,
+    "risk": "low",
+    "approval": "required"
+  },
+  "root_cause_hypotheses": [
+    {
+      "id": "H1",
+      "confidence": "0.5",
+      "reason": "Rakuten login or download page DOM structure changed, causing selector timeout."
+    },
+    {
+      "id": "H2",
+      "confidence": "0.3",
+      "reason": "Authentication failure or session expiration not handled gracefully by the script."
+    },
+    {
+      "id": "H3",
+      "confidence": "0.2",
+      "reason": "Worker environment missing required Node.js dependencies or browser binaries."
+    }
+  ],
+  "actions": [
+    {
+      "id": "A1",
+      "title": "Inspect worker logs and stderr",
+      "priority": "P0",
+      "risk": "low",
+      "target_paths": [
+        "skills/mfcloud-expense-receipt-reconcile/scripts/rakuten_download.mjs"
+      ],
+      "verification": [
+        "python -m pytest -q tests/test_run_core_pipeline.py"
+      ],
+      "estimated_minutes": 10
+    },
+    {
+      "id": "A2",
+      "title": "Validate Rakuten selectors and login flow",
+      "priority": "P1",
+      "risk": "low",
+      "target_paths": [
+        "skills/mfcloud-expense-receipt-reconcile/scripts/rakuten_download.mjs"
+      ],
+      "verification": [
+        "python -m pytest -q tests/test_run_core_pipeline.py"
+      ],
+      "estimated_minutes": 20
+    },
+    {
+      "id": "A3",
+      "title": "Apply fix for identified scraper logic or selector",
+      "priority": "P1",
+      "risk": "medium",
+      "target_paths": [
+        "skills/mfcloud-expense-receipt-reconcile/scripts/rakuten_download.mjs"
+      ],
+      "verification": [
+        "python -m pytest -q tests/test_run_core_pipeline.py"
+      ],
+      "estimated_minutes": 15
+    }
+  ],
+  "verification_commands": [
+    "python -m pytest -q tests/test_run_core_pipeline.py",
+    "python scripts/run.py --year 2026 --month 1 --dry-run --skip-mfcloud"
+  ],
+  "done_criteria": [
+    "rakuten_download.mjs completes without worker_exit",
+    "Verification suite passes",
+    "Dry-run confirms successful navigation to download targets"
+  ],
+  "rollback": "git checkout skills/mfcloud-expense-receipt-reconcile/scripts/rakuten_download.mjs",
+  "planner": {
+    "mode": "ai",
+    "skill": "error-plan",
+    "provider": "gemini",
+    "model": "gemini-flash-latest",
+    "fallback_reason": ""
+  },
+  "execution": {
+    "target_engine": "antigravity",
+    "executor": "Scraper Engineer",
+    "intent": "Identify why the Node.js worker exited and restore Rakuten statement downloading.",
+    "requires_approval": false,
+    "notes": []
+  },
+  "lifecycle": {
+    "from": "unresolved",
+    "plan_generated": "plan_proposed",
+    "after_approval": "approved",
+    "after_handoff": "handed_off"
+  },
+  "policy": {
+    "max_loops": 8,
+    "max_runtime_minutes": 45,
+    "same_error_limit": 3,
+    "scope": "skills/mfcloud-expense-receipt-reconcile/**"
+  },
+  "source_incident_path": "C:\\Users\\TatsuoIgasawa\\.vscode\\Skillpersonal\\skills\\mfcloud-expense-receipt-reconcile\\reports\\error_inbox\\incident_20260219_020803_run_20260208_141843_228745"
+}
