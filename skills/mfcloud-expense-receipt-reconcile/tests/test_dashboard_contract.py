@@ -94,6 +94,69 @@ def test_create_api_router_delegates_to_registrar_modules(monkeypatch: pytest.Mo
     assert calls == ["folder", "print", "run", "workflow", "builtin", "kil"]
 
 
+def test_create_api_router_injects_provider_source_status_resolver(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: dict[str, object] = {}
+
+    def _fake_folder_endpoints(*, router, provider_source_status_for_ym):
+        captured["router"] = router
+        captured["provider_source_status_for_ym"] = provider_source_status_for_ym
+
+    def _fake_print_endpoints(*, router):
+        return None
+
+    def _fake_run_endpoints(*, router):
+        return None
+
+    def _fake_workflow_endpoints(*, router):
+        return None
+
+    def _fake_builtin_routes(
+        *,
+        router,
+        actor_from_request,
+        try_year_month,
+        run_error_tool,
+        safe_incident_id,
+        extract_incident_year_month,
+        error_reports_root,
+        review_kil_script_path,
+    ):
+        return None
+
+    def _fake_kil_routes(*, router):
+        return None
+
+    monkeypatch.setattr(api_routes, "register_api_folder_endpoints", _fake_folder_endpoints)
+    monkeypatch.setattr(api_routes, "register_api_print_endpoints", _fake_print_endpoints)
+    monkeypatch.setattr(api_routes, "register_api_run_endpoints", _fake_run_endpoints)
+    monkeypatch.setattr(api_routes, "register_api_workflow_endpoints", _fake_workflow_endpoints)
+    monkeypatch.setattr(api_routes, "register_builtin_api_run_routes", _fake_builtin_routes)
+    monkeypatch.setattr(api_routes, "register_api_kil_review_routes", _fake_kil_routes)
+
+    api_routes.create_api_router()
+
+    assert "provider_source_status_for_ym" in captured
+    resolver = captured["provider_source_status_for_ym"]
+    assert callable(resolver)
+    assert "router" in captured
+
+    called = {}
+
+    def _fake_status(year: int, month: int) -> dict[str, object]:
+        called["year"] = year
+        called["month"] = month
+        return {"configured": True, "exists": True, "path": "/tmp/source", "pending_files": 0}
+
+    monkeypatch.setattr(api_routes, "_provider_source_status_for_ym", _fake_status)
+    # ensure the injected callback is wired to the module-level resolver
+    assert callable(resolver)
+    result = resolver(2026, 1)  # type: ignore[arg-type]
+    assert result["configured"] is True
+    assert called == {"year": 2026, "month": 1}
+    assert called["year"] == 2026
+    assert called["month"] == 1
+
+
 def test_dashboard_templates_reference_expected_script_chunks() -> None:
     base = Path(__file__).resolve().parents[1] / "dashboard" / "templates"
     html = {
