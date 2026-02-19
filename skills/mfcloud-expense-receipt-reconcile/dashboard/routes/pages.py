@@ -9,6 +9,7 @@ from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from services import core
+from skill_pages import collect_skill_sidebar_links, register_skill_pages
 
 ARCHIVE_SNAPSHOT_RE = re.compile(r"^\d{8}_\d{6}$")
 WORKFLOW_TEMPLATE_SIDEBAR_LABEL_LIMIT = 38
@@ -558,6 +559,8 @@ def _dashboard_context(active_tab: str) -> dict[str, object]:
     links = list(DEFAULT_SIDEBAR_LINKS)
     for link in _workflow_page_sidebar_links():
         links.append(link)
+    for link in collect_skill_sidebar_links():
+        links.append(link)
     deduped = []
     seen = set()
     for link in links:
@@ -720,6 +723,12 @@ def create_pages_router(templates: Jinja2Templates) -> APIRouter:
                 "ax_home": str(core._ax_home()),
             },
         )
+
+    register_skill_pages(
+        router=router,
+        templates=templates,
+        dashboard_context=_dashboard_context,
+    )
 
     @router.get("/errors", response_class=HTMLResponse)
     def errors(

@@ -283,3 +283,94 @@
 - **レビュー期限**: -
 - **ソース**: llm
 
+## [2026-02-19] Commit: bfb99aaafcfcc544986f2161571b474c6c82d272
+- **要約**: AGENT_BRAINの更新と、ワークスペースダッシュボードAPIにおける固定リンク(pinned_links)対応およびワークフロー正規化ルールの適用。
+- **獲得した知識**: APIレスポンス返却前に、ワークフローのステップ情報は必ず正規化関数（_normalize_workflow_template_steps等）を介在させること。, サイドバーのリンク情報は、HTMLのdata-sidebar-links属性を用いたJSON形式での受け渡しを維持すること。, ワークフローのコピー・編集画面において、template_idとtemplate_modeの初期値設定を厳密に管理し、テストで検証すること。, ワークスペースの状態管理において、pinned_links（固定リンク）をサポートし、リビジョン競合時のマージ対象に含めること。
+- **守るべきルール**: 正規化されていない生のDBデータを直接フロントエンドに返却すること。, アクティブなワークフローとアーカイブ済みワークフローの操作ロジックを、分離せずに同一のJS/テンプレートに混在させること。
+- **未解決の文脈**: 正規化ロジックが複数のAPIエンドポイントに分散しており、共通化の余地がある。, ワークスペースリンクの昇格（promotion）に伴う大規模な構造変更が予定されている。
+- **対象範囲**: skills/mfcloud-expense-receipt-reconcile/dashboard/, docs/AGENT_BRAIN.md
+- **確度**: 0.9
+- **重要度**: medium
+- **レビュー期限**: -
+- **ソース**: llm
+
+## [2026-02-19] Commit: 67ca33ef39d708a341cc1e0d715627d401d730ed
+- **要約**: PowerShellにおけるファイル書き出し時のエンコーディングをUTF-8 (BOMなし) に統一する方針の策定と自動チェックの導入
+- **獲得した知識**: PowerShellでファイルを書き出す際は Set-Content/Add-Content/Out-File -Encoding utf8 を使用しない。, 代わりに [System.Text.UTF8Encoding]($false) を使用した .NET の [System.IO.File]::WriteAllText() 等、または utf8NoBOM を明示的に使用する。, .ps1 ファイルに対するエンコーディングチェック（scripts/check_text_encoding.py）をパスさせること。
+- **守るべきルール**: PowerShellスクリプト内での -Encoding utf8 オプションの使用（BOMが付与される可能性があるため）。, UTF-8 BOM付きでのファイル保存。
+- **未解決の文脈**: 正規表現による静的チェック（DISALLOWED_POWERSHELL_ENCODING_PATTERN）であるため、動的なコマンド生成や特殊なエイリアス使用による回避を完全には捕捉できない可能性がある。
+- **対象範囲**: リポジトリ内の全PowerShellスクリプト（.ps1）, エンコーディング管理方針（README.md）, CI/プリコミット時のエンコーディングバリデーション
+- **確度**: 1.0
+- **重要度**: low
+- **レビュー期限**: -
+- **ソース**: llm
+
+## [2026-02-19] Commit: 399252e1fd3bd3823e4f2ff2e43f984dc45ac806
+- **要約**: ダッシュボードのJavaScriptファイルにおける文字化けの修正
+- **獲得した知識**: 日本語等のマルチバイト文字を含むソースファイルは、必ず UTF-8 (BOMなし) エンコーディングで保存する。, UIテキストの修正を含むコミットを行う際は、ブラウザ上での表示確認を必須とする。
+- **守るべきルール**: エディタの自動判別ミスによる文字化け（Mojibake）を含んだ状態でのコードコミット。, BOM（Byte Order Mark）付きのUTF-8での保存（一部のツールや環境で予期せぬ動作を引き起こす可能性があるため）。
+- **未解決の文脈**: UIコピー（文言）がJavaScriptファイル内に直接ハードコードされており、エンコーディング問題の影響を受けやすい。i18n（国際化）対応による文言の外部管理化が望ましい。, パッチ内で修正されていない他のラベル（preflight, amazon_decide_print等）にも文字化けが残存している可能性がある。
+- **対象範囲**: skills/mfcloud-expense-receipt-reconcile/dashboard/static/js/index.js
+- **確度**: 0.9
+- **重要度**: low
+- **レビュー期限**: -
+- **ソース**: llm
+
+## [2026-02-19] Commit: f5d813f2e33545e316d932fe5a993efa4642739b
+- **要約**: ダッシュボードのフロントエンドJavaScriptを機能別にモジュール化
+- **獲得した知識**: ダッシュボードのフロントエンド機能を追加・修正する際は、役割に応じたファイル（index.api.js, index.render.js等）にロジックを分散させること。, HTMLテンプレートでスクリプトを読み込む際は、依存関係を考慮した特定の順序（constants -> state -> api -> render -> events -> index）を厳守すること。
+- **守るべきルール**: index.js に全てのロジックを直接記述し、肥大化させること。, モジュール間の依存関係を無視して、HTML内でのスクリプト読み込み順序を変更すること。
+- **未解決の文脈**: ES Modules (import/export) を使用せず、グローバルスコープでの関数・変数共有に依存しているため、名前衝突のリスクがある。, ビルドツール（Webpack/Vite等）が導入されていないため、ファイル分割によるHTTPリクエスト数の増加が発生している。
+- **対象範囲**: skills/mfcloud-expense-receipt-reconcile/dashboard/static/js/, skills/mfcloud-expense-receipt-reconcile/dashboard/templates/
+- **確度**: 0.9
+- **重要度**: low
+- **レビュー期限**: -
+- **ソース**: llm
+
+## [2026-02-19] Commit: cc64d00af2464be6309201131a5f0da517ebcd74
+- **要約**: APIおよびサービス層の巨大なモジュールを機能単位で分割し、互換性を維持するためのリファクタリングの実施。
+- **獲得した知識**: APIエンドポイントやサービスロジックが肥大化した場合は、機能カテゴリ（folder, print, run, workflow等）ごとにファイルを分割して管理する。, フロントエンド（JavaScript）とバックエンドのインターフェース（グローバル変数やイベント名）の整合性を確認するためのコントラクトテストを導入・維持する。, モジュール分割時は、既存のAPIパスやシンボル定義が維持されているかを検証するテストコードをセットで作成する。
+- **守るべきルール**: 1つのファイルに数千行規模のロジック（API定義やビジネスロジック）を詰め込み、単一責任原則に反する状態を放置すること。, フロントエンドが依存するJS側のグローバルシンボル（window.DashboardIndexEvents等）の定義有無を確認せずにリファクタリングを完了すること。
+- **未解決の文脈**: 分割された各モジュール間での循環参照が発生しないよう、共通ヘルパー（api_helpers.py等）への依存関係を継続的に監視する必要がある。, 既存のテストコードが分割後の全エンドポイントを網羅できているかの再確認。
+- **対象範囲**: skills/mfcloud-expense-receipt-reconcile/dashboard/routes/, skills/mfcloud-expense-receipt-reconcile/dashboard/services/, skills/mfcloud-expense-receipt-reconcile/tests/
+- **確度**: 0.9
+- **重要度**: medium
+- **レビュー期限**: 2026-03-19
+- **ソース**: llm
+
+## [2026-02-19] Commit: 3fc643af990dbdb1639f5d3e96e21ebe2257da42
+- **要約**: APIエンドポイント登録における循環参照の解消と依存性注入の導入
+- **獲得した知識**: サブモジュールが親モジュールや兄弟モジュールの関数を必要とする場合、直接インポートせず、登録用関数の引数として Callable（コールバック）を渡す依存性注入（DI）パターンを採用する。, DI用の引数には型ヒント（Callable[[...], ...], Any等）を明示し、インターフェースを定義する。
+- **守るべきルール**: 同一パッケージ内のルート定義モジュール間で相互に import を行い、実行時エラーや初期化の複雑化を招くこと。, 循環参照を避けるために、関数内でローカルインポートを多用すること（DIの方が追跡可能性が高い）。
+- **未解決の文脈**: 他の register_api_* 関数群においても同様の密結合が存在する可能性があり、必要に応じてDIパターンへの統一を検討すべきである。, api.py 内で定義されたプロキシ関数（_provider_source_status_for_ym_proxy）が増加した場合、管理用のファクトリや設定クラスへの集約が必要になる可能性がある。
+- **対象範囲**: skills/mfcloud-expense-receipt-reconcile/dashboard/routes/
+- **確度**: 0.9
+- **重要度**: low
+- **レビュー期限**: -
+- **ソース**: llm
+
+## [2026-02-19] Commit: 9a6dddc35403fd90833a9c68b2d3b4595cc7bd29
+- **要約**: APIルーターにおけるプロバイダーソース状態解決関数のインジェクションを検証するコントラクトテストの追加。
+- **獲得した知識**: APIルーターの構築ロジック（create_api_router等）を変更する場合、依存するエンドポイント登録関数への引数注入が正しく行われているかを確認するテストを含めること。, 注入されるコールバック関数が、内部の実装関数（_provider_source_status_for_ym等）を正しく呼び出しているかを検証すること。
+- **守るべきルール**: エンドポイント登録関数のシグネチャ変更時に、呼び出し元（ルーター構築部）のテストを更新せず、実行時のインジェクションエラーを見逃すこと。
+- **未解決の文脈**: テスト内で多数のモック（_fake_endpoints）を手動定義しており、APIエンドポイントのカテゴリが増えるたびにテストコードのボイラープレートが増加する可能性がある。
+- **対象範囲**: skills/mfcloud-expense-receipt-reconcile/tests/test_dashboard_contract.py, APIルーティング定義
+- **確度**: 0.9
+- **重要度**: low
+- **レビュー期限**: -
+- **ソース**: llm
+
+
+## [2026-02-19] Dashboard skill pages: common shell + skill modules
+- **Summary**: For dashboard expansion, define a shared-shell, skill-pages split so new skills can be added without creating monolithic files.
+- **Acquired knowledge**: The dashboard should keep common layout, sidebar, and shared components in common paths, while each skill owns a separate page module under `dashboard/skill_pages` and skill-scoped services. Existing sidebar links should be driven by a shared registry so discovery stays consistent.
+- **Rules to follow**: Keep the dashboard structure explicit by adding new skill features under `dashboard/` in two layers: 1) shared UI/contract modules (components, API helpers, base layout, common JS/CSS) and 2) skill-specific modules in `dashboard/skill_pages/<skill_name>.py` + `dashboard/services/<skill_name>/...`.
+- **Rules to follow**: Register skill pages through a single `register_skill_pages(app)` path and keep route wiring in one place (`dashboard/routes/pages.py`) to avoid circular imports.
+- **Rules to follow**: Ensure sidebar links are centrally defined/ rendered from dashboard config, not hardcoded per isolated page, so `index` and skill pages stay aligned.
+- **Rules to follow**: When adding a new skill, update contract tests and page tests together with route/service changes.
+- **Outstanding context**: Current implementations should be reviewed to verify all existing skill pages are converted to this split if they are still mixed in a single route file.
+- **Scope**: skills/mfcloud-expense-receipt-reconcile/dashboard/*, tests around dashboard routes/services
+- **Confidence**: 0.93
+- **Severity**: medium
+- **Review deadline**: -
+- **Source**: human

@@ -170,6 +170,55 @@ def test_index_page_shows_manual_archive_button(monkeypatch: pytest.MonkeyPatch,
     )
 
 
+def test_pptx_polish_page_shows_upload_polish_controls_and_sidebar_link(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    client = _create_client(monkeypatch, tmp_path)
+    res = client.get("/pptx-polish")
+    assert res.status_code == 200
+    assert 'id="pptx-file"' in res.text
+    assert 'id="pptx-polish-form"' in res.text
+    assert 'id="pptx-polish-submit"' in res.text
+    assert 'id="pptx-polish-reset"' in res.text
+    assert 'id="pptx-polish-message"' in res.text
+    assert 'id="pptx-polish-current"' in res.text
+    assert 'id="pptx-polish-job-meta"' in res.text
+    assert 'id="pptx-polish-progress-fill"' in res.text
+    assert 'id="pptx-polish-job-list"' in res.text
+    assert 'id="pptx-polish-refresh-jobs"' in res.text
+    assert 'id="pptx-polish-empty"' in res.text
+    assert "/static/js/pptx-polish.js" in res.text
+
+    match = re.search(r"data-sidebar-links='(.*?)'", res.text)
+    assert match is not None
+    links = json.loads(match.group(1))
+    assert any(
+        link.get("href") == "/pptx-polish"
+        and link.get("tab") == "pptx-polish"
+        and link.get("section") == "admin"
+        for link in links
+    )
+
+
+def test_index_page_sidebar_includes_pptx_polish_link(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    client = _create_client(monkeypatch, tmp_path)
+    res = client.get("/")
+    assert res.status_code == 200
+    match = re.search(r"data-sidebar-links='(.*?)'", res.text)
+    assert match is not None
+    links = json.loads(match.group(1))
+    assert any(
+        link.get("href") == "/pptx-polish"
+        and link.get("tab") == "pptx-polish"
+        and link.get("section") == "admin"
+        for link in links
+    )
+
+
 def test_index_page_clamps_invalid_default_month(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setattr(
         pages_routes.core,

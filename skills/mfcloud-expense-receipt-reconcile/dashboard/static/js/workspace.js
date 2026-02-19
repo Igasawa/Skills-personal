@@ -773,17 +773,18 @@
     promptEditor.focus();
   }
 
-  function sanitizeLinkList(links, limit) {
+  function sanitizeLinkList(links, limit, allowDuplicateUrls = false) {
     if (!Array.isArray(links)) return [];
     const out = [];
-    const seen = new Set();
     links.forEach((item) => {
       if (!isObject(item)) return;
       const url = normalizeUrl(item.url);
       if (!url) return;
-      const key = String(url).toLowerCase();
-      if (seen.has(key)) return;
-      seen.add(key);
+      if (!allowDuplicateUrls) {
+        const key = String(url).toLowerCase();
+        const exists = out.some((row) => String(row.url || "").toLowerCase() === key);
+        if (exists) return;
+      }
       const fallback = new URL(url).hostname;
       const label = normalizeText(item.label || fallback, 80) || fallback;
       out.push({ label, url });
@@ -794,7 +795,7 @@
   function normalizeLinkPools(links, pinnedLinks) {
     const safePinnedLinks = sanitizeLinkList(pinnedLinks, MAX_PINNED_LINKS);
     const pinnedKeys = new Set(safePinnedLinks.map((item) => String(item.url || "").toLowerCase()));
-    const safeLinks = sanitizeLinkList(links, MAX_LINKS).filter(
+    const safeLinks = sanitizeLinkList(links, MAX_LINKS, true).filter(
       (item) => !pinnedKeys.has(String(item.url || "").toLowerCase())
     );
     return { links: safeLinks, pinned_links: safePinnedLinks };
@@ -1160,98 +1161,127 @@
     return true;
   }
 
-  function bindPinnedLinkDragAndDrop() {
-    if (!pinnedLinksList) return;
-    if (pinnedLinksList.dataset.dragBound === "1") return;
-    pinnedLinksList.dataset.dragBound = "1";
-    let draggingUrl = "";
+  function bindLinkListDragAndDrop(listElement, readLinks, saveLinks, renderLinks, options = {}) {
+    if (!(listElement instanceof HTMLElement)) return;
+    if (listElement.dataset.dragBound === "1") return;
+    listElement.dataset.dragBound = "1";
+    const saveLabel = String(options.saveLabel || "").trim() || "並び順";
+    let draggingIndex = -1;
 
     const clearDragClasses = () => {
-      pinnedLinksList.querySelectorAll(".workspace-link-item.is-dragging").forEach((node) => {
+      listElement.querySelectorAll(".workspace-link-item.is-dragging").forEach((node) => {
         node.classList.remove("is-dragging");
       });
-      pinnedLinksList.querySelectorAll(".workspace-link-item.is-drop-target").forEach((node) => {
+      listElement.querySelectorAll(".workspace-link-item.is-drop-target").forEach((node) => {
         node.classList.remove("is-drop-target");
       });
     };
 
-    pinnedLinksList.addEventListener("dragstart", (event) => {
+    const toIndexFromNode = (item) => {
+      if (!(item instanceof HTMLElement)) return -1;
+      const raw = item.dataset.linkIndex || "";
+      const parsed = Number.parseInt(raw, 10);
+      return Number.isFinite(parsed) && parsed >= 0 ? parsed : -1;
+    };
+
+    listElement.addEventListener("dragstart", (event) => {
       const target = event.target instanceof Element ? event.target : null;
-      const handle = target ? target.closest("[data-pinned-drag-handle][data-drag-url]") : null;
+      const handle = target ? target.closest("[data-workspace-drag-handle][data-drag-index]") : null;
       if (!(handle instanceof HTMLElement)) return;
-      draggingUrl = normalizeUrl(handle.dataset.dragUrl || "") || "";
-      if (!draggingUrl) return;
+      const indexRaw = handle.dataset.dragIndex || "";
+      const nextIndex = Number.parseInt(indexRaw, 10);
+      if (!Number.isFinite(nextIndex) || nextIndex < 0) return;
+      draggingIndex = nextIndex;
       const item = handle.closest(".workspace-link-item");
-      if (item) item.classList.add("is-dragging");
+      if (item instanceof HTMLElement) item.classList.add("is-dragging");
       if (event.dataTransfer) {
         event.dataTransfer.effectAllowed = "move";
         try {
-          event.dataTransfer.setData("text/plain", draggingUrl);
+          event.dataTransfer.setData("text/plain", `${nextIndex}`);
         } catch {
           // no-op
         }
       }
     });
 
-    pinnedLinksList.addEventListener("dragover", (event) => {
-      if (!draggingUrl) return;
+    listElement.addEventListener("dragover", (event) => {
+      if (!Number.isFinite(draggingIndex) || draggingIndex < 0) return;
       const target = event.target instanceof Element ? event.target : null;
-      const item = target ? target.closest(".workspace-link-item.workspace-pinned-item[data-link-url]") : null;
+      const item = target ? target.closest(".workspace-link-item[data-link-index]") : null;
       if (!(item instanceof HTMLElement)) return;
-      const targetUrl = normalizeUrl(item.dataset.linkUrl || "");
-      if (!targetUrl || targetUrl.toLowerCase() === draggingUrl.toLowerCase()) return;
+      const targetIndex = toIndexFromNode(item);
+      if (targetIndex < 0 || targetIndex === draggingIndex) return;
       event.preventDefault();
       clearDragClasses();
       item.classList.add("is-drop-target");
       if (event.dataTransfer) event.dataTransfer.dropEffect = "move";
     });
 
-    pinnedLinksList.addEventListener("drop", (event) => {
-      if (!draggingUrl) return;
+    listElement.addEventListener("drop", (event) => {
+      if (!Number.isFinite(draggingIndex) || draggingIndex < 0) return;
       const target = event.target instanceof Element ? event.target : null;
-      const item = target ? target.closest(".workspace-link-item.workspace-pinned-item[data-link-url]") : null;
+      const item = target ? target.closest(".workspace-link-item[data-link-index]") : null;
       if (!(item instanceof HTMLElement)) return;
-      event.preventDefault();
-      const targetUrl = normalizeUrl(item.dataset.linkUrl || "");
-      if (!targetUrl || targetUrl.toLowerCase() === draggingUrl.toLowerCase()) {
+      const targetIndex = toIndexFromNode(item);
+      if (!Number.isFinite(targetIndex) || targetIndex < 0) {
         clearDragClasses();
-        draggingUrl = "";
+        draggingIndex = -1;
+        return;
+      }
+      if (targetIndex === draggingIndex) {
+        clearDragClasses();
+        draggingIndex = -1;
+        return;
+      }
+      event.preventDefault();
+
+      const current = typeof readLinks === "function" ? readLinks() : [];
+      if (!Array.isArray(current) || current.length === 0) {
+        clearDragClasses();
+        draggingIndex = -1;
+        return;
+      }
+      if (draggingIndex >= current.length || targetIndex >= current.length) {
+        clearDragClasses();
+        draggingIndex = -1;
         return;
       }
 
-      const current = readPinnedLinks();
-      const fromIndex = current.findIndex(
-        (row) => String(row.url || "").toLowerCase() === String(draggingUrl).toLowerCase()
-      );
-      const toIndexRaw = current.findIndex(
-        (row) => String(row.url || "").toLowerCase() === String(targetUrl).toLowerCase()
-      );
-      if (fromIndex < 0 || toIndexRaw < 0) {
-        clearDragClasses();
-        draggingUrl = "";
-        return;
-      }
       const next = current.slice();
-      const [moved] = next.splice(fromIndex, 1);
-      const insertIndex = fromIndex < toIndexRaw ? toIndexRaw - 1 : toIndexRaw;
+      const [moved] = next.splice(draggingIndex, 1);
+      const insertIndex = draggingIndex < targetIndex ? targetIndex - 1 : targetIndex;
       next.splice(insertIndex, 0, moved);
 
-      const saved = savePinnedLinks(next);
+      const saved = typeof saveLinks === "function" ? saveLinks(next) : false;
       if (!saved) {
-        showToast("固定リンクの並び替えを保存できませんでした。", "error");
         clearDragClasses();
-        draggingUrl = "";
+        draggingIndex = -1;
+        showToast(`${saveLabel}を保存できませんでした。`, "error");
         return;
       }
-      renderPinnedLinks(next);
-      showToast("固定リンクの並び順を更新しました。", "success");
+      if (typeof renderLinks === "function") {
+        renderLinks(next);
+      }
+      showToast(`${saveLabel}を更新しました。`, "success");
       clearDragClasses();
-      draggingUrl = "";
+      draggingIndex = -1;
     });
 
-    pinnedLinksList.addEventListener("dragend", () => {
+    listElement.addEventListener("dragend", () => {
       clearDragClasses();
-      draggingUrl = "";
+      draggingIndex = -1;
+    });
+  }
+
+  function bindPinnedLinkDragAndDrop() {
+    bindLinkListDragAndDrop(pinnedLinksList, readPinnedLinks, savePinnedLinks, renderPinnedLinks, {
+      saveLabel: "固定リンクの並び順",
+    });
+  }
+
+  function bindCustomLinkDragAndDrop() {
+    bindLinkListDragAndDrop(customLinksList, readCustomLinks, saveCustomLinks, renderCustomLinks, {
+      saveLabel: "追加リンクの並び順",
     });
   }
 
@@ -1260,6 +1290,7 @@
     const item = document.createElement("li");
     item.className = `workspace-link-item${isPinnedSection ? " workspace-pinned-item" : ""}`;
     item.dataset.linkUrl = String(link.url || "");
+    item.dataset.linkIndex = String(Number.isFinite(Number(index)) ? Number(index) : 0);
 
     const main = document.createElement("div");
     main.className = "workspace-link-main";
@@ -1277,6 +1308,102 @@
     openLink.title = link.url;
     openLink.setAttribute("aria-label", `${link.label} を開く（${link.url}）`);
     openLink.textContent = link.label;
+
+    const titleRow = document.createElement("div");
+    titleRow.className = "workspace-link-title-row";
+
+    const orderBadge = document.createElement("span");
+    orderBadge.className = "workspace-link-order-badge";
+    orderBadge.textContent = String(Number(index) + 1);
+    titleRow.appendChild(orderBadge);
+
+    const orderControls = document.createElement("div");
+    orderControls.className = "workspace-link-order-controls";
+
+    const moveUpButton = document.createElement("button");
+    moveUpButton.type = "button";
+    moveUpButton.className = "secondary workspace-order-button workspace-order-button-inline";
+    moveUpButton.textContent = "↑";
+    moveUpButton.setAttribute("aria-label", "上へ移動");
+    moveUpButton.disabled = Number(index) <= 0;
+    moveUpButton.addEventListener("click", () => {
+      const current = isPinnedSection ? readPinnedLinks() : readCustomLinks();
+      const currentIndex = Number.isFinite(Number(index)) ? Number(index) : -1;
+      if (currentIndex <= 0 || currentIndex >= current.length) return;
+      const next = current.slice();
+      const [moved] = next.splice(currentIndex, 1);
+      next.splice(currentIndex - 1, 0, moved);
+      const saved = isPinnedSection ? savePinnedLinks(next) : saveCustomLinks(next);
+      if (!saved) {
+        showToast(isPinnedSection ? "固定リンクの上へ移動を保存できませんでした。" : "追加リンクの上へ移動を保存できませんでした。", "error");
+        return;
+      }
+      if (isPinnedSection) renderPinnedLinks(next);
+      else renderCustomLinks(next);
+      showToast(isPinnedSection ? "固定リンクを上へ移動しました。" : "追加リンクを上へ移動しました。", "success");
+    });
+
+    const moveDownButton = document.createElement("button");
+    moveDownButton.type = "button";
+    moveDownButton.className = "secondary workspace-order-button workspace-order-button-inline";
+    moveDownButton.textContent = "↓";
+    moveDownButton.setAttribute("aria-label", "下へ移動");
+    moveDownButton.disabled = Number(index) >= Math.max(0, (Array.isArray(links) ? links.length : 0) - 1);
+    moveDownButton.addEventListener("click", () => {
+      const current = isPinnedSection ? readPinnedLinks() : readCustomLinks();
+      const currentIndex = Number.isFinite(Number(index)) ? Number(index) : -1;
+      if (currentIndex < 0 || currentIndex >= current.length - 1) return;
+      const next = current.slice();
+      const [moved] = next.splice(currentIndex, 1);
+      next.splice(currentIndex + 1, 0, moved);
+      const saved = isPinnedSection ? savePinnedLinks(next) : saveCustomLinks(next);
+      if (!saved) {
+        showToast(isPinnedSection ? "固定リンクの下へ移動を保存できませんでした。" : "追加リンクの下へ移動を保存できませんでした。", "error");
+        return;
+      }
+      if (isPinnedSection) renderPinnedLinks(next);
+      else renderCustomLinks(next);
+      showToast(isPinnedSection ? "固定リンクを下へ移動しました。" : "追加リンクを下へ移動しました。", "success");
+    });
+
+    orderControls.appendChild(moveUpButton);
+    orderControls.appendChild(moveDownButton);
+    titleRow.appendChild(orderControls);
+
+    titleRow.appendChild(openLink);
+    if (!isPinnedSection) {
+      const duplicateButton = document.createElement("button");
+      duplicateButton.type = "button";
+      duplicateButton.className = "workspace-link-duplicate secondary";
+      duplicateButton.textContent = "+";
+      duplicateButton.setAttribute("aria-label", `${link.label} を複製`);
+      duplicateButton.addEventListener("click", () => {
+        const current = readCustomLinks();
+        if (current.length >= MAX_LINKS) {
+          showToast(`追加リンクは最大 ${MAX_LINKS} 件です。`, "error");
+          return;
+        }
+        const sourceIndex = Number.isFinite(Number(index)) ? Number(index) : -1;
+        if (sourceIndex < 0 || sourceIndex >= current.length) return;
+        const cloned = {
+          ...current[sourceIndex],
+          label: String(current[sourceIndex].label || ""),
+          url: String(current[sourceIndex].url || ""),
+        };
+        const next = current.slice();
+        next.splice(sourceIndex + 1, 0, cloned);
+        const saved = saveCustomLinks(next);
+        if (!saved) {
+          showToast("追加リンクを複製できませんでした。", "error");
+          return;
+        }
+        clearLinkUndoNotice();
+        renderCustomLinks(next);
+        showToast("リンクを複製しました。", "success");
+      });
+      titleRow.appendChild(duplicateButton);
+    }
+    head.appendChild(titleRow);
 
     const urlToggleButton = document.createElement("button");
     urlToggleButton.type = "button";
@@ -1302,7 +1429,6 @@
     promptFront.dataset.promptUrl = String(link.url || "");
     renderPromptFrontElement(promptFront);
 
-    head.appendChild(openLink);
     head.appendChild(urlToggleButton);
     main.appendChild(head);
 
@@ -1463,8 +1589,8 @@
       dragHandle.type = "button";
       dragHandle.className = "secondary workspace-drag-handle";
       dragHandle.textContent = "並び替え";
-      dragHandle.setAttribute("data-pinned-drag-handle", "");
-      dragHandle.dataset.dragUrl = String(link.url || "");
+      dragHandle.setAttribute("data-workspace-drag-handle", "");
+      dragHandle.dataset.dragIndex = String(index);
       dragHandle.draggable = true;
       actions.appendChild(dragHandle);
     } else {
@@ -1494,6 +1620,15 @@
         showToast("追加リンクを削除しました。", "success");
       });
       actions.appendChild(removeButton);
+
+      const dragHandle = document.createElement("button");
+      dragHandle.type = "button";
+      dragHandle.className = "secondary workspace-drag-handle";
+      dragHandle.textContent = "並び替え";
+      dragHandle.setAttribute("data-workspace-drag-handle", "");
+      dragHandle.dataset.dragIndex = String(index);
+      dragHandle.draggable = true;
+      actions.appendChild(dragHandle);
     }
 
     details.appendChild(actions);
@@ -1506,11 +1641,12 @@
   function renderCustomLinks(links) {
     if (!customLinksList || !customLinksEmpty) return;
     customLinksList.innerHTML = "";
-    const safeLinks = sanitizeLinkList(links, MAX_LINKS);
+    const safeLinks = sanitizeLinkList(links, MAX_LINKS, true);
     safeLinks.forEach((link, index) => {
       customLinksList.appendChild(createLinkNode(link, index, safeLinks, "custom"));
     });
     customLinksEmpty.classList.toggle("hidden", safeLinks.length > 0);
+    bindCustomLinkDragAndDrop();
   }
 
   function renderPinnedLinks(links) {

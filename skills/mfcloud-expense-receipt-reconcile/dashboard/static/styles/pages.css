@@ -758,9 +758,43 @@
 
 .workspace-link-head {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: start;
   gap: 8px;
+}
+
+.workspace-link-title-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  width: 100%;
+}
+
+.workspace-link-title-row .workspace-link-open {
+  flex: 1;
+  min-width: 0;
+}
+
+.workspace-link-order-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.workspace-link-order-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 24px;
+  height: 28px;
+  border-radius: 999px;
+  border: 1px solid rgb(var(--semantic-field-border-default));
+  background: rgb(var(--surface-1));
+  color: rgb(var(--text-secondary));
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
 }
 
 .workspace-link-open {
@@ -771,6 +805,15 @@
   line-height: 1.35;
   min-height: 38px;
   font-size: 13px;
+}
+
+.workspace-link-duplicate {
+  min-width: 34px;
+  min-height: 34px;
+  padding: 0 8px;
+  line-height: 1;
+  justify-content: center;
+  flex: 0 0 auto;
 }
 
 .workspace-link-domain {
@@ -957,6 +1000,25 @@
   width: 100%;
   justify-content: center;
   min-height: 34px;
+}
+
+.workspace-order-button {
+  width: 100%;
+  justify-content: center;
+  min-height: 34px;
+}
+
+.workspace-order-button.workspace-order-button-inline {
+  width: auto;
+  min-width: 26px;
+  padding: 0 7px;
+  line-height: 1;
+  min-height: 28px;
+}
+
+.workspace-order-button[disabled] {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
 .workspace-link-actions .workspace-edit-prompt:last-child {

@@ -53,6 +53,11 @@ def test_api_router_registers_expected_routes() -> None:
         "/api/print-run/{ym}/{source}",
         "/api/print/{ym}/{source}",
         "/api/print/{ym}/{source}/complete",
+        "/api/pptx/polish",
+        "/api/pptx/polish/{job_id}",
+        "/api/pptx/polish/{job_id}/run",
+        "/api/pptx/polish/{job_id}/download",
+        "/api/pptx/polish/jobs",
         "/api/provider-import/{ym}/result",
         "/api/providers/{ym}/download",
         "/api/providers/{ym}/import",
@@ -187,6 +192,10 @@ def test_dashboard_templates_reference_expected_script_chunks() -> None:
             "/static/js/index.events.js",
             "/static/js/index.js",
             "/static/js/scheduler.js",
+        ],
+        base / "pptx_polish.html": [
+            "/static/js/common.js",
+            "/static/js/pptx-polish.js",
         ],
     }
 

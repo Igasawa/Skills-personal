@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>PowerPoint Polish | MF Cloud Dashboard</title>
+    <link rel="stylesheet" href="/static/styles.css" />
+  </head>
+  <body>
+    <div
+      class="page pptx-polish-page"
+      data-active-tab="{{ active_tab | default('pptx-polish', true) }}"
+      data-sidebar-links='{{ (sidebar_links | default([], true)) | tojson }}'
+    >
+      <header class="hero">
+        <div>
+          <p class="eyebrow">PowerPoint Polish</p>
+          <h1>PowerPoint Polish</h1>
+          <p class="subtitle">
+            Upload a PowerPoint file and generate a polished version with improved slide readability and typography.
+          </p>
+        </div>
+      </header>
+
+      <section class="card pptx-polish-workflow">
+        <h2>Upload and polish</h2>
+        <p class="muted">Select a <strong>.pptx</strong> file and click Execute.</p>
+
+        <form id="pptx-polish-form" class="form" autocomplete="off">
+          <label for="pptx-file">
+            PowerPoint file (.pptx)
+            <input
+              id="pptx-file"
+              name="file"
+              type="file"
+              accept=".pptx,application/vnd.openxmlformats-officedocument.presentationml.presentation"
+              required
+            />
+          </label>
+
+          <div class="step-actions">
+            <button type="submit" id="pptx-polish-submit" class="primary">
+              Execute
+            </button>
+            <button type="button" id="pptx-polish-reset" class="secondary">
+              Reset
+            </button>
+          </div>
+        </form>
+
+        <p id="pptx-polish-message" class="muted" role="status" aria-live="polite"></p>
+
+        <div id="pptx-polish-current" class="pptx-polish-current hidden" aria-live="polite">
+          <h3>Current job</h3>
+          <div id="pptx-polish-job-meta" class="pptx-polish-grid"></div>
+          <div class="pptx-progress-track">
+            <span id="pptx-polish-progress-fill" class="pptx-progress-fill"></span>
+          </div>
+          <p id="pptx-polish-job-summary" class="muted"></p>
+          <div id="pptx-polish-job-actions" class="step-actions"></div>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="section-header">
+          <h2>Polish history</h2>
+          <button type="button" id="pptx-polish-refresh-jobs" class="secondary">
+            Refresh
+          </button>
+        </div>
+        <p id="pptx-polish-empty" class="muted">No jobs yet.</p>
+        <div id="pptx-polish-job-list" class="pptx-job-list"></div>
+      </section>
+    </div>
+
+    <div id="toast" class="toast" aria-live="polite"></div>
+    <script src="/static/js/common.js"></script>
+    <script src="/static/js/pptx-polish.js"></script>
+  </body>
+</html>
