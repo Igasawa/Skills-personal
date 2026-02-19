@@ -12,10 +12,18 @@ from services import ai_skill_tools
 
 
 def _format_skill_list(skills: list[dict[str, Any]], *, only_allowed: bool = True) -> str:
-    rows = [row for row in skills if bool(row.get("allowed"))] if only_allowed else list(skills)
+    all_rows = list(skills)
+    rows = [row for row in all_rows if bool(row.get("allowed"))] if only_allowed else all_rows
+    runnerless_count = sum(1 for row in all_rows if not bool(row.get("has_runner")))
     if not rows:
-        return "実行可能なスキルが見つかりません。"
-    lines = ["実行可能スキル一覧:"]
+        lines = ["No API-executable skills were found."]
+        if runnerless_count:
+            lines.append(
+                f"Note: {runnerless_count} skill(s) have no runner, so `/skill run` cannot execute them."
+            )
+            lines.append("They are still usable with SKILL.md-based agent execution.")
+        return "\n".join(lines)
+    lines = ["API-executable skills:"]
     for row in rows:
         skill_id = str(row.get("id") or "").strip()
         desc = str(row.get("description") or "").strip()
@@ -23,7 +31,12 @@ def _format_skill_list(skills: list[dict[str, Any]], *, only_allowed: bool = Tru
             lines.append(f"- {skill_id}: {desc}")
         else:
             lines.append(f"- {skill_id}")
-    lines.append("使い方: /skill run <skill_id> [args...]")
+    lines.append("Usage: /skill run <skill_id> [args...]")
+    if runnerless_count:
+        lines.append(
+            f"Note: {runnerless_count} skill(s) have no runner, so `/skill run` cannot execute them."
+        )
+        lines.append("They are still usable with SKILL.md-based agent execution.")
     return "\n".join(lines)
 
 

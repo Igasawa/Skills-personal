@@ -177,6 +177,23 @@ def test_api_ai_skills_execute_error_mapping(monkeypatch: pytest.MonkeyPatch, tm
     assert "missing" in str(res.json().get("detail") or "")
 
 
+def test_api_ai_skills_execute_not_executable_includes_skill_md_hint(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    client = _create_client(monkeypatch, tmp_path)
+
+    def _raise_not_executable(skill_id, args=None, timeout_seconds=None):  # noqa: ARG001
+        raise api_ai_skill_routes.ai_skill_tools.SkillNotExecutableError(
+            "Skill has no API runner: alpha. The skill can still run via SKILL.md-based agent execution."
+        )
+
+    monkeypatch.setattr(api_ai_skill_routes.ai_skill_tools, "execute_skill", _raise_not_executable)
+    res = client.post("/api/ai/skills/execute", json={"skill": "alpha"})
+    assert res.status_code == 400
+    detail = str(res.json().get("detail") or "")
+    assert "SKILL.md-based agent execution" in detail
+
+
 def test_api_ai_chat_skill_list_command_uses_local_skill_provider(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -214,6 +231,46 @@ def test_api_ai_chat_skill_list_command_uses_local_skill_provider(
     assert body["provider"] == "local-skill"
     assert body["model"] == "local-skill"
     assert "alpha" in str(body["reply"]["content"])
+
+
+def test_api_ai_chat_skill_list_mentions_runnerless_skill_guidance(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    client = _create_client(monkeypatch, tmp_path)
+    monkeypatch.setattr(
+        api_ai_chat_routes.ai_skill_tools,
+        "list_skills",
+        lambda: [
+            {
+                "id": "runnerless",
+                "name": "runnerless",
+                "description": "desc",
+                "skill_md": "x",
+                "has_runner": False,
+                "runner": None,
+                "allowed": False,
+            }
+        ],
+    )
+    monkeypatch.setattr(
+        api_ai_chat_routes.ai_chat,
+        "chat",
+        lambda messages, page_context: (_ for _ in ()).throw(RuntimeError("must not call")),
+    )
+
+    res = client.post(
+        "/api/ai/chat",
+        json={
+            "messages": [{"role": "user", "content": "/skill list"}],
+            "page_context": {"path": "/", "active_tab": "wizard", "title": "x"},
+        },
+    )
+    assert res.status_code == 200
+    body = res.json()
+    text = str(body["reply"]["content"] or "")
+    assert "No API-executable skills were found." in text
+    assert "SKILL.md-based agent execution" in text
+    assert "/skill run" in text
 
 
 def test_api_ai_chat_skill_run_command_executes_skill(

@@ -20,6 +20,15 @@ MAX_TIMEOUT_SECONDS = 600
 ALLOWLIST_ENV = "AX_AI_CHAT_SKILL_ALLOWLIST"
 PERMISSIONS_FILE_NAME = "skill_permissions.json"
 MAX_PERMISSION_ITEMS = 500
+IGNORED_SKILL_PATH_PARTS = {
+    ".git",
+    ".hg",
+    ".svn",
+    "__pycache__",
+    "node_modules",
+    "venv",
+    ".venv",
+}
 
 
 class SkillError(RuntimeError):
@@ -104,6 +113,36 @@ def _parse_front_matter(path: Path) -> dict[str, str]:
         key, value = text.split(":", 1)
         out[str(key).strip().lower()] = str(value).strip().strip('"').strip("'")
     return out
+
+
+def _iter_skill_dirs(root: Path) -> list[Path]:
+    candidates: list[Path] = []
+    for skill_md in root.rglob(SKILL_DOC_NAME):
+        if not skill_md.is_file():
+            continue
+        try:
+            rel = skill_md.relative_to(root)
+        except Exception:
+            continue
+        rel_parts = [str(part) for part in rel.parts[:-1]]
+        if not rel_parts:
+            continue
+        lowered = [part.lower() for part in rel_parts]
+        if any(part.startswith(".") for part in rel_parts):
+            continue
+        if any(part in IGNORED_SKILL_PATH_PARTS for part in lowered):
+            continue
+        candidates.append(skill_md.parent)
+
+    unique = {path.resolve(): path for path in candidates}
+    ordered = sorted(
+        unique.values(),
+        key=lambda p: (
+            len(p.relative_to(root).parts),
+            str(p.relative_to(root)).replace("\\", "/").lower(),
+        ),
+    )
+    return ordered
 
 
 def _detect_runner(skill_dir: Path) -> Path | None:
@@ -208,6 +247,20 @@ def _is_allowed(
     return _is_env_allowed(skill_id, has_runner, allowlist)
 
 
+def _build_execution_capabilities(*, has_runner: bool) -> dict[str, Any]:
+    if has_runner:
+        return {
+            "api_executable": True,
+            "agent_executable": True,
+            "api_unavailable_reason": None,
+        }
+    return {
+        "api_executable": False,
+        "agent_executable": True,
+        "api_unavailable_reason": "runner_missing",
+    }
+
+
 def list_skills() -> list[dict[str, Any]]:
     root = _skills_root()
     allowlist = _parse_allowlist()
@@ -221,16 +274,21 @@ def list_skills() -> list[dict[str, Any]]:
         return []
 
     out: list[dict[str, Any]] = []
-    for skill_dir in sorted([path for path in root.iterdir() if path.is_dir()], key=lambda p: p.name.lower()):
+    seen_skill_ids: set[str] = set()
+    for skill_dir in _iter_skill_dirs(root):
         skill_md = skill_dir / SKILL_DOC_NAME
-        if not skill_md.exists():
-            continue
         metadata = _parse_front_matter(skill_md)
-        skill_id = _normalize_skill_id(skill_dir.name)
+        skill_id = _normalize_skill_id(metadata.get("name") or skill_dir.name)
+        if not skill_id:
+            continue
+        if skill_id in seen_skill_ids:
+            continue
+        seen_skill_ids.add(skill_id)
         runner = _detect_runner(skill_dir)
         has_runner = runner is not None
         admin_enabled = bool(overrides.get(skill_id, True))
         env_allowed = _is_env_allowed(skill_id, has_runner, allowlist)
+        capabilities = _build_execution_capabilities(has_runner=has_runner)
         allowed = _is_allowed(
             skill_id=skill_id,
             has_runner=has_runner,
@@ -245,6 +303,9 @@ def list_skills() -> list[dict[str, Any]]:
                 "skill_md": str(skill_md),
                 "has_runner": has_runner,
                 "runner": str(runner) if runner else None,
+                "api_executable": bool(capabilities["api_executable"]),
+                "agent_executable": bool(capabilities["agent_executable"]),
+                "api_unavailable_reason": capabilities["api_unavailable_reason"],
                 "env_allowed": env_allowed,
                 "admin_enabled": admin_enabled,
                 "allowed": allowed,
@@ -351,7 +412,12 @@ def _build_command(runner: Path, args: list[str]) -> list[str]:
 def execute_skill(skill_id: str, args: Any = None, timeout_seconds: Any = None) -> dict[str, Any]:
     skill = _resolve_skill(skill_id)
     if not bool(skill.get("has_runner")):
-        raise SkillNotExecutableError(f"Skill has no runner: {skill_id}")
+        raise SkillNotExecutableError(
+            "Skill has no API runner: "
+            f"{skill_id}. API execution requires one of scripts/run.py, scripts/run.ps1, "
+            "scripts/run.mjs, or scripts/run.js. The skill can still run via SKILL.md-based "
+            "agent execution."
+        )
     if not bool(skill.get("allowed")):
         raise SkillNotAllowedError(f"Skill execution is not allowed: {skill_id}")
 

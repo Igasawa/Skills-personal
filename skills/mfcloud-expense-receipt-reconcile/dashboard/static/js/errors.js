@@ -465,15 +465,15 @@
   }
 
   function buildAiSkillEffectiveState(row) {
-    if (!row || typeof row !== "object") return "不明";
+    if (!row || typeof row !== "object") return "unknown";
     const hasRunner = Boolean(row.has_runner);
     const envAllowed = Boolean(row.env_allowed);
     const adminEnabled = Boolean(row.admin_enabled);
     const allowed = Boolean(row.allowed);
-    if (!hasRunner) return "実行不可（runnerなし）";
-    if (!envAllowed) return "実行不可（環境制限）";
-    if (!adminEnabled) return "実行不可（管理画面）";
-    return allowed ? "実行可能" : "実行不可";
+    if (!hasRunner) return "API: unavailable (no runner) / Agent: available (SKILL.md)";
+    if (!envAllowed) return "API: blocked (env policy) / Agent: available (SKILL.md)";
+    if (!adminEnabled) return "API: blocked (dashboard policy) / Agent: available (SKILL.md)";
+    return allowed ? "API: allowed / Agent: available (SKILL.md)" : "API: unavailable / Agent: available (SKILL.md)";
   }
 
   function renderAiSkills(payload) {
@@ -516,6 +516,7 @@
       const skillName = toText(row.name, skillId);
       const description = toText(row.description, "-");
       const hasRunner = Boolean(row.has_runner);
+      const envAllowed = Boolean(row.env_allowed);
       const adminEnabled = hasRunner ? Boolean(row.admin_enabled) : false;
 
       const tr = document.createElement("tr");
@@ -545,6 +546,16 @@
       input.checked = adminEnabled;
       input.dataset.aiSkillToggle = skillId;
       input.disabled = !hasRunner;
+      if (!hasRunner) {
+        input.title =
+          "API execution is unavailable because this skill has no runner (scripts/run.py|run.ps1|run.mjs|run.js). SKILL.md-based agent execution is still available.";
+      } else if (!envAllowed) {
+        input.title =
+          "Environment allowlist currently blocks API execution. This toggle controls dashboard policy only.";
+      } else {
+        input.title = "Toggle dashboard permission for API execution.";
+      }
+      label.title = input.title;
       input.addEventListener("change", () => {
         const enabled = Boolean(input.checked);
         void updateAiSkillPermission(skillId, enabled);
