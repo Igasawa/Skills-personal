@@ -9,6 +9,17 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+$utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+
+function Write-Utf8NoBomText {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string]$LiteralPath,
+    [Parameter(Mandatory = $true)]
+    [string]$Text
+  )
+  [System.IO.File]::WriteAllText($LiteralPath, $Text, $utf8NoBom)
+}
 
 function Get-AxHome {
   $candidates = @(
@@ -191,7 +202,7 @@ $manifestPayload = [ordered]@{
   }
   zip_path = $zipPath
 }
-$manifestPayload | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath $manifestPath -Encoding UTF8
+Write-Utf8NoBomText -LiteralPath $manifestPath -Text ($manifestPayload | ConvertTo-Json -Depth 20)
 
 $hashRows = New-Object System.Collections.Generic.List[string]
 foreach ($filePath in @(Get-ChildItem -LiteralPath $dest -Recurse -File -Force | Sort-Object FullName)) {
@@ -202,7 +213,7 @@ foreach ($filePath in @(Get-ChildItem -LiteralPath $dest -Recurse -File -Force |
   $relative = $filePath.FullName.Substring($dest.Length).TrimStart("\", "/")
   $hashRows.Add("$hash  $relative")
 }
-$hashRows | Set-Content -LiteralPath $checksumPath -Encoding UTF8
+[System.IO.File]::WriteAllLines($checksumPath, $hashRows, $utf8NoBom)
 
 $cleanupReportPath = ""
 $cleanupRemovedTotal = 0
@@ -236,7 +247,7 @@ if ($cleanupEnabled) {
     removed_total = [int]$cleanupRemovedTotal
     targets = $cleanupRowsArray
   }
-  $cleanupPayload | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath $cleanupReportPath -Encoding UTF8
+  Write-Utf8NoBomText -LiteralPath $cleanupReportPath -Text ($cleanupPayload | ConvertTo-Json -Depth 20)
 }
 
 Write-Host "Archived to: $dest"

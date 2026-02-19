@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import re
 import subprocess
 from pathlib import Path
 from typing import Iterable, List
@@ -61,6 +62,11 @@ MOJIBAKE_HINT_MARKERS = {
     "\u7e56",
     "\u8c8e",
 }
+
+DISALLOWED_POWERSHELL_ENCODING_PATTERN = re.compile(
+    r"\b(?:Set-Content|Add-Content|Out-File)\b[^\r\n]*\b-Encoding\s+['\"]?utf8['\"]?\b",
+    re.IGNORECASE,
+)
 
 def _is_dashboard_ui_file(path: Path) -> bool:
     normalized = path.as_posix()
@@ -183,6 +189,14 @@ def _check_file(path: Path) -> list[str]:
             f"{path}: mojibake-like markers detected (encoding corruption likely)."
         )
 
+    if path.suffix.lower() == ".ps1":
+        for lineno, line in enumerate(text.splitlines(), start=1):
+            if DISALLOWED_POWERSHELL_ENCODING_PATTERN.search(line):
+                issues.append(
+                    f"{path}:{lineno}: disallowed PowerShell encoding '-Encoding utf8'. "
+                    "Use UTF8Encoding($false) or utf8NoBOM."
+                )
+
     if text.startswith("\ufeff"):
         issues.append(
             f"{path}: UTF-8 BOM detected (remove BOM before commit)"
@@ -243,4 +257,3 @@ def main(argv: list[str] | None = None) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

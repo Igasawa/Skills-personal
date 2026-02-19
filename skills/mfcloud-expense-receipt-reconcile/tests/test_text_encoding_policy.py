@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import codecs
 import os
+import re
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -65,6 +66,10 @@ DASHBOARD_MOJIBAKE_MARKERS = {
     "\u7e56",
     "\u8c8e",
 }
+DISALLOWED_POWERSHELL_ENCODING_PATTERN = re.compile(
+    r"\b(?:Set-Content|Add-Content|Out-File)\b[^\r\n]*\b-Encoding\s+['\"]?utf8['\"]?\b",
+    re.IGNORECASE,
+)
 
 def _iter_text_files(root: Path):
     for dirpath, dirnames, filenames in os.walk(root):
@@ -132,3 +137,19 @@ def test_dashboard_text_files_have_no_obvious_mojibake_markers() -> None:
 
     assert not findings, f"dashboard mojibake markers found: {findings}"
 
+
+def test_powershell_scripts_do_not_use_utf8_encoding_alias() -> None:
+    findings: list[str] = []
+
+    for path in _iter_text_files(REPO_ROOT):
+        if path.suffix.lower() != ".ps1":
+            continue
+        relative = path.relative_to(REPO_ROOT).as_posix()
+        text = path.read_text(encoding="utf-8")
+        for lineno, line in enumerate(text.splitlines(), start=1):
+            if DISALLOWED_POWERSHELL_ENCODING_PATTERN.search(line):
+                findings.append(
+                    f"{relative}:{lineno}: uses '-Encoding utf8' (use UTF8Encoding($false) or utf8NoBOM)"
+                )
+
+    assert not findings, f"powershell encoding policy violations found: {findings}"

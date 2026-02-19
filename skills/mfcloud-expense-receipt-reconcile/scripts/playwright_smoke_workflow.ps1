@@ -8,6 +8,7 @@ $session = "wf-smoke-" + (Get-Date -Format "yyyyMMddHHmmss")
 $outputDir = Join-Path $PSScriptRoot "..\output\playwright"
 New-Item -ItemType Directory -Force -Path $outputDir | Out-Null
 $reportPath = Join-Path $outputDir ("workflow_smoke_" + (Get-Date -Format "yyyyMMdd_HHmmss") + ".txt")
+$utf8NoBom = New-Object System.Text.UTF8Encoding($false)
 
 function Invoke-Pw {
   param(
@@ -38,5 +39,5 @@ $url = (& npx --yes --package @playwright/cli playwright-cli -s=$session eval "l
 $lines += "title=$title"
 $lines += "url=$url"
 
-$lines | Set-Content -Encoding utf8 $reportPath
+[System.IO.File]::WriteAllLines($reportPath, $lines, $utf8NoBom)
 Write-Output "Smoke report: $reportPath"

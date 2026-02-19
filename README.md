@@ -121,3 +121,4 @@ npm run check:encoding
 - `-DryRun` はコミット/プッシュを行いません。`-AllowNoStage` はチェック対象をワークツリー差分に広げるのみで、未ステージでは commit は実行されません（コミットするには `git add` が必要です）。
 - 文字化け防止のため、`-CheckOnly` や `-DryRun` で内容を確認した後に、`git add` → commit を行う運用を推奨します。
 - この運用は pre-commit/pre-push の両方で文字エンコーディングチェックを行うため、文字化けの再発を抑制します。
+- PowerShell でファイルを書き出すときは、`Set-Content/Out-File -Encoding utf8` を使わず、`System.Text.UTF8Encoding($false)`（または `utf8NoBOM`）を使用してください。
