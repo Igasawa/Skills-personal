@@ -14,6 +14,8 @@ from pypdf import PdfWriter
 import pytest
 
 from dashboard.routes import api as api_routes
+from dashboard.routes import api_workspace_routes
+from dashboard.services import ai_chat
 from dashboard.services import core_runs
 from services import core_scheduler as public_core_scheduler
 
@@ -70,6 +72,17 @@ def _create_client(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> TestClien
     app = FastAPI()
     app.include_router(api_routes.create_api_router())
     return TestClient(app)
+
+
+def _set_ai_chat_env(monkeypatch: pytest.MonkeyPatch, *, api_key: str | None, model: str = "gemini-2.0-flash") -> None:
+    monkeypatch.setattr(ai_chat, "_SECRET_ENV_LOADED", True)
+    monkeypatch.setattr(api_workspace_routes.ai_chat, "_SECRET_ENV_LOADED", True)
+    if api_key:
+        monkeypatch.setenv("GEMINI_API_KEY", api_key)
+    else:
+        monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    monkeypatch.delenv("KIL_GEMINI_API_KEY", raising=False)
+    monkeypatch.setenv("KIL_GEMINI_MODEL", model)
 
 
 def test_api_run_rejects_out_of_order_and_writes_audit(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -2110,6 +2123,137 @@ def test_api_workspace_state_post_merges_on_revision_conflict(
     assert "https://pinned-b.example.com/" in pinned_urls
 
 
+def test_api_workspace_prompt_optimize_returns_goal_first_payload(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    client = _create_client(monkeypatch, tmp_path)
+    _set_ai_chat_env(monkeypatch, api_key="test-key")
+    captured_messages: list[dict[str, str]] = []
+    captured_context: dict[str, str] = {}
+
+    def _fake_chat(*, messages: list[dict[str, str]], page_context: dict[str, str]) -> dict[str, Any]:
+        captured_messages.extend(messages)
+        captured_context.update(page_context)
+        return {
+            "provider": "gemini",
+            "model": "gemini-2.0-flash",
+            "reply": {
+                "role": "assistant",
+                "content": json.dumps(
+                    {
+                        "optimizedPrompt": "目的:\n- 月次処理を完遂する\n\n手順:\n1. 未処理を洗い出す\n2. 完了条件を確認する",
+                        "changes": ["構成を再編成", "手順を具体化"],
+                        "assumptions": ["対象月は入力済み"],
+                        "risks": [],
+                        "needsConfirmation": [],
+                    },
+                    ensure_ascii=False,
+                ),
+            },
+            "usage": {"prompt_tokens": 10, "completion_tokens": 10, "total_tokens": 20},
+        }
+
+    monkeypatch.setattr(api_workspace_routes.ai_chat, "chat", _fake_chat)
+
+    res = client.post(
+        "/api/workspace/prompt/optimize",
+        json={
+            "text": "目的: 月次の未処理をなくす\n\n対象月:\n- {month}",
+            "locale": "ja-JP",
+            "stylePreset": "goal-first",
+        },
+    )
+    assert res.status_code == 200
+    body = res.json()
+    assert body["status"] == "ok"
+    assert body["changed"] is True
+    assert body["goal"] == "月次の未処理をなくす"
+    assert body["goalMeta"]["source"] == "inline_label"
+    assert body["provider"] == "gemini"
+    assert body["model"] == "gemini-2.0-flash"
+    assert "optimizedPrompt" in body and body["optimizedPrompt"]
+    assert body["changes"] == ["構成を再編成", "手順を具体化"]
+    assert captured_context["path"] == "/workspace"
+    assert captured_context["feature"] == "workspace_prompt_optimize"
+    assert captured_messages and captured_messages[-1]["role"] == "user"
+    assert "goal: 月次の未処理をなくす" in captured_messages[-1]["content"]
+
+
+def test_api_workspace_prompt_optimize_adds_token_integrity_warning(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    client = _create_client(monkeypatch, tmp_path)
+    _set_ai_chat_env(monkeypatch, api_key="test-key")
+
+    def _fake_chat(*, messages: list[dict[str, str]], page_context: dict[str, str]) -> dict[str, Any]:
+        del messages, page_context
+        return {
+            "provider": "gemini",
+            "model": "gemini-2.0-flash",
+            "reply": {
+                "role": "assistant",
+                "content": json.dumps(
+                    {
+                        "optimizedPrompt": "目的:\n- 月次処理を完了する",
+                        "changes": ["簡潔化"],
+                        "assumptions": [],
+                        "risks": [],
+                        "needsConfirmation": [],
+                    },
+                    ensure_ascii=False,
+                ),
+            },
+            "usage": {"prompt_tokens": 8, "completion_tokens": 8, "total_tokens": 16},
+        }
+
+    monkeypatch.setattr(api_workspace_routes.ai_chat, "chat", _fake_chat)
+
+    res = client.post(
+        "/api/workspace/prompt/optimize",
+        json={"text": "目的:\n- 月次処理を完了する\n\n対象月:\n- {month}"},
+    )
+    assert res.status_code == 200
+    body = res.json()
+    assert body["status"] == "ok"
+    assert body["needsConfirmation"]
+    assert any("保護トークン" in str(row) for row in body["needsConfirmation"])
+
+
+def test_api_workspace_prompt_optimize_rejects_invalid_ai_json(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    client = _create_client(monkeypatch, tmp_path)
+    _set_ai_chat_env(monkeypatch, api_key="test-key")
+
+    def _fake_chat(*, messages: list[dict[str, str]], page_context: dict[str, str]) -> dict[str, Any]:
+        del messages, page_context
+        return {
+            "provider": "gemini",
+            "model": "gemini-2.0-flash",
+            "reply": {"role": "assistant", "content": "not-json-response"},
+            "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
+        }
+
+    monkeypatch.setattr(api_workspace_routes.ai_chat, "chat", _fake_chat)
+
+    res = client.post(
+        "/api/workspace/prompt/optimize",
+        json={"text": "目的: テスト"},
+    )
+    assert res.status_code == 502
+    assert "JSON" in str(res.json().get("detail") or "")
+
+
+def test_api_workspace_prompt_optimize_rejects_empty_text(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    client = _create_client(monkeypatch, tmp_path)
+    _set_ai_chat_env(monkeypatch, api_key="test-key")
+    res = client.post("/api/workspace/prompt/optimize", json={"text": ""})
+    assert res.status_code == 400
+    assert "must not be empty" in str(res.json().get("detail") or "")
+
+
 def test_api_scheduler_state_get_returns_default(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     client = _create_client(monkeypatch, tmp_path)
     res = client.get("/api/scheduler/state")
@@ -2365,6 +2509,10 @@ def test_api_save_workflow_template_allows_empty_year_month(monkeypatch: pytest.
     assert any(
         str(step.get("title") or "") == "Step 1"
         and str(step.get("action") or "") == ""
+        and str(step.get("type") or "") == "manual"
+        and str(step.get("trigger") or "") == "manual"
+        and str(step.get("target_url") or "") == ""
+        and str(step.get("agent_prompt") or "") == ""
         and int(step.get("order") or 0) >= 1
         and bool(step.get("auto_run")) is False
         and step.get("timer_minutes") is None
@@ -2389,6 +2537,10 @@ def test_api_save_workflow_template_allows_empty_year_month(monkeypatch: pytest.
     assert any(
         str(step.get("title") or "") == "Step 1"
         and str(step.get("action") or "") == ""
+        and str(step.get("type") or "") == "manual"
+        and str(step.get("trigger") or "") == "manual"
+        and str(step.get("target_url") or "") == ""
+        and str(step.get("agent_prompt") or "") == ""
         and isinstance(step.get("execution_log"), list)
         for step in stored_steps
         if isinstance(step, dict)
@@ -2494,6 +2646,114 @@ def test_api_save_workflow_template_persists_step_timer_minutes(
     assert any(
         str(step.get("title") or "") == "Step 2"
         and int(step.get("timer_minutes") or 0) == 10080
+        for step in stored_steps
+        if isinstance(step, dict)
+    )
+
+
+def test_api_save_workflow_template_persists_step_v2_fields(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    client = _create_client(monkeypatch, tmp_path)
+    _write_json(
+        _workflow_template_store(tmp_path),
+        [
+            {
+                "id": "v2-template",
+                "name": "V2 Template",
+                "year": 2026,
+                "month": 2,
+                "mfcloud_url": "https://example.com/v2",
+                "source_urls": ["https://example.com/v2"],
+                "steps": [{"title": "Initial"}],
+                "notes": "",
+                "subheading": "",
+                "rakuten_orders_url": "",
+                "created_at": "2026-02-01T00:00:00",
+                "updated_at": "2026-02-01T00:00:00",
+            },
+        ],
+    )
+    res = client.post(
+        "/api/workflow-templates",
+        json={
+            "template_id": "v2-template",
+            "template_mode": "edit",
+            "base_updated_at": "2026-02-01T00:00:00",
+            "name": "V2 Template",
+            "year": 2026,
+            "month": 2,
+            "mfcloud_url": "https://example.com/v2",
+            "steps": [
+                {
+                    "title": "Browser Step",
+                    "action": "preflight",
+                    "type": "browser",
+                    "trigger": "webhook",
+                    "target_url": "https://example.com/browser",
+                },
+                {
+                    "title": "Agent Step",
+                    "trigger": "after_step",
+                    "agent_prompt": "  collect summary and post result  ",
+                },
+                {
+                    "title": "Manual Step",
+                    "type": "invalid-type",
+                    "trigger": "invalid-trigger",
+                    "target_url": "javascript:alert(1)",
+                    "agent_prompt": "",
+                },
+            ],
+        },
+    )
+    assert res.status_code == 200
+    template = res.json()["template"]
+    steps = template["steps"]
+    assert any(
+        str(step.get("title") or "") == "Browser Step"
+        and str(step.get("type") or "") == "browser"
+        and str(step.get("trigger") or "") == "webhook"
+        and str(step.get("target_url") or "") == "https://example.com/browser"
+        and str(step.get("agent_prompt") or "") == ""
+        for step in steps
+        if isinstance(step, dict)
+    )
+    assert any(
+        str(step.get("title") or "") == "Agent Step"
+        and str(step.get("type") or "") == "agent"
+        and str(step.get("trigger") or "") == "after_step"
+        and str(step.get("target_url") or "") == ""
+        and str(step.get("agent_prompt") or "") == "collect summary and post result"
+        for step in steps
+        if isinstance(step, dict)
+    )
+    assert any(
+        str(step.get("title") or "") == "Manual Step"
+        and str(step.get("type") or "") == "manual"
+        and str(step.get("trigger") or "") == "manual"
+        and str(step.get("target_url") or "") == ""
+        and str(step.get("agent_prompt") or "") == ""
+        for step in steps
+        if isinstance(step, dict)
+    )
+
+    rows = json.loads(_workflow_template_store(tmp_path).read_text(encoding="utf-8"))
+    assert isinstance(rows, list) and rows
+    stored_steps = rows[0]["steps"]
+    assert any(
+        str(step.get("title") or "") == "Browser Step"
+        and str(step.get("type") or "") == "browser"
+        and str(step.get("trigger") or "") == "webhook"
+        and str(step.get("target_url") or "") == "https://example.com/browser"
+        for step in stored_steps
+        if isinstance(step, dict)
+    )
+    assert any(
+        str(step.get("title") or "") == "Agent Step"
+        and str(step.get("type") or "") == "agent"
+        and str(step.get("trigger") or "") == "after_step"
+        and str(step.get("agent_prompt") or "") == "collect summary and post result"
         for step in stored_steps
         if isinstance(step, dict)
     )
@@ -2873,3 +3133,247 @@ def test_api_error_incidents_returns_degraded_payload_when_tool_fails(
     incidents = body.get("incidents")
     assert isinstance(incidents, list)
     assert incidents == []
+
+
+def test_api_error_incident_detail_includes_handoff_payload(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    reports_root = tmp_path / "reports"
+    incident_id = "incident_api_handoff_001"
+    incident_dir = reports_root / "error_inbox" / incident_id
+    incident_dir.mkdir(parents=True, exist_ok=True)
+    handoff_dir = reports_root / "error_handoffs" / incident_id
+    handoff_dir.mkdir(parents=True, exist_ok=True)
+    queue_path = tmp_path / "antigravity_queue" / f"{incident_id}.json"
+    _write_json(
+        incident_dir / "incident.json",
+        {
+            "incident_id": incident_id,
+            "status": "handed_off",
+            "step": "amazon_download",
+            "failure_class": "run_failed",
+            "ym": "2026-01",
+            "handoff_path": str(handoff_dir / "handoff.json"),
+            "handoff_queue_path": str(queue_path),
+            "execution_owner": "antigravity",
+        },
+    )
+    _write_json(
+        handoff_dir / "handoff.json",
+        {
+            "status": "ok",
+            "incident_id": incident_id,
+            "handoff_status": "handed_off",
+            "executor": "antigravity",
+        },
+    )
+
+    def _fake_error_tool(script_name: str, args: list[str], *, timeout_seconds: int = 30) -> dict[str, Any]:
+        _ = timeout_seconds
+        assert script_name == "error_status.py"
+        assert "--incident-id" in args
+        return {
+            "status": "ok",
+            "incident_id": incident_id,
+            "incident": {
+                "incident_id": incident_id,
+                "status": "handed_off",
+                "path": str(incident_dir),
+                "ym": "2026-01",
+            },
+        }
+
+    monkeypatch.setattr(api_routes, "_run_error_tool", _fake_error_tool)
+    monkeypatch.setattr(api_routes, "_error_reports_root", lambda: reports_root)
+    client = _create_client(monkeypatch, tmp_path)
+
+    res = client.get(f"/api/errors/incidents/{incident_id}")
+    assert res.status_code == 200
+    body = res.json()
+    handoff = body.get("handoff") if isinstance(body.get("handoff"), dict) else {}
+    assert handoff.get("incident_id") == incident_id
+    handoff_json_path = str(body.get("handoff_json_path") or "").replace("\\", "/")
+    assert handoff_json_path.endswith(f"error_handoffs/{incident_id}/handoff.json")
+    incident = body.get("incident") if isinstance(body.get("incident"), dict) else {}
+    assert str(incident.get("handoff_path") or "").replace("\\", "/").endswith(
+        f"error_handoffs/{incident_id}/handoff.json"
+    )
+    assert str(incident.get("handoff_queue_path") or "").replace("\\", "/").endswith(
+        f"antigravity_queue/{incident_id}.json"
+    )
+
+
+def test_api_error_incident_approve_updates_status(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    reports_root = tmp_path / "reports"
+    incident_id = "incident_api_approve_001"
+    incident_dir = reports_root / "error_inbox" / incident_id
+    incident_dir.mkdir(parents=True, exist_ok=True)
+    _write_json(
+        incident_dir / "incident.json",
+        {
+            "incident_id": incident_id,
+            "status": "plan_proposed",
+            "year": 2026,
+            "month": 1,
+            "ym": "2026-01",
+            "step": "amazon_download",
+            "failure_class": "run_failed",
+            "message": "test",
+        },
+    )
+    (incident_dir / "status.txt").write_text("plan_proposed\n", encoding="utf-8")
+    plan_json = reports_root / "error_plans" / incident_id / "plan.json"
+    _write_json(plan_json, {"incident_id": incident_id, "summary": "test"})
+
+    monkeypatch.setattr(api_routes, "_error_reports_root", lambda: reports_root)
+    client = _create_client(monkeypatch, tmp_path)
+    res = client.post(f"/api/errors/incidents/{incident_id}/approve", json={})
+    assert res.status_code == 200
+    body = res.json()
+    assert body.get("status") == "ok"
+    assert body.get("incident_status") == "approved"
+
+    saved = json.loads((incident_dir / "incident.json").read_text(encoding="utf-8"))
+    assert saved.get("status") == "approved"
+    assert saved.get("plan_state") == "approved"
+    assert saved.get("execution_owner") == "antigravity"
+    assert (incident_dir / "status.txt").read_text(encoding="utf-8").strip() == "approved"
+
+
+def test_api_error_incident_handoff_invokes_handoff_tool(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    called: dict[str, Any] = {}
+
+    def _fake_error_tool(script_name: str, args: list[str], *, timeout_seconds: int = 30) -> dict[str, Any]:
+        called["script_name"] = script_name
+        called["args"] = list(args)
+        called["timeout_seconds"] = timeout_seconds
+        return {
+            "status": "ok",
+            "incident_id": "incident_api_handoff_002",
+            "handoff_status": "handed_off",
+            "handoff_json": "C:/tmp/handoff.json",
+            "queue_payload": "C:/tmp/queue/incident_api_handoff_002.json",
+            "year": 2026,
+            "month": 1,
+        }
+
+    monkeypatch.setattr(api_routes, "_run_error_tool", _fake_error_tool)
+    client = _create_client(monkeypatch, tmp_path)
+    res = client.post(
+        "/api/errors/incidents/incident_api_handoff_002/handoff",
+        json={"queue_dir": "C:/tmp/queue", "allow_unapproved": True},
+    )
+    assert res.status_code == 200
+    body = res.json()
+    assert body.get("handoff_status") == "handed_off"
+    assert called.get("script_name") == "error_handoff_prepare.py"
+    args = called.get("args") if isinstance(called.get("args"), list) else []
+    assert "--incident-id" in args
+    assert "incident_api_handoff_002" in args
+    assert "--queue-dir" in args
+    assert "C:/tmp/queue" in args
+    assert "--allow-unapproved" in args
+
+
+def test_api_error_incident_lifecycle_plan_approve_handoff(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    reports_root = tmp_path / "reports"
+    incident_id = "incident_api_lifecycle_001"
+    incident_dir = reports_root / "error_inbox" / incident_id
+    incident_dir.mkdir(parents=True, exist_ok=True)
+    _write_json(
+        incident_dir / "incident.json",
+        {
+            "incident_id": incident_id,
+            "status": "new",
+            "created_at": "2026-02-20T00:00:00+00:00",
+            "updated_at": "2026-02-20T00:00:00+00:00",
+            "run_id": "run_lifecycle_001",
+            "year": 2026,
+            "month": 1,
+            "ym": "2026-01",
+            "step": "amazon_download",
+            "failure_class": "run_failed",
+            "message": "timeout while fetching receipt",
+            "error_signature": "run_failed | amazon_download | timeout while fetching receipt",
+        },
+    )
+    (incident_dir / "status.txt").write_text("new\n", encoding="utf-8")
+    (incident_dir / "log_tail.txt").write_text("TimeoutError: download timed out\n", encoding="utf-8")
+    (incident_dir / "audit_tail.jsonl").write_text("", encoding="utf-8")
+    _write_json(incident_dir / "context.json", {"hint": "integration-test"})
+
+    def _run_error_tool_with_temp_root(
+        script_name: str,
+        args: list[str],
+        *,
+        timeout_seconds: int = 120,
+    ) -> dict[str, Any]:
+        script_path = api_routes.core.SKILL_ROOT / "scripts" / script_name
+        cmd = [sys.executable, str(script_path), "--root", str(reports_root), *args]
+        result = subprocess.run(
+            cmd,
+            cwd=str(api_routes.core.SKILL_ROOT),
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=max(1, int(timeout_seconds)),
+        )
+        assert result.returncode == 0, f"{script_name} failed: {result.stderr or result.stdout}"
+        payload = json.loads(result.stdout or "{}")
+        assert isinstance(payload, dict)
+        return payload
+
+    monkeypatch.setattr(api_routes, "_run_error_tool", _run_error_tool_with_temp_root)
+    monkeypatch.setattr(api_routes, "_error_reports_root", lambda: reports_root)
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    monkeypatch.delenv("KIL_GEMINI_API_KEY", raising=False)
+
+    client = _create_client(monkeypatch, tmp_path)
+
+    res_plan = client.post(f"/api/errors/incidents/{incident_id}/plan", json={})
+    assert res_plan.status_code == 200
+    plan_body = res_plan.json()
+    assert plan_body.get("status") == "ok"
+    assert plan_body.get("plan_state") == "plan_proposed"
+    assert Path(str(plan_body.get("plan_json") or "")).exists()
+
+    incident_after_plan = json.loads((incident_dir / "incident.json").read_text(encoding="utf-8"))
+    assert incident_after_plan.get("status") == "plan_proposed"
+    assert (incident_dir / "status.txt").read_text(encoding="utf-8").strip() == "plan_proposed"
+
+    res_approve = client.post(f"/api/errors/incidents/{incident_id}/approve", json={})
+    assert res_approve.status_code == 200
+    approve_body = res_approve.json()
+    assert approve_body.get("incident_status") == "approved"
+
+    queue_dir = tmp_path / "antigravity_queue"
+    res_handoff = client.post(
+        f"/api/errors/incidents/{incident_id}/handoff",
+        json={"queue_dir": str(queue_dir)},
+    )
+    assert res_handoff.status_code == 200
+    handoff_body = res_handoff.json()
+    assert handoff_body.get("handoff_status") == "handed_off"
+    assert Path(str(handoff_body.get("handoff_json") or "")).exists()
+    assert Path(str(handoff_body.get("queue_payload") or "")).exists()
+    assert (queue_dir / f"{incident_id}.json").exists()
+
+    incident_after_handoff = json.loads((incident_dir / "incident.json").read_text(encoding="utf-8"))
+    assert incident_after_handoff.get("status") == "handed_off"
+    assert incident_after_handoff.get("execution_owner") == "antigravity"
+    assert (incident_dir / "status.txt").read_text(encoding="utf-8").strip() == "handed_off"
+
+    res_detail = client.get(f"/api/errors/incidents/{incident_id}")
+    assert res_detail.status_code == 200
+    detail_body = res_detail.json()
+    assert detail_body.get("handoff", {}).get("handoff_status") == "handed_off"
+    assert detail_body.get("plan", {}).get("incident_id") == incident_id
+    incident_detail = detail_body.get("incident") if isinstance(detail_body.get("incident"), dict) else {}
+    assert str(incident_detail.get("handoff_path") or "").endswith("handoff.json")
+    assert str(incident_detail.get("handoff_queue_path") or "").endswith(f"{incident_id}.json")

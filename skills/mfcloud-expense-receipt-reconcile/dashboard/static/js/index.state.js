@@ -54,7 +54,7 @@
       return defaultTitle;
     }
     if (fallbackTitle) return fallbackTitle;
-    return TEMPLATE_STEP_DEFAULT_TITLES[normalizedAction] || TEMPLATE_STEP_ACTION_LABELS[normalizedAction] || "Task";
+    return TEMPLATE_STEP_DEFAULT_TITLES[normalizedAction] || TEMPLATE_STEP_ACTION_LABELS[normalizedAction] || "手順";
   }
 
   function normalizeTemplateStepAutoRun(value) {
@@ -62,6 +62,36 @@
     const text = String(value ?? "").trim().toLowerCase();
     if (!text) return false;
     return ["1", "true", "yes", "on"].includes(text);
+  }
+
+  function normalizeTemplateStepType(value, fallback = "manual") {
+    const type = String(value || "").trim().toLowerCase();
+    if (TEMPLATE_STEP_TYPE_VALUES.has(type)) return type;
+    return TEMPLATE_STEP_TYPE_VALUES.has(fallback) ? fallback : "manual";
+  }
+
+  function normalizeTemplateStepTrigger(value, fallback = "manual") {
+    const trigger = String(value || "").trim().toLowerCase();
+    if (TEMPLATE_STEP_TRIGGER_VALUES.has(trigger)) return trigger;
+    return TEMPLATE_STEP_TRIGGER_VALUES.has(fallback) ? fallback : "manual";
+  }
+
+  function normalizeTemplateStepTargetUrl(value) {
+    const text = String(value || "").trim();
+    if (!text) return "";
+    if (text.length > 2048) return "";
+    try {
+      const parsed = new URL(text);
+      if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return "";
+      return text;
+    } catch {
+      return "";
+    }
+  }
+
+  function normalizeTemplateStepAgentPrompt(value) {
+    if (value === null || value === undefined) return "";
+    return String(value).trim().slice(0, TEMPLATE_STEP_MAX_AGENT_PROMPT_CHARS);
   }
 
   function normalizeTemplateStepAutoTimerEnabled(value, fallback = false) {
@@ -138,6 +168,12 @@
       const title = String(raw.title || "").trim();
       const id = String(raw.id || "").trim() || generateTemplateStepId();
       const autoRun = normalizeTemplateStepAutoRun(raw.auto_run ?? raw.autoRun);
+      const targetUrl = normalizeTemplateStepTargetUrl(raw.target_url ?? raw.targetUrl ?? raw.url);
+      const agentPrompt = normalizeTemplateStepAgentPrompt(raw.agent_prompt ?? raw.agentPrompt ?? raw.prompt);
+      const typeDefault = targetUrl ? "browser" : agentPrompt ? "agent" : "manual";
+      const stepType = normalizeTemplateStepType(raw.type ?? raw.step_type, typeDefault);
+      const triggerDefault = autoRun ? "schedule" : "manual";
+      const trigger = normalizeTemplateStepTrigger(raw.trigger, triggerDefault);
       const hasAutoTimerEnabled = Object.prototype.hasOwnProperty.call(raw, "auto_timer_enabled");
       const hasUiMode = Object.prototype.hasOwnProperty.call(raw, "ui_mode");
       const autoTimerEnabled = normalizeTemplateStepAutoTimerEnabled(raw.auto_timer_enabled, false);
@@ -155,6 +191,10 @@
         order,
         title,
         action,
+        type: stepType,
+        trigger,
+        target_url: targetUrl,
+        agent_prompt: agentPrompt,
         auto_run: autoRun,
         execution_log: executionLog,
       };
@@ -183,6 +223,10 @@
           id: generateTemplateStepId(),
           title: defaultTitleForStepAction(requiredStep.action, requiredStep.title),
           action: requiredStep.action,
+          type: "manual",
+          trigger: "manual",
+          target_url: "",
+          agent_prompt: "",
           auto_run: false,
           execution_log: [],
         };
@@ -590,6 +634,22 @@
     return options.join("");
   }
 
+  function getTemplateStepTypeOptionsHtml(selectedType) {
+    const normalizedType = normalizeTemplateStepType(selectedType, "manual");
+    return TEMPLATE_STEP_TYPES.map(
+      (item) =>
+        `<option value="${item.value}"${item.value === normalizedType ? " selected" : ""}>${item.label}</option>`,
+    ).join("");
+  }
+
+  function getTemplateStepTriggerOptionsHtml(selectedTrigger) {
+    const normalizedTrigger = normalizeTemplateStepTrigger(selectedTrigger, "manual");
+    return TEMPLATE_STEP_TRIGGERS.map(
+      (item) =>
+        `<option value="${item.value}"${item.value === normalizedTrigger ? " selected" : ""}>${item.label}</option>`,
+    ).join("");
+  }
+
   function normalizeTemplateStepAction(value) {
     const action = String(value || "").trim();
     if (!action) return "";
@@ -640,10 +700,10 @@
     const rows = normalizeTemplateStepExecutionLog(executionLog);
     const latest = rows.length ? rows[rows.length - 1] : null;
     if (!latest) {
-      return { text: "No runs yet", status: "none" };
+      return { text: "実行履歴はまだありません", status: "none" };
     }
     const result = String(latest.result || "").trim().toLowerCase() === "failed" ? "failed" : "success";
-    const label = result === "failed" ? "Failed" : "Success";
+    const label = result === "failed" ? "失敗" : "成功";
     const executedAt = String(latest.executed_at || "").trim() || "-";
     const message = String(latest.message || "").trim();
     const summary = message ? `${label} ${executedAt} (${message})` : `${label} ${executedAt}`;
@@ -702,10 +762,20 @@
   function parseTemplateStepRow(row, index = 0) {
     const rowId = String(row?.dataset?.templateStepId || "").trim();
     const action = normalizeTemplateStepAction(row?.querySelector("[data-template-step-action]")?.value);
+    const typeEl = row?.querySelector("[data-template-step-type]");
+    const triggerEl = row?.querySelector("[data-template-step-trigger]");
+    const targetUrlEl = row?.querySelector("[data-template-step-target-url]");
+    const agentPromptEl = row?.querySelector("[data-template-step-agent-prompt]");
     const title =
       String(row?.querySelector("[data-template-step-title]")?.value || "").trim();
     const order = normalizeTemplateStepOrder(row?.dataset?.templateStepOrder, index + 1);
     const autoRun = Boolean(row?.querySelector("[data-template-step-auto-run]")?.checked);
+    const targetUrl = String(targetUrlEl?.value || "").trim().slice(0, 2048);
+    const agentPrompt = normalizeTemplateStepAgentPrompt(agentPromptEl?.value);
+    const typeDefault = normalizeTemplateStepTargetUrl(targetUrl) ? "browser" : agentPrompt ? "agent" : "manual";
+    const stepType = normalizeTemplateStepType(typeEl?.value, typeDefault);
+    const triggerDefault = autoRun ? "schedule" : "manual";
+    const trigger = normalizeTemplateStepTrigger(triggerEl?.value, triggerDefault);
     const autoTimerEnabled = normalizeTemplateStepAutoTimerEnabled(
       row?.dataset?.templateStepAutoTimer,
       false,
@@ -727,6 +797,10 @@
       auto_timer_enabled: autoTimerEnabled,
       ui_mode: uiMode,
       action,
+      type: stepType,
+      trigger,
+      target_url: targetUrl,
+      agent_prompt: agentPrompt,
       auto_run: autoRun,
       timer_minutes: timerMinutes,
       execution_log: executionLog,
@@ -755,6 +829,10 @@
       const parsed = parsedRows[index] || {
         action: "",
         title: "",
+        type: "manual",
+        trigger: "manual",
+        target_url: "",
+        agent_prompt: "",
         auto_run: false,
         timer_minutes: null,
         execution_log: [],
@@ -775,17 +853,17 @@
 
       const handleEl = row.querySelector("[data-template-step-drag-handle]");
       if (handleEl) {
-        handleEl.setAttribute("aria-label", `Move Task ${index + 1}`);
+        handleEl.setAttribute("aria-label", `手順${index + 1}を移動`);
       }
 
       const indexEl = row.querySelector("[data-template-step-index]");
       if (indexEl) {
-        indexEl.textContent = `Task ${index + 1}`;
+        indexEl.textContent = `手順${index + 1}`;
       }
 
       const titleEl = row.querySelector("[data-template-step-title]");
       if (titleEl) {
-        titleEl.setAttribute("aria-label", `Task ${index + 1} title`);
+        titleEl.setAttribute("aria-label", `手順${index + 1}のタイトル`);
       }
 
       const actionEl = row.querySelector("[data-template-step-action]");
@@ -801,14 +879,29 @@
         const duplicated = (actionCounts.get(action) || 0) > 1;
         hasDuplicates = hasDuplicates || duplicated;
         actionEl.classList.toggle("is-invalid", duplicated);
-        actionEl.setCustomValidity(duplicated ? "Each action can only be used once." : "");
+        actionEl.setCustomValidity(duplicated ? "同じアクションは1回だけ選択できます。" : "");
+      }
+
+      const stepType = normalizeTemplateStepType(
+        parsed.type,
+        parsed.target_url ? "browser" : parsed.agent_prompt ? "agent" : "manual",
+      );
+      row.dataset.templateStepType = stepType;
+      const typeEl = row.querySelector("[data-template-step-type]");
+      if (typeEl) {
+        typeEl.value = stepType;
+        typeEl.setAttribute("aria-label", `手順${index + 1}のタイプ`);
       }
 
       const autoRunEl = row.querySelector("[data-template-step-auto-run]");
       const autoRunEnabled = autoRunEl ? Boolean(autoRunEl.checked) : Boolean(parsed.auto_run);
+      const trigger = normalizeTemplateStepTrigger(
+        parsed.trigger,
+        autoRunEnabled ? "schedule" : "manual",
+      );
       if (autoRunEl) {
         autoRunEl.checked = autoRunEnabled;
-        autoRunEl.setAttribute("aria-label", `Task ${index + 1} auto run`);
+        autoRunEl.setAttribute("aria-label", `手順${index + 1}の自動実行`);
       }
 
       const uiModeEnabled = uiMode === TEMPLATE_STEP_UI_MODE.advanced;
@@ -828,7 +921,7 @@
         timerEl.required = autoRunEnabled;
         timerEl.min = autoRunEnabled ? String(TEMPLATE_STEP_TIMER_REQUIRED_MINUTES) : String(TEMPLATE_STEP_TIMER_MIN_MINUTES);
         timerEl.max = String(TEMPLATE_STEP_TIMER_MAX_MINUTES);
-        timerEl.setAttribute("aria-label", `Task ${index + 1} timer minutes`);
+        timerEl.setAttribute("aria-label", `手順${index + 1}のタイマー（分）`);
         if (autoRunEnabled) {
           const nextTimer = normalizeTemplateStepTimerForAutoRun(
             String(timerEl.value || "").trim() || parsed.timer_minutes,
@@ -838,6 +931,54 @@
           timerEl.value = String(normalizeTemplateStepTimerMinutes(timerEl.value, 0));
         }
         timerEl.setCustomValidity("");
+      }
+
+      const triggerEl = row.querySelector("[data-template-step-trigger]");
+      if (triggerEl) {
+        triggerEl.value = trigger;
+        triggerEl.setAttribute("aria-label", `手順${index + 1}のトリガー`);
+      }
+
+      const targetUrlFieldEl = row.querySelector("[data-template-step-target-url-field]");
+      const targetUrlEl = row.querySelector("[data-template-step-target-url]");
+      const targetUrl = String(parsed.target_url || "").trim();
+      const isBrowserStep = stepType === "browser";
+      if (targetUrlFieldEl) {
+        targetUrlFieldEl.hidden = !isBrowserStep;
+      }
+      if (targetUrlEl) {
+        targetUrlEl.value = targetUrl;
+        targetUrlEl.disabled = !isBrowserStep;
+        targetUrlEl.required = isBrowserStep;
+        targetUrlEl.setAttribute("aria-label", `手順${index + 1}の遷移URL`);
+        if (!targetUrl) {
+          targetUrlEl.setCustomValidity(
+            isBrowserStep ? "Browserタイプでは遷移URLが必要です。" : "",
+          );
+        } else {
+          const normalizedUrl = normalizeTemplateStepTargetUrl(targetUrl);
+          targetUrlEl.setCustomValidity(
+            normalizedUrl ? "" : "http:// または https:// 形式のURLを入力してください。",
+          );
+        }
+      }
+
+      const agentPromptFieldEl = row.querySelector("[data-template-step-agent-prompt-field]");
+      const agentPromptEl = row.querySelector("[data-template-step-agent-prompt]");
+      const agentPrompt = normalizeTemplateStepAgentPrompt(parsed.agent_prompt);
+      const isAgentStep = stepType === "agent";
+      if (agentPromptFieldEl) {
+        agentPromptFieldEl.hidden = !isAgentStep;
+      }
+      if (agentPromptEl) {
+        agentPromptEl.value = agentPrompt;
+        agentPromptEl.disabled = !isAgentStep;
+        agentPromptEl.required = isAgentStep;
+        agentPromptEl.maxLength = TEMPLATE_STEP_MAX_AGENT_PROMPT_CHARS;
+        agentPromptEl.setAttribute("aria-label", `手順${index + 1}のAgentプロンプト`);
+        agentPromptEl.setCustomValidity(
+          isAgentStep && !agentPrompt ? "Agentタイプではプロンプトが必要です。" : "",
+        );
       }
 
       const logEl = row.querySelector("[data-template-step-log]");
@@ -853,7 +994,7 @@
         const locked = Boolean(requiredAction) || optionalRowsCount <= 0;
         removeButton.hidden = locked;
         removeButton.disabled = locked;
-        removeButton.title = requiredAction ? "Required task cannot be removed." : "";
+        removeButton.title = requiredAction ? "必須手順は削除できません。" : "";
       }
     });
 
@@ -865,7 +1006,7 @@
     const listEl = getTemplateStepsListEl();
     if (!listEl) return true;
     if (listEl.dataset.stepHasDuplicates === "1") {
-      showToast("Please remove duplicate actions.", "error");
+      showToast("同じアクションは1回だけ選択できます。", "error");
       return false;
     }
     const rows = getTemplateStepRows();
@@ -873,11 +1014,44 @@
       const row = rows[index];
       const titleEl = row.querySelector("[data-template-step-title]");
       if (titleEl && !String(titleEl.value || "").trim()) {
-        titleEl.setCustomValidity("Title is required.");
+        titleEl.setCustomValidity("手順タイトルを入力してください。");
         titleEl.reportValidity();
         return false;
       }
       if (titleEl) titleEl.setCustomValidity("");
+
+      const type = normalizeTemplateStepType(
+        row.querySelector("[data-template-step-type]")?.value,
+        "manual",
+      );
+      const targetUrlEl = row.querySelector("[data-template-step-target-url]");
+      if (targetUrlEl) {
+        const rawTargetUrl = String(targetUrlEl.value || "").trim();
+        if (type === "browser") {
+          if (!rawTargetUrl) {
+            targetUrlEl.setCustomValidity("Browserタイプでは遷移URLが必要です。");
+            targetUrlEl.reportValidity();
+            return false;
+          }
+          if (!normalizeTemplateStepTargetUrl(rawTargetUrl)) {
+            targetUrlEl.setCustomValidity("http:// または https:// 形式のURLを入力してください。");
+            targetUrlEl.reportValidity();
+            return false;
+          }
+        }
+        targetUrlEl.setCustomValidity("");
+      }
+
+      const agentPromptEl = row.querySelector("[data-template-step-agent-prompt]");
+      if (agentPromptEl) {
+        const promptValue = normalizeTemplateStepAgentPrompt(agentPromptEl.value);
+        if (type === "agent" && !promptValue) {
+          agentPromptEl.setCustomValidity("Agentタイプではプロンプトが必要です。");
+          agentPromptEl.reportValidity();
+          return false;
+        }
+        agentPromptEl.setCustomValidity("");
+      }
 
       const autoRunEnabled = Boolean(row.querySelector("[data-template-step-auto-run]")?.checked);
       const timerEl = row.querySelector("[data-template-step-timer]");
@@ -891,7 +1065,9 @@
         && timerValue >= TEMPLATE_STEP_TIMER_REQUIRED_MINUTES
         && timerValue <= TEMPLATE_STEP_TIMER_MAX_MINUTES;
       if (!validTimer) {
-        timerEl.setCustomValidity(`Timer must be ${TEMPLATE_STEP_TIMER_REQUIRED_MINUTES}-${TEMPLATE_STEP_TIMER_MAX_MINUTES} minutes when auto run is enabled.`);
+        timerEl.setCustomValidity(
+          `自動実行を有効にする場合、タイマーは${TEMPLATE_STEP_TIMER_REQUIRED_MINUTES}-${TEMPLATE_STEP_TIMER_MAX_MINUTES}分で入力してください。`,
+        );
         timerEl.reportValidity();
         return false;
       }
@@ -913,6 +1089,10 @@
       order: row.order,
       title: row.title,
       action: row.action,
+      type: row.type,
+      trigger: row.trigger,
+      target_url: row.target_url,
+      agent_prompt: row.agent_prompt,
       auto_run: row.auto_run,
       timer_minutes: row.timer_minutes,
       execution_log: row.execution_log,
@@ -926,6 +1106,10 @@
         id: "",
         title: "",
         action,
+        type: "manual",
+        trigger: "manual",
+        target_url: "",
+        agent_prompt: "",
         auto_run: false,
         auto_timer_enabled: false,
         timer_minutes: null,
@@ -944,7 +1128,13 @@
     const title = String(rawStep?.title || "").trim();
     const action = normalizeTemplateStepAction(rawStep?.action);
     const requiredAction = isRequiredTemplateStepAction(action) ? action : "";
+    const targetUrl = normalizeTemplateStepTargetUrl(rawStep?.target_url ?? rawStep?.targetUrl ?? rawStep?.url);
+    const agentPrompt = normalizeTemplateStepAgentPrompt(rawStep?.agent_prompt ?? rawStep?.agentPrompt ?? rawStep?.prompt);
     const autoRun = normalizeTemplateStepAutoRun(rawStep?.auto_run ?? rawStep?.autoRun);
+    const typeDefault = targetUrl ? "browser" : agentPrompt ? "agent" : "manual";
+    const stepType = normalizeTemplateStepType(rawStep?.type ?? rawStep?.step_type, typeDefault);
+    const triggerDefault = autoRun ? "schedule" : "manual";
+    const trigger = normalizeTemplateStepTrigger(rawStep?.trigger, triggerDefault);
     const hasAutoTimerEnabled = Object.prototype.hasOwnProperty.call(rawStep || {}, "auto_timer_enabled");
     const autoTimerEnabled = normalizeTemplateStepAutoTimerEnabled(rawStep?.auto_timer_enabled, false);
     const uiMode = normalizeTemplateStepUiMode(
@@ -967,6 +1157,7 @@
     row.dataset.templateStepId = String(rawStep?.id || generateTemplateStepId()).trim();
     row.dataset.templateStepOrder = String(normalizeTemplateStepOrder(rawStep?.order, getTemplateStepRows().length + 1));
     row.dataset.lastAction = action;
+    row.dataset.templateStepType = stepType;
     row.dataset.templateStepUiMode = uiMode;
     row.dataset.templateStepAutoTimer = autoTimerEnabled ? "1" : "0";
     row.draggable = true;
@@ -979,7 +1170,7 @@
     dragHandle.type = "button";
     dragHandle.className = "template-step-drag-handle";
     dragHandle.dataset.templateStepDragHandle = "1";
-    dragHandle.setAttribute("aria-label", "Move task");
+    dragHandle.setAttribute("aria-label", "手順を移動");
     dragHandle.textContent = "::";
     dragHandle.addEventListener("pointerdown", () => {
       row.dataset.dragReady = "1";
@@ -999,7 +1190,7 @@
     titleEl.type = "text";
     titleEl.className = "template-step-title";
     titleEl.value = title;
-    titleEl.placeholder = "Task title";
+    titleEl.placeholder = "手順タイトル";
     titleEl.dataset.templateStepTitle = "1";
     titleEl.required = true;
 
@@ -1013,6 +1204,16 @@
     actionEl.dataset.templateStepAction = "1";
     actionEl.innerHTML = getTemplateStepActionOptionsHtml(action);
 
+    const typeEl = document.createElement("select");
+    typeEl.className = "template-step-type";
+    typeEl.dataset.templateStepType = "1";
+    typeEl.innerHTML = getTemplateStepTypeOptionsHtml(stepType);
+
+    const triggerEl = document.createElement("select");
+    triggerEl.className = "template-step-trigger";
+    triggerEl.dataset.templateStepTrigger = "1";
+    triggerEl.innerHTML = getTemplateStepTriggerOptionsHtml(trigger);
+
     const autoRunLabel = document.createElement("label");
     autoRunLabel.className = "template-step-auto-run";
     const autoRunEl = document.createElement("input");
@@ -1020,7 +1221,7 @@
     autoRunEl.dataset.templateStepAutoRun = "1";
     autoRunEl.checked = autoRun;
     const autoRunText = document.createElement("span");
-    autoRunText.textContent = "Auto";
+    autoRunText.textContent = "自動";
     autoRunLabel.appendChild(autoRunEl);
     autoRunLabel.appendChild(autoRunText);
 
@@ -1031,14 +1232,39 @@
     timerEl.step = "1";
     timerEl.min = String(TEMPLATE_STEP_TIMER_MIN_MINUTES);
     timerEl.max = String(TEMPLATE_STEP_TIMER_MAX_MINUTES);
-    timerEl.placeholder = "minutes";
+    timerEl.placeholder = "分";
     timerEl.value = timerMinutes === null ? "" : String(timerMinutes);
+
+    const targetUrlFieldEl = document.createElement("label");
+    targetUrlFieldEl.className = "template-step-target-url-field";
+    targetUrlFieldEl.dataset.templateStepTargetUrlField = "1";
+    targetUrlFieldEl.textContent = "遷移URL";
+    const targetUrlEl = document.createElement("input");
+    targetUrlEl.type = "url";
+    targetUrlEl.className = "template-step-target-url";
+    targetUrlEl.dataset.templateStepTargetUrl = "1";
+    targetUrlEl.placeholder = "https://example.com/path";
+    targetUrlEl.value = targetUrl;
+    targetUrlFieldEl.appendChild(targetUrlEl);
+
+    const agentPromptFieldEl = document.createElement("label");
+    agentPromptFieldEl.className = "template-step-agent-prompt-field";
+    agentPromptFieldEl.dataset.templateStepAgentPromptField = "1";
+    agentPromptFieldEl.textContent = "Agentプロンプト";
+    const agentPromptEl = document.createElement("textarea");
+    agentPromptEl.className = "template-step-agent-prompt";
+    agentPromptEl.dataset.templateStepAgentPrompt = "1";
+    agentPromptEl.rows = 2;
+    agentPromptEl.placeholder = "この手順でエージェントに実行させる内容を入力";
+    agentPromptEl.maxLength = TEMPLATE_STEP_MAX_AGENT_PROMPT_CHARS;
+    agentPromptEl.value = agentPrompt;
+    agentPromptFieldEl.appendChild(agentPromptEl);
 
     const removeButton = document.createElement("button");
     removeButton.type = "button";
     removeButton.className = "secondary";
     removeButton.dataset.templateStepRemove = "1";
-    removeButton.setAttribute("aria-label", "Remove task");
+    removeButton.setAttribute("aria-label", "手順を削除");
     removeButton.textContent = "-";
 
     const toggleButton = document.createElement("button");
@@ -1047,11 +1273,11 @@
     toggleButton.dataset.templateStepToggle = "1";
     toggleButton.textContent = uiMode === TEMPLATE_STEP_UI_MODE.advanced ? AUTO_TIMER_LABEL_ON : AUTO_TIMER_LABEL_OFF;
     toggleButton.setAttribute("aria-expanded", uiMode === TEMPLATE_STEP_UI_MODE.advanced ? "true" : "false");
-    toggleButton.setAttribute("aria-label", "Toggle task advanced options");
+    toggleButton.setAttribute("aria-label", "手順の詳細設定を切り替え");
 
     removeButton.addEventListener("click", () => {
       if (row.dataset.requiredAction) {
-        showToast("Required task cannot be removed.", "error");
+        showToast("必須手順は削除できません。", "error");
         return;
       }
       row.remove();
@@ -1084,6 +1310,11 @@
     });
 
     titleEl.addEventListener("input", refreshTemplateStepRows);
+    typeEl.addEventListener("change", () => {
+      row.dataset.templateStepType = normalizeTemplateStepType(typeEl.value, "manual");
+      refreshTemplateStepRows();
+    });
+    triggerEl.addEventListener("change", refreshTemplateStepRows);
     autoRunEl.addEventListener("change", () => {
       if (autoRunEl.checked && !String(timerEl.value || "").trim()) {
         timerEl.value = String(TEMPLATE_STEP_TIMER_DEFAULT_MINUTES);
@@ -1101,6 +1332,14 @@
       }
       refreshTemplateStepRows();
     });
+    targetUrlEl.addEventListener("input", () => {
+      targetUrlEl.setCustomValidity("");
+    });
+    targetUrlEl.addEventListener("change", refreshTemplateStepRows);
+    agentPromptEl.addEventListener("input", () => {
+      agentPromptEl.setCustomValidity("");
+    });
+    agentPromptEl.addEventListener("change", refreshTemplateStepRows);
     actionEl.addEventListener("change", () => {
       const lockedAction = String(row.dataset.requiredAction || "").trim();
       const previousAction = String(row.dataset.lastAction || "").trim() || action;
@@ -1119,7 +1358,7 @@
       });
       if (duplicated) {
         actionEl.value = previousAction;
-        showToast("Each action can only be used once.", "error");
+        showToast("同じアクションは1回だけ選択できます。", "error");
         refreshTemplateStepRows();
         return;
       }
@@ -1132,9 +1371,13 @@
     row.appendChild(titleEl);
     row.appendChild(toggleButton);
     row.appendChild(removeButton);
+    advancedContainer.appendChild(typeEl);
     advancedContainer.appendChild(actionEl);
+    advancedContainer.appendChild(triggerEl);
     advancedContainer.appendChild(autoRunLabel);
     advancedContainer.appendChild(timerEl);
+    advancedContainer.appendChild(targetUrlFieldEl);
+    advancedContainer.appendChild(agentPromptFieldEl);
     row.appendChild(advancedContainer);
     row.appendChild(logEl);
     listEl.appendChild(row);
@@ -1168,6 +1411,10 @@
           order: row?.order,
           title,
           action,
+          type: row?.type,
+          trigger: row?.trigger,
+          target_url: row?.target_url,
+          agent_prompt: row?.agent_prompt,
           auto_run: row?.auto_run,
           timer_minutes: row?.timer_minutes,
           execution_log: row?.execution_log,
@@ -1419,6 +1666,10 @@ window.DashboardIndexState = {
   workflowPage,
   defaultTitleForStepAction,
   normalizeTemplateStepAutoRun,
+  normalizeTemplateStepType,
+  normalizeTemplateStepTrigger,
+  normalizeTemplateStepTargetUrl,
+  normalizeTemplateStepAgentPrompt,
   normalizeTemplateStepOrder,
   normalizeTemplateStepExecutionLog,
   normalizeTemplateStepTimerForAutoRun,
@@ -1444,6 +1695,8 @@ window.DashboardIndexState = {
   getTemplateStepsListEl,
   getTemplateStepRows,
   getTemplateStepActionOptionsHtml,
+  getTemplateStepTypeOptionsHtml,
+  getTemplateStepTriggerOptionsHtml,
   normalizeTemplateStepAction,
   generateTemplateStepId,
   emitTemplateStepsChanged,

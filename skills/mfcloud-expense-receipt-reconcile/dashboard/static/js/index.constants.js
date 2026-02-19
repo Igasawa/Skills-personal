@@ -51,6 +51,20 @@
     { value: "month_close", label: "手順6（月次クローズ）" },
   ];
   const TEMPLATE_STEP_ACTION_LABELS = Object.fromEntries(TEMPLATE_STEP_ACTIONS.map((item) => [item.value, item.label]));
+  const TEMPLATE_STEP_TYPES = [
+    { value: "manual", label: "手動" },
+    { value: "agent", label: "Agent" },
+    { value: "browser", label: "Browser" },
+  ];
+  const TEMPLATE_STEP_TYPE_VALUES = new Set(TEMPLATE_STEP_TYPES.map((item) => item.value));
+  const TEMPLATE_STEP_TRIGGERS = [
+    { value: "manual", label: "手動実行" },
+    { value: "schedule", label: "スケジュール" },
+    { value: "webhook", label: "Webhook" },
+    { value: "after_step", label: "前手順完了後" },
+  ];
+  const TEMPLATE_STEP_TRIGGER_VALUES = new Set(TEMPLATE_STEP_TRIGGERS.map((item) => item.value));
+  const TEMPLATE_STEP_MAX_AGENT_PROMPT_CHARS = 4000;
   const TEMPLATE_STEP_UI_MODE = {
     compact: "compact",
     advanced: "advanced",
@@ -158,6 +172,11 @@ window.DashboardIndexConstants = {
   TEMPLATE_STEP_DEFAULT_ACTION,
   TEMPLATE_STEP_ACTIONS,
   TEMPLATE_STEP_ACTION_LABELS,
+  TEMPLATE_STEP_TYPES,
+  TEMPLATE_STEP_TYPE_VALUES,
+  TEMPLATE_STEP_TRIGGERS,
+  TEMPLATE_STEP_TRIGGER_VALUES,
+  TEMPLATE_STEP_MAX_AGENT_PROMPT_CHARS,
   TEMPLATE_REQUIRED_STEPS,
   TEMPLATE_REQUIRED_STEP_ACTION_SET,
   TEMPLATE_STEP_DEFAULT_TITLES,

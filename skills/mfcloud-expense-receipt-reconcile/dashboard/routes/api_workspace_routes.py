@@ -1,12 +1,243 @@
 from __future__ import annotations
 
+import json
+import re
+from collections import Counter
 from typing import Any, Callable
 
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
 
+from services import ai_chat
+
 
 ActorFromRequest = Callable[[Request], dict[str, str]]
+
+WORKSPACE_PROMPT_OPTIMIZE_MAX_TEXT_CHARS = 12000
+WORKSPACE_PROMPT_OPTIMIZE_MAX_GOAL_CHARS = 240
+WORKSPACE_PROMPT_OPTIMIZE_MAX_LIST_ITEMS = 12
+WORKSPACE_PROMPT_OPTIMIZE_MAX_LIST_ITEM_CHARS = 220
+
+_GOAL_INLINE_PATTERN = re.compile(r"^(?:目的|goal|ゴール|やりたいこと|狙い|task)\s*[:：]\s*(.+)$", flags=re.IGNORECASE)
+_GOAL_HEADING_PATTERN = re.compile(r"^(?:目的|goal|ゴール|やりたいこと|狙い|task)\s*[:：]?$", flags=re.IGNORECASE)
+_GOAL_LEADING_MARKERS_PATTERN = re.compile(r"^[\s\-*・\d\.\)\(]+")
+_PROTECTED_TOKEN_PATTERN = re.compile(
+    r"\{\{[^{}\n]+\}\}|\$\{[^{}\n]+\}|\$[A-Za-z_][A-Za-z0-9_]*|\{[A-Za-z_][A-Za-z0-9_]*\}|<[^<>\n]+>"
+)
+
+
+def _trim_prompt_optimize_text(value: Any, *, max_chars: int) -> str:
+    return str(value or "").strip()[: max(0, int(max_chars))]
+
+
+def _normalize_prompt_optimize_list(value: Any) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    out: list[str] = []
+    for row in value:
+        text = _trim_prompt_optimize_text(row, max_chars=WORKSPACE_PROMPT_OPTIMIZE_MAX_LIST_ITEM_CHARS)
+        if not text:
+            continue
+        out.append(text)
+        if len(out) >= WORKSPACE_PROMPT_OPTIMIZE_MAX_LIST_ITEMS:
+            break
+    return out
+
+
+def _normalize_prompt_optimize_locale(value: Any) -> str:
+    locale = _trim_prompt_optimize_text(value, max_chars=24)
+    return locale or "ja-JP"
+
+
+def _normalize_prompt_optimize_style(value: Any) -> str:
+    style = _trim_prompt_optimize_text(value, max_chars=64).lower()
+    if style in {"goal-first", "minimal-structuring"}:
+        return style
+    return "goal-first"
+
+
+def _clean_goal_candidate(value: Any) -> str:
+    raw = _trim_prompt_optimize_text(value, max_chars=WORKSPACE_PROMPT_OPTIMIZE_MAX_GOAL_CHARS)
+    if not raw:
+        return ""
+    cleaned = _GOAL_LEADING_MARKERS_PATTERN.sub("", raw).strip()
+    if not cleaned:
+        return ""
+    return cleaned[:WORKSPACE_PROMPT_OPTIMIZE_MAX_GOAL_CHARS]
+
+
+def _extract_goal_hint(text: str) -> dict[str, Any]:
+    lines = [str(row).strip() for row in str(text or "").replace("\r\n", "\n").split("\n")]
+    non_empty = [row for row in lines if row]
+    if not non_empty:
+        return {"goal": "", "confidence": 0.0, "method": "none", "evidence": []}
+
+    for line in non_empty:
+        match = _GOAL_INLINE_PATTERN.match(line)
+        if not match:
+            continue
+        goal = _clean_goal_candidate(match.group(1))
+        if goal:
+            return {
+                "goal": goal,
+                "confidence": 0.95,
+                "method": "inline_label",
+                "evidence": [line[:120]],
+            }
+
+    for index, line in enumerate(non_empty):
+        if not _GOAL_HEADING_PATTERN.match(line):
+            continue
+        for candidate in non_empty[index + 1 :]:
+            goal = _clean_goal_candidate(candidate)
+            if goal:
+                return {
+                    "goal": goal,
+                    "confidence": 0.82,
+                    "method": "heading_followup",
+                    "evidence": [line[:120], candidate[:120]],
+                }
+
+    first = _clean_goal_candidate(non_empty[0])
+    if first:
+        return {
+            "goal": first,
+            "confidence": 0.55,
+            "method": "fallback_first_line",
+            "evidence": [non_empty[0][:120]],
+        }
+    return {"goal": "", "confidence": 0.0, "method": "none", "evidence": []}
+
+
+def _build_goal_first_optimize_prompt(
+    *,
+    text: str,
+    goal: str,
+    locale: str,
+    style_preset: str,
+) -> str:
+    schema = (
+        '{"optimizedPrompt":"string","changes":["string"],"assumptions":["string"],'
+        '"risks":["string"],"needsConfirmation":["string"]}'
+    )
+    return "\n".join(
+        [
+            "あなたは「エージェント向けプロンプト最適化アシスタント」です。",
+            "最優先は、元文の忠実再現ではなく、目的達成率の最大化です。",
+            "優先順位:",
+            "1) 目的達成",
+            "2) 明示制約・禁止事項の遵守",
+            "3) 実行可能性（曖昧さ解消、手順化、出力形式の明確化）",
+            "4) 可読性",
+            "許可: 再構成、要約、追記、削除、順序入れ替え。",
+            "必須: 変数・プレースホルダ・識別子（{{...}}, ${...}, $VAR, {token}, <...>）は原則保持。",
+            "出力はJSONのみ。Markdownは禁止。",
+            f"locale: {locale}",
+            f"stylePreset: {style_preset}",
+            f"goal: {goal}",
+            f"JSON schema: {schema}",
+            "originalPrompt:",
+            '"""',
+            text,
+            '"""',
+        ]
+    )
+
+
+def _try_parse_json_object(text: str) -> dict[str, Any] | None:
+    raw = str(text or "").strip()
+    if not raw:
+        return None
+    try:
+        parsed = json.loads(raw)
+        if isinstance(parsed, dict):
+            return parsed
+    except Exception:
+        pass
+
+    fenced = re.sub(r"^\s*```(?:json)?\s*", "", raw, flags=re.IGNORECASE)
+    fenced = re.sub(r"\s*```\s*$", "", fenced)
+    try:
+        parsed = json.loads(fenced)
+        if isinstance(parsed, dict):
+            return parsed
+    except Exception:
+        pass
+
+    start = -1
+    depth = 0
+    in_string = False
+    escaped = False
+    for index, char in enumerate(raw):
+        if in_string:
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == '"':
+                in_string = False
+            continue
+        if char == '"':
+            in_string = True
+            continue
+        if char == "{":
+            if depth == 0:
+                start = index
+            depth += 1
+            continue
+        if char == "}" and depth > 0:
+            depth -= 1
+            if depth == 0 and start >= 0:
+                snippet = raw[start : index + 1]
+                try:
+                    parsed = json.loads(snippet)
+                except Exception:
+                    return None
+                if isinstance(parsed, dict):
+                    return parsed
+                return None
+    return None
+
+
+def _normalize_prompt_optimize_response(value: Any) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        raise ValueError("AI response JSON must be an object.")
+    optimized_prompt = _trim_prompt_optimize_text(
+        value.get("optimizedPrompt") or value.get("formattedText"),
+        max_chars=WORKSPACE_PROMPT_OPTIMIZE_MAX_TEXT_CHARS,
+    )
+    if not optimized_prompt:
+        raise ValueError("optimizedPrompt is empty.")
+    return {
+        "optimizedPrompt": optimized_prompt,
+        "changes": _normalize_prompt_optimize_list(value.get("changes") or value.get("changeSummary")),
+        "assumptions": _normalize_prompt_optimize_list(value.get("assumptions")),
+        "risks": _normalize_prompt_optimize_list(value.get("risks")),
+        "needsConfirmation": _normalize_prompt_optimize_list(value.get("needsConfirmation")),
+    }
+
+
+def _build_token_integrity_warnings(original_text: str, optimized_text: str) -> list[str]:
+    before = Counter(_PROTECTED_TOKEN_PATTERN.findall(str(original_text or "")))
+    after = Counter(_PROTECTED_TOKEN_PATTERN.findall(str(optimized_text or "")))
+    if before == after:
+        return []
+
+    missing: list[str] = []
+    added: list[str] = []
+    for token, count in before.items():
+        if after.get(token, 0) < count:
+            missing.append(token)
+    for token, count in after.items():
+        if before.get(token, 0) < count:
+            added.append(token)
+
+    messages: list[str] = []
+    if missing:
+        messages.append(f"保護トークンの欠落を検出: {', '.join(sorted(set(missing))[:8])}")
+    if added:
+        messages.append(f"保護トークンの追加を検出: {', '.join(sorted(set(added))[:8])}")
+    return messages
 
 
 def register_api_workspace_routes(
@@ -146,6 +377,96 @@ def register_api_workspace_routes(
         saved = write_workspace_state(current, revision=current_revision + 1)
         return JSONResponse(
             {"status": "ok", **saved, "conflict_resolved": revision_conflict},
+            headers={"Cache-Control": "no-store"},
+        )
+
+    @router.post("/api/workspace/prompt/optimize")
+    def api_optimize_workspace_prompt(payload: dict[str, Any]) -> JSONResponse:
+        body = payload if isinstance(payload, dict) else {}
+        raw_text = str(body.get("text") or "").strip()
+        if not raw_text:
+            raise HTTPException(status_code=400, detail="text must not be empty.")
+        if len(raw_text) > WORKSPACE_PROMPT_OPTIMIZE_MAX_TEXT_CHARS:
+            raise HTTPException(
+                status_code=400,
+                detail=f"text exceeds {WORKSPACE_PROMPT_OPTIMIZE_MAX_TEXT_CHARS} chars.",
+            )
+        text = raw_text
+
+        goal_from_client = _clean_goal_candidate(body.get("goal"))
+        goal_hint = _extract_goal_hint(text)
+        goal = goal_from_client or str(goal_hint.get("goal") or "").strip() or "対象タスクを完遂できるように最適化する"
+        locale = _normalize_prompt_optimize_locale(body.get("locale"))
+        style_preset = _normalize_prompt_optimize_style(body.get("stylePreset"))
+
+        optimize_message = _build_goal_first_optimize_prompt(
+            text=text,
+            goal=goal,
+            locale=locale,
+            style_preset=style_preset,
+        )
+
+        try:
+            result = ai_chat.chat(
+                messages=[{"role": "user", "content": optimize_message}],
+                page_context={
+                    "path": "/workspace",
+                    "feature": "workspace_prompt_optimize",
+                    "locale": locale,
+                    "style": style_preset,
+                },
+            )
+        except ai_chat.MissingApiKeyError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+        except ai_chat.UpstreamTimeoutError as exc:
+            raise HTTPException(status_code=504, detail=str(exc)) from exc
+        except ai_chat.UpstreamApiError as exc:
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+        reply = result.get("reply") if isinstance(result.get("reply"), dict) else {}
+        reply_text = str(reply.get("content") or "")
+        parsed = _try_parse_json_object(reply_text)
+        if not isinstance(parsed, dict):
+            raise HTTPException(status_code=502, detail="AI response format is invalid. Expected JSON object.")
+
+        try:
+            normalized = _normalize_prompt_optimize_response(parsed)
+        except ValueError as exc:
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+        token_warnings = _build_token_integrity_warnings(text, normalized["optimizedPrompt"])
+        needs_confirmation = normalized["needsConfirmation"] + token_warnings
+        if needs_confirmation:
+            deduped: list[str] = []
+            seen: set[str] = set()
+            for row in needs_confirmation:
+                item = str(row or "").strip()
+                if not item or item in seen:
+                    continue
+                seen.add(item)
+                deduped.append(item)
+                if len(deduped) >= WORKSPACE_PROMPT_OPTIMIZE_MAX_LIST_ITEMS:
+                    break
+            needs_confirmation = deduped
+
+        return JSONResponse(
+            {
+                "status": "ok",
+                "optimizedPrompt": normalized["optimizedPrompt"],
+                "changes": normalized["changes"],
+                "assumptions": normalized["assumptions"],
+                "risks": normalized["risks"],
+                "needsConfirmation": needs_confirmation,
+                "changed": normalized["optimizedPrompt"] != text,
+                "goal": goal,
+                "goalMeta": {
+                    "source": "client" if goal_from_client else str(goal_hint.get("method") or "fallback"),
+                    "confidence": 1.0 if goal_from_client else float(goal_hint.get("confidence") or 0.0),
+                    "evidence": goal_hint.get("evidence") if isinstance(goal_hint.get("evidence"), list) else [],
+                },
+                "provider": result.get("provider"),
+                "model": result.get("model"),
+            },
             headers={"Cache-Control": "no-store"},
         )
 

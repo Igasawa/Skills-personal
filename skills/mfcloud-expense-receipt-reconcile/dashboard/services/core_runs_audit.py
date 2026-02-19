@@ -10,6 +10,15 @@ from typing import Any
 from .core_runs_paths import _audit_log_path
 from .core_shared import SKILL_ROOT, _write_json
 
+_AUTH_REQUIRED_MARKERS = (
+    "auth_required",
+    "[auth_required]",
+    "please complete login in the browser",
+    "timeout waiting for manual login",
+    "still on login page",
+    "storage_state expired",
+)
+
 
 def _safe_int(value: Any) -> int | None:
     try:
@@ -40,6 +49,54 @@ def _normalize_actor(actor: Any) -> dict[str, Any]:
         if out:
             return out
     return {"channel": "dashboard", "id": "unknown"}
+
+
+def _tail_text(path: Path, *, max_bytes: int = 32000) -> str:
+    try:
+        data = path.read_bytes()
+    except Exception:
+        return ""
+    limit = max(0, int(max_bytes))
+    if limit and len(data) > limit:
+        data = data[-limit:]
+    return data.decode("utf-8", errors="replace")
+
+
+def _is_test_artifact_log_path(log_path: str) -> bool:
+    normalized = str(log_path or "").strip().lower().replace("\\", "/")
+    if not normalized:
+        return False
+    return "pytest-of-" in normalized or "/pytest-" in normalized
+
+
+def _contains_auth_required_marker(log_tail: str) -> bool:
+    lowered = str(log_tail or "").strip().lower()
+    if not lowered:
+        return False
+    return any(marker in lowered for marker in _AUTH_REQUIRED_MARKERS)
+
+
+def _suppression_reason_for_failed_run_incident(
+    *,
+    mode: str,
+    reason: str,
+    log_path: str,
+    log_tail: str,
+) -> str:
+    if mode not in {"amazon_download", "rakuten_download"}:
+        return ""
+    if _is_test_artifact_log_path(log_path):
+        return "test_artifact_run"
+    if _contains_auth_required_marker(log_tail):
+        return "auth_required"
+    compact = " ".join(str(log_tail or "").split())
+    if mode == "amazon_download" and reason == "process_ended_without_final_status":
+        if compact == "[run] Amazon download start":
+            return "incomplete_provider_start_log"
+    if mode == "rakuten_download" and reason == "worker_exit":
+        if compact in {"", "[run] Rakuten download start"}:
+            return "incomplete_provider_start_log"
+    return ""
 
 
 def _append_audit_event(
@@ -98,6 +155,8 @@ def _capture_failed_run_incident(
     _json_loads=json.loads,
     _json_dumps=json.dumps,
     _now=datetime.now,
+    _tail_text_fn=_tail_text,
+    _suppression_reason_fn=_suppression_reason_for_failed_run_incident,
 ) -> None:
     status = str(meta.get("status") or "").strip().lower()
     if status != "failed":
@@ -107,13 +166,8 @@ def _capture_failed_run_incident(
     if str(meta.get("error_capture_attempted_at") or "").strip():
         return
 
-    script_path = _skill_root / "scripts" / "error_capture.py"
     ts = _now().isoformat(timespec="seconds")
     meta["error_capture_attempted_at"] = ts
-    if not script_path.exists():
-        meta["error_capture_error"] = f"script_not_found: {script_path}"
-        _write_json_fn(meta_path, meta)
-        return
 
     params = meta.get("params") if isinstance(meta.get("params"), dict) else {}
     year = _safe_int_fn(params.get("year"))
@@ -122,6 +176,44 @@ def _capture_failed_run_incident(
     run_id = str(meta.get("run_id") or "").strip()
     returncode = _safe_int_fn(meta.get("returncode"))
     log_path = str(meta.get("log_path") or "").strip()
+    log_tail = _tail_text_fn(Path(log_path)) if log_path else ""
+
+    suppression_reason = _suppression_reason_fn(
+        mode=mode,
+        reason=reason,
+        log_path=log_path,
+        log_tail=log_tail,
+    )
+    if suppression_reason:
+        meta["error_capture_skipped_at"] = ts
+        meta["error_capture_skipped_reason"] = suppression_reason
+        meta.pop("error_capture_error", None)
+        _write_json_fn(meta_path, meta)
+        if year is not None and month is not None:
+            _append_audit_event_fn(
+                year=year,
+                month=month,
+                event_type="error_incident",
+                action="capture",
+                status="skipped",
+                actor=meta.get("actor"),
+                mode=mode,
+                run_id=run_id,
+                details={
+                    "reason": reason,
+                    "inferred_from": inferred_from,
+                    "returncode": returncode if returncode is not None else -1,
+                    "suppression_reason": suppression_reason,
+                },
+            )
+        return
+
+    script_path = _skill_root / "scripts" / "error_capture.py"
+    if not script_path.exists():
+        meta["error_capture_error"] = f"script_not_found: {script_path}"
+        _write_json_fn(meta_path, meta)
+        return
+
     message = (
         f"Run failed: mode={mode} reason={reason} "
         f"returncode={returncode if returncode is not None else -1}"

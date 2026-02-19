@@ -594,3 +594,47 @@
 - **レビュー期限**: -
 - **ソース**: llm
 
+## [2026-02-19] Commit: 1a851313c35559b50f87a8635849c35dae9b4fbc
+- **要約**: エージェント知識ベース（AGENT_BRAIN）の更新と解決済みインシデントのアーカイブ処理
+- **獲得した知識**: ワークスペースのピン留め管理には 'pinned-groups' という命名・ID体系を統一して使用する, UIメッセージ（削除確認ダイアログ等）は日本語で実装する, 解決したインシデントは、メタデータやログを含めて reports/error_archive/resolved/ 配下にアーカイブする
+- **守るべきルール**: 開発時の一時ファイル（tmp_*、workspace_*.js、ws.diff、*.bak等）をコミットに含めること, ワークスペースのグループ管理に旧称の 'pinned-links' を使用すること
+- **未解決の文脈**: スケジューラー関連コンポーネントの整理（一部テストで削除された要素の整合性確認）, 不要になったJS/CSSのクリーンアップ
+- **対象範囲**: docs/, skills/mfcloud-expense-receipt-reconcile/
+- **確度**: 1.0
+- **重要度**: low
+- **レビュー期限**: -
+- **ソース**: llm
+
+## [2026-02-19] Commit: 675194f7dcfdebaaa3fdc6d298abdc164b1ffdf4
+- **要約**: ダッシュボードUIの日本語化方針の策定と、環境変数によるロケール切り替え機能の実装
+- **獲得した知識**: ダッシュボードUIのロケール既定値は 'ja' とする。, ロケールの切り替えは環境変数 'DASHBOARD_UI_LOCALE' を使用する（例: ja, en）。, UI文言（見出し、ボタン、説明、トースト、エラー表示）は原則として日本語に統一する。, 英語を許容するのは、コード識別子、APIキー、ログ解析用文字列など機械処理に必要な箇所のみとする。, UI文言の追加・変更時は、HTMLの lang 属性および表示内容が日本語であることを確認する。
+- **守るべきルール**: UIの表示文言に、ロケール設定を無視して英語を直接ハードコードすること。, PowerShell環境において、bash依存の環境変数設定構文（export等）をドキュメントや手順に含めること。
+- **未解決の文脈**: 本格的なi18nフレームワークの導入ではなく、環境変数と個別の翻訳ロジック（toFriendlyMessage等）に依存している。, 既存の全スキルに対してこの日本語化方針が完全に適用されているかの網羅的な確認。
+- **対象範囲**: application, other
+- **確度**: 0.9
+- **重要度**: low
+- **レビュー期限**: -
+- **ソース**: llm
+
+## [2026-02-19] Commit: 889d0a803d2099d2ac0f4188d1df2932307c2eaa
+- **要約**: エラー修復プランの証拠分析改善と信頼性ガードレールの導入、およびハンドオフプロセスの形式化
+- **獲得した知識**: 修復プランには必ず 'verification_commands' と 'done_criteria' を含めること。, インシデントの状態遷移モデルに 'handed_off' を追加し、実行用パッケージは 'error_handoffs/' ディレクトリに集約する。, プラン生成時に信頼性（confidence）のガードレールによるチェックを適用する。
+- **守るべきルール**: 検証コマンドや完了定義が欠落した状態での修復プランの承認。, 正式なハンドオフパッケージ（handoff_json）を作成せずに実行フェーズへ移行すること。
+- **未解決の文脈**: Antigravity実行エンジンとの物理的な連携部分の疎結合性の確保。, 信頼性スコアの閾値設定に関する具体的な運用基準の策定。
+- **対象範囲**: skills/mfcloud-expense-receipt-reconcile/references/error_automation_contract.md, skills/mfcloud-expense-receipt-reconcile/scripts/error_plan_generate.py, skills/mfcloud-expense-receipt-reconcile/scripts/error_handoff_prepare.py
+- **確度**: 0.9
+- **重要度**: medium
+- **レビュー期限**: -
+- **ソース**: llm
+
+## [2026-02-19] Commit: 0e8b4605819f8341df27adf6c684820c0092b97e
+- **要約**: エラーハンドリングにおける「antigravity handoff flow」の導入とUIのローカライズ対応
+- **獲得した知識**: エラーインシデント管理には、error_reports_root 配下の 'error_inbox/{incident_id}' および 'error_plans/{incident_id}/plan.json' のディレクトリ構造を厳守する。, ダッシュボードのUI要素には、自動テストおよびスクリプト連携用として 'errors-handoff-queue' や 'errors-handoff-json' などの特定のIDを付与する。, UIテキストは直接記述せず、ローカライズ（UI copy）の仕組みを通じて管理する。
+- **守るべきルール**: インシデント関連のファイルを所定のディレクトリ構造（inbox/plans）外に直接配置すること。, PowerShell環境（start_dashboard.ps1）で動作しないbash固有の構文をスクリプトやコマンドライン引数に含めること。
+- **未解決の文脈**: antigravity フローの具体的な外部連携仕様および、既存のエラーレポート機能との完全な互換性に関するドキュメント化。, UIローカライズが適用されていない残存箇所の特定と修正。
+- **対象範囲**: application, other
+- **確度**: 0.9
+- **重要度**: medium
+- **レビュー期限**: -
+- **ソース**: llm
+

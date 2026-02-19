@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 import re
 from typing import Any
+from urllib.parse import urlparse
 
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
@@ -22,6 +23,11 @@ WORKFLOW_TEMPLATE_STEP_MIN_TIMER_MINUTES = 1
 WORKFLOW_TEMPLATE_STEP_MAX_TIMER_MINUTES = 7 * 24 * 60
 WORKFLOW_TEMPLATE_STEP_MAX_EXECUTION_LOG_ITEMS = 20
 WORKFLOW_TEMPLATE_STEP_MAX_EXECUTION_LOG_MESSAGE_CHARS = 200
+WORKFLOW_TEMPLATE_STEP_MAX_AGENT_PROMPT_CHARS = 4000
+WORKFLOW_TEMPLATE_STEP_DEFAULT_TYPE = "manual"
+WORKFLOW_TEMPLATE_STEP_TYPES = {"manual", "agent", "browser"}
+WORKFLOW_TEMPLATE_STEP_DEFAULT_TRIGGER = "manual"
+WORKFLOW_TEMPLATE_STEP_TRIGGERS = {"manual", "schedule", "webhook", "after_step"}
 WORKFLOW_TEMPLATE_REQUIRED_STEP_ACTIONS = (
     "preflight",
 )
@@ -229,6 +235,32 @@ def _normalize_template_steps_for_view(value: Any) -> list[dict[str, Any]]:
             return False
         return text in {"1", "true", "yes", "on"}
 
+    def _normalize_step_type(raw: Any, *, default: str = WORKFLOW_TEMPLATE_STEP_DEFAULT_TYPE) -> str:
+        step_type = str(raw or "").strip().lower()
+        if step_type in WORKFLOW_TEMPLATE_STEP_TYPES:
+            return step_type
+        return default
+
+    def _normalize_step_trigger(raw: Any, *, default: str = WORKFLOW_TEMPLATE_STEP_DEFAULT_TRIGGER) -> str:
+        trigger = str(raw or "").strip().lower()
+        if trigger in WORKFLOW_TEMPLATE_STEP_TRIGGERS:
+            return trigger
+        return default
+
+    def _normalize_step_target_url(raw: Any) -> str:
+        text = str(raw or "").strip()
+        if not text:
+            return ""
+        parsed = urlparse(text)
+        if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+            return ""
+        return text[:2048]
+
+    def _normalize_step_agent_prompt(raw: Any) -> str:
+        if raw is None:
+            return ""
+        return str(raw).strip()[:WORKFLOW_TEMPLATE_STEP_MAX_AGENT_PROMPT_CHARS]
+
     def _normalize_execution_log(raw: Any) -> list[dict[str, str]]:
         rows = raw if isinstance(raw, list) else []
         out: list[dict[str, str]] = []
@@ -256,6 +288,10 @@ def _normalize_template_steps_for_view(value: Any) -> list[dict[str, Any]]:
         raw_id = ""
         raw_title = ""
         raw_action = ""
+        raw_type: Any = None
+        raw_trigger: Any = None
+        raw_target_url: Any = None
+        raw_agent_prompt: Any = None
         raw_timer_minutes: Any = None
         raw_order: Any = index + 1
         raw_auto_run: Any = False
@@ -277,6 +313,24 @@ def _normalize_template_steps_for_view(value: Any) -> list[dict[str, Any]]:
                 raw_execution_log = row.get("execution_log")
             elif "executionLog" in row:
                 raw_execution_log = row.get("executionLog")
+            if "type" in row:
+                raw_type = row.get("type")
+            elif "step_type" in row:
+                raw_type = row.get("step_type")
+            if "trigger" in row:
+                raw_trigger = row.get("trigger")
+            if "target_url" in row:
+                raw_target_url = row.get("target_url")
+            elif "targetUrl" in row:
+                raw_target_url = row.get("targetUrl")
+            elif "url" in row:
+                raw_target_url = row.get("url")
+            if "agent_prompt" in row:
+                raw_agent_prompt = row.get("agent_prompt")
+            elif "agentPrompt" in row:
+                raw_agent_prompt = row.get("agentPrompt")
+            elif "prompt" in row:
+                raw_agent_prompt = row.get("prompt")
         else:
             raw_title = row
 
@@ -286,7 +340,7 @@ def _normalize_template_steps_for_view(value: Any) -> list[dict[str, Any]]:
 
         title = " ".join(str(raw_title or "").strip().split())
         if not title:
-            title = WORKFLOW_TEMPLATE_REQUIRED_STEP_TITLES.get(action, action or f"Task {index + 1}")
+            title = WORKFLOW_TEMPLATE_REQUIRED_STEP_TITLES.get(action, action or f"手順{index + 1}")
 
         timer_minutes: int | None = None
         if raw_timer_minutes is not None and str(raw_timer_minutes).strip():
@@ -297,6 +351,16 @@ def _normalize_template_steps_for_view(value: Any) -> list[dict[str, Any]]:
         auto_run = _normalize_auto_run(raw_auto_run)
         if auto_run and (timer_minutes is None or timer_minutes < WORKFLOW_TEMPLATE_STEP_MIN_TIMER_MINUTES):
             timer_minutes = WORKFLOW_TEMPLATE_STEP_DEFAULT_TIMER_MINUTES
+        target_url = _normalize_step_target_url(raw_target_url)
+        agent_prompt = _normalize_step_agent_prompt(raw_agent_prompt)
+        type_default = WORKFLOW_TEMPLATE_STEP_DEFAULT_TYPE
+        if target_url:
+            type_default = "browser"
+        elif agent_prompt:
+            type_default = "agent"
+        step_type = _normalize_step_type(raw_type, default=type_default)
+        trigger_default = "schedule" if auto_run else WORKFLOW_TEMPLATE_STEP_DEFAULT_TRIGGER
+        trigger = _normalize_step_trigger(raw_trigger, default=trigger_default)
 
         order = core._safe_non_negative_int(raw_order, default=index + 1)
         if order < 1:
@@ -316,6 +380,10 @@ def _normalize_template_steps_for_view(value: Any) -> list[dict[str, Any]]:
                 "order": order,
                 "title": title,
                 "action": action,
+                "type": step_type,
+                "trigger": trigger,
+                "target_url": target_url,
+                "agent_prompt": agent_prompt,
                 "auto_run": auto_run,
                 "timer_minutes": timer_minutes,
                 "execution_log": _normalize_execution_log(raw_execution_log),
@@ -446,7 +514,7 @@ def _workflow_template_sidebar_links() -> list[dict[str, object]]:
                 "href": f"/expense-workflow-copy?template={template_id}",
                 "label": label,
                 "tab": "wizard-copy",
-                "section": "admin",
+                "section": "draft",
             }
         )
 
@@ -502,6 +570,8 @@ def _lookup_workflow_page(workflow_id: str | None) -> dict[str, object] | None:
 def _dashboard_context(active_tab: str) -> dict[str, object]:
     links = list(DEFAULT_SIDEBAR_LINKS)
     for link in _workflow_page_sidebar_links():
+        links.append(link)
+    for link in _workflow_template_sidebar_links():
         links.append(link)
     for link in collect_skill_sidebar_links():
         links.append(link)

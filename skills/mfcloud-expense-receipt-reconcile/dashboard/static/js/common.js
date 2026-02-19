@@ -339,12 +339,17 @@
   function splitSidebarLinks(links) {
     const homeLinks = [];
     const workflowLinks = [];
+    const draftLinks = [];
     const adminLinks = [];
 
     links.forEach((linkConfig) => {
       const section = String(linkConfig?.section || "").toLowerCase();
       if (section === "home") {
         homeLinks.push(linkConfig);
+        return;
+      }
+      if (section === "draft") {
+        draftLinks.push(linkConfig);
         return;
       }
       if (section === "admin") {
@@ -354,7 +359,7 @@
       workflowLinks.push(linkConfig);
     });
 
-    return { homeLinks, workflowLinks, adminLinks };
+    return { homeLinks, workflowLinks, draftLinks, adminLinks };
   }
 
   function buildSidebarNav(links, activeTab) {
@@ -364,19 +369,28 @@
       const normalized = text.replace(/\/+$/, "");
       return normalized || "/";
     };
-    const currentPath = normalizePath(window.location.pathname);
-    const hasExactActive = links.some((linkConfig) => {
+    const currentUrl = new URL(window.location.href);
+    const currentPath = normalizePath(currentUrl.pathname);
+    const linkScores = links.map((linkConfig) => {
       try {
         const url = new URL(String(linkConfig?.href || ""), window.location.origin);
-        return normalizePath(url.pathname) === currentPath;
+        if (normalizePath(url.pathname) !== currentPath) return 0;
+        const queryEntries = Array.from(url.searchParams.entries());
+        if (!queryEntries.length) return 1;
+        const matchesQuery = queryEntries.every(([key, value]) => {
+          const currentValues = currentUrl.searchParams.getAll(key);
+          return currentValues.includes(value);
+        });
+        return matchesQuery ? 3 : 0;
       } catch {
-        return false;
+        return 0;
       }
     });
+    const maxLinkScore = linkScores.reduce((maxScore, score) => (score > maxScore ? score : maxScore), 0);
     const nav = document.createElement("nav");
     nav.className = "dashboard-sidebar-nav";
 
-    links.forEach((linkConfig) => {
+    links.forEach((linkConfig, index) => {
       const item = document.createElement("a");
       item.href = linkConfig.href;
       item.className = "dashboard-sidebar-link";
@@ -385,12 +399,8 @@
       item.title = labelText;
       item.dataset.shortLabel = labelText.replace(/\s+/g, "").slice(0, 2) || "\u2022";
       let isActive = linkConfig.tab === activeTab;
-      try {
-        const url = new URL(String(linkConfig?.href || ""), window.location.origin);
-        const samePath = normalizePath(url.pathname) === currentPath;
-        isActive = hasExactActive ? samePath : isActive;
-      } catch {
-        // Keep fallback tab match.
+      if (maxLinkScore > 0) {
+        isActive = linkScores[index] === maxLinkScore;
       }
       if (isActive) {
         item.classList.add("is-active");
@@ -465,7 +475,7 @@
     const page = document.querySelector(".page");
     const activeTab = page?.dataset?.activeTab || getActiveDashboardTab(window.location.pathname);
     const links = getSidebarConfig();
-    const { homeLinks, workflowLinks, adminLinks } = splitSidebarLinks(links);
+    const { homeLinks, workflowLinks, draftLinks, adminLinks } = splitSidebarLinks(links);
 
     const sidebar = document.createElement("aside");
     sidebar.className = "dashboard-sidebar";
@@ -490,6 +500,11 @@
     const workflowSection = buildSidebarSection("ワークフロー系", workflowLinks, activeTab, { searchable: true });
     if (workflowSection) {
       sidebar.appendChild(workflowSection);
+    }
+
+    const draftSection = buildSidebarSection("Draftワークフロー", draftLinks, activeTab, { searchable: true });
+    if (draftSection) {
+      sidebar.appendChild(draftSection);
     }
 
     const adminSection = buildSidebarSection("管理系", adminLinks, activeTab);

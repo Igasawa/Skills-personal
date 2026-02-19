@@ -452,6 +452,11 @@ tbody tr:focus-within {
   z-index: var(--z-modal);
 }
 
+.modal.hidden,
+.modal[hidden] {
+  display: none !important;
+}
+
 .modal.modal-center {
   inset: 0;
   display: flex;

@@ -183,14 +183,56 @@
         </div>
         <div class="step-actions">
           <button type="button" id="workspace-save-prompt" class="primary">登録</button>
+          <button type="button" id="workspace-optimize-prompt" class="secondary">AIで最適化</button>
           <button type="button" id="workspace-copy-handoff" class="secondary">実行指示セットをコピー</button>
         </div>
+        <div id="workspace-prompt-undo" class="workspace-link-undo workspace-prompt-undo hidden" aria-live="polite"></div>
         <div class="workspace-token-help">
           <span class="workspace-token-chip">{month}</span>
           <span class="workspace-token-chip">{reports_path}</span>
           <span class="workspace-token-chip">{notes}</span>
         </div>
       </section>
+    </div>
+
+    <div id="workspace-prompt-diff-backdrop" class="modal-backdrop hidden" hidden></div>
+    <div
+      id="workspace-prompt-diff-modal"
+      class="modal modal-center hidden"
+      hidden
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="workspace-prompt-diff-title"
+    >
+      <div class="dialog-card workspace-prompt-diff-card">
+        <h3 id="workspace-prompt-diff-title" class="dialog-title">最適化結果を確認</h3>
+        <div class="dialog-body">
+          <p class="muted">変更点を確認してから適用してください。</p>
+          <p id="workspace-prompt-diff-goal" class="workspace-prompt-diff-goal"></p>
+          <div id="workspace-prompt-diff-changes-wrap" class="workspace-prompt-diff-section hidden">
+            <h4>変更サマリー</h4>
+            <ul id="workspace-prompt-diff-changes" class="workspace-prompt-diff-list"></ul>
+          </div>
+          <div class="workspace-prompt-diff-grid">
+            <section class="workspace-prompt-diff-pane">
+              <h4>変更前</h4>
+              <pre id="workspace-prompt-diff-before"></pre>
+            </section>
+            <section class="workspace-prompt-diff-pane">
+              <h4>変更後</h4>
+              <pre id="workspace-prompt-diff-after"></pre>
+            </section>
+          </div>
+          <div id="workspace-prompt-diff-confirm-wrap" class="workspace-prompt-diff-section hidden">
+            <h4>適用前に確認が必要な項目</h4>
+            <ul id="workspace-prompt-diff-confirm" class="workspace-prompt-diff-list"></ul>
+          </div>
+        </div>
+        <div class="dialog-actions">
+          <button type="button" id="workspace-prompt-diff-cancel" class="secondary">キャンセル</button>
+          <button type="button" id="workspace-prompt-diff-apply" class="primary">適用する</button>
+        </div>
+      </div>
     </div>
 
     <div id="toast" class="toast" aria-live="polite"></div>

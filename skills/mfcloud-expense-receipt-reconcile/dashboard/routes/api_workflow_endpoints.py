@@ -42,6 +42,7 @@ from .api_helpers import (
     WORKFLOW_TEMPLATE_MAX_NOTES_CHARS,
     WORKFLOW_TEMPLATE_MAX_SEARCH_CHARS,
     WORKFLOW_TEMPLATE_MAX_SOURCE_URLS,
+    WORKFLOW_TEMPLATE_MAX_STEP_AGENT_PROMPT_CHARS,
     WORKFLOW_TEMPLATE_MAX_STEP_ACTION_CHARS,
     WORKFLOW_TEMPLATE_MAX_STEP_EXECUTION_LOG_ITEMS,
     WORKFLOW_TEMPLATE_MAX_STEP_EXECUTION_LOG_MESSAGE_CHARS,
@@ -56,6 +57,10 @@ from .api_helpers import (
     WORKFLOW_TEMPLATE_REQUIRED_STEP_TITLES,
     WORKFLOW_TEMPLATE_SORT_OPTIONS,
     WORKFLOW_TEMPLATE_STEP_DEFAULT_ACTION,
+    WORKFLOW_TEMPLATE_STEP_DEFAULT_TRIGGER,
+    WORKFLOW_TEMPLATE_STEP_DEFAULT_TYPE,
+    WORKFLOW_TEMPLATE_STEP_TRIGGERS,
+    WORKFLOW_TEMPLATE_STEP_TYPES,
 )
 from .api_workspace_routes import register_api_workspace_routes
 
@@ -270,6 +275,30 @@ def register_api_workflow_endpoints(router: APIRouter) -> None:
         return text in {"1", "true", "yes", "on"}
 
 
+    def _normalize_workflow_template_step_type(value: Any, *, default: str = WORKFLOW_TEMPLATE_STEP_DEFAULT_TYPE) -> str:
+        step_type = str(value or "").strip().lower()
+        if step_type in WORKFLOW_TEMPLATE_STEP_TYPES:
+            return step_type
+        return default
+
+
+    def _normalize_workflow_template_step_trigger(
+        value: Any,
+        *,
+        default: str = WORKFLOW_TEMPLATE_STEP_DEFAULT_TRIGGER,
+    ) -> str:
+        trigger = str(value or "").strip().lower()
+        if trigger in WORKFLOW_TEMPLATE_STEP_TRIGGERS:
+            return trigger
+        return default
+
+
+    def _normalize_workflow_template_step_agent_prompt(value: Any) -> str:
+        if value is None:
+            return ""
+        return str(value).strip()[:WORKFLOW_TEMPLATE_MAX_STEP_AGENT_PROMPT_CHARS]
+
+
     def _normalize_workflow_template_step_execution_log(value: Any) -> list[dict[str, str]]:
         rows = value if isinstance(value, list) else []
         normalized: list[dict[str, str]] = []
@@ -328,6 +357,10 @@ def register_api_workflow_endpoints(router: APIRouter) -> None:
             raw_id = ""
             raw_title = ""
             raw_action = ""
+            raw_type: Any = None
+            raw_trigger: Any = None
+            raw_target_url: Any = None
+            raw_agent_prompt: Any = None
             raw_timer_minutes: Any = None
             raw_order: Any = index + 1
             raw_auto_run: Any = False
@@ -353,6 +386,24 @@ def register_api_workflow_endpoints(router: APIRouter) -> None:
                     raw_execution_log = row.get("execution_log")
                 elif "executionLog" in row:
                     raw_execution_log = row.get("executionLog")
+                if "type" in row:
+                    raw_type = row.get("type")
+                elif "step_type" in row:
+                    raw_type = row.get("step_type")
+                if "trigger" in row:
+                    raw_trigger = row.get("trigger")
+                if "target_url" in row:
+                    raw_target_url = row.get("target_url")
+                elif "targetUrl" in row:
+                    raw_target_url = row.get("targetUrl")
+                elif "url" in row:
+                    raw_target_url = row.get("url")
+                if "agent_prompt" in row:
+                    raw_agent_prompt = row.get("agent_prompt")
+                elif "agentPrompt" in row:
+                    raw_agent_prompt = row.get("agentPrompt")
+                elif "prompt" in row:
+                    raw_agent_prompt = row.get("prompt")
             else:
                 raw_title = row
 
@@ -372,11 +423,25 @@ def register_api_workflow_endpoints(router: APIRouter) -> None:
                 timer_minutes is None or timer_minutes < WORKFLOW_TEMPLATE_MIN_STEP_TIMER_MINUTES
             ):
                 timer_minutes = WORKFLOW_TEMPLATE_DEFAULT_STEP_TIMER_MINUTES
+            target_url = _normalize_workflow_template_url(raw_target_url)
+            agent_prompt = _normalize_workflow_template_step_agent_prompt(raw_agent_prompt)
+            type_default = WORKFLOW_TEMPLATE_STEP_DEFAULT_TYPE
+            if target_url:
+                type_default = "browser"
+            elif agent_prompt:
+                type_default = "agent"
+            step_type = _normalize_workflow_template_step_type(raw_type, default=type_default)
+            trigger_default = "schedule" if auto_run else WORKFLOW_TEMPLATE_STEP_DEFAULT_TRIGGER
+            trigger = _normalize_workflow_template_step_trigger(raw_trigger, default=trigger_default)
             order = _normalize_workflow_template_step_order(raw_order, default=index + 1)
             execution_log = _normalize_workflow_template_step_execution_log(raw_execution_log)
             normalized_row: dict[str, Any] = {
                 "title": title[:WORKFLOW_TEMPLATE_MAX_STEP_TITLE_CHARS],
                 "action": action,
+                "type": step_type,
+                "trigger": trigger,
+                "target_url": target_url,
+                "agent_prompt": agent_prompt,
                 "order": order,
                 "auto_run": auto_run,
                 "timer_minutes": timer_minutes,

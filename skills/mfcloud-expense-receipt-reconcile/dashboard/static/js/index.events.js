@@ -201,17 +201,30 @@
       applyArchivePageLink(ym);
       refreshSteps();
     };
-    hydrateTemplateSourceUrls();
-    applyTemplateModeUI();
+
+    const safeInit = (fn, label) => {
+      try {
+        fn();
+      } catch (error) {
+        console.error(`[index.events] ${label} failed`, error);
+      }
+    };
+
+    const templateStepAddButton = document.getElementById("template-step-add");
+    if (templateStepAddButton && templateStepAddButton.dataset.boundTemplateStepAdd !== "1") {
+      templateStepAddButton.dataset.boundTemplateStepAdd = "1";
+      templateStepAddButton.addEventListener("click", (event) => {
+        event.preventDefault();
+        addTemplateStepFromDefaultCard({});
+      });
+    }
+
+    safeInit(hydrateTemplateSourceUrls, "hydrateTemplateSourceUrls");
+    safeInit(applyTemplateModeUI, "applyTemplateModeUI");
     const templateSourceUrlAddButton = document.getElementById("template-source-url-add");
     templateSourceUrlAddButton?.addEventListener("click", (event) => {
       event.preventDefault();
       addTemplateSourceUrlRow("");
-    });
-    const templateStepAddButton = document.getElementById("template-step-add");
-    templateStepAddButton?.addEventListener("click", (event) => {
-      event.preventDefault();
-      addTemplateStepFromDefaultCard({});
     });
     const onTemplateStepToggle = (event) => {
       const toggleButton = event.target.closest("[data-template-step-toggle]");
@@ -275,11 +288,11 @@
       renderWorkflowCreatePreview();
     });
 
-    hydrateTemplateSteps();
-    renderWorkflowCreatePreview();
-    applyWorkflowPageStepLayout(workflowPage?.steps);
-    renderWorkflowPageStepVersionLabel();
-    restoreYmSelection();
+    safeInit(hydrateTemplateSteps, "hydrateTemplateSteps");
+    safeInit(renderWorkflowCreatePreview, "renderWorkflowCreatePreview");
+    safeInit(() => applyWorkflowPageStepLayout(workflowPage?.steps), "applyWorkflowPageStepLayout");
+    safeInit(renderWorkflowPageStepVersionLabel, "renderWorkflowPageStepVersionLabel");
+    safeInit(restoreYmSelection, "restoreYmSelection");
     const initialYm = getYmFromForm();
     applyArchivePageLink(initialYm);
     refreshSteps();

@@ -31,7 +31,14 @@
     other: "その他",
   });
   const WORKSPACE_STATE_ENDPOINT = "/api/workspace/state";
+  const WORKSPACE_PROMPT_OPTIMIZE_ENDPOINT = "/api/workspace/prompt/optimize";
   const WORKSPACE_SYNC_DEBOUNCE_MS = 300;
+  const PROMPT_OPTIMIZE_TIMEOUT_MS = 35000;
+  const PROMPT_UNDO_TTL_MS = 10000;
+  const GOAL_FALLBACK = "対象タスクを完遂できるように最適化する";
+  const GOAL_INLINE_PATTERN = /^(?:目的|goal|ゴール|やりたいこと|狙い|task)\s*[:：]\s*(.+)$/i;
+  const GOAL_HEADING_PATTERN = /^(?:目的|goal|ゴール|やりたいこと|狙い|task)\s*[:：]?$/i;
+  const GOAL_LEADING_MARKERS_PATTERN = /^[\s\-*・\d.)]+/;
   let workspaceSyncTimer = null;
   let workspaceSyncInFlight = false;
   let workspaceStateRevision = 0;
@@ -102,10 +109,29 @@
   const promptStatus = document.getElementById("workspace-prompt-status");
   const promptCount = document.getElementById("workspace-prompt-count");
   const savePromptButton = document.getElementById("workspace-save-prompt");
+  const optimizePromptButton = document.getElementById("workspace-optimize-prompt");
   const copyHandoffButton = document.getElementById("workspace-copy-handoff");
   const promptActiveLabel = document.getElementById("workspace-prompt-active-label");
+  const promptUndo = document.getElementById("workspace-prompt-undo");
+  const promptDiffBackdrop = document.getElementById("workspace-prompt-diff-backdrop");
+  const promptDiffModal = document.getElementById("workspace-prompt-diff-modal");
+  const promptDiffGoal = document.getElementById("workspace-prompt-diff-goal");
+  const promptDiffBefore = document.getElementById("workspace-prompt-diff-before");
+  const promptDiffAfter = document.getElementById("workspace-prompt-diff-after");
+  const promptDiffChangesWrap = document.getElementById("workspace-prompt-diff-changes-wrap");
+  const promptDiffChanges = document.getElementById("workspace-prompt-diff-changes");
+  const promptDiffConfirmWrap = document.getElementById("workspace-prompt-diff-confirm-wrap");
+  const promptDiffConfirm = document.getElementById("workspace-prompt-diff-confirm");
+  const promptDiffCancelButton = document.getElementById("workspace-prompt-diff-cancel");
+  const promptDiffApplyButton = document.getElementById("workspace-prompt-diff-apply");
   let linkUndoTimer = null;
   let linkUndoAction = null;
+  let promptUndoTimer = null;
+  let promptUndoAction = null;
+  let promptOptimizeRequestId = 0;
+  let promptOptimizeInFlight = false;
+  let promptOptimizePreview = null;
+  let promptDiffEscapeListenerBound = false;
   let toastConfirmTimer = null;
 
   function isObject(value) {
@@ -114,6 +140,66 @@
 
   function normalizeText(value, maxLength = 200) {
     return String(value || "").replace(/\s+/g, " ").trim().slice(0, maxLength);
+  }
+
+  function normalizePromptOptimizeList(value, maxItems = 12, maxChars = 220) {
+    if (!Array.isArray(value)) return [];
+    const out = [];
+    value.forEach((row) => {
+      const text = normalizeText(row, maxChars);
+      if (!text) return;
+      out.push(text);
+    });
+    return out.slice(0, Math.max(0, maxItems));
+  }
+
+  function cleanGoalCandidate(value) {
+    const raw = normalizeText(value, 240);
+    if (!raw) return "";
+    return raw.replace(GOAL_LEADING_MARKERS_PATTERN, "").trim().slice(0, 240);
+  }
+
+  function extractGoalFromPromptText(text) {
+    const lines = String(text || "")
+      .replace(/\r\n/g, "\n")
+      .split("\n")
+      .map((line) => line.trim());
+    const nonEmpty = lines.filter(Boolean);
+    if (nonEmpty.length === 0) {
+      return { goal: GOAL_FALLBACK, confidence: 0, method: "fallback", evidence: [] };
+    }
+    for (const line of nonEmpty) {
+      const match = line.match(GOAL_INLINE_PATTERN);
+      if (!match) continue;
+      const goal = cleanGoalCandidate(match[1]);
+      if (!goal) continue;
+      return {
+        goal,
+        confidence: 0.95,
+        method: "inline_label",
+        evidence: [line.slice(0, 120)],
+      };
+    }
+    for (let index = 0; index < nonEmpty.length; index += 1) {
+      if (!GOAL_HEADING_PATTERN.test(nonEmpty[index])) continue;
+      for (let inner = index + 1; inner < nonEmpty.length; inner += 1) {
+        const goal = cleanGoalCandidate(nonEmpty[inner]);
+        if (!goal) continue;
+        return {
+          goal,
+          confidence: 0.82,
+          method: "heading_followup",
+          evidence: [nonEmpty[index].slice(0, 120), nonEmpty[inner].slice(0, 120)],
+        };
+      }
+    }
+    const fallback = cleanGoalCandidate(nonEmpty[0]) || GOAL_FALLBACK;
+    return {
+      goal: fallback,
+      confidence: 0.55,
+      method: "first_line",
+      evidence: [nonEmpty[0].slice(0, 120)],
+    };
   }
 
   function normalizeUrl(value) {
@@ -778,6 +864,9 @@
     if (!promptEditor) return;
     const safeKey = String(key || "").trim();
     if (!isValidPromptKey(safeKey)) return;
+
+    closePromptOptimizePreview({ keepStatus: true });
+    clearPromptUndoNotice();
 
     // Best-effort: persist current draft before switching keys.
     savePromptTextForKey(activePromptKey, String(promptEditor.value || ""));
@@ -1784,6 +1873,263 @@
     }, LINK_UNDO_TTL_MS);
   }
 
+  function clearPromptUndoNotice() {
+    promptUndoAction = null;
+    if (promptUndoTimer) {
+      window.clearTimeout(promptUndoTimer);
+      promptUndoTimer = null;
+    }
+    if (!promptUndo) return;
+    promptUndo.classList.add("hidden");
+    promptUndo.innerHTML = "";
+  }
+
+  function showPromptUndoNotice(message, onUndo) {
+    if (!promptUndo) return;
+    clearPromptUndoNotice();
+    promptUndoAction = typeof onUndo === "function" ? onUndo : null;
+    const text = document.createElement("span");
+    text.textContent = String(message || "").trim() || "元に戻せます。";
+
+    const undoButton = document.createElement("button");
+    undoButton.type = "button";
+    undoButton.className = "secondary workspace-link-undo-button";
+    undoButton.textContent = "元に戻す";
+    undoButton.addEventListener("click", () => {
+      const action = promptUndoAction;
+      clearPromptUndoNotice();
+      if (typeof action === "function") action();
+    });
+
+    promptUndo.appendChild(text);
+    promptUndo.appendChild(undoButton);
+    promptUndo.classList.remove("hidden");
+
+    promptUndoTimer = window.setTimeout(() => {
+      clearPromptUndoNotice();
+    }, PROMPT_UNDO_TTL_MS);
+  }
+
+  function setPromptOptimizeButtonLoading(loading) {
+    if (!optimizePromptButton) return;
+    optimizePromptButton.disabled = Boolean(loading);
+    optimizePromptButton.textContent = loading ? "最適化中..." : "AIで最適化";
+  }
+
+  function renderPromptDiffList(container, items) {
+    if (!(container instanceof HTMLElement)) return;
+    container.innerHTML = "";
+    normalizePromptOptimizeList(items).forEach((item) => {
+      const li = document.createElement("li");
+      li.textContent = item;
+      container.appendChild(li);
+    });
+  }
+
+  function handlePromptDiffEscape(event) {
+    if (!event || event.key !== "Escape") return;
+    if (promptOptimizePreview) {
+      event.preventDefault();
+      closePromptOptimizePreview();
+    }
+  }
+
+  function setPromptDiffVisibility(visible) {
+    if (promptDiffBackdrop) {
+      promptDiffBackdrop.hidden = !visible;
+      promptDiffBackdrop.classList.toggle("hidden", !visible);
+    }
+    if (promptDiffModal) {
+      promptDiffModal.hidden = !visible;
+      promptDiffModal.classList.toggle("hidden", !visible);
+    }
+    if (visible && !promptDiffEscapeListenerBound) {
+      document.addEventListener("keydown", handlePromptDiffEscape, true);
+      promptDiffEscapeListenerBound = true;
+      return;
+    }
+    if (!visible && promptDiffEscapeListenerBound) {
+      document.removeEventListener("keydown", handlePromptDiffEscape, true);
+      promptDiffEscapeListenerBound = false;
+    }
+  }
+
+  function closePromptOptimizePreview(options = {}) {
+    const keepStatus = Boolean(options.keepStatus);
+    promptOptimizePreview = null;
+    setPromptDiffVisibility(false);
+    if (!keepStatus && promptEditor) {
+      updatePromptMeta(promptEditor.value, "自動保存待機中。");
+    }
+  }
+
+  function openPromptOptimizePreview(preview) {
+    if (!isObject(preview)) return;
+    promptOptimizePreview = preview;
+    if (promptDiffGoal) {
+      const goalText = normalizeText(preview.goal || GOAL_FALLBACK, 240);
+      promptDiffGoal.textContent = `抽出した目的: ${goalText}`;
+    }
+    if (promptDiffBefore) {
+      promptDiffBefore.textContent = String(preview.baseText || "");
+    }
+    if (promptDiffAfter) {
+      promptDiffAfter.textContent = String(preview.optimizedText || "");
+    }
+
+    const changeItems = normalizePromptOptimizeList(preview.changes);
+    if (promptDiffChangesWrap) {
+      promptDiffChangesWrap.classList.toggle("hidden", changeItems.length <= 0);
+    }
+    renderPromptDiffList(promptDiffChanges, changeItems);
+
+    const needsConfirmation = normalizePromptOptimizeList(preview.needsConfirmation);
+    if (promptDiffConfirmWrap) {
+      promptDiffConfirmWrap.classList.toggle("hidden", needsConfirmation.length <= 0);
+    }
+    renderPromptDiffList(promptDiffConfirm, needsConfirmation);
+
+    setPromptDiffVisibility(true);
+    if (promptDiffApplyButton) promptDiffApplyButton.focus();
+  }
+
+  async function requestPromptOptimization(payload) {
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), PROMPT_OPTIMIZE_TIMEOUT_MS);
+    try {
+      const res = await fetch(WORKSPACE_PROMPT_OPTIMIZE_ENDPOINT, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+        signal: controller.signal,
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(String(body?.detail || `status=${res.status}`));
+      }
+      if (!isObject(body)) {
+        throw new Error("AI response is invalid.");
+      }
+      return body;
+    } finally {
+      window.clearTimeout(timeout);
+    }
+  }
+
+  function applyPromptOptimizePreview() {
+    if (!promptEditor || !isObject(promptOptimizePreview)) return false;
+    const preview = promptOptimizePreview;
+    if (String(preview.key || "") !== String(activePromptKey || "")) {
+      showToast("編集中の対象が変わったため、最適化結果を適用できません。", "error");
+      closePromptOptimizePreview();
+      return false;
+    }
+
+    const beforeText = String(promptEditor.value || "");
+    const optimizedText = String(preview.optimizedText || "");
+    if (!optimizedText.trim()) {
+      showToast("最適化結果が空です。", "error");
+      return false;
+    }
+
+    promptEditor.value = optimizedText;
+    const saved = savePromptTextForKey(activePromptKey, optimizedText);
+    if (!saved) {
+      promptEditor.value = beforeText;
+      updatePromptMeta(beforeText, "保存できませんでした（ストレージ利用不可）。");
+      showToast("最適化結果を保存できませんでした。", "error");
+      return false;
+    }
+
+    updatePromptMeta(optimizedText, "最適化を適用しました。");
+    closePromptOptimizePreview({ keepStatus: true });
+    showToast("最適化を適用しました。", "success");
+
+    const snapshot = {
+      key: activePromptKey,
+      context: { ...activePromptContext },
+      text: beforeText,
+    };
+    showPromptUndoNotice("最適化の適用を取り消せます。", () => {
+      const safeKey = String(snapshot.key || "").trim();
+      if (!isValidPromptKey(safeKey)) return;
+      if (safeKey !== activePromptKey) {
+        savePromptTextForKey(activePromptKey, String(promptEditor.value || ""));
+        setActivePrompt(safeKey, isObject(snapshot.context) ? snapshot.context : {});
+      }
+      promptEditor.value = String(snapshot.text || "");
+      const ok = savePromptTextForKey(safeKey, promptEditor.value);
+      if (ok) {
+        updatePromptMeta(promptEditor.value, "1つ前の状態に戻しました。");
+        showToast("1つ前の状態に戻しました。", "success");
+      } else {
+        updatePromptMeta(promptEditor.value, "保存できませんでした（ストレージ利用不可）。");
+        showToast("元に戻せませんでした。", "error");
+      }
+    });
+    return true;
+  }
+
+  async function optimizeActivePrompt() {
+    if (!promptEditor || promptOptimizeInFlight) return;
+    const baseText = String(promptEditor.value || "");
+    if (!baseText.trim()) {
+      showToast("最適化するプロンプトが空です。", "error");
+      return;
+    }
+
+    const goalHint = extractGoalFromPromptText(baseText);
+    const requestId = promptOptimizeRequestId + 1;
+    promptOptimizeRequestId = requestId;
+    promptOptimizeInFlight = true;
+    setPromptOptimizeButtonLoading(true);
+    updatePromptMeta(baseText, "AI最適化を実行中...");
+
+    try {
+      const response = await requestPromptOptimization({
+        text: baseText,
+        goal: goalHint.goal || GOAL_FALLBACK,
+        locale: "ja-JP",
+        stylePreset: "goal-first",
+      });
+      if (requestId !== promptOptimizeRequestId) return;
+      const optimizedText = String(response.optimizedPrompt || "");
+      if (!optimizedText.trim()) {
+        throw new Error("最適化結果が空です。");
+      }
+      if (optimizedText === baseText) {
+        updatePromptMeta(baseText, "変更はありませんでした。");
+        showToast("変更はありませんでした。", "success");
+        return;
+      }
+      openPromptOptimizePreview({
+        requestId,
+        key: activePromptKey,
+        context: { ...activePromptContext },
+        goal: String(response.goal || goalHint.goal || GOAL_FALLBACK),
+        baseText,
+        optimizedText,
+        changes: normalizePromptOptimizeList(response.changes),
+        assumptions: normalizePromptOptimizeList(response.assumptions),
+        risks: normalizePromptOptimizeList(response.risks),
+        needsConfirmation: normalizePromptOptimizeList([
+          ...normalizePromptOptimizeList(response.needsConfirmation),
+          ...normalizePromptOptimizeList(response.risks),
+        ]),
+      });
+      updatePromptMeta(baseText, "最適化結果を確認してください。");
+    } catch (error) {
+      const message = String(error && error.message ? error.message : "最適化に失敗しました。");
+      updatePromptMeta(baseText, "最適化に失敗しました。");
+      showToast(message, "error");
+    } finally {
+      if (requestId === promptOptimizeRequestId) {
+        promptOptimizeInFlight = false;
+        setPromptOptimizeButtonLoading(false);
+      }
+    }
+  }
+
   function updatePinnedCountMeta(total, totalGroups = 1) {
     if (!pinnedCount) return;
     const safeTotal = Number.isFinite(total) ? Math.max(0, total) : 0;
@@ -2553,6 +2899,8 @@
     promptEditor.value = initialText;
     updatePromptMeta(initialText, "自動保存待機中。");
     renderPromptFronts();
+    setPromptOptimizeButtonLoading(false);
+    setPromptDiffVisibility(false);
 
     let saveTimer = null;
     promptEditor.addEventListener("input", () => {
@@ -2579,9 +2927,46 @@
       });
     }
 
+    if (optimizePromptButton) {
+      optimizePromptButton.addEventListener("click", () => {
+        void optimizeActivePrompt();
+      });
+    }
+
     if (copyHandoffButton) {
       copyHandoffButton.addEventListener("click", () => {
         void copyHandoffSetForKey(activePromptKey, activePromptContext);
+      });
+    }
+
+    if (promptDiffCancelButton) {
+      promptDiffCancelButton.addEventListener("click", () => {
+        closePromptOptimizePreview();
+      });
+    }
+
+    if (promptDiffBackdrop) {
+      promptDiffBackdrop.addEventListener("click", () => {
+        closePromptOptimizePreview();
+      });
+    }
+
+    if (promptDiffApplyButton) {
+      promptDiffApplyButton.addEventListener("click", () => {
+        if (!isObject(promptOptimizePreview)) return;
+        const needsConfirmation = normalizePromptOptimizeList(promptOptimizePreview.needsConfirmation);
+        if (needsConfirmation.length > 0) {
+          showToastConfirmDialog("確認項目があります。最適化結果を適用しますか？", {
+            confirmText: "適用する",
+            cancelText: "キャンセル",
+            type: "error",
+            onConfirm: () => {
+              applyPromptOptimizePreview();
+            },
+          });
+          return;
+        }
+        applyPromptOptimizePreview();
       });
     }
   }

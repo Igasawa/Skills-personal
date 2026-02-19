@@ -243,12 +243,33 @@
     });
     return rows.map((row, index) => {
       const action = String(row.action || "").trim();
-    const actionLabel = TEMPLATE_STEP_ACTION_LABELS[action] || action || "(未設定)";
-      const title = String(row.title || "").trim() || defaultTitleForStepAction(action, `Task ${index + 1}`);
+      const actionLabel = TEMPLATE_STEP_ACTION_LABELS[action] || action || "(未設定)";
+      const title = String(row.title || "").trim() || defaultTitleForStepAction(action, `手順${index + 1}`);
+      const stepType = String(row.type || 'manual').trim() || 'manual';
+      const trigger = String(row.trigger || 'manual').trim() || 'manual';
+      const typeLabel =
+        stepType === "browser" ? "Browser" : stepType === "agent" ? "Agent" : "手動";
+      const triggerLabel =
+        trigger === "schedule"
+          ? "スケジュール"
+          : trigger === "webhook"
+            ? "Webhook"
+            : trigger === "after_step"
+              ? "前手順完了後"
+              : "手動実行";
       const autoRun = normalizeTemplateStepAutoRun(row.auto_run);
       const timer = autoRun ? normalizeTemplateStepTimerForAutoRun(row.timer_minutes) : null;
-      const mode = autoRun ? `auto ${timer}m` : "manual";
-      return `${index + 1}. ${title} / ${actionLabel} / ${mode}`;
+      const mode = autoRun ? `自動 ${timer}分` : "手動";
+      const suffix = [];
+      if (stepType === "browser" && String(row.target_url || "").trim()) {
+        suffix.push(`URL: ${String(row.target_url || "").trim()}`);
+      }
+      if (stepType === "agent" && String(row.agent_prompt || "").trim()) {
+        const promptPreview = String(row.agent_prompt || "").trim().slice(0, 40);
+        suffix.push(`Prompt: ${promptPreview}${promptPreview.length >= 40 ? "..." : ""}`);
+      }
+      const suffixText = suffix.length ? ` / ${suffix.join(" / ")}` : "";
+      return `${index + 1}. ${title} / ${actionLabel} / ${typeLabel} / ${triggerLabel} / ${mode}${suffixText}`;
     });
   }
 
@@ -562,6 +583,7 @@
       const cardEl = document.createElement("div");
       cardEl.className = "wizard-step";
       cardEl.dataset.genericStepRow = "1";
+      const stepType = String(step.type || 'manual').trim() || 'manual';
       const headEl = document.createElement("div");
       headEl.className = "step-head";
       const numEl = document.createElement("span");
@@ -569,10 +591,11 @@
       numEl.textContent = String(orderedBlockKeys.length + index + 1);
       const titleEl = document.createElement("span");
       titleEl.className = "step-title";
-      titleEl.textContent = String(step.title || "").trim() || `Task ${index + 1}`;
+      titleEl.textContent = String(step.title || "").trim() || `手順${index + 1}`;
       const statusEl = document.createElement("span");
       statusEl.className = "step-status pending";
-      statusEl.textContent = "手動";
+      statusEl.textContent =
+        stepType === "browser" ? "Browser" : stepType === "agent" ? "Agent" : "手動";
       headEl.appendChild(numEl);
       headEl.appendChild(titleEl);
       headEl.appendChild(statusEl);
@@ -580,7 +603,19 @@
       actionsEl.className = "step-actions";
       const noteEl = document.createElement("span");
       noteEl.className = "muted";
-      noteEl.textContent = "この手順は手動タスクです。";
+      if (stepType === "browser") {
+        const targetUrl = String(step.target_url || "").trim();
+        noteEl.textContent = targetUrl
+          ? `Browser手順: ${targetUrl}`
+          : "この手順はBrowserタスクです。";
+      } else if (stepType === "agent") {
+        const prompt = String(step.agent_prompt || "").trim();
+        noteEl.textContent = prompt
+          ? `Agent手順: ${prompt.slice(0, 60)}${prompt.length > 60 ? "..." : ""}`
+          : "この手順はAgentタスクです。";
+      } else {
+        noteEl.textContent = "この手順は手動タスクです。";
+      }
       actionsEl.appendChild(noteEl);
       cardEl.appendChild(headEl);
       cardEl.appendChild(actionsEl);
@@ -747,6 +782,10 @@
           id: generateTemplateStepId(),
           title: "",
           action,
+          type: 'manual',
+          trigger: 'manual',
+          target_url: "",
+          agent_prompt: "",
           auto_run: false,
           timer_minutes: null,
           execution_log: [],
