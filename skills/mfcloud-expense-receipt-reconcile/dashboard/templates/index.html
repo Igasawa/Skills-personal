@@ -105,52 +105,6 @@
               <span class="muted">各サイトのログインとMF連携の再取得をまとめて実行します。</span>
             </div>
           </div>
-          
-          <div class="scheduler-panel" id="scheduler-panel" data-scheduler-card-id="workflow-status" data-scheduler-action-key="preflight" hidden>
-            <div class="scheduler-head">
-              <h3>タイマー自動実行</h3>
-              <label
-                class="inline-check scheduler-toggle"
-                data-tooltip="有効時のみ、タイマー自動実行の保存内容が実行対象になります。"
-              >
-                有効
-                <input type="checkbox" id="scheduler-toggle" />
-              </label>
-            </div>
-            <div class="scheduler-grid">
-              <label data-tooltip="実行対象日。指定日付にタイマーは起動します。">
-                実行日
-                <input type="date" id="scheduler-run-date" />
-              </label>
-              <label data-tooltip="実行時刻。指定時間に1回目の実行を開始します。">
-                実行時刻
-                <input type="time" id="scheduler-run-time" value="09:00" />
-              </label>
-<label data-tooltip="Windows起動時やサービス停止時など、未実行時の振る舞いを指定します。">
-                取りこぼし補完
-                <select id="scheduler-catch-up">
-                  <option value="run_on_startup">次回起動時に実行</option>
-                  <option value="skip">スキップして無効化</option>
-                </select>
-              </label>
-              <label data-tooltip="実行を1回のみ、毎日、毎週、毎月で繰り返すかを設定します。">
-                繰り返し
-                <select id="scheduler-recurrence">
-                  <option value="once">1回だけ</option>
-                  <option value="daily">毎日</option>
-                  <option value="weekly">毎週</option>
-                  <option value="monthly">毎月（同日）</option>
-                </select>
-              </label>
-
-
-            </div>
-            <div class="scheduler-actions">
-              <button type="button" class="secondary" id="scheduler-refresh">状態更新</button>
-              <button type="button" class="primary" id="scheduler-save">設定を保存</button>
-              <span class="muted" id="scheduler-summary">未設定</span>
-            </div>
-          </div>
         </div>
         <div class="wizard-steps">
           <div id="step-amazon-task" class="wizard-step wizard-task" data-task-id="amazon">
@@ -307,6 +261,5 @@
     <div id="toast" class="toast" aria-live="polite"></div>
     <script src="/static/js/common.js"></script>
     <script src="/static/js/index.js"></script>
-    <script src="/static/js/scheduler.js"></script>
   </body>
 </html>

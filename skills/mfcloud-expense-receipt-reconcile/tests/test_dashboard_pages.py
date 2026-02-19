@@ -136,18 +136,18 @@ def test_index_page_shows_manual_archive_button(monkeypatch: pytest.MonkeyPatch,
     assert 'data-provider-source-summary' in res.text
     assert 'data-provider-source-setup-guide' in res.text
     assert "/workspace" in res.text
-    assert "\u672a\u5b9f\u884c" in res.text
-    assert 'id="scheduler-panel"' in res.text
-    assert 'id="scheduler-toggle"' in res.text
-    assert 'id="scheduler-run-date"' in res.text
-    assert 'id="scheduler-run-time"' in res.text
-    assert 'id="scheduler-catch-up"' in res.text
-    assert 'id="scheduler-recurrence"' in res.text
-    assert "data-scheduler-card-id" in res.text
-    assert "data-scheduler-action-key" in res.text
-    assert 'id="scheduler-refresh"' in res.text
-    assert 'id="scheduler-save"' in res.text
-    assert "/static/js/scheduler.js" in res.text
+    assert 'class="step-status"' in res.text
+    assert 'id="scheduler-panel"' not in res.text
+    assert 'id="scheduler-toggle"' not in res.text
+    assert 'id="scheduler-run-date"' not in res.text
+    assert 'id="scheduler-run-time"' not in res.text
+    assert 'id="scheduler-catch-up"' not in res.text
+    assert 'id="scheduler-recurrence"' not in res.text
+    assert "data-scheduler-card-id" not in res.text
+    assert "data-scheduler-action-key" not in res.text
+    assert 'id="scheduler-refresh"' not in res.text
+    assert 'id="scheduler-save"' not in res.text
+    assert "/static/js/scheduler.js" not in res.text
 
     match = re.search(r"data-sidebar-links='(.*?)'", res.text)
     assert match is not None
