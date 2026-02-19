@@ -1,6 +1,7 @@
 (function () {
   const Common = window.DashboardCommon || {};
   const showToast = Common.showToast || (() => {});
+  const sendAiChatMessage = typeof Common.sendAiChatMessage === "function" ? Common.sendAiChatMessage : null;
 
   const STORAGE_LINKS_KEY = "mf-dashboard-workspace-links-v1";
   const STORAGE_PROMPT_LEGACY_KEY = "mf-dashboard-workspace-prompt-v1";
@@ -720,12 +721,10 @@
     renderPromptFrontByKey(activePromptKey);
   }
 
-  async function copyPromptForKey(key, context = {}) {
+  async function sendPromptForKey(key, context = {}) {
     const safeKey = String(key || "").trim();
     if (!isValidPromptKey(safeKey)) return;
 
-    // Prefer the current editor content when it's the active prompt, so users
-    // don't get an older auto-saved version due to debounce timing.
     const text =
       promptEditor && safeKey === activePromptKey
         ? String(promptEditor.value || "")
@@ -734,9 +733,12 @@
       showToast("プロンプトが空です。", "error");
       return;
     }
-    const ok = await copyToClipboard(text);
-    if (ok) showToast("プロンプトをコピーしました。", "success");
-    else showToast("プロンプトのコピーに失敗しました。", "error");
+    if (!sendAiChatMessage) {
+      showToast("AIチャット送信機能を初期化できませんでした。", "error");
+      return;
+    }
+    const ok = await sendAiChatMessage(text);
+    if (ok) showToast("プロンプトをAIチャットへ送信しました。", "success");
   }
 
   async function copyHandoffSetForKey(key, context = {}) {
@@ -2255,9 +2257,9 @@
     const copyPromptButton = document.createElement("button");
     copyPromptButton.type = "button";
     copyPromptButton.className = "secondary workspace-copy-prompt";
-    copyPromptButton.textContent = "プロンプトをコピー";
+    copyPromptButton.textContent = "プロンプトを送信";
     copyPromptButton.addEventListener("click", () => {
-      void copyPromptForKey(promptKey, link);
+      void sendPromptForKey(promptKey, link);
     });
 
     const editPromptButton = document.createElement("button");
@@ -2453,7 +2455,7 @@
     document.querySelectorAll(".workspace-link-list-static .workspace-copy-prompt[data-prompt-key]").forEach((button) => {
       button.addEventListener("click", () => {
         const key = button.getAttribute("data-prompt-key") || "";
-        void copyPromptForKey(key, resolvePromptContextFromButton(button));
+        void sendPromptForKey(key, resolvePromptContextFromButton(button));
       });
     });
 

@@ -34,6 +34,7 @@
   const SIDEBAR_BREAKPOINT_TABLET = 960;
   let currentThemeSelection = THEME_SYSTEM;
   let inMemoryAiChatMessages = [];
+  let aiChatUi = null;
 
   function showToast(message, type = "info") {
     if (!toastEl || !message) return;
@@ -997,18 +998,19 @@
     return context;
   }
 
-  async function sendAiChat(ui) {
-    if (!ui || ui.pending) return;
-    const text = String(ui.input.value || "").trim();
-    if (!text) return;
+  async function sendAiChat(ui, externalText = null) {
+    if (!ui || ui.pending) return false;
+    const hasExternalText = typeof externalText === "string";
+    const text = hasExternalText ? String(externalText || "").trim() : String(ui.input.value || "").trim();
+    if (!text) return false;
     if (!ui.ready) {
       showToast("AI APIが利用できません。設定を確認してください。", "error");
-      return;
+      return false;
     }
 
     ui.pending = true;
     ui.messages = pushAiChatMessage(ui.messages, "user", text);
-    ui.input.value = "";
+    if (!hasExternalText) ui.input.value = "";
     renderAiChatMessages(ui);
     setAiChatStatus(ui, "回答を生成中...", "loading");
     setAiChatFormEnabled(ui, false);
@@ -1036,9 +1038,11 @@
       ui.messages = pushAiChatMessage(ui.messages, "assistant", reply.content);
       renderAiChatMessages(ui);
       setAiChatStatus(ui, `接続中: ${String(payload?.model || "gemini")}`, "success");
+      return true;
     } catch (error) {
       setAiChatStatus(ui, "送信に失敗しました。", "error");
       showToast(toFriendlyMessage(error), "error");
+      return false;
     } finally {
       clearTimeout(timeout);
       ui.pending = false;
@@ -1047,11 +1051,36 @@
     }
   }
 
+  async function sendAiChatMessage(text) {
+    const message = String(text || "").trim();
+    if (!message) {
+      showToast("送信するメッセージが空です。", "error");
+      return false;
+    }
+    if (message.length > 4000) {
+      showToast("メッセージが長すぎます（最大4000文字）。", "error");
+      return false;
+    }
+    if (!aiChatUi) {
+      await initAiChatSidebar();
+    }
+    if (!aiChatUi) {
+      showToast("AIチャットを初期化できませんでした。", "error");
+      return false;
+    }
+    if (aiChatUi.pending) {
+      showToast("AIチャットの応答待ちです。完了後に再実行してください。", "error");
+      return false;
+    }
+    return sendAiChat(aiChatUi, message);
+  }
+
   async function initAiChatSidebar() {
     const shell = document.querySelector(".dashboard-shell");
     if (!shell || shell.querySelector(".dashboard-ai-chat")) return;
 
     const ui = buildAiChatSidebar();
+    aiChatUi = ui;
     shell.appendChild(ui.root);
     renderAiChatMessages(ui);
 
@@ -1120,6 +1149,7 @@
     initAiChatSidebar,
     initThemeToggle,
     normalizeSearchText,
+    sendAiChatMessage,
     showToast,
     storeTheme,
     toFriendlyMessage,
