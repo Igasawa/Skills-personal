@@ -8,13 +8,16 @@
   const STORAGE_PROMPT_ACTIVE_KEY = "mf-dashboard-workspace-prompt-active-v1";
   const STORAGE_LINK_NOTES_KEY = "mf-dashboard-workspace-link-notes-v1";
   const STORAGE_LINK_PROFILES_KEY = "mf-dashboard-workspace-link-profiles-v1";
+  const STORAGE_PINNED_LINKS_KEY = "mf-dashboard-workspace-pinned-links-v1";
   const MAX_LINKS = 100;
+  const MAX_PINNED_LINKS = 6;
   const MAX_LINK_NOTE_CHARS = 4000;
   const LINK_NOTE_SAVE_DEBOUNCE_MS = 300;
   const MAX_PROFILE_OWNER_CHARS = 80;
   const MAX_PROFILE_AGENT_CHARS = 32;
   const REVIEW_STALE_DAYS = 45;
   const PROFILE_SAVE_DEBOUNCE_MS = 300;
+  const LINK_UNDO_TTL_MS = 8000;
   const PROMPT_KEY_MF_EXPENSE_REPORTS = "mf_expense_reports";
   const LINK_PROFILE_AGENT_LABELS = Object.freeze({
     codex: "Codex",
@@ -29,28 +32,28 @@
   let workspaceSyncInFlight = false;
   let workspaceStateRevision = 0;
   const LEGACY_DEFAULT_PROMPT = [
-    "Goal:",
-    "- Complete monthly MF expense submission safely and quickly.",
+    "目的:",
+    "- MF経費の月次処理を安全かつ迅速に完了する。",
     "",
-    "Month:",
+    "対象月:",
     "- {month}",
     "",
-    "Required URL:",
+    "必須URL:",
     "- https://expense.moneyforward.com/expense_reports",
     "",
-    "Do next:",
-    "1. Review current status and pending tasks.",
-    "2. Import missing receipts and apply exclusions only when needed.",
-    "3. Run reconciliation and summarize the result.",
+    "実施手順:",
+    "1. 現在の進捗と未完了タスクを確認する。",
+    "2. 不足領収書を取り込み、必要な除外のみを適用する。",
+    "3. 照合処理を実行し、結果を要約する。",
     "",
-    "Output format:",
-    "- Actions taken",
-    "- Summary (done/blocked)",
-    "- Next action",
+    "出力フォーマット:",
+    "- 実施内容",
+    "- 結果要約（完了/保留）",
+    "- 次アクション",
     "",
-    "References:",
-    "- Reports path: {reports_path}",
-    "- Notes: {notes}",
+    "参照:",
+    "- レポートパス: {reports_path}",
+    "- メモ: {notes}",
   ].join("\n");
   const DEFAULT_PROMPT = [
     "目的:",
@@ -87,6 +90,10 @@
   const clearLinksButton = document.getElementById("workspace-clear-links");
   const customLinksList = document.getElementById("workspace-custom-links");
   const customLinksEmpty = document.getElementById("workspace-custom-links-empty");
+  const pinnedLinksList = document.getElementById("workspace-pinned-links");
+  const pinnedLinksEmpty = document.getElementById("workspace-pinned-links-empty");
+  const pinnedCount = document.getElementById("workspace-pinned-count");
+  const linkUndo = document.getElementById("workspace-link-undo");
 
   const promptEditor = document.getElementById("workspace-prompt-editor");
   const promptStatus = document.getElementById("workspace-prompt-status");
@@ -94,6 +101,8 @@
   const savePromptButton = document.getElementById("workspace-save-prompt");
   const copyHandoffButton = document.getElementById("workspace-copy-handoff");
   const promptActiveLabel = document.getElementById("workspace-prompt-active-label");
+  let linkUndoTimer = null;
+  let linkUndoAction = null;
 
   function isObject(value) {
     return value !== null && typeof value === "object" && !Array.isArray(value);
@@ -321,6 +330,7 @@
   function collectLocalWorkspaceState() {
     return {
       links: readCustomLinks(),
+      pinned_links: readPinnedLinks(),
       prompts: readPromptMap(),
       link_notes: readLinkNoteMap(),
       link_profiles: readLinkProfileMap(),
@@ -331,11 +341,13 @@
   function hasMeaningfulWorkspaceState(state) {
     if (!isObject(state)) return false;
     const links = Array.isArray(state.links) ? state.links : [];
+    const pinnedLinks = Array.isArray(state.pinned_links) ? state.pinned_links : [];
     const prompts = isObject(state.prompts) ? state.prompts : {};
     const linkNotes = isObject(state.link_notes) ? state.link_notes : {};
     const linkProfiles = isObject(state.link_profiles) ? state.link_profiles : {};
     return (
       links.length > 0 ||
+      pinnedLinks.length > 0 ||
       Object.keys(prompts).length > 0 ||
       Object.keys(linkNotes).length > 0 ||
       Object.keys(linkProfiles).length > 0
@@ -344,14 +356,17 @@
 
   function applyWorkspaceStateToLocalStorage(state) {
     const links = Array.isArray(state?.links) ? state.links : [];
+    const pinnedLinks = Array.isArray(state?.pinned_links) ? state.pinned_links : [];
     const prompts = isObject(state?.prompts) ? state.prompts : {};
     const linkNotes = isObject(state?.link_notes) ? state.link_notes : {};
     const linkProfiles = isObject(state?.link_profiles) ? state.link_profiles : {};
     const activePromptKey = isValidPromptKey(state?.active_prompt_key)
       ? String(state.active_prompt_key)
       : PROMPT_KEY_MF_EXPENSE_REPORTS;
+    const normalized = normalizeLinkPools(links, pinnedLinks);
     try {
-      window.localStorage.setItem(STORAGE_LINKS_KEY, JSON.stringify(links));
+      window.localStorage.setItem(STORAGE_LINKS_KEY, JSON.stringify(normalized.links));
+      window.localStorage.setItem(STORAGE_PINNED_LINKS_KEY, JSON.stringify(normalized.pinned_links));
       window.localStorage.setItem(STORAGE_PROMPTS_KEY, JSON.stringify(prompts));
       window.localStorage.setItem(STORAGE_LINK_NOTES_KEY, JSON.stringify(linkNotes));
       window.localStorage.setItem(STORAGE_LINK_PROFILES_KEY, JSON.stringify(linkProfiles));
@@ -374,6 +389,7 @@
       if (!isObject(data)) return null;
       return {
         links: Array.isArray(data.links) ? data.links : [],
+        pinned_links: Array.isArray(data.pinned_links) ? data.pinned_links : [],
         prompts: isObject(data.prompts) ? data.prompts : {},
         link_notes: isObject(data.link_notes) ? data.link_notes : {},
         link_profiles: isObject(data.link_profiles) ? data.link_profiles : {},
@@ -406,6 +422,7 @@
       if (isObject(data)) {
         applyWorkspaceStateToLocalStorage({
           links: Array.isArray(data.links) ? data.links : [],
+          pinned_links: Array.isArray(data.pinned_links) ? data.pinned_links : [],
           prompts: isObject(data.prompts) ? data.prompts : {},
           link_notes: isObject(data.link_notes) ? data.link_notes : {},
           link_profiles: isObject(data.link_profiles) ? data.link_profiles : {},
@@ -534,7 +551,7 @@
     if (text === PROMPT_KEY_MF_EXPENSE_REPORTS) return "MF経費精算ページ";
     const url = resolvePromptUrl(text, context);
     if (url) {
-      const links = readCustomLinks();
+      const links = [...readPinnedLinks(), ...readCustomLinks()];
       const hit = links.find((item) => item && item.url === url);
       if (hit && hit.label) return String(hit.label);
       try {
@@ -756,49 +773,76 @@
     promptEditor.focus();
   }
 
+  function sanitizeLinkList(links, limit) {
+    if (!Array.isArray(links)) return [];
+    const out = [];
+    const seen = new Set();
+    links.forEach((item) => {
+      if (!isObject(item)) return;
+      const url = normalizeUrl(item.url);
+      if (!url) return;
+      const key = String(url).toLowerCase();
+      if (seen.has(key)) return;
+      seen.add(key);
+      const fallback = new URL(url).hostname;
+      const label = normalizeText(item.label || fallback, 80) || fallback;
+      out.push({ label, url });
+    });
+    return out.slice(0, Math.max(0, Number(limit) || 0));
+  }
+
+  function normalizeLinkPools(links, pinnedLinks) {
+    const safePinnedLinks = sanitizeLinkList(pinnedLinks, MAX_PINNED_LINKS);
+    const pinnedKeys = new Set(safePinnedLinks.map((item) => String(item.url || "").toLowerCase()));
+    const safeLinks = sanitizeLinkList(links, MAX_LINKS).filter(
+      (item) => !pinnedKeys.has(String(item.url || "").toLowerCase())
+    );
+    return { links: safeLinks, pinned_links: safePinnedLinks };
+  }
+
   function readCustomLinks() {
     try {
       const raw = window.localStorage.getItem(STORAGE_LINKS_KEY);
       if (!raw) return [];
       const parsed = JSON.parse(raw);
-      if (!Array.isArray(parsed)) return [];
-      return parsed
-        .map((item) => {
-          if (!isObject(item)) return null;
-          const url = normalizeUrl(item.url);
-          if (!url) return null;
-          const fallback = new URL(url).hostname;
-          const label = normalizeText(item.label || fallback, 80) || fallback;
-          return { label, url };
-        })
-        .filter(Boolean)
-        .slice(0, MAX_LINKS);
+      const normalized = normalizeLinkPools(parsed, readPinnedLinks());
+      return normalized.links;
     } catch {
       return [];
     }
   }
 
-  function saveCustomLinks(links) {
-    const safeLinks = Array.isArray(links)
-      ? links
-          .map((item) => {
-            if (!isObject(item)) return null;
-            const url = normalizeUrl(item.url);
-            if (!url) return null;
-            const fallback = new URL(url).hostname;
-            const label = normalizeText(item.label || fallback, 80) || fallback;
-            return { label, url };
-          })
-          .filter(Boolean)
-          .slice(0, MAX_LINKS)
-      : [];
+  function readPinnedLinks() {
     try {
-      window.localStorage.setItem(STORAGE_LINKS_KEY, JSON.stringify(safeLinks));
-      scheduleWorkspaceSync();
-      return true;
+      const raw = window.localStorage.getItem(STORAGE_PINNED_LINKS_KEY);
+      if (!raw) return [];
+      const parsed = JSON.parse(raw);
+      return sanitizeLinkList(parsed, MAX_PINNED_LINKS);
     } catch {
-      return false;
+      return [];
     }
+  }
+
+  function saveLinkPools(nextLinks, nextPinnedLinks) {
+    const normalized = normalizeLinkPools(nextLinks, nextPinnedLinks);
+    try {
+      window.localStorage.setItem(STORAGE_LINKS_KEY, JSON.stringify(normalized.links));
+      window.localStorage.setItem(STORAGE_PINNED_LINKS_KEY, JSON.stringify(normalized.pinned_links));
+      scheduleWorkspaceSync();
+      return normalized;
+    } catch {
+      return null;
+    }
+  }
+
+  function saveCustomLinks(links) {
+    const saved = saveLinkPools(links, readPinnedLinks());
+    return Boolean(saved);
+  }
+
+  function savePinnedLinks(pinnedLinks) {
+    const saved = saveLinkPools(readCustomLinks(), pinnedLinks);
+    return Boolean(saved);
   }
 
   async function copyToClipboard(text) {
@@ -998,9 +1042,224 @@
     });
   }
 
-  function createLinkNode(link, index, links) {
+  function clearLinkUndoNotice() {
+    linkUndoAction = null;
+    if (linkUndoTimer) {
+      window.clearTimeout(linkUndoTimer);
+      linkUndoTimer = null;
+    }
+    if (!linkUndo) return;
+    linkUndo.classList.add("hidden");
+    linkUndo.innerHTML = "";
+  }
+
+  function showLinkUndoNotice(message, onUndo) {
+    if (!linkUndo) return;
+    clearLinkUndoNotice();
+    linkUndoAction = typeof onUndo === "function" ? onUndo : null;
+    const text = document.createElement("span");
+    text.textContent = String(message || "").trim() || "更新しました。";
+
+    const undoButton = document.createElement("button");
+    undoButton.type = "button";
+    undoButton.className = "secondary workspace-link-undo-button";
+    undoButton.textContent = "元に戻す";
+    undoButton.addEventListener("click", () => {
+      const action = linkUndoAction;
+      clearLinkUndoNotice();
+      if (typeof action === "function") action();
+    });
+
+    linkUndo.appendChild(text);
+    linkUndo.appendChild(undoButton);
+    linkUndo.classList.remove("hidden");
+
+    linkUndoTimer = window.setTimeout(() => {
+      clearLinkUndoNotice();
+    }, LINK_UNDO_TTL_MS);
+  }
+
+  function updatePinnedCountMeta(total) {
+    if (!pinnedCount) return;
+    const safeTotal = Number.isFinite(total) ? Math.max(0, total) : 0;
+    pinnedCount.textContent = `固定リンク（追加分）: ${safeTotal} / ${MAX_PINNED_LINKS}`;
+    pinnedCount.classList.toggle("is-limit", safeTotal >= MAX_PINNED_LINKS);
+  }
+
+  function renderLinkLists(links, pinnedLinks) {
+    const normalized = normalizeLinkPools(links, pinnedLinks);
+    renderCustomLinks(normalized.links);
+    renderPinnedLinks(normalized.pinned_links);
+    renderPromptFronts();
+  }
+
+  function promoteCustomLinkByUrl(url) {
+    const normalizedUrl = normalizeUrl(url);
+    if (!normalizedUrl) return;
+    const current = normalizeLinkPools(readCustomLinks(), readPinnedLinks());
+    const fromIndex = current.links.findIndex(
+      (item) => String(item.url || "").toLowerCase() === String(normalizedUrl).toLowerCase()
+    );
+    if (fromIndex < 0) {
+      showToast("追加リンクが見つかりませんでした。", "error");
+      return;
+    }
+    if (current.pinned_links.length >= MAX_PINNED_LINKS) {
+      showToast(`固定リンクは最大 ${MAX_PINNED_LINKS} 件です。`, "error");
+      return;
+    }
+
+    const snapshot = {
+      links: current.links.map((item) => ({ ...item })),
+      pinned_links: current.pinned_links.map((item) => ({ ...item })),
+    };
+
+    const nextLinks = current.links.slice();
+    const [moved] = nextLinks.splice(fromIndex, 1);
+    const nextPinnedLinks = [{ ...moved }, ...current.pinned_links];
+    const saved = saveLinkPools(nextLinks, nextPinnedLinks);
+    if (!saved) {
+      showToast("固定リンクへの移動を保存できませんでした。", "error");
+      return;
+    }
+
+    renderLinkLists(saved.links, saved.pinned_links);
+    showToast("固定リンクへ移動しました。", "success");
+    showLinkUndoNotice("固定リンクに昇格しました。", () => {
+      const restored = saveLinkPools(snapshot.links, snapshot.pinned_links);
+      if (!restored) {
+        showToast("元に戻せませんでした。", "error");
+        return;
+      }
+      renderLinkLists(restored.links, restored.pinned_links);
+      showToast("元に戻しました。", "success");
+    });
+  }
+
+  function demotePinnedLinkByUrl(url, options = {}) {
+    const normalizedUrl = normalizeUrl(url);
+    if (!normalizedUrl) return false;
+    const showFeedback = options.showFeedback !== false;
+    const current = normalizeLinkPools(readCustomLinks(), readPinnedLinks());
+    const fromIndex = current.pinned_links.findIndex(
+      (item) => String(item.url || "").toLowerCase() === String(normalizedUrl).toLowerCase()
+    );
+    if (fromIndex < 0) return false;
+
+    const nextPinnedLinks = current.pinned_links.slice();
+    const [moved] = nextPinnedLinks.splice(fromIndex, 1);
+    const nextLinks = [{ ...moved }, ...current.links];
+    const saved = saveLinkPools(nextLinks, nextPinnedLinks);
+    if (!saved) {
+      if (showFeedback) showToast("固定解除を保存できませんでした。", "error");
+      return false;
+    }
+    clearLinkUndoNotice();
+    renderLinkLists(saved.links, saved.pinned_links);
+    if (showFeedback) showToast("追加リンクへ戻しました。", "success");
+    return true;
+  }
+
+  function bindPinnedLinkDragAndDrop() {
+    if (!pinnedLinksList) return;
+    if (pinnedLinksList.dataset.dragBound === "1") return;
+    pinnedLinksList.dataset.dragBound = "1";
+    let draggingUrl = "";
+
+    const clearDragClasses = () => {
+      pinnedLinksList.querySelectorAll(".workspace-link-item.is-dragging").forEach((node) => {
+        node.classList.remove("is-dragging");
+      });
+      pinnedLinksList.querySelectorAll(".workspace-link-item.is-drop-target").forEach((node) => {
+        node.classList.remove("is-drop-target");
+      });
+    };
+
+    pinnedLinksList.addEventListener("dragstart", (event) => {
+      const target = event.target instanceof Element ? event.target : null;
+      const handle = target ? target.closest("[data-pinned-drag-handle][data-drag-url]") : null;
+      if (!(handle instanceof HTMLElement)) return;
+      draggingUrl = normalizeUrl(handle.dataset.dragUrl || "") || "";
+      if (!draggingUrl) return;
+      const item = handle.closest(".workspace-link-item");
+      if (item) item.classList.add("is-dragging");
+      if (event.dataTransfer) {
+        event.dataTransfer.effectAllowed = "move";
+        try {
+          event.dataTransfer.setData("text/plain", draggingUrl);
+        } catch {
+          // no-op
+        }
+      }
+    });
+
+    pinnedLinksList.addEventListener("dragover", (event) => {
+      if (!draggingUrl) return;
+      const target = event.target instanceof Element ? event.target : null;
+      const item = target ? target.closest(".workspace-link-item.workspace-pinned-item[data-link-url]") : null;
+      if (!(item instanceof HTMLElement)) return;
+      const targetUrl = normalizeUrl(item.dataset.linkUrl || "");
+      if (!targetUrl || targetUrl.toLowerCase() === draggingUrl.toLowerCase()) return;
+      event.preventDefault();
+      clearDragClasses();
+      item.classList.add("is-drop-target");
+      if (event.dataTransfer) event.dataTransfer.dropEffect = "move";
+    });
+
+    pinnedLinksList.addEventListener("drop", (event) => {
+      if (!draggingUrl) return;
+      const target = event.target instanceof Element ? event.target : null;
+      const item = target ? target.closest(".workspace-link-item.workspace-pinned-item[data-link-url]") : null;
+      if (!(item instanceof HTMLElement)) return;
+      event.preventDefault();
+      const targetUrl = normalizeUrl(item.dataset.linkUrl || "");
+      if (!targetUrl || targetUrl.toLowerCase() === draggingUrl.toLowerCase()) {
+        clearDragClasses();
+        draggingUrl = "";
+        return;
+      }
+
+      const current = readPinnedLinks();
+      const fromIndex = current.findIndex(
+        (row) => String(row.url || "").toLowerCase() === String(draggingUrl).toLowerCase()
+      );
+      const toIndexRaw = current.findIndex(
+        (row) => String(row.url || "").toLowerCase() === String(targetUrl).toLowerCase()
+      );
+      if (fromIndex < 0 || toIndexRaw < 0) {
+        clearDragClasses();
+        draggingUrl = "";
+        return;
+      }
+      const next = current.slice();
+      const [moved] = next.splice(fromIndex, 1);
+      const insertIndex = fromIndex < toIndexRaw ? toIndexRaw - 1 : toIndexRaw;
+      next.splice(insertIndex, 0, moved);
+
+      const saved = savePinnedLinks(next);
+      if (!saved) {
+        showToast("固定リンクの並び替えを保存できませんでした。", "error");
+        clearDragClasses();
+        draggingUrl = "";
+        return;
+      }
+      renderPinnedLinks(next);
+      showToast("固定リンクの並び順を更新しました。", "success");
+      clearDragClasses();
+      draggingUrl = "";
+    });
+
+    pinnedLinksList.addEventListener("dragend", () => {
+      clearDragClasses();
+      draggingUrl = "";
+    });
+  }
+
+  function createLinkNode(link, index, links, section = "custom") {
+    const isPinnedSection = section === "pinned";
     const item = document.createElement("li");
-    item.className = "workspace-link-item";
+    item.className = `workspace-link-item${isPinnedSection ? " workspace-pinned-item" : ""}`;
+    item.dataset.linkUrl = String(link.url || "");
 
     const main = document.createElement("div");
     main.className = "workspace-link-main";
@@ -1062,7 +1321,7 @@
     noteEditor.className = "workspace-link-note-editor";
     noteEditor.rows = 3;
     noteEditor.maxLength = MAX_LINK_NOTE_CHARS;
-    noteEditor.placeholder = "このリンクを使う目的";
+    noteEditor.placeholder = "このリンクの目的を記録";
     noteEditor.setAttribute("data-workspace-link-note", "");
     noteEditor.dataset.noteKey = promptKey;
     noteWrap.appendChild(noteLabel);
@@ -1156,7 +1415,7 @@
     const editLinkButton = document.createElement("button");
     editLinkButton.type = "button";
     editLinkButton.className = "secondary workspace-edit-link";
-    editLinkButton.textContent = "名称を編集";
+    editLinkButton.textContent = "リンク名を編集";
     editLinkButton.addEventListener("click", () => {
       const nextLabelRaw = window.prompt("リンク名を編集してください。", String(link.label || ""));
       if (nextLabelRaw === null) return;
@@ -1169,7 +1428,7 @@
 
       const next = links.slice();
       next[index] = { label: nextLabel, url: String(link.url || "") };
-      const linksSaved = saveCustomLinks(next);
+      const linksSaved = isPinnedSection ? savePinnedLinks(next) : saveCustomLinks(next);
       if (!linksSaved) {
         showToast("リンク名を更新できませんでした。", "error");
         return;
@@ -1180,33 +1439,64 @@
         if (promptEditor) updatePromptMeta(String(promptEditor.value || ""), "更新しました。");
       }
 
-      renderCustomLinks(next);
+      if (isPinnedSection) renderPinnedLinks(next);
+      else renderCustomLinks(next);
       showToast("リンク名を更新しました。", "success");
-    });
-
-    const removeButton = document.createElement("button");
-    removeButton.type = "button";
-    removeButton.className = "step-reset";
-    removeButton.textContent = "削除";
-    removeButton.addEventListener("click", () => {
-      const next = links.slice();
-      next.splice(index, 1);
-      const saved = saveCustomLinks(next);
-      if (!saved) {
-        showToast("追加リンクを保存できませんでした。", "error");
-        return;
-      }
-      renderCustomLinks(next);
-      showToast("追加リンクを削除しました。", "success");
     });
 
     actions.appendChild(copyUrlButton);
     actions.appendChild(copyPromptButton);
     actions.appendChild(editPromptButton);
     actions.appendChild(editLinkButton);
-    actions.appendChild(removeButton);
-    details.appendChild(actions);
 
+    if (isPinnedSection) {
+      const unpinButton = document.createElement("button");
+      unpinButton.type = "button";
+      unpinButton.className = "secondary workspace-unpin-link";
+      unpinButton.textContent = "固定解除";
+      unpinButton.addEventListener("click", () => {
+        void demotePinnedLinkByUrl(link.url);
+      });
+      actions.appendChild(unpinButton);
+
+      const dragHandle = document.createElement("button");
+      dragHandle.type = "button";
+      dragHandle.className = "secondary workspace-drag-handle";
+      dragHandle.textContent = "並び替え";
+      dragHandle.setAttribute("data-pinned-drag-handle", "");
+      dragHandle.dataset.dragUrl = String(link.url || "");
+      dragHandle.draggable = true;
+      actions.appendChild(dragHandle);
+    } else {
+      const pinButton = document.createElement("button");
+      pinButton.type = "button";
+      pinButton.className = "secondary workspace-pin-link";
+      pinButton.textContent = "固定化";
+      pinButton.addEventListener("click", () => {
+        void promoteCustomLinkByUrl(link.url);
+      });
+      actions.appendChild(pinButton);
+
+      const removeButton = document.createElement("button");
+      removeButton.type = "button";
+      removeButton.className = "step-reset";
+      removeButton.textContent = "削除";
+      removeButton.addEventListener("click", () => {
+        const next = links.slice();
+        next.splice(index, 1);
+        const saved = saveCustomLinks(next);
+        if (!saved) {
+          showToast("追加リンクを削除できませんでした。", "error");
+          return;
+        }
+        clearLinkUndoNotice();
+        renderCustomLinks(next);
+        showToast("追加リンクを削除しました。", "success");
+      });
+      actions.appendChild(removeButton);
+    }
+
+    details.appendChild(actions);
     item.appendChild(main);
     item.appendChild(details);
     attachLinkDetailsToggle(item, urlToggleButton, false);
@@ -1216,12 +1506,23 @@
   function renderCustomLinks(links) {
     if (!customLinksList || !customLinksEmpty) return;
     customLinksList.innerHTML = "";
-    const safeLinks = Array.isArray(links) ? links : [];
+    const safeLinks = sanitizeLinkList(links, MAX_LINKS);
     safeLinks.forEach((link, index) => {
-      customLinksList.appendChild(createLinkNode(link, index, safeLinks));
+      customLinksList.appendChild(createLinkNode(link, index, safeLinks, "custom"));
     });
     customLinksEmpty.classList.toggle("hidden", safeLinks.length > 0);
-    renderPromptFronts();
+  }
+
+  function renderPinnedLinks(links) {
+    if (!pinnedLinksList || !pinnedLinksEmpty) return;
+    pinnedLinksList.innerHTML = "";
+    const safeLinks = sanitizeLinkList(links, MAX_PINNED_LINKS);
+    safeLinks.forEach((link, index) => {
+      pinnedLinksList.appendChild(createLinkNode(link, index, safeLinks, "pinned"));
+    });
+    pinnedLinksEmpty.classList.toggle("hidden", safeLinks.length > 0);
+    updatePinnedCountMeta(safeLinks.length);
+    bindPinnedLinkDragAndDrop();
   }
 
   function updatePromptMeta(text, statusText) {
@@ -1286,7 +1587,8 @@
 
   function initializeLinks() {
     const links = readCustomLinks();
-    renderCustomLinks(links);
+    const pinnedLinks = readPinnedLinks();
+    renderLinkLists(links, pinnedLinks);
     bindStaticCopyButtons();
     bindLinkNoteEditors(document);
     bindLinkProfileEditors(document);
@@ -1308,7 +1610,10 @@
         const reviewed_on = normalizeReviewedOn(linkReviewedOnInput ? linkReviewedOnInput.value : "");
 
         const current = readCustomLinks();
-        const duplicate = current.some((item) => String(item.url).toLowerCase() === String(url).toLowerCase());
+        const currentPinned = readPinnedLinks();
+        const duplicate = [...current, ...currentPinned].some(
+          (item) => String(item.url).toLowerCase() === String(url).toLowerCase()
+        );
         if (duplicate) {
           showToast("そのURLはすでに追加されています。", "error");
           return;
@@ -1325,7 +1630,8 @@
         if (!saveLinkProfileForKey(buildCustomPromptKey(url), { owner, agent, reviewed_on })) {
           showToast("リンクは保存しましたが、担当情報の保存に失敗しました。", "error");
         }
-        renderCustomLinks(next);
+        clearLinkUndoNotice();
+        renderLinkLists(next, currentPinned);
         linkForm.reset();
         if (linkPurposeInput) linkPurposeInput.value = "";
         if (linkOwnerInput) linkOwnerInput.value = "";
@@ -1338,12 +1644,14 @@
 
     if (clearLinksButton) {
       clearLinksButton.addEventListener("click", () => {
-        const saved = saveCustomLinks([]);
+        const currentPinned = readPinnedLinks();
+        const saved = saveLinkPools([], currentPinned);
         if (!saved) {
           showToast("追加リンクを削除できませんでした。", "error");
           return;
         }
-        renderCustomLinks([]);
+        clearLinkUndoNotice();
+        renderLinkLists(saved.links, saved.pinned_links);
         showToast("追加リンクを全削除しました。", "success");
       });
     }
