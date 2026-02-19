@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import subprocess
 import sys
+from typing import Any
 
 from fastapi import APIRouter
 from services import core
@@ -27,7 +28,13 @@ from .api_runs import register_api_run_routes as register_builtin_api_run_routes
 def create_api_router() -> APIRouter:
     router = APIRouter()
 
-    register_api_folder_endpoints(router=router)
+    def _provider_source_status_for_ym_proxy(year: int, month: int) -> dict[str, Any]:
+        return _provider_source_status_for_ym(year, month)
+
+    register_api_folder_endpoints(
+        router=router,
+        provider_source_status_for_ym=_provider_source_status_for_ym_proxy,
+    )
     register_api_print_endpoints(router=router)
     register_api_run_endpoints(router=router)
     register_api_workflow_endpoints(router=router)

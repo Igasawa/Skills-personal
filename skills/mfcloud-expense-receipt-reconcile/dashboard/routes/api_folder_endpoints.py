@@ -4,6 +4,7 @@ import inspect
 import subprocess
 from datetime import datetime
 from pathlib import Path
+from typing import Any, Callable
 
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
@@ -21,10 +22,13 @@ from .api_helpers import (
     _validate_provider_import_webhook_token,
     _write_folder_shortcut,
 )
-from . import api as _api_routes
 
 
-def register_api_folder_endpoints(router: APIRouter) -> None:
+def register_api_folder_endpoints(
+    router: APIRouter,
+    *,
+    provider_source_status_for_ym: Callable[[int, int], dict[str, Any]],
+) -> None:
     @router.post("/api/folders/{ym}/receipts")
     @router.post("/api/folders/{ym}/receipt")
     @router.post("/api/folders/{ym}/open-receipts")
@@ -155,7 +159,7 @@ def register_api_folder_endpoints(router: APIRouter) -> None:
         year, month = core._split_ym(ym)
         actor = _actor_from_request(request)
 
-        source_status = _api_routes._provider_source_status_for_ym(year, month)
+        source_status = provider_source_status_for_ym(year, month)
         source_path = source_status.get("path") or ""
         if not source_status.get("configured"):
             detail = "Provider source directory is not configured."
