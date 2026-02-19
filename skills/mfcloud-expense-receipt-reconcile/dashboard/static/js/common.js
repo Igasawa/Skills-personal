@@ -842,10 +842,21 @@
         const parsed = JSON.parse(raw);
         const normalized = normalizeAiChatMessages(parsed);
         inMemoryAiChatMessages = normalized;
+        if (!Array.isArray(parsed) || parsed.length !== normalized.length) {
+          try {
+            window.localStorage.setItem(AI_CHAT_STORAGE_KEY, JSON.stringify(normalized));
+          } catch (_error) {
+            // localStorage unavailable: keep in-memory state.
+          }
+        }
         return normalized;
       }
     } catch (_error) {
-      // localStorage unavailable: fall back to in-memory buffer.
+      try {
+        window.localStorage.removeItem(AI_CHAT_STORAGE_KEY);
+      } catch (_removeError) {
+        // localStorage unavailable: fall back to in-memory buffer.
+      }
     }
     return normalizeAiChatMessages(inMemoryAiChatMessages);
   }

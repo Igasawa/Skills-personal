@@ -1293,7 +1293,7 @@
     pinnedGroupsList.innerHTML = "";
     let totalPinned = 0;
     groups.forEach((group, index) => {
-      totalPinned += Number.isArray(group?.links) ? group.links.length : 0;
+      totalPinned += Array.isArray(group?.links) ? group.links.length : 0;
       const node = createPinnedGroupNode(group, index, groups.length);
       if (node) pinnedGroupsList.appendChild(node);
     });
