@@ -1,4 +1,4 @@
-﻿(function () {
+(function () {
   // UI copy is centralized in this file.
   const Common = window.DashboardCommon || {};
   const showToast = Common.showToast || (() => {});
@@ -41,34 +41,34 @@
   // Canonical action list is mirror of API validation (`WORKFLOW_TEMPLATE_ALLOWED_STEP_ACTIONS`)
   // and scheduler action whitelist (`SCHEDULER_ALLOWED_ACTION_KEYS`).
   const TEMPLATE_STEP_ACTIONS = [
-    { value: "preflight", label: "謇矩・・域ｺ門ｙ・・ },
-    { value: "preflight_mf", label: "謇矩・・・F縺ｮ縺ｿ・・ },
-    { value: "amazon_download", label: "謇矩・・・mazon蜿門ｾ暦ｼ・ },
-    { value: "rakuten_download", label: "謇矩・・域･ｽ螟ｩ蜿門ｾ暦ｼ・ },
-    { value: "amazon_print", label: "Amazon髯､螟門愛譁ｭ繝ｻ蜊ｰ蛻ｷ" },
-    { value: "rakuten_print", label: "讌ｽ螟ｩ髯､螟門愛譁ｭ繝ｻ蜊ｰ蛻ｷ" },
-    { value: "provider_ingest", label: "謇矩・・亥・騾壹ヵ繧ｩ繝ｫ繝蜿悶ｊ霎ｼ縺ｿ・・ },
-    { value: "mf_bulk_upload_task", label: "謇矩・・・F荳諡ｬ繧｢繝・・繝ｭ繝ｼ繝会ｼ・ },
+    { value: "preflight", label: "手順0（準備）" },
+    { value: "preflight_mf", label: "手順0（MFのみ）" },
+    { value: "amazon_download", label: "手順1（Amazon取得）" },
+    { value: "rakuten_download", label: "手順2（楽天取得）" },
+    { value: "amazon_print", label: "Amazon除外判断・印刷" },
+    { value: "rakuten_print", label: "楽天除外判断・印刷" },
+    { value: "provider_ingest", label: "手順3（共通フォルダ取り込み）" },
+    { value: "mf_bulk_upload_task", label: "手順4（MF一括アップロード）" },
     { value: "mf_reconcile", label: "MF遯∝粋" },
-    { value: "month_close", label: "謇矩・・域怦谺｡繧ｯ繝ｭ繝ｼ繧ｺ・・ },
+    { value: "month_close", label: "手順6（月次クローズ）" },
   ];
   const TEMPLATE_STEP_ACTION_LABELS = Object.fromEntries(TEMPLATE_STEP_ACTIONS.map((item) => [item.value, item.label]));
   const TEMPLATE_REQUIRED_STEPS = [
-    { action: "preflight", title: "謇矩・ 貅門ｙ・医Ο繧ｰ繧､繝ｳ遒ｺ隱阪・MF騾｣謳ｺ譖ｴ譁ｰ・・ },
-    { action: "mf_reconcile", title: "謇矩・ MF遯∝粋繝ｻ荳区嶌縺堺ｽ懈・" },
+    { action: "preflight", title: "手順0 準備（ログイン確認・MF連携更新）" },
+    { action: "mf_reconcile", title: "手順5 MF突合・下書き作成" },
   ];
   const TEMPLATE_REQUIRED_STEP_ACTION_SET = new Set(TEMPLATE_REQUIRED_STEPS.map((row) => row.action));
   const TEMPLATE_STEP_DEFAULT_TITLES = {
-    preflight: "謇矩・ 貅門ｙ・医Ο繧ｰ繧､繝ｳ遒ｺ隱阪・MF騾｣謳ｺ譖ｴ譁ｰ・・,
-    preflight_mf: "謇矩・ MF蜀榊叙蠕励・縺ｿ",
-    amazon_download: "謇矩・ Amazon鬆伜庶譖ｸ蜿門ｾ・,
-    amazon_print: "謇矩・ Amazon髯､螟門愛譁ｭ繝ｻ蜊ｰ蛻ｷ",
-    rakuten_download: "謇矩・ 讌ｽ螟ｩ鬆伜庶譖ｸ蜿門ｾ・,
-    rakuten_print: "謇矩・ 讌ｽ螟ｩ髯､螟門愛譁ｭ繝ｻ蜊ｰ蛻ｷ",
-    provider_ingest: "謇矩・ 蜈ｱ騾壹ヵ繧ｩ繝ｫ繝蜿悶ｊ霎ｼ縺ｿ",
-    mf_bulk_upload_task: "謇矩・ MF荳諡ｬ繧｢繝・・繝ｭ繝ｼ繝・,
-    mf_reconcile: "謇矩・ MF遯∝粋繝ｻ荳区嶌縺堺ｽ懈・",
-    month_close: "謇矩・ 譛域ｬ｡繧ｯ繝ｭ繝ｼ繧ｺ",
+    preflight: "手順0 準備（ログイン確認・MF連携更新）",
+    preflight_mf: "手順0 MF再取得のみ",
+    amazon_download: "手順1 Amazon領収書取得",
+    amazon_print: "手順1 Amazon除外判断・印刷",
+    rakuten_download: "手順2 楽天領収書取得",
+    rakuten_print: "手順2 楽天除外判断・印刷",
+    provider_ingest: "手順3 共通フォルダ取り込み",
+    mf_bulk_upload_task: "手順4 MF一括アップロード",
+    mf_reconcile: "手順5 MF突合・下書き作成",
+    month_close: "手順6 月次クローズ",
   };
   const WORKFLOW_STEP_BLOCK_KEYS_BY_ACTION = {
     preflight: "preflight",
@@ -116,10 +116,10 @@
   const TEMPLATE_MODE_CONFIG = {
     edit: {
       chip: "邱ｨ髮・,
-      saveLabel: "菴懈・繝・Φ繝励Ξ繝ｼ繝医ｒ譖ｴ譁ｰ",
-      description: "菴懈・蜈・ユ繝ｳ繝励Ξ繝ｼ繝医ｒ邱ｨ髮・ｸｭ縺ｧ縺吶ゆｿ晏ｭ倥☆繧九→迴ｾ蝨ｨ縺ｮ繝・Φ繝励Ξ繝ｼ繝郁ｨｭ螳壹ｒ譖ｴ譁ｰ縺励∪縺吶・,
-      summary: "繝輔か繝ｼ繝繝｢繝ｼ繝・ 邱ｨ髮・,
-      successMessage: "菴懈・繝・Φ繝励Ξ繝ｼ繝医ｒ譖ｴ譁ｰ縺励∪縺励◆縲・,
+      saveLabel: "作成テンプレートを更新",
+      description: "作成元テンプレートを編集中です。保存すると現在のテンプレート設定を更新します。",
+      summary: "フォームモード: 編集",
+      successMessage: "作成テンプレートを更新しました。",
     },
   };
 
@@ -338,7 +338,7 @@
     const nameInput = form?.querySelector("[name=template_name]");
     const subheadingInput = form?.querySelector("[name=template_subheading]");
     if (!titleEl && !subheadingEl && !nameInput && !subheadingInput) return;
-    const fallbackTitle = String(titleEl?.dataset.defaultTitle || "").trim() || "繝ｯ繝ｼ繧ｯ繝輔Ο繝ｼ菴懈・繝・Φ繝励Ξ繝ｼ繝・;
+    const fallbackTitle = String(titleEl?.dataset.defaultTitle || "").trim() || "ワークフロー作成テンプレート";
     const title = String(nameInput?.value || workflowTemplate?.name || "").trim() || fallbackTitle;
     const subheading = String(subheadingInput?.value || workflowTemplate?.subheading || "").trim();
 
@@ -404,7 +404,7 @@
     title = "遒ｺ隱・,
     lines = [],
     confirmLabel = "螳溯｡・,
-    cancelLabel = "繧ｭ繝｣繝ｳ繧ｻ繝ｫ",
+    cancelLabel = "キャンセル",
   }) {
     return new Promise((resolve) => {
       const { overlay, modal, panel } = createModalShell(title);
@@ -448,13 +448,13 @@
 
   function showWorkflowSettingsModal({ name = "", subheading = "" }) {
     return new Promise((resolve) => {
-      const { overlay, modal, panel } = createModalShell("繝壹・繧ｸ險ｭ螳・);
+      const { overlay, modal, panel } = createModalShell("ページ設定");
       const formEl = document.createElement("form");
       formEl.className = "dialog-form";
 
       const nameLabel = document.createElement("label");
       nameLabel.className = "dialog-field";
-      nameLabel.textContent = "繝ｯ繝ｼ繧ｯ繝輔Ο繝ｼ蜷・;
+      nameLabel.textContent = "ワークフロー名";
       const nameInput = document.createElement("input");
       nameInput.type = "text";
       nameInput.required = true;
@@ -477,12 +477,12 @@
       const cancelButton = document.createElement("button");
       cancelButton.type = "button";
       cancelButton.className = "secondary";
-      cancelButton.textContent = "繧ｭ繝｣繝ｳ繧ｻ繝ｫ";
+      cancelButton.textContent = "キャンセル";
 
       const saveButton = document.createElement("button");
       saveButton.type = "submit";
       saveButton.className = "primary";
-      saveButton.textContent = "菫晏ｭ・;
+      saveButton.textContent = "保存";
 
       const close = bindModalDismiss(overlay, modal, resolve);
 
@@ -492,7 +492,7 @@
         const nextName = String(nameInput.value || "").trim();
         const nextSubheading = String(subheadingInput.value || "").trim();
         if (!nextName) {
-          nameInput.setCustomValidity("繝ｯ繝ｼ繧ｯ繝輔Ο繝ｼ蜷阪ｒ蜈･蜉帙＠縺ｦ縺上□縺輔＞縲・);
+          nameInput.setCustomValidity("ワークフロー名を入力してください。");
           nameInput.reportValidity();
           return;
         }
@@ -584,7 +584,7 @@
       labelEl.textContent = `URL ${index + 1}`;
       const input = row.querySelector("[data-source-url-input]");
       if (input) {
-        input.setAttribute("aria-label", `繧ｽ繝ｼ繧ｹURL ${index + 1}`);
+        input.setAttribute("aria-label", `ソースURL ${index + 1}`);
       }
     });
   }
@@ -597,7 +597,7 @@
       const value = String(input.value || "").trim();
       const valid = isValidHttpUrl(value);
       input.classList.toggle("is-invalid", !valid);
-      input.setCustomValidity(valid ? "" : "http:// 繧ゅ＠縺上・ https:// 縺ｮURL繧貞・蜉帙＠縺ｦ縺上□縺輔＞縲・);
+      input.setCustomValidity(valid ? "" : "http:// もしくは https:// のURLを入力してください。");
       if (!valid && !firstInvalid) {
         firstInvalid = input;
       }
@@ -647,7 +647,7 @@
     removeButton.type = "button";
     removeButton.className = "secondary";
     removeButton.dataset.sourceUrlRemove = "1";
-    removeButton.setAttribute("aria-label", "縺薙・URL陦後ｒ蜑企勁");
+    removeButton.setAttribute("aria-label", "このURL行を削除");
     removeButton.textContent = "-";
     removeButton.addEventListener("click", () => {
       row.remove();
@@ -1261,13 +1261,13 @@
     if (descEl) {
       descEl.textContent = hasTemplateTarget
         ? config.description
-        : "譁ｰ隕上ユ繝ｳ繝励Ξ繝ｼ繝井ｽ懈・縺ｯ辟｡蜉ｹ縺ｧ縺吶よ里蟄倥ユ繝ｳ繝励Ξ繝ｼ繝医ｒ驕ｸ謚槭＠縺ｦ譖ｴ譁ｰ縺励※縺上□縺輔＞縲・;
+        : "新規テンプレート作成は無効です。既存テンプレートを選択して更新してください。";
     }
     if (summaryEl) summaryEl.textContent = config.summary;
     if (saveButton) {
-      saveButton.textContent = hasTemplateTarget ? config.saveLabel : "繝・Φ繝励Ξ繝ｼ繝域峩譁ｰ・亥ｯｾ雎｡縺ｪ縺暦ｼ・;
+      saveButton.textContent = hasTemplateTarget ? config.saveLabel : "テンプレート更新（対象なし）";
       saveButton.disabled = !hasTemplateTarget;
-      saveButton.title = hasTemplateTarget ? "" : "譖ｴ譁ｰ蟇ｾ雎｡縺ｮ繝・Φ繝励Ξ繝ｼ繝医′縺ゅｊ縺ｾ縺帙ｓ縲・;
+      saveButton.title = hasTemplateTarget ? "" : "更新対象のテンプレートがありません。";
     }
 
     const sourceMeta = document.getElementById("workflow-template-source-meta");
@@ -1711,13 +1711,13 @@
     if (!listEl) return;
     const currentPayload = payload || buildWorkflowPagePayload() || {};
     const name = String(currentPayload.name || "").trim() || "(譛ｪ蜈･蜉・";
-    const subheading = String(currentPayload.subheading || "").trim() || "(縺ｪ縺・";
+    const subheading = String(currentPayload.subheading || "").trim() || "(なし)";
     const stepLines = buildWorkflowStepPreviewLines(currentPayload.steps);
-    const lines = [`繝ｯ繝ｼ繧ｯ繝輔Ο繝ｼ蜷・ ${name}`, `陬懆ｶｳ隱ｬ譏・ ${subheading}`, "菴懈・縺輔ｌ繧区焔鬆・"];
+    const lines = [`ワークフロー名: ${name}`, `補足説明: ${subheading}`, "作成される手順:"];
     if (stepLines.length > 0) {
       lines.push(...stepLines.map((line) => `  ${line}`));
     } else {
-      lines.push("  (謇矩・↑縺・");
+      lines.push("  (手順なし)");
     }
     listEl.innerHTML = "";
     lines.forEach((line) => {
@@ -1735,27 +1735,27 @@
     const payload = buildWorkflowPagePayload();
     if (!payload) return;
     if (!payload.name) {
-      const message = "繝ｯ繝ｼ繧ｯ繝輔Ο繝ｼ蜷阪ｒ蜈･蜉帙＠縺ｦ縺上□縺輔＞縲・;
+      const message = "ワークフロー名を入力してください。";
       showError(message);
       showToast(message, "error");
       return;
     }
     const confirmed = await showConfirmModal({
-      title: "繝ｯ繝ｼ繧ｯ繝輔Ο繝ｼ菴懈・縺ｮ遒ｺ隱・,
+      title: "ワークフロー作成の確認",
       lines: [
-        "譁ｰ縺励＞繝ｯ繝ｼ繧ｯ繝輔Ο繝ｼ繝壹・繧ｸ繧剃ｽ懈・縺励∪縺吶・,
-        `繝壹・繧ｸ蜷・ ${payload.name}`,
-        `陬懆ｶｳ隱ｬ譏・ ${payload.subheading || "(縺ｪ縺・"}`,
-        ...buildWorkflowStepPreviewLines(payload.steps).map((line) => `謇矩・ ${line}`),
-        "繝・Φ繝励Ξ繝ｼ繝医・謇矩・ｮ夂ｾｩ縺ｨ閾ｪ蜍募ｮ溯｡瑚ｨｭ螳壹ｒ蠑輔″邯吶℃縺ｾ縺吶・,
+        "新しいワークフローページを作成します。",
+        `ページ名: ${payload.name}`,
+        `補足説明: ${payload.subheading || "(なし)"}`,
+        ...buildWorkflowStepPreviewLines(payload.steps).map((line) => `手順: ${line}`),
+        "テンプレートの手順定義と自動実行設定を引き継ぎます。",
       ],
-      confirmLabel: "菴懈・縺励※髢九￥",
-      cancelLabel: "謌ｻ繧・,
+      confirmLabel: "作成して開く",
+      cancelLabel: "戻る",
     });
     if (!confirmed) return;
 
     const createButton = document.getElementById("workflow-page-create");
-    const originalLabel = createButton ? String(createButton.textContent || "").trim() : "繝ｯ繝ｼ繧ｯ繝輔Ο繝ｼ繧剃ｽ懈・";
+    const originalLabel = createButton ? String(createButton.textContent || "").trim() : "ワークフローを作成";
     workflowPageCreateState.inFlight = true;
     if (createButton) {
       createButton.disabled = true;
@@ -1772,7 +1772,7 @@
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        const message = toFriendlyMessage(data.detail) || "繝ｯ繝ｼ繧ｯ繝輔Ο繝ｼ繝壹・繧ｸ縺ｮ菴懈・縺ｫ螟ｱ謨励＠縺ｾ縺励◆縲・;
+        const message = toFriendlyMessage(data.detail) || "ワークフローページの作成に失敗しました。";
         showError(message);
         showToast(message, "error");
         return;
@@ -1781,19 +1781,19 @@
       const workflowPage = data.workflow_page || null;
       const workflowPageId = String(workflowPage?.id || "").trim();
       if (data.scheduler_copied === true) {
-        showToast("繝ｯ繝ｼ繧ｯ繝輔Ο繝ｼ繧剃ｽ懈・縺励∪縺励◆縲り・蜍募ｮ溯｡瑚ｨｭ螳壹ｂ蠑輔″邯吶℃縺ｾ縺励◆縲・, "success");
+        showToast("ワークフローを作成しました。自動実行設定も引き継ぎました。", "success");
       } else {
-        showToast("繝ｯ繝ｼ繧ｯ繝輔Ο繝ｼ繝壹・繧ｸ繧剃ｽ懈・縺励∪縺励◆縲・, "success");
+        showToast("ワークフローページを作成しました。", "success");
       }
       if (workflowPageId) {
         window.location.href = `/workflow/${encodeURIComponent(workflowPageId)}`;
         return;
       }
-      const message = "菴懈・縺ｯ螳御ｺ・＠縺ｾ縺励◆縺後・・遘ｻ蜈医′隕九▽縺九ｊ縺ｾ縺帙ｓ縺ｧ縺励◆縲・;
+      const message = "作成は完了しましたが、遷移先が見つかりませんでした。";
       showError(message);
       showToast(message, "error");
     } catch {
-      const message = "繝ｯ繝ｼ繧ｯ繝輔Ο繝ｼ繝壹・繧ｸ縺ｮ菴懈・縺ｫ螟ｱ謨励＠縺ｾ縺励◆縲・;
+      const message = "ワークフローページの作成に失敗しました。";
       showError(message);
       showToast(message, "error");
     } finally {
@@ -1819,14 +1819,14 @@
     if (!nextValues) return;
     const nextName = String(nextValues.name || "").trim();
     if (!nextName) {
-      const message = "繝ｯ繝ｼ繧ｯ繝輔Ο繝ｼ蜷阪ｒ蜈･蜉帙＠縺ｦ縺上□縺輔＞縲・;
+      const message = "ワークフロー名を入力してください。";
       showError(message);
       showToast(message, "error");
       return;
     }
     const nextSubheading = String(nextValues.subheading || "").trim();
     if (nextName === currentName && nextSubheading === currentSubheading) {
-      showToast("螟画峩縺ｯ縺ゅｊ縺ｾ縺帙ｓ縲・, "info");
+      showToast("変更はありません。", "info");
       return;
     }
     const updates = {
@@ -1842,15 +1842,15 @@
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        const message = toFriendlyMessage(data.detail) || "繝壹・繧ｸ險ｭ螳壹・譖ｴ譁ｰ縺ｫ螟ｱ謨励＠縺ｾ縺励◆縲・;
+        const message = toFriendlyMessage(data.detail) || "ページ設定の更新に失敗しました。";
         showError(message);
         showToast(message, "error");
         return;
       }
-      showToast("繝壹・繧ｸ險ｭ螳壹ｒ譖ｴ譁ｰ縺励∪縺励◆縲・, "success");
+      showToast("ページ設定を更新しました。", "success");
       window.location.reload();
     } catch {
-      const message = "繝壹・繧ｸ險ｭ螳壹・譖ｴ譁ｰ縺ｫ螟ｱ謨励＠縺ｾ縺励◆縲・;
+      const message = "ページ設定の更新に失敗しました。";
       showError(message);
       showToast(message, "error");
     }
@@ -1860,13 +1860,13 @@
     const workflowPageId = String(workflowPage?.id || "").trim();
     if (!workflowPageId) return;
     const confirmed = await showConfirmModal({
-      title: "繝ｯ繝ｼ繧ｯ繝輔Ο繝ｼ縺ｮ繧｢繝ｼ繧ｫ繧､繝・,
+      title: "ワークフローのアーカイブ",
       lines: [
-        "縺薙・繝ｯ繝ｼ繧ｯ繝輔Ο繝ｼ繧偵し繧､繝峨ヰ繝ｼ縺九ｉ髱櫁｡ｨ遉ｺ縺ｫ縺励∪縺吶・,
-        "蠢・ｦ√↑蝣ｴ蜷医・ WF菴懈・繝・Φ繝励Ξ繝ｼ繝育判髱｢縺九ｉ蠕ｩ蜈・〒縺阪∪縺吶・,
+        "このワークフローをサイドバーから非表示にします。",
+        "必要な場合は WF作成テンプレート画面から復元できます。",
       ],
-      confirmLabel: "繧｢繝ｼ繧ｫ繧､繝悶☆繧・,
-      cancelLabel: "繧ｭ繝｣繝ｳ繧ｻ繝ｫ",
+      confirmLabel: "アーカイブする",
+      cancelLabel: "キャンセル",
     });
     if (!confirmed) return;
     try {
@@ -1880,15 +1880,15 @@
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        const message = toFriendlyMessage(data.detail) || "繧｢繝ｼ繧ｫ繧､繝悶↓螟ｱ謨励＠縺ｾ縺励◆縲・;
+        const message = toFriendlyMessage(data.detail) || "アーカイブに失敗しました。";
         showError(message);
         showToast(message, "error");
         return;
       }
-      showToast("繝ｯ繝ｼ繧ｯ繝輔Ο繝ｼ繧偵い繝ｼ繧ｫ繧､繝悶＠縺ｾ縺励◆縲・, "success");
+      showToast("ワークフローをアーカイブしました。", "success");
       window.location.href = "/";
     } catch {
-      const message = "繧｢繝ｼ繧ｫ繧､繝悶↓螟ｱ謨励＠縺ｾ縺励◆縲・;
+      const message = "アーカイブに失敗しました。";
       showError(message);
       showToast(message, "error");
     }
@@ -1913,7 +1913,7 @@
       const titleEl = document.createElement("input");
       titleEl.type = "text";
       titleEl.dataset.templateStepTitle = "1";
-      titleEl.value = String(row.title || "").trim() || defaultTitleForStepAction(row.action, `謇矩・{index + 1}`);
+      titleEl.value = String(row.title || "").trim() || defaultTitleForStepAction(row.action, `手順${index + 1}`);
       const actionEl = document.createElement("select");
       actionEl.dataset.templateStepAction = "1";
       actionEl.innerHTML = getTemplateStepActionOptionsHtml(row.action);
@@ -1936,7 +1936,7 @@
     const versions = Array.isArray(workflowPage?.step_versions) ? workflowPage.step_versions : [];
     const currentRow = versions.find((row) => Number.parseInt(String(row?.version || 0), 10) === safeVersion);
     const updatedAt = String(currentRow?.updated_at || "").trim();
-    labelEl.textContent = updatedAt ? `謇矩・沿 v${safeVersion} (${updatedAt})` : `謇矩・沿 v${safeVersion}`;
+    labelEl.textContent = updatedAt ? `手順版 v${safeVersion} (${updatedAt})` : `手順版 v${safeVersion}`;
   }
 
   function applyWorkflowPageStepLayout(stepRowsInput = null) {
@@ -2034,12 +2034,12 @@
 
   function showWorkflowPageStepEditorModal(initialSteps = []) {
     return new Promise((resolve) => {
-      const { overlay, modal, panel } = createModalShell("謇矩・ｷｨ髮・);
+      const { overlay, modal, panel } = createModalShell("手順編集");
       const body = document.createElement("div");
       body.className = "dialog-body";
       const note = document.createElement("p");
       note.className = "muted";
-      note.textContent = "蠢・域焔鬆・ｼ・reflight / mf_reconcile・峨・蜑企勁繝ｻ螟画峩縺ｧ縺阪∪縺帙ｓ縲・;
+      note.textContent = "必須手順（preflight / mf_reconcile）は削除・変更できません。";
       body.appendChild(note);
 
       const listEl = document.createElement("div");
@@ -2051,7 +2051,7 @@
       const addButton = document.createElement("button");
       addButton.type = "button";
       addButton.className = "secondary";
-      addButton.textContent = "+ 謇矩・ｒ霑ｽ蜉";
+      addButton.textContent = "+ 手順を追加";
       addWrap.appendChild(addButton);
       body.appendChild(addWrap);
       panel.appendChild(body);
@@ -2061,11 +2061,11 @@
       const cancelButton = document.createElement("button");
       cancelButton.type = "button";
       cancelButton.className = "secondary";
-      cancelButton.textContent = "繧ｭ繝｣繝ｳ繧ｻ繝ｫ";
+      cancelButton.textContent = "キャンセル";
       const saveButton = document.createElement("button");
       saveButton.type = "button";
       saveButton.className = "primary";
-      saveButton.textContent = "菫晏ｭ・;
+      saveButton.textContent = "保存";
       actionBar.appendChild(cancelButton);
       actionBar.appendChild(saveButton);
       panel.appendChild(actionBar);
@@ -2094,12 +2094,12 @@
 
           const indexEl = document.createElement("span");
           indexEl.className = "muted";
-          indexEl.textContent = `謇矩・{index + 1}`;
+          indexEl.textContent = `手順${index + 1}`;
 
           const titleEl = document.createElement("input");
           titleEl.type = "text";
           titleEl.required = true;
-          titleEl.value = String(row.title || "").trim() || defaultTitleForStepAction(row.action, `謇矩・{index + 1}`);
+          titleEl.value = String(row.title || "").trim() || defaultTitleForStepAction(row.action, `手順${index + 1}`);
           titleEl.addEventListener("input", () => {
             state[index].title = String(titleEl.value || "").trim() || defaultTitleForStepAction(state[index].action);
           });
@@ -2108,13 +2108,13 @@
           actionEl.innerHTML = getTemplateStepActionOptionsHtml(row.action);
           const requiredAction = isRequiredTemplateStepAction(row.action);
           actionEl.disabled = requiredAction;
-          actionEl.title = requiredAction ? "蠢・域焔鬆・・螟画峩縺ｧ縺阪∪縺帙ｓ縲・ : "";
+          actionEl.title = requiredAction ? "必須手順は変更できません。" : "";
           actionEl.addEventListener("change", () => {
             const nextAction = normalizeTemplateStepAction(actionEl.value);
             const duplicated = state.some((step, stepIndex) => stepIndex !== index && step.action === nextAction);
             if (duplicated) {
               actionEl.value = state[index].action;
-              showToast("蜷後§蜃ｦ逅・・1蝗槭□縺題ｿｽ蜉縺ｧ縺阪∪縺吶・, "error");
+              showToast("同じ処理は1回だけ追加できます。", "error");
               return;
             }
             state[index].action = nextAction;
@@ -2130,7 +2130,7 @@
           timerEl.max = String(TEMPLATE_STEP_TIMER_MAX_MINUTES);
           timerEl.step = "1";
           timerEl.value = String(normalizeTemplateStepTimerMinutes(row.timer_minutes));
-          timerEl.title = "繧ｿ繧､繝槭・・亥・・・;
+          timerEl.title = "タイマー（分）";
           timerEl.addEventListener("change", () => {
             state[index].timer_minutes = normalizeTemplateStepTimerMinutes(timerEl.value);
             timerEl.value = String(state[index].timer_minutes);
@@ -2142,7 +2142,7 @@
           removeButton.textContent = "-";
           removeButton.hidden = requiredAction || optionalCount <= 0;
           removeButton.disabled = requiredAction || optionalCount <= 0;
-          removeButton.title = requiredAction ? "蠢・域焔鬆・・蜑企勁縺ｧ縺阪∪縺帙ｓ縲・ : "";
+          removeButton.title = requiredAction ? "必須手順は削除できません。" : "";
           removeButton.addEventListener("click", () => {
             if (requiredAction) return;
             state.splice(index, 1);
@@ -2187,7 +2187,7 @@
     });
   }
 
-  async function saveWorkflowPageSteps(nextSteps, { successMessage = "謇矩・ｒ譖ｴ譁ｰ縺励∪縺励◆縲・ } = {}) {
+  async function saveWorkflowPageSteps(nextSteps, { successMessage = "手順を更新しました。" } = {}) {
     const workflowPageId = String(workflowPage?.id || "").trim();
     if (!workflowPageId) return false;
     const payload = {
@@ -2206,7 +2206,7 @@
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        const message = toFriendlyMessage(data.detail) || "謇矩・・譖ｴ譁ｰ縺ｫ螟ｱ謨励＠縺ｾ縺励◆縲・;
+        const message = toFriendlyMessage(data.detail) || "手順の更新に失敗しました。";
         showError(message);
         showToast(message, "error");
         return false;
@@ -2218,7 +2218,7 @@
       showToast(successMessage, "success");
       return true;
     } catch {
-      const message = "謇矩・・譖ｴ譁ｰ縺ｫ螟ｱ謨励＠縺ｾ縺励◆縲・;
+      const message = "手順の更新に失敗しました。";
       showError(message);
       showToast(message, "error");
       return false;
@@ -2239,11 +2239,11 @@
       includeTimer: true,
     });
     if (JSON.stringify(currentSteps) === JSON.stringify(normalizedNext)) {
-      showToast("螟画峩縺ｯ縺ゅｊ縺ｾ縺帙ｓ縲・, "info");
+      showToast("変更はありません。", "info");
       return;
     }
     const saved = await saveWorkflowPageSteps(normalizedNext, {
-      successMessage: "謇矩・ｒ譖ｴ譁ｰ縺励∪縺励◆縲・,
+      successMessage: "手順を更新しました。",
     });
     if (saved) {
       refreshSteps({ force: true });
@@ -2255,7 +2255,7 @@
     if (!workflowPageId) return;
     const versions = Array.isArray(workflowPage?.step_versions) ? workflowPage.step_versions : [];
     if (versions.length < 2) {
-      showToast("謌ｻ縺帙ｋ蜑咲沿縺後≠繧翫∪縺帙ｓ縲・, "info");
+      showToast("戻せる前版がありません。", "info");
       return;
     }
     const currentVersion = Number.parseInt(String(workflowPage?.step_version || 1), 10) || 1;
@@ -2272,7 +2272,7 @@
       targetRow = versions.length >= 2 ? versions[versions.length - 2] : null;
     }
     if (!targetRow) {
-      showToast("謌ｻ縺帙ｋ蜑咲沿縺後≠繧翫∪縺帙ｓ縲・, "info");
+      showToast("戻せる前版がありません。", "info");
       return;
     }
     const targetVersion = Number.parseInt(String(targetRow.version || 0), 10) || 1;
@@ -2281,18 +2281,18 @@
       includeTimer: true,
     });
     const confirmed = await showConfirmModal({
-      title: "謇矩・ｒ蜑咲沿縺ｫ謌ｻ縺・,
+      title: "手順を前版に戻す",
       lines: [
         `迴ｾ蝨ｨ迚・ v${currentVersion}`,
-        `謌ｻ縺怜・: v${targetVersion}`,
-        ...buildWorkflowStepPreviewLines(targetSteps).map((line) => `謇矩・ ${line}`),
+        `戻し先: v${targetVersion}`,
+        ...buildWorkflowStepPreviewLines(targetSteps).map((line) => `手順: ${line}`),
       ],
-      confirmLabel: "蜑咲沿繧貞渚譏",
-      cancelLabel: "繧ｭ繝｣繝ｳ繧ｻ繝ｫ",
+      confirmLabel: "前版を反映",
+      cancelLabel: "キャンセル",
     });
     if (!confirmed) return;
     const saved = await saveWorkflowPageSteps(targetSteps, {
-      successMessage: `謇矩・ｒ蜑咲沿(v${targetVersion})縺ｮ蜀・ｮｹ縺ｧ蠕ｩ蜈・＠縺ｾ縺励◆縲Ａ,
+      successMessage: `手順を前版(v${targetVersion})の内容で復元しました。`,
     });
     if (saved) {
       refreshSteps({ force: true });
@@ -2306,19 +2306,19 @@
     const payload = buildTemplatePayload();
     if (!payload) return;
     if (!payload.name) {
-      const message = "繝ｯ繝ｼ繧ｯ繝輔Ο繝ｼ蜷阪ｒ蜈･蜉帙＠縺ｦ縺上□縺輔＞縲・;
+      const message = "ワークフロー名を入力してください。";
       showError(message);
       showToast(message, "error");
       return;
     }
     if (!String(payload.template_id || "").trim()) {
-      const message = "譁ｰ隕上ユ繝ｳ繝励Ξ繝ｼ繝井ｽ懈・縺ｯ辟｡蜉ｹ縺ｧ縺吶よ里蟄倥ユ繝ｳ繝励Ξ繝ｼ繝医ｒ驕ｸ謚槭＠縺ｦ縺上□縺輔＞縲・;
+      const message = "新規テンプレート作成は無効です。既存テンプレートを選択してください。";
       showError(message);
       showToast(message, "error");
       return;
     }
     if (!String(payload.base_updated_at || "").trim()) {
-      const message = "繝・Φ繝励Ξ繝ｼ繝域峩譁ｰ諠・ｱ縺御ｸ崎ｶｳ縺励※縺・∪縺吶ゅユ繝ｳ繝励Ξ繝ｼ繝医ｒ蜀崎ｪｭ縺ｿ霎ｼ縺ｿ縺励※縺上□縺輔＞縲・;
+      const message = "テンプレート更新情報が不足しています。テンプレートを再読み込みしてください。";
       showError(message);
       showToast(message, "error");
       return;
@@ -2330,12 +2330,12 @@
     const templateModeInput = form.querySelector("[name=template_mode]");
     const templateUpdatedAtInput = form.querySelector("[name=template_updated_at]");
     const originalButtonLabel =
-      config.saveLabel || (saveButton ? String(saveButton.textContent || "").trim() : "菴懈・繝・Φ繝励Ξ繝ｼ繝医ｒ譖ｴ譁ｰ");
+      config.saveLabel || (saveButton ? String(saveButton.textContent || "").trim() : "作成テンプレートを更新");
     templateSaveState.inFlight = true;
     if (saveButton) {
       saveButton.disabled = true;
       saveButton.dataset.busy = "1";
-      saveButton.textContent = "菫晏ｭ倅ｸｭ...";
+      saveButton.textContent = "保存中...";
     }
     clearError();
 
@@ -2347,7 +2347,7 @@
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        const message = toFriendlyMessage(data.detail) || "繝・Φ繝励Ξ繝ｼ繝医・菫晏ｭ倥↓螟ｱ謨励＠縺ｾ縺励◆縲・;
+        const message = toFriendlyMessage(data.detail) || "テンプレートの保存に失敗しました。";
         showError(message);
         showToast(message, "error");
         return;
@@ -2374,7 +2374,7 @@
       }
       showError("");
     } catch {
-      const message = "繝・Φ繝励Ξ繝ｼ繝医・菫晏ｭ倥↓螟ｱ謨励＠縺ｾ縺励◆縲・;
+      const message = "テンプレートの保存に失敗しました。";
       showError(message);
       showToast(message, "error");
     } finally {
@@ -3302,130 +3302,130 @@
     const nextStepReasonCode = String(data?.next_step_reason || "").trim();
     const nextStepGuidance = {
       preflight: {
-        message: "貅門ｙ繝輔Ο繝ｼ繧堤｢ｺ隱阪＠縺ｦ縺上□縺輔＞縲・,
-        reason: "蟇ｾ雎｡繝ｯ繝ｼ繧ｯ繝輔Ο繝ｼ縺ｮ螳溯｡梧擅莉ｶ繧堤｢ｺ隱阪＠縺ｦ縺九ｉ谺｡縺ｮ蟾･遞九∈騾ｲ繧√※縺上□縺輔＞縲・,
+        message: "準備フローを確認してください。",
+        reason: "対象ワークフローの実行条件を確認してから次の工程へ進めてください。",
         linkLabel: "貅門ｙ蟾･遞九∈",
       },
       amazon_or_rakuten_download: {
-        message: "縺ｾ縺壹・ Amazon 縺区･ｽ螟ｩ縺ｮ縺・★繧後°縺ｮ鬆伜庶譖ｸ蜿門ｾ励ｒ蜈医↓螳溯｡後＠縺ｦ縺上□縺輔＞縲・,
-        reason: "蟆代↑縺上→繧・遉ｾ蛻・・鬆伜庶譖ｸ蜿門ｾ励′蠢・ｦ√〒縺吶よ悴蜿門ｾ励′縺ゅｋ縺ｨ谺｡縺ｮ蜃ｦ逅・↓騾ｲ繧√∪縺帙ｓ縲・,
-        linkLabel: "Amazon・乗･ｽ螟ｩ 蜿門ｾ励∈",
+        message: "まずは Amazon か楽天のいずれかの領収書取得を先に実行してください。",
+        reason: "少なくとも1社分の領収書取得が必要です。未取得があると次の処理に進めません。",
+        linkLabel: "Amazon／楽天 取得へ",
       },
       amazon_download: {
-        message: "Amazon 縺ｮ鬆伜庶譖ｸ繧貞叙蠕励＠縺ｦ縺上□縺輔＞縲・,
-        reason: "Amazon 蛛ｴ縺ｮ蟇ｾ雎｡譛医ョ繝ｼ繧ｿ繧貞叙蠕励＠縺ｦ縲∵ｬ｡縺ｮ髯､螟門愛譁ｭ繝ｻ蜊ｰ蛻ｷ縺ｸ騾ｲ縺ｿ縺ｾ縺吶・,
-        linkLabel: "Amazon 蜿門ｾ励∈",
+        message: "Amazon の領収書を取得してください。",
+        reason: "Amazon 側の対象月データを取得して、次の除外判断・印刷へ進みます。",
+        linkLabel: "Amazon 取得へ",
       },
       amazon_decide_print: {
-        message: "Amazon 縺ｮ髯､螟冶ｨｭ螳壹・蜊ｰ蛻ｷ蟇ｾ雎｡繧堤｢ｺ隱阪＠縺ｦ縺上□縺輔＞縲・,
-        reason: "髯､螟門ｯｾ雎｡繧堤｢ｺ螳壹＠縺ｦ蜊ｰ蛻ｷ螳御ｺ・∪縺ｧ騾ｲ繧√ｋ縺ｨ迥ｶ諷九′菫晏ｭ倥＆繧後∪縺吶・,
-        linkLabel: "Amazon 髯､螟悶・蜊ｰ蛻ｷ縺ｸ",
+        message: "Amazon の除外設定・印刷対象を確認してください。",
+        reason: "除外対象を確定して印刷完了まで進めると状態が保存されます。",
+        linkLabel: "Amazon 除外・印刷へ",
       },
       amazon_print: {
-        message: "Amazon縺ｮ蜊ｰ蛻ｷ螳御ｺ・ｾ・■繧ｹ繝・・繧ｿ繧ｹ繧堤｢ｺ隱阪＠縺ｦ縺上□縺輔＞縲・,
-        reason: "Amazon縺ｮ蜊ｰ蛻ｷ蜃ｦ逅・′螳御ｺ・＠縲∝ｿ・ｦ√↓蠢懊§縺ｦ遒ｺ隱阪・蜿肴丐繧定｡後▲縺ｦ縺上□縺輔＞縲・,
-        linkLabel: "Amazon縺ｮ蜊ｰ蛻ｷ繧ｹ繝・・繧ｿ繧ｹ縺ｸ",
+        message: "Amazonの印刷完了待ちステータスを確認してください。",
+        reason: "Amazonの印刷処理が完了し、必要に応じて確認・反映を行ってください。",
+        linkLabel: "Amazonの印刷ステータスへ",
       },
       rakuten_download: {
-        message: "讌ｽ螟ｩ縺ｮ鬆伜庶譖ｸ繧貞叙蠕励＠縺ｦ縺上□縺輔＞縲・,
-        reason: "讌ｽ螟ｩ蛛ｴ縺ｮ蟇ｾ雎｡譛医ョ繝ｼ繧ｿ繧貞叙蠕励＠縺ｦ縲∵ｬ｡縺ｮ髯､螟門愛譁ｭ繝ｻ蜊ｰ蛻ｷ縺ｸ騾ｲ縺ｿ縺ｾ縺吶・,
-        linkLabel: "讌ｽ螟ｩ 蜿門ｾ励∈",
+        message: "楽天の領収書を取得してください。",
+        reason: "楽天側の対象月データを取得して、次の除外判断・印刷へ進みます。",
+        linkLabel: "楽天 取得へ",
       },
       rakuten_print: {
-        message: "讌ｽ螟ｩ縺ｮ蜊ｰ蛻ｷ螳御ｺ・ｾ・■繧ｹ繝・・繧ｿ繧ｹ繧堤｢ｺ隱阪＠縺ｦ縺上□縺輔＞縲・,
-        reason: "讌ｽ螟ｩ縺ｮ蜊ｰ蛻ｷ蜃ｦ逅・′螳御ｺ・＠縲∝ｿ・ｦ√↓蠢懊§縺ｦ遒ｺ隱阪・蜿肴丐繧定｡後▲縺ｦ縺上□縺輔＞縲・,
-        linkLabel: "讌ｽ螟ｩ縺ｮ蜊ｰ蛻ｷ繧ｹ繝・・繧ｿ繧ｹ縺ｸ",
+        message: "楽天の印刷完了待ちステータスを確認してください。",
+        reason: "楽天の印刷処理が完了し、必要に応じて確認・反映を行ってください。",
+        linkLabel: "楽天の印刷ステータスへ",
       },
       rakuten_decide_print: {
-        message: "讌ｽ螟ｩ縺ｮ髯､螟冶ｨｭ螳壹・蜊ｰ蛻ｷ蟇ｾ雎｡繧堤｢ｺ隱阪＠縺ｦ縺上□縺輔＞縲・,
-        reason: "髯､螟門ｯｾ雎｡繧堤｢ｺ螳壹＠縺ｦ蜊ｰ蛻ｷ螳御ｺ・∪縺ｧ騾ｲ繧√ｋ縺ｨ迥ｶ諷九′菫晏ｭ倥＆繧後∪縺吶・,
-        linkLabel: "讌ｽ螟ｩ 髯､螟悶・蜊ｰ蛻ｷ縺ｸ",
+        message: "楽天の除外設定・印刷対象を確認してください。",
+        reason: "除外対象を確定して印刷完了まで進めると状態が保存されます。",
+        linkLabel: "楽天 除外・印刷へ",
       },
       provider_ingest: {
-        message: "螟夜ΚCSV縺ｮ蜿悶ｊ霎ｼ縺ｿ繧貞ｮ溯｡後＠縺ｦ縺上□縺輔＞縲・,
-        reason: "Amazon/讌ｽ螟ｩ縺ｧ蜿門ｾ励＠縺阪ｌ縺ｪ縺・・繧偵∝・騾壹ヵ繧ｩ繝ｫ繝邨檎罰縺ｧ蜿悶ｊ霎ｼ繧繝輔ぉ繝ｼ繧ｺ縺ｧ縺吶・,
-        linkLabel: "蜈ｱ騾壹ヵ繧ｩ繝ｫ繝蜿冶ｾｼ縺ｸ",
+        message: "外部CSVの取り込みを実行してください。",
+        reason: "Amazon/楽天で取得しきれない分を、共通フォルダ経由で取り込むフェーズです。",
+        linkLabel: "共通フォルダ取込へ",
       },
       mf_reconcile: {
-        message: "MF騾｣謳ｺ縺ｮ遯∝粋縺帛ｮ溯｡後∈騾ｲ繧√※縺上□縺輔＞縲・,
-        reason: "蜿悶ｊ霎ｼ縺ｿ貂医∩繝・・繧ｿ繧樽F縺ｮ荳区嶌縺堺ｽ懈・縺ｸ蜿肴丐縺励∪縺吶・,
-        linkLabel: "MF 遯∝粋菴懈･ｭ縺ｸ",
+        message: "MF連携の突合せ実行へ進めてください。",
+        reason: "取り込み済みデータをMFの下書き作成へ反映します。",
+        linkLabel: "MF 突合作業へ",
       },
       preflight_mf: {
-        message: "MF蜀榊叙蠕励・縺ｿ縺ｮ繧ｹ繝・ャ繝励ｒ螳御ｺ・＠縺ｦ縺上□縺輔＞縲・,
-        reason: "MF蜀榊叙蠕怜ｾ後√ム繝・す繝･繝懊・繝峨・譛譁ｰ迥ｶ諷九ｒ遒ｺ隱阪＠縺ｦ谺｡縺ｮ菴懈･ｭ縺ｫ騾ｲ繧薙〒縺上□縺輔＞縲・,
+        message: "MF再取得のみのステップを完了してください。",
+        reason: "MF再取得後、ダッシュボードの最新状態を確認して次の作業に進んでください。",
         linkLabel: "MF蜀榊叙蠕励ｒ遒ｺ隱・,
       },
       mf_bulk_upload_task: {
-        message: "Step 4: MF荳諡ｬ繧｢繝・・繝ｭ繝ｼ繝画焔鬆・′縺ゅｊ縺ｾ縺吶・,
-        reason: "MF蜷代￠縺ｮ謇句・蜉帙ヵ繧｡繧､繝ｫ縺檎畑諢上〒縺阪※縺・ｋ蝣ｴ蜷医∝叙繧願ｾｼ縺ｿ繧貞ｮ溯｡後＠縺ｦ縺上□縺輔＞縲・,
-        linkLabel: "MF荳諡ｬ繧｢繝・・繝ｭ繝ｼ繝峨ｒ髢九￥",
+        message: "Step 4: MF一括アップロード手順があります。",
+        reason: "MF向けの手入力ファイルが用意できている場合、取り込みを実行してください。",
+        linkLabel: "MF一括アップロードを開く",
       },
       import_provider_receipts: {
-        message: "Provider蜿悶ｊ霎ｼ縺ｿ繧ｹ繝・ャ繝励ｒ螳溯｡後＠縺ｦ縺上□縺輔＞縲・,
-        reason: "螟夜Κ繝吶Φ繝繝ｼ縺ｮ譛ｪ蜃ｦ逅・SV繧樽F遯∝粋蜑阪↓蜿悶ｊ霎ｼ繧薙〒蜿肴丐縺励※縺上□縺輔＞縲・,
-        linkLabel: "Provider蜿悶ｊ霎ｼ縺ｿ縺ｸ騾ｲ繧",
+        message: "Provider取り込みステップを実行してください。",
+        reason: "外部ベンダーの未処理CSVをMF突合前に取り込んで反映してください。",
+        linkLabel: "Provider取り込みへ進む",
       },
       mf_bulk_upload: {
-        message: "MF荳諡ｬ繧｢繝・・繝ｭ繝ｼ繝峨ｒ螳溯｡後＠縺ｦ縺上□縺輔＞縲・,
-        reason: "MF縺ｮ繧､繝ｳ繝昴・繝育判髱｢繧帝幕縺・※縲∝ｯｾ雎｡譛医・荳区嶌縺榊ｯｾ雎｡繧堤｢ｺ隱阪＠縺ｦ縺上□縺輔＞縲・,
-        linkLabel: "MF荳諡ｬ繧｢繝・・繝ｭ繝ｼ繝峨ｒ髢九￥",
+        message: "MF一括アップロードを実行してください。",
+        reason: "MFのインポート画面を開いて、対象月の下書き対象を確認してください。",
+        linkLabel: "MF一括アップロードを開く",
       },
       mf_csv_import: {
-        message: "MF CSV繧､繝ｳ繝昴・繝医ｒ螳溯｡後＠縺ｦ縺上□縺輔＞縲・,
-        reason: "CSV繧樽F蠖｢蠑上∈謠・∴縺溘≧縺医〒蜿悶ｊ霎ｼ縺ｿ繧貞ｮ溯｡後＠縺ｦ縺上□縺輔＞縲・,
-        linkLabel: "MF CSV繧､繝ｳ繝昴・繝医ｒ髢九￥",
+        message: "MF CSVインポートを実行してください。",
+        reason: "CSVをMF形式へ揃えたうえで取り込みを実行してください。",
+        linkLabel: "MF CSVインポートを開く",
       },
       done: {
-        message: "縺吶∋縺ｦ螳御ｺ・＠縺ｾ縺励◆縲よ怦谺｡繧｢繝ｼ繧ｫ繧､繝悶ｒ螳溯｡後〒縺阪∪縺吶・,
-        reason: "譛蠕後↓譛域ｬ｡繧ｯ繝ｭ繝ｼ繧ｺ繧・い繝ｼ繧ｫ繧､繝悶ｒ螳溯｡後＠縺ｦ縲∵ｬ｡譛磯°逕ｨ縺ｫ蛯吶∴縺ｾ縺吶・,
-        linkLabel: "譛域ｬ｡繧ｯ繝ｭ繝ｼ繧ｺ縺ｸ",
+        message: "すべて完了しました。月次アーカイブを実行できます。",
+        reason: "最後に月次クローズやアーカイブを実行して、次月運用に備えます。",
+        linkLabel: "月次クローズへ",
       },
       fallback: {
-        message: "蜃ｦ逅・・蜿門ｾ励↓譎る俣縺後°縺九▲縺ｦ縺・∪縺吶よ峩譁ｰ繧貞ｾ・▲縺ｦ縺上□縺輔＞縲・,
-        reason: "繝舌ャ繧ｯ繧ｨ繝ｳ繝峨°繧画怙譁ｰ迥ｶ諷九ｒ蜿肴丐縺吶ｋ縺ｾ縺ｧ謨ｰ遘貞ｾ・▲縺ｦ蜀榊叙蠕励＠縺ｦ縺上□縺輔＞縲・,
+        message: "処理の取得に時間がかかっています。更新を待ってください。",
+        reason: "バックエンドから最新状態を反映するまで数秒待って再取得してください。",
       },
     };
 
     const runningModeGuidance = {
       preflight: {
-        message: "貅門ｙ蜃ｦ逅・ｒ螳溯｡御ｸｭ縺ｧ縺吶・,
-        reason: "蜃ｦ逅・′螳御ｺ・☆繧九∪縺ｧ蠕・ｩ溘＠縺ｦ縺上□縺輔＞縲ょｮ御ｺ・ｾ後↓谺｡縺ｮ謫堺ｽ懊′閾ｪ蜍輔〒譖ｴ譁ｰ縺輔ｌ縺ｾ縺吶・,
+        message: "準備処理を実行中です。",
+        reason: "処理が完了するまで待機してください。完了後に次の操作が自動で更新されます。",
         linkLabel: "貅門ｙ蟾･遞九∈",
       },
       preflight_mf: {
-        message: "MF蜀榊叙蠕励ｒ螳溯｡御ｸｭ縺ｧ縺吶・,
-        reason: "MF蜀榊叙蠕怜・逅・ｒ螳御ｺ・☆繧九∪縺ｧ縲・ｲ陦悟ｮ御ｺ・ｾ後・迥ｶ諷区峩譁ｰ繧貞ｾ・▲縺ｦ縺上□縺輔＞縲・,
+        message: "MF再取得を実行中です。",
+        reason: "MF再取得処理を完了するまで、進行完了後の状態更新を待ってください。",
         linkLabel: "貅門ｙ蟾･遞九∈",
       },
       amazon_download: {
-        message: "Amazon 鬆伜庶譖ｸ蜿門ｾ励ｒ螳溯｡御ｸｭ縺ｧ縺吶・,
-        reason: "蜿門ｾ励′螳御ｺ・☆繧九→谺｡縺ｮ蟾･遞九∈騾ｲ繧√ｋ迥ｶ諷九↓縺ｪ繧翫∪縺吶ょｮ御ｺ・∪縺ｧ縺雁ｾ・■縺上□縺輔＞縲・,
-        linkLabel: "Amazon 蜿門ｾ鈴ｲ陦檎憾豕√∈",
+        message: "Amazon 領収書取得を実行中です。",
+        reason: "取得が完了すると次の工程へ進める状態になります。完了までお待ちください。",
+        linkLabel: "Amazon 取得進行状況へ",
       },
       amazon_print: {
-        message: "Amazon 蜊ｰ蛻ｷ蜃ｦ逅・ｒ螳溯｡御ｸｭ縺ｧ縺吶・,
-        reason: "髯､螟悶・蜊ｰ蛻ｷ縺ｮ騾ｲ陦御ｸｭ縺ｧ縺吶ょｮ御ｺ・ｾ後↓迥ｶ諷九′蜿肴丐縺輔ｌ縲∵ｬ｡縺ｮ譯亥・縺ｸ騾ｲ縺ｿ縺ｾ縺吶・,
+        message: "Amazon 印刷処理を実行中です。",
+        reason: "除外・印刷の進行中です。完了後に状態が反映され、次の案内へ進みます。",
         linkLabel: "Amazon 蜊ｰ蛻ｷ迥ｶ豕√∈",
       },
       rakuten_download: {
-        message: "讌ｽ螟ｩ鬆伜庶譖ｸ蜿門ｾ励ｒ螳溯｡御ｸｭ縺ｧ縺吶・,
-        reason: "蜿門ｾ励′螳御ｺ・☆繧九→谺｡縺ｮ蟾･遞九∈騾ｲ繧√ｋ迥ｶ諷九↓縺ｪ繧翫∪縺吶ょｮ御ｺ・∪縺ｧ縺雁ｾ・■縺上□縺輔＞縲・,
-        linkLabel: "讌ｽ螟ｩ 蜿門ｾ鈴ｲ陦檎憾豕√∈",
+        message: "楽天領収書取得を実行中です。",
+        reason: "取得が完了すると次の工程へ進める状態になります。完了までお待ちください。",
+        linkLabel: "楽天 取得進行状況へ",
       },
       rakuten_print: {
-        message: "讌ｽ螟ｩ 蜊ｰ蛻ｷ蜃ｦ逅・ｒ螳溯｡御ｸｭ縺ｧ縺吶・,
-        reason: "髯､螟悶・蜊ｰ蛻ｷ縺ｮ騾ｲ陦御ｸｭ縺ｧ縺吶ょｮ御ｺ・ｾ後↓迥ｶ諷九′蜿肴丐縺輔ｌ縲∵ｬ｡縺ｮ譯亥・縺ｸ騾ｲ縺ｿ縺ｾ縺吶・,
+        message: "楽天 印刷処理を実行中です。",
+        reason: "除外・印刷の進行中です。完了後に状態が反映され、次の案内へ進みます。",
         linkLabel: "讌ｽ螟ｩ 蜊ｰ蛻ｷ迥ｶ豕√∈",
       },
       provider_ingest: {
-        message: "蜈ｱ騾壹ヵ繧ｩ繝ｫ繝蜿悶ｊ霎ｼ縺ｿ繧貞ｮ溯｡御ｸｭ縺ｧ縺吶・,
-        reason: "蜿悶ｊ霎ｼ縺ｿ蜃ｦ逅・ｮ御ｺ・ｾ後↓遯∝粋縺帛庄閭ｽ縺九←縺・°繧貞・隧穂ｾ｡縺励∪縺吶・,
-        linkLabel: "蜈ｱ騾壹ヵ繧ｩ繝ｫ繝蜿冶ｾｼ縺ｸ",
+        message: "共通フォルダ取り込みを実行中です。",
+        reason: "取り込み処理完了後に突合せ可能かどうかを再評価します。",
+        linkLabel: "共通フォルダ取込へ",
       },
       mf_reconcile: {
-        message: "MF遯∝粋縺帙ｒ螳溯｡御ｸｭ縺ｧ縺吶・,
-        reason: "遯∝粋縺帛ｮ御ｺ・∪縺ｧ證ｫ縺上♀蠕・■縺上□縺輔＞縲ょｮ御ｺ・ｾ後↓荳区嶌縺阪・菴懈・迥ｶ豕√′譖ｴ譁ｰ縺輔ｌ縺ｾ縺吶・,
+        message: "MF突合せを実行中です。",
+        reason: "突合せ完了まで暫くお待ちください。完了後に下書きの作成状況が更新されます。",
         linkLabel: "MF遯∝粋迥ｶ豕√∈",
       },
       import_provider_receipts: {
@@ -3479,50 +3479,50 @@
         });
       }
       return {
-        message: runningGuidance?.message || `${runningMode} 繧貞ｮ溯｡御ｸｭ縺ｧ縺吶Ａ,
+        message: runningGuidance?.message || `${runningMode} を実行中です。`,
         reason:
           runningGuidance?.reason ||
-          "蛻･縺ｮ蜃ｦ逅・′騾ｲ陦御ｸｭ縺ｧ縺吶ょｮ御ｺ・☆繧九∪縺ｧ蠕・ｩ溘＠縺ｦ縺上□縺輔＞縲・,
+          "別の処理が進行中です。完了するまで待機してください。",
         href: runningTargetHref,
-        linkLabel: runningGuidance?.linkLabel || (runningTargetHref === FALLBACK_WIZARD_HREF ? "謇矩・ｒ遒ｺ隱・ : "騾ｲ謐励ｒ遒ｺ隱・),
+        linkLabel: runningGuidance?.linkLabel || (runningTargetHref === FALLBACK_WIZARD_HREF ? "手順を確認" : "進捗を確認"),
       };
     }
 
     const reasonHint = {
       preflight_required: {
-        reason: "貅門ｙ繝輔Ο繝ｼ縺梧悴螳御ｺ・〒縺吶ゅ∪縺壼燕謠占ｨｭ螳壹・螳御ｺ・′蠢・ｦ√〒縺吶・,
+        reason: "準備フローが未完了です。まず前提設定の完了が必要です。",
       },
       source_download_required: {
-        message: "Amazon 縺区･ｽ螟ｩ縺ｮ縺ｩ縺｡繧峨°縺ｮ鬆伜庶譖ｸ蜿門ｾ励ｒ蜈医↓螳溯｡後＠縺ｦ縺上□縺輔＞縲・,
-        reason: "蟆代↑縺上→繧・遉ｾ蛻・・蟇ｾ雎｡譛医ョ繝ｼ繧ｿ繧貞叙蠕励＠縺ｦ縺上□縺輔＞縲・,
+        message: "Amazon か楽天のどちらかの領収書取得を先に実行してください。",
+        reason: "少なくとも1社分の対象月データを取得してください。",
       },
       amazon_download_required: {
-        message: "Amazon 縺ｮ鬆伜庶譖ｸ繧貞叙蠕励＠縺ｦ縺上□縺輔＞縲・,
-        reason: "蟇ｾ雎｡譛亥・繧貞叙蠕励☆繧九→谺｡縺ｮ髯､螟悶・蜊ｰ蛻ｷ蟾･遞九∈騾ｲ繧√∪縺吶・,
+        message: "Amazon の領収書を取得してください。",
+        reason: "対象月分を取得すると次の除外・印刷工程へ進めます。",
       },
       rakuten_download_required: {
-        message: "讌ｽ螟ｩ縺ｮ鬆伜庶譖ｸ繧貞叙蠕励＠縺ｦ縺上□縺輔＞縲・,
-        reason: "蟇ｾ雎｡譛亥・繧貞叙蠕励☆繧九→谺｡縺ｮ髯､螟悶・蜊ｰ蛻ｷ蟾･遞九∈騾ｲ繧√∪縺吶・,
+        message: "楽天の領収書を取得してください。",
+        reason: "対象月分を取得すると次の除外・印刷工程へ進めます。",
       },
       amazon_print_pending: {
-        message: "Amazon 縺ｮ髯､螟冶ｨｭ螳壹・蜊ｰ蛻ｷ蟇ｾ雎｡繧堤｢ｺ隱阪＠縺ｦ縺上□縺輔＞縲・,
-        reason: "髯､螟門ｯｾ雎｡縺ｮ遒ｺ螳壹→蜊ｰ蛻ｷ螳御ｺ・ｒ陦後≧縺ｨ谺｡蟾･遞九∈騾ｲ縺ｿ縺ｾ縺吶・,
+        message: "Amazon の除外設定・印刷対象を確認してください。",
+        reason: "除外対象の確定と印刷完了を行うと次工程へ進みます。",
       },
       rakuten_print_pending: {
-        message: "讌ｽ螟ｩ縺ｮ髯､螟冶ｨｭ螳壹・蜊ｰ蛻ｷ蟇ｾ雎｡繧堤｢ｺ隱阪＠縺ｦ縺上□縺輔＞縲・,
-        reason: "髯､螟門ｯｾ雎｡縺ｮ遒ｺ螳壹→蜊ｰ蛻ｷ螳御ｺ・ｒ陦後≧縺ｨ谺｡蟾･遞九∈騾ｲ縺ｿ縺ｾ縺吶・,
+        message: "楽天の除外設定・印刷対象を確認してください。",
+        reason: "除外対象の確定と印刷完了を行うと次工程へ進みます。",
       },
       provider_ingest_pending: {
-        message: "螟夜ΚCSV縺ｮ蜿悶ｊ霎ｼ縺ｿ繧貞ｮ溯｡後＠縺ｦ縺上□縺輔＞縲・,
-        reason: "Amazon/讌ｽ螟ｩ縺ｧ蜿門ｾ励＠縺阪ｌ縺ｪ縺・・繧貞・騾壹ヵ繧ｩ繝ｫ繝縺九ｉ蜿悶ｊ霎ｼ繧薙〒縺上□縺輔＞縲・,
+        message: "外部CSVの取り込みを実行してください。",
+        reason: "Amazon/楽天で取得しきれない分を共通フォルダから取り込んでください。",
       },
       mf_reconcile_ready: {
-        message: "MF騾｣謳ｺ縺ｮ遯∝粋縺帛ｮ溯｡後∈騾ｲ繧√※縺上□縺輔＞縲・,
-        reason: "蜿悶ｊ霎ｼ縺ｿ貂医∩繝・・繧ｿ繧樽F縺ｮ荳区嶌縺堺ｽ懈・縺ｸ蜿肴丐縺吶ｋ貅門ｙ縺梧紛縺・∪縺励◆縲・,
+        message: "MF連携の突合せ実行へ進めてください。",
+        reason: "取り込み済みデータをMFの下書き作成へ反映する準備が整いました。",
       },
       workflow_complete: {
-        message: "縺吶∋縺ｦ螳御ｺ・＠縺ｾ縺励◆縲よ怦谺｡繧｢繝ｼ繧ｫ繧､繝悶ｒ螳溯｡後〒縺阪∪縺吶・,
-        reason: "譛邨ら｢ｺ隱阪→縺励※譛域ｬ｡繧ｯ繝ｭ繝ｼ繧ｺ繧・い繝ｼ繧ｫ繧､繝悶〒谺｡譛域ｺ門ｙ縺ｫ騾ｲ繧薙〒縺上□縺輔＞縲・,
+        message: "すべて完了しました。月次アーカイブを実行できます。",
+        reason: "最終確認として月次クローズやアーカイブで次月準備に進んでください。",
       },
     };
 
@@ -3565,7 +3565,7 @@
       message: guidance.message,
       reason: guidance.reason,
       href,
-      linkLabel: guidance.linkLabel || (href === FALLBACK_WIZARD_HREF ? "謇矩・ｒ遒ｺ隱・ : ""),
+      linkLabel: guidance.linkLabel || (href === FALLBACK_WIZARD_HREF ? "手順を確認" : ""),
     };
   }
   function inferAllowedModes(data) {
@@ -3913,7 +3913,7 @@
       parts.push(`Failed: ${failed}`);
     }
 
-    const prefix = manualActionRequired || failed > 0 ? "笞 Import completed with warnings: " : "Import completed: ";
+    const prefix = manualActionRequired || failed > 0 ? "⚠ Import completed with warnings: " : "Import completed: ";
     const summary = parts.length > 0 ? parts.join(" / ") : "No rows were detected.";
     const reason = manualActionReason ? ` (reason: ${manualActionReason})` : "";
     return `${prefix}${summary}${reason}${updatedText}`;
@@ -4079,12 +4079,12 @@
 
       const labels = {
         preflight: "莠句燕貅門ｙ",
-        amazon_download: "Amazon蜿悶ｊ霎ｼ縺ｿ",
+        amazon_download: "Amazon取り込み",
         amazon_decide_print: "Amazon蜊ｰ蛻ｷ蛻､螳・,
-        rakuten_download: "讌ｽ螟ｩ蜿悶ｊ霎ｼ縺ｿ",
+        rakuten_download: "楽天取り込み",
         rakuten_decide_print: "讌ｽ螟ｩ蜊ｰ蛻ｷ蛻､螳・,
-        provider_ingest: "繝励Ο繝舌う繝蜿鈴伜・縺ｮ蜿悶ｊ霎ｼ縺ｿ",
-        mf_bulk_upload_task: "MF荳諡ｬ繧｢繝・・繝ｭ繝ｼ繝・,
+        provider_ingest: "プロバイダ受領分の取り込み",
+        mf_bulk_upload_task: "MF一括アップロード",
         mf_reconcile: "MF遯∝粋",
       };
       if (!window.__stepState) {
@@ -4093,7 +4093,7 @@
         Object.keys(stepStates).forEach((key) => {
           if (key === "mf_reconcile") return;
           if (window.__stepState[key] && window.__stepState[key] !== "done" && stepStates[key] === "done") {
-            showToast(`${labels[key]}縺悟ｮ御ｺ・＠縺ｾ縺励◆縲Ａ, "success");
+            showToast(`${labels[key]}が完了しました。`, "success");
           }
         });
       }
