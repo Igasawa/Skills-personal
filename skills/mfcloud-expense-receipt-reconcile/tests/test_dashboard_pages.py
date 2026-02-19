@@ -190,6 +190,54 @@ def test_index_page_clamps_invalid_default_month(monkeypatch: pytest.MonkeyPatch
     assert 'name="month" value="1"' in res.text
 
 
+def test_index_template_clamps_invalid_month_even_if_route_sanitize_is_bypassed(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setattr(pages_routes, "_sanitize_form_defaults_year_month", lambda defaults: defaults)
+    monkeypatch.setattr(
+        pages_routes.core,
+        "_resolve_form_defaults",
+        lambda: {
+            "year": 2026,
+            "month": 13,
+            "mfcloud_url": "https://example.com/mf",
+            "rakuten_enabled": False,
+            "notes": "",
+            "rakuten_orders_url": "https://example.com/rakuten",
+            "amazon_orders_url": "https://example.com/amazon",
+        },
+    )
+    client = _create_client(monkeypatch, tmp_path)
+    res = client.get("/")
+    assert res.status_code == 200
+    assert 'name="month" value="1"' in res.text
+
+
+def test_workflow_copy_template_clamps_hidden_month_even_if_route_sanitize_is_bypassed(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setattr(pages_routes, "_sanitize_form_defaults_year_month", lambda defaults: defaults)
+    monkeypatch.setattr(
+        pages_routes.core,
+        "_resolve_form_defaults",
+        lambda: {
+            "year": 2026,
+            "month": 13,
+            "mfcloud_url": "https://example.com/mf",
+            "rakuten_enabled": False,
+            "notes": "",
+            "rakuten_orders_url": "https://example.com/rakuten",
+            "amazon_orders_url": "https://example.com/amazon",
+        },
+    )
+    client = _create_client(monkeypatch, tmp_path)
+    res = client.get("/expense-workflow-copy")
+    assert res.status_code == 200
+    assert 'name="month" value="1"' in res.text
+
+
 def test_index_page_shows_archive_history_links(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     client = _create_client(monkeypatch, tmp_path)
     ym = "2026-01"

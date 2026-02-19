@@ -48,8 +48,12 @@
               />
             </label>
           </div>
+          {% set safe_month = defaults.month | int %}
+          {% if safe_month < 1 or safe_month > 12 %}
+            {% set safe_month = 1 %}
+          {% endif %}
           <input type="hidden" name="year" value="{{ defaults.year }}" />
-          <input type="hidden" name="month" value="{{ defaults.month }}" />
+          <input type="hidden" name="month" value="{{ safe_month }}" />
           <label>
             補足説明（任意）
             <input

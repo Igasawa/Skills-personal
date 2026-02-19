@@ -50,6 +50,10 @@
           </div>
           <div id="error-box" class="error-box hidden"></div>
           <form id="run-form" class="form">
+            {% set safe_month = defaults.month | int %}
+            {% if safe_month < 1 or safe_month > 12 %}
+              {% set safe_month = 1 %}
+            {% endif %}
             <div class="form-row">
               <label>
                 年
@@ -57,7 +61,7 @@
               </label>
               <label>
                 月
-                <input type="number" name="month" value="{{ defaults.month }}" min="1" max="12" required />
+                <input type="number" name="month" value="{{ safe_month }}" min="1" max="12" required />
               </label>
             </div>
             <label>
