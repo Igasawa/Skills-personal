@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from datetime import datetime
 from pathlib import Path
@@ -299,7 +299,7 @@ def _run_pptx_polish_job(job_id: str, actor: dict | None = None) -> None:
     _mark_job_status(
         job_id=job_id,
         status="running",
-        message="謨ｴ蠖｢蜃ｦ逅・ｒ螳溯｡御ｸｭ",
+        message="PPTX polish job started.",
         progress=10,
         attempt=attempts,
         engine=meta.get("engine") if isinstance(meta.get("engine"), str) else "unknown",
@@ -326,7 +326,7 @@ def _run_pptx_polish_job(job_id: str, actor: dict | None = None) -> None:
             job_id=job_id,
             status="done",
             message=(
-                "謨ｴ蠖｢螳御ｺ・ "
+                "PPTX polish completed: "
                 + (details.get("engine") if isinstance(details.get("engine"), str) else "fallback")
             ),
             progress=100,
@@ -349,7 +349,7 @@ def _run_pptx_polish_job(job_id: str, actor: dict | None = None) -> None:
         _mark_job_status(
             job_id=job_id,
             status="failed",
-            message="謨ｴ蠖｢蜃ｦ逅・〒繧ｨ繝ｩ繝ｼ縺檎匱逕溘＠縺ｾ縺励◆",
+            message="PPTX polish failed.",
             progress=0,
             attempt=attempts,
             error=str(exc),
