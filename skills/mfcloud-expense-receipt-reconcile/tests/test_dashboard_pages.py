@@ -9,6 +9,7 @@ from fastapi.templating import Jinja2Templates
 from fastapi.testclient import TestClient
 import pytest
 
+import dashboard.routes.pages as pages_routes
 from dashboard.routes.pages import create_pages_router
 
 
@@ -167,6 +168,26 @@ def test_index_page_shows_manual_archive_button(monkeypatch: pytest.MonkeyPatch,
         and link.get("section") == "admin"
         for link in links
     )
+
+
+def test_index_page_clamps_invalid_default_month(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(
+        pages_routes.core,
+        "_resolve_form_defaults",
+        lambda: {
+            "year": 2026,
+            "month": 13,
+            "mfcloud_url": "https://example.com/mf",
+            "rakuten_enabled": False,
+            "notes": "",
+            "rakuten_orders_url": "https://example.com/rakuten",
+            "amazon_orders_url": "https://example.com/amazon",
+        },
+    )
+    client = _create_client(monkeypatch, tmp_path)
+    res = client.get("/")
+    assert res.status_code == 200
+    assert 'name="month" value="1"' in res.text
 
 
 def test_index_page_shows_archive_history_links(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -344,6 +365,9 @@ def test_workspace_page_shows_core_link_and_prompt_tools(
     assert "workspace-edit-prompt" in res.text
     assert 'id="workspace-link-form"' in res.text
     assert 'id="workspace-custom-links"' in res.text
+    assert 'id="workspace-pinned-links"' in res.text
+    assert 'id="workspace-pinned-count"' in res.text
+    assert 'id="workspace-link-undo"' in res.text
     assert 'id="workspace-prompt-editor"' in res.text
     assert 'id="workspace-save-prompt"' in res.text
     assert "data-prompt-front" in res.text

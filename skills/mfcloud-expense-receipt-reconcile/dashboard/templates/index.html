@@ -89,7 +89,20 @@
               <div class="muted">このフォームの年月・URLがウィザード実行に使われます。</div>
             </div>
           </form>
-          <div class="scheduler-panel" id="scheduler-panel" data-scheduler-card-id="workflow-status" data-scheduler-action-key="preflight">
+          <div id="step-preflight" class="wizard-step preflight-inline" data-step-id="preflight">
+            <div class="step-head">
+              <span class="step-num">0</span>
+              <span class="step-title">手順0 準備（ログイン確認・MF連携更新）</span>
+              <span class="step-status" data-step-status="preflight">未実行</span>
+            </div>
+            <div class="step-actions">
+              <button type="button" class="primary" data-step-action="preflight">準備を実行</button>
+              <button type="button" class="secondary" data-step-action="preflight_mf">MF再取得のみ</button>
+              <span class="muted">各サイトのログインとMF連携の再取得をまとめて実行します。</span>
+            </div>
+          </div>
+          
+          <div class="scheduler-panel" id="scheduler-panel" data-scheduler-card-id="workflow-status" data-scheduler-action-key="preflight" hidden>
             <div class="scheduler-head">
               <h3>タイマー自動実行</h3>
               <label
@@ -136,18 +149,6 @@
           </div>
         </div>
         <div class="wizard-steps">
-          <div id="step-preflight" class="wizard-step" data-step-id="preflight">
-            <div class="step-head">
-              <span class="step-num">0</span>
-              <span class="step-title">手順0 準備（ログイン確認・MF連携更新）</span>
-              <span class="step-status" data-step-status="preflight">未実行</span>
-            </div>
-            <div class="step-actions">
-              <button type="button" class="primary" data-step-action="preflight">準備を実行</button>
-              <button type="button" class="secondary" data-step-action="preflight_mf">MF再取得のみ</button>
-              <span class="muted">各サイトのログインとMF連携の再取得をまとめて実行します。</span>
-            </div>
-          </div>
           <div id="step-amazon-task" class="wizard-step wizard-task" data-task-id="amazon">
             <div class="task-head">
               <span class="step-num">1</span>

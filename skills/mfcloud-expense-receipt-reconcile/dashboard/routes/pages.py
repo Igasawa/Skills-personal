@@ -572,6 +572,20 @@ def _dashboard_context(active_tab: str) -> dict[str, object]:
     }
 
 
+def _sanitize_form_defaults_year_month(defaults: dict[str, object]) -> dict[str, object]:
+    year = core._safe_non_negative_int(defaults.get("year"), default=0)
+    month = core._safe_non_negative_int(defaults.get("month"), default=0)
+
+    if year < 2000 or year > 3000:
+        year = 2000
+    if month < 1 or month > 12:
+        month = 1
+
+    defaults["year"] = year
+    defaults["month"] = month
+    return defaults
+
+
 def create_pages_router(templates: Jinja2Templates) -> APIRouter:
     router = APIRouter()
 
@@ -581,7 +595,7 @@ def create_pages_router(templates: Jinja2Templates) -> APIRouter:
 
     @router.get("/", response_class=HTMLResponse)
     def index(request: Request) -> HTMLResponse:
-        defaults = core._resolve_form_defaults()
+        defaults = _sanitize_form_defaults_year_month(core._resolve_form_defaults())
         return templates.TemplateResponse(
             request,
             "index.html",
@@ -597,7 +611,7 @@ def create_pages_router(templates: Jinja2Templates) -> APIRouter:
         page_config = _lookup_workflow_page(workflow_id)
         if page_config is None:
             raise HTTPException(status_code=404, detail="Workflow page not found.")
-        defaults = core._resolve_form_defaults()
+        defaults = _sanitize_form_defaults_year_month(core._resolve_form_defaults())
         try:
             defaults["year"] = int(page_config.get("year"))
         except Exception:
@@ -606,6 +620,7 @@ def create_pages_router(templates: Jinja2Templates) -> APIRouter:
             defaults["month"] = int(page_config.get("month"))
         except Exception:
             pass
+        defaults = _sanitize_form_defaults_year_month(defaults)
         defaults["mfcloud_url"] = str(page_config.get("mfcloud_url") or "")
         defaults["notes"] = str(page_config.get("notes") or "")
         defaults["rakuten_orders_url"] = str(page_config.get("rakuten_orders_url") or "")
@@ -626,7 +641,7 @@ def create_pages_router(templates: Jinja2Templates) -> APIRouter:
         template: str | None = Query(default=None),
         template_id: str | None = Query(default=None),
     ) -> HTMLResponse:
-        defaults = core._resolve_form_defaults()
+        defaults = _sanitize_form_defaults_year_month(core._resolve_form_defaults())
         resolved_template_id = template or template_id
         workflow_template = _lookup_workflow_template(resolved_template_id)
         if workflow_template is None:

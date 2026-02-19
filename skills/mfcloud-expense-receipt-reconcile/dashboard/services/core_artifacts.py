@@ -261,11 +261,33 @@ def _extract_urls_from_config_section(section: dict[str, Any]) -> tuple[dict[str
     return tenant_urls, legacy_urls
 
 
+def _coerce_valid_year_month(
+    year_value: Any,
+    month_value: Any,
+    *,
+    fallback_year: int,
+    fallback_month: int,
+) -> tuple[int, int]:
+    try:
+        year = int(year_value)
+    except Exception:
+        year = fallback_year
+    try:
+        month = int(month_value)
+    except Exception:
+        month = fallback_month
+    if year < 2000 or year > 3000:
+        year = fallback_year
+    if month < 1 or month > 12:
+        month = fallback_month
+    return year, month
+
+
 def _resolve_form_defaults() -> dict[str, Any]:
-    year, month = _ym_default()
+    fallback_year, fallback_month = _ym_default()
     defaults: dict[str, Any] = {
-        "year": year,
-        "month": month,
+        "year": fallback_year,
+        "month": fallback_month,
         "mfcloud_url": DEFAULT_MFCLOUD_EXPENSE_LIST_URL,
         "rakuten_enabled": False,
         "notes": "",
@@ -275,8 +297,14 @@ def _resolve_form_defaults() -> dict[str, Any]:
 
     last_run = _latest_run_config()
     if last_run:
-        defaults["year"] = last_run.get("year") or defaults["year"]
-        defaults["month"] = last_run.get("month") or defaults["month"]
+        resolved_year, resolved_month = _coerce_valid_year_month(
+            last_run.get("year"),
+            last_run.get("month"),
+            fallback_year=int(defaults["year"]),
+            fallback_month=int(defaults["month"]),
+        )
+        defaults["year"] = resolved_year
+        defaults["month"] = resolved_month
         tenant_urls, legacy_urls = _extract_urls_from_config_section(last_run)
         defaults["mfcloud_url"] = (
             tenant_urls.get("mfcloud_expense_list")
@@ -322,5 +350,12 @@ def _resolve_form_defaults() -> dict[str, Any]:
     mfcloud_url = str(defaults.get("mfcloud_url") or "").strip()
     if not mfcloud_url or mfcloud_url == LEGACY_MFCLOUD_EXPENSE_LIST_URL:
         defaults["mfcloud_url"] = DEFAULT_MFCLOUD_EXPENSE_LIST_URL
+
+    defaults["year"], defaults["month"] = _coerce_valid_year_month(
+        defaults.get("year"),
+        defaults.get("month"),
+        fallback_year=fallback_year,
+        fallback_month=fallback_month,
+    )
 
     return defaults

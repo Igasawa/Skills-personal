@@ -25,7 +25,8 @@ app.include_router(create_api_router())
 
 @app.on_event("startup")
 def app_startup() -> None:
-    core_scheduler.start_worker()
+    # Timer auto-execution is intentionally disabled for wizard operation.
+    core_scheduler.stop_worker()
 
 
 @app.on_event("shutdown")

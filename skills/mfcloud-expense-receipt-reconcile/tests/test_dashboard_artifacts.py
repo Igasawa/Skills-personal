@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 
+import dashboard.services.core_artifacts as core_artifacts
 from dashboard.services.core_artifacts import _scan_artifacts
 
 
@@ -146,3 +147,28 @@ def test_scan_artifacts_derives_exclusion_counts_from_orders_and_exclusions(
     assert counts["included_orders"] == 0
     assert counts["amazon_excluded_orders"] == 2
     assert counts["rakuten_excluded_orders"] == 2
+
+
+def test_resolve_form_defaults_falls_back_when_last_run_month_is_invalid(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("AX_HOME", str(tmp_path))
+    monkeypatch.setattr(core_artifacts, "_ym_default", lambda: (2026, 1))
+
+    _write_json(
+        _artifact_root(tmp_path) / "2026-01" / "run_config.resolved.json",
+        {
+            "year": 2026,
+            "month": 13,
+            "monthly_notes": "invalid month in last run",
+            "tenant": {
+                "urls": {
+                    "mfcloud_expense_list": "https://example.com/outgo_input",
+                }
+            },
+        },
+    )
+
+    defaults = core_artifacts._resolve_form_defaults()
+    assert defaults["year"] == 2026
+    assert defaults["month"] == 1
