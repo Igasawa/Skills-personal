@@ -64,6 +64,30 @@
     return ["1", "true", "yes", "on"].includes(text);
   }
 
+  function normalizeTemplateStepAutoTimerEnabled(value, fallback = false) {
+    if (typeof value === "boolean") return value;
+    if (typeof value === "string") {
+      const text = value.trim().toLowerCase();
+      if (text === "1" || text === "true" || text === "yes" || text === "on") return true;
+      if (text === "0" || text === "false" || text === "off" || text === "") return false;
+      return fallback;
+    }
+    if (typeof value === "number") return value > 0;
+    return Boolean(value) ? fallback : false;
+  }
+
+  function normalizeTemplateStepUiMode(value, fallback = TEMPLATE_STEP_UI_MODE_DEFAULT) {
+    const normalized = String(value || "").trim();
+    if (!normalized) return fallback;
+    if (Object.prototype.hasOwnProperty.call(TEMPLATE_STEP_UI_MODE, normalized)) {
+      return normalized;
+    }
+    if (Object.values(TEMPLATE_STEP_UI_MODE).includes(normalized)) {
+      return normalized;
+    }
+    return fallback;
+  }
+
   function normalizeTemplateStepOrder(value, fallback = 1) {
     const parsed = Number.parseInt(String(value ?? "").trim(), 10);
     if (!Number.isInteger(parsed) || parsed < 1) return fallback;
@@ -111,9 +135,12 @@
       const raw = row && typeof row === "object" ? row : {};
       const action = normalizeTemplateStepAction(raw.action);
       if (!action || seen.has(action)) return;
-      const title = String(raw.title || "").trim() || defaultTitleForStepAction(action, `Task ${index + 1}`);
+      const title = String(raw.title || "").trim();
       const id = String(raw.id || "").trim() || generateTemplateStepId();
       const autoRun = normalizeTemplateStepAutoRun(raw.auto_run ?? raw.autoRun);
+      const hasAutoTimerEnabled = Object.prototype.hasOwnProperty.call(raw, "auto_timer_enabled");
+      const hasUiMode = Object.prototype.hasOwnProperty.call(raw, "ui_mode");
+      const autoTimerEnabled = normalizeTemplateStepAutoTimerEnabled(raw.auto_timer_enabled, false);
       const timerRaw = raw.timer_minutes ?? raw.timer;
       const timerProvided = Object.prototype.hasOwnProperty.call(raw, "timer_minutes") || Object.prototype.hasOwnProperty.call(raw, "timer");
       let timerMinutes = timerProvided ? normalizeTemplateStepTimerMinutes(timerRaw, null) : null;
@@ -131,6 +158,16 @@
         auto_run: autoRun,
         execution_log: executionLog,
       };
+      if (hasAutoTimerEnabled || hasUiMode) {
+        const normalizedUiModeFallback = autoTimerEnabled
+          ? TEMPLATE_STEP_UI_MODE.advanced
+          : TEMPLATE_STEP_UI_MODE_DEFAULT;
+        nextRow.ui_mode = normalizeTemplateStepUiMode(
+          raw.ui_mode,
+          normalizedUiModeFallback,
+        );
+        nextRow.auto_timer_enabled = autoTimerEnabled;
+      }
       if (includeTimer) {
         nextRow.timer_minutes = timerMinutes;
       }
@@ -674,10 +711,14 @@
     const rowId = String(row?.dataset?.templateStepId || "").trim();
     const action = normalizeTemplateStepAction(row?.querySelector("[data-template-step-action]")?.value);
     const title =
-      String(row?.querySelector("[data-template-step-title]")?.value || "").trim() ||
-      defaultTitleForStepAction(action, `Task ${index + 1}`);
+      String(row?.querySelector("[data-template-step-title]")?.value || "").trim();
     const order = normalizeTemplateStepOrder(row?.dataset?.templateStepOrder, index + 1);
     const autoRun = Boolean(row?.querySelector("[data-template-step-auto-run]")?.checked);
+    const autoTimerEnabled = normalizeTemplateStepAutoTimerEnabled(
+      row?.dataset?.templateStepAutoTimer,
+      false,
+    );
+    const uiMode = normalizeTemplateStepUiMode(row?.dataset?.templateStepUiMode, TEMPLATE_STEP_UI_MODE_DEFAULT);
     const timerInput = row?.querySelector("[data-template-step-timer]");
     const timerRaw = String(timerInput?.value || "").trim();
     let timerMinutes = null;
@@ -691,6 +732,8 @@
       id: rowId || generateTemplateStepId(),
       order,
       title,
+      auto_timer_enabled: autoTimerEnabled,
+      ui_mode: uiMode,
       action,
       auto_run: autoRun,
       timer_minutes: timerMinutes,
@@ -725,7 +768,15 @@
         execution_log: [],
       };
       const action = normalizeTemplateStepAction(parsed.action);
+      const uiMode = normalizeTemplateStepUiMode(
+        parsed.ui_mode,
+        parsed.auto_timer_enabled ? TEMPLATE_STEP_UI_MODE.advanced : TEMPLATE_STEP_UI_MODE_DEFAULT,
+      );
+      const autoTimerEnabled = normalizeTemplateStepAutoTimerEnabled(parsed.auto_timer_enabled, false);
       const requiredAction = isRequiredTemplateStepAction(action) ? action : "";
+
+      row.dataset.templateStepUiMode = uiMode;
+      row.dataset.templateStepAutoTimer = autoTimerEnabled ? "1" : "0";
 
       row.dataset.templateStepOrder = String(index + 1);
       setTemplateStepExecutionLogOnRow(row, parsed.execution_log);
@@ -742,9 +793,6 @@
 
       const titleEl = row.querySelector("[data-template-step-title]");
       if (titleEl) {
-        if (!String(titleEl.value || "").trim()) {
-          titleEl.value = defaultTitleForStepAction(action, `Task ${index + 1}`);
-        }
         titleEl.setAttribute("aria-label", `Task ${index + 1} title`);
       }
 
@@ -769,6 +817,17 @@
       if (autoRunEl) {
         autoRunEl.checked = autoRunEnabled;
         autoRunEl.setAttribute("aria-label", `Task ${index + 1} auto run`);
+      }
+
+      const uiModeEnabled = uiMode === TEMPLATE_STEP_UI_MODE.advanced;
+      const advancedContainer = row.querySelector("[data-template-step-advanced]");
+      const toggleButton = row.querySelector("[data-template-step-toggle]");
+      if (advancedContainer) {
+    advancedContainer.dataset.templateStepExpanded = uiModeEnabled ? "1" : "0";
+      }
+      if (toggleButton) {
+        toggleButton.textContent = uiModeEnabled ? AUTO_TIMER_LABEL_ON : AUTO_TIMER_LABEL_OFF;
+        toggleButton.setAttribute("aria-expanded", uiModeEnabled ? "true" : "false");
       }
 
       const timerEl = row.querySelector("[data-template-step-timer]");
@@ -853,10 +912,19 @@
     const parsedRows = getTemplateStepRows()
       .map((row, index) => parseTemplateStepRow(row, index))
       .filter((row) => Boolean(row.title));
-    return normalizeWorkflowStepRows(parsedRows, {
+    const normalized = normalizeWorkflowStepRows(parsedRows, {
       ensureRequired: true,
       includeTimer: true,
     });
+    return normalized.map((row) => ({
+      id: row.id,
+      order: row.order,
+      title: row.title,
+      action: row.action,
+      auto_run: row.auto_run,
+      timer_minutes: row.timer_minutes,
+      execution_log: row.execution_log,
+    }));
   }
 
   function addTemplateStepFromDefaultCard(options = {}) {
@@ -871,9 +939,10 @@
     addTemplateStepRow(
       {
         id: "",
-        title: defaultTitleForStepAction(action, `Task ${nextIndex}`),
+        title: "",
         action,
         auto_run: false,
+        auto_timer_enabled: false,
         timer_minutes: null,
         execution_log: [],
       },
@@ -891,6 +960,16 @@
     const action = normalizeTemplateStepAction(rawStep?.action);
     const requiredAction = isRequiredTemplateStepAction(action) ? action : "";
     const autoRun = normalizeTemplateStepAutoRun(rawStep?.auto_run ?? rawStep?.autoRun);
+    const hasAutoTimerEnabled = Object.prototype.hasOwnProperty.call(rawStep || {}, "auto_timer_enabled");
+    const autoTimerEnabled = normalizeTemplateStepAutoTimerEnabled(rawStep?.auto_timer_enabled, false);
+    const uiMode = normalizeTemplateStepUiMode(
+      rawStep?.ui_mode,
+      hasAutoTimerEnabled
+        ? autoTimerEnabled
+          ? TEMPLATE_STEP_UI_MODE.advanced
+          : TEMPLATE_STEP_UI_MODE_DEFAULT
+        : TEMPLATE_STEP_UI_MODE_DEFAULT,
+    );
     const executionLog = normalizeTemplateStepExecutionLog(rawStep?.execution_log ?? rawStep?.executionLog);
     const rawTimer = rawStep?.timer_minutes ?? rawStep?.timer;
     const timerMinutes = autoRun
@@ -903,6 +982,8 @@
     row.dataset.templateStepId = String(rawStep?.id || generateTemplateStepId()).trim();
     row.dataset.templateStepOrder = String(normalizeTemplateStepOrder(rawStep?.order, getTemplateStepRows().length + 1));
     row.dataset.lastAction = action;
+    row.dataset.templateStepUiMode = uiMode;
+    row.dataset.templateStepAutoTimer = autoTimerEnabled ? "1" : "0";
     row.draggable = true;
     setTemplateStepExecutionLogOnRow(row, executionLog);
     if (requiredAction) {
@@ -937,6 +1018,11 @@
     titleEl.dataset.templateStepTitle = "1";
     titleEl.required = true;
 
+    const advancedContainer = document.createElement("div");
+    advancedContainer.className = "template-step-advanced";
+    advancedContainer.dataset.templateStepAdvanced = "1";
+    advancedContainer.dataset.templateStepExpanded = uiMode === TEMPLATE_STEP_UI_MODE.advanced ? "1" : "0";
+
     const actionEl = document.createElement("select");
     actionEl.className = "template-step-action";
     actionEl.dataset.templateStepAction = "1";
@@ -969,6 +1055,15 @@
     removeButton.dataset.templateStepRemove = "1";
     removeButton.setAttribute("aria-label", "Remove task");
     removeButton.textContent = "-";
+
+    const toggleButton = document.createElement("button");
+    toggleButton.type = "button";
+    toggleButton.className = "secondary template-step-toggle";
+    toggleButton.dataset.templateStepToggle = "1";
+    toggleButton.textContent = uiMode === TEMPLATE_STEP_UI_MODE.advanced ? AUTO_TIMER_LABEL_ON : AUTO_TIMER_LABEL_OFF;
+    toggleButton.setAttribute("aria-expanded", uiMode === TEMPLATE_STEP_UI_MODE.advanced ? "true" : "false");
+    toggleButton.setAttribute("aria-label", "Toggle task advanced options");
+
     removeButton.addEventListener("click", () => {
       if (row.dataset.requiredAction) {
         showToast("Required task cannot be removed.", "error");
@@ -1050,10 +1145,12 @@
     row.appendChild(dragHandle);
     row.appendChild(indexEl);
     row.appendChild(titleEl);
-    row.appendChild(actionEl);
-    row.appendChild(autoRunLabel);
-    row.appendChild(timerEl);
+    row.appendChild(toggleButton);
     row.appendChild(removeButton);
+    advancedContainer.appendChild(actionEl);
+    advancedContainer.appendChild(autoRunLabel);
+    advancedContainer.appendChild(timerEl);
+    row.appendChild(advancedContainer);
     row.appendChild(logEl);
     listEl.appendChild(row);
 
@@ -1084,7 +1181,7 @@
             includeTimer: true,
           });
     rowsToRender.forEach((row, index) => {
-      const title = String(row?.title || "").trim() || defaultTitleForStepAction(row?.action, `Task ${index + 1}`);
+      const title = String(row?.title || "").trim();
       const action = normalizeTemplateStepAction(row?.action);
       addTemplateStepRow(
         {
@@ -1095,6 +1192,8 @@
           auto_run: row?.auto_run,
           timer_minutes: row?.timer_minutes,
           execution_log: row?.execution_log,
+          auto_timer_enabled: row?.auto_timer_enabled,
+          ui_mode: row?.ui_mode,
         },
         { focus: false },
       );

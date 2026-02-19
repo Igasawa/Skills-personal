@@ -213,6 +213,25 @@
       event.preventDefault();
       addTemplateStepFromDefaultCard({});
     });
+    const onTemplateStepToggle = (event) => {
+      const toggleButton = event.target.closest("[data-template-step-toggle]");
+      if (!toggleButton) return;
+      const row = toggleButton.closest("[data-template-step-row]");
+      if (!(row instanceof HTMLElement) || row.dataset.templateStepRow !== "1") return;
+
+      const currentMode = normalizeTemplateStepUiMode(
+        row.dataset.templateStepUiMode,
+        TEMPLATE_STEP_UI_MODE_DEFAULT,
+      );
+      const nextMode =
+        currentMode === TEMPLATE_STEP_UI_MODE.advanced
+          ? TEMPLATE_STEP_UI_MODE.compact
+          : TEMPLATE_STEP_UI_MODE.advanced;
+      row.dataset.templateStepUiMode = nextMode;
+      row.dataset.templateStepAutoTimer = nextMode === TEMPLATE_STEP_UI_MODE.advanced ? "1" : "0";
+      refreshTemplateStepRows();
+    };
+    getTemplateStepsListEl()?.addEventListener("click", onTemplateStepToggle);
     const workflowPageCreateButton = document.getElementById("workflow-page-create");
     workflowPageCreateButton?.addEventListener("click", (event) => {
       event.preventDefault();

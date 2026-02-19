@@ -84,7 +84,7 @@
 
 .template-step-row {
   display: grid;
-  grid-template-columns: 36px 72px minmax(180px, 1fr) minmax(170px, 1fr) auto 120px auto;
+  grid-template-columns: 36px 72px minmax(180px, 1fr) auto auto;
   align-items: center;
   gap: 10px;
   padding: 10px 12px;
@@ -129,8 +129,9 @@
 }
 
 .template-step-row [data-template-step-action],
-.template-step-action {
-  min-width: 170px;
+.template-step-action,
+.template-step-advanced [data-template-step-action] {
+  min-width: 0;
   max-width: 100%;
 }
 
@@ -166,6 +167,45 @@
   align-self: center;
 }
 
+.template-step-toggle {
+  min-width: 34px;
+  min-height: 34px;
+  justify-content: center;
+  align-self: center;
+}
+
+.template-step-advanced {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: minmax(150px, 1fr) auto auto;
+  align-items: center;
+  gap: 10px;
+  overflow: hidden;
+  max-height: 0;
+  margin-top: 0;
+  padding-top: 0;
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    max-height var(--transition-fast),
+    margin-top var(--transition-fast),
+    padding-top var(--transition-fast),
+    opacity var(--transition-fast);
+}
+
+.template-step-advanced[data-template-step-expanded="1"] {
+  max-height: 220px;
+  margin-top: 8px;
+  padding-top: 8px;
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.template-step-row [data-template-step-toggle][aria-expanded="true"] {
+  background: rgb(var(--semantic-feedback-warning-surface) / 0.36);
+  border-color: rgb(var(--semantic-feedback-warning-surface) / 0.62);
+}
+
 .template-step-log {
   grid-column: 1 / -1;
   min-height: 16px;
@@ -181,7 +221,7 @@
 
 @media (max-width: 820px) {
   .template-step-row {
-    grid-template-columns: 36px minmax(0, 1fr) auto;
+    grid-template-columns: 36px minmax(0, 1fr) auto auto;
   }
 
   .template-step-row [data-template-step-index] {
@@ -199,8 +239,14 @@
     min-width: 100%;
   }
 
-  .template-step-row [data-template-step-timer] {
+  .template-step-row [data-template-step-advanced],
+  .template-step-row [data-template-step-advanced][data-template-step-expanded="1"] {
     grid-column: 1 / -1;
+    grid-template-columns: 1fr;
+  }
+
+  .template-step-row [data-template-step-timer],
+  .template-step-row [data-template-step-remove] {
     min-width: 100%;
   }
 
@@ -209,7 +255,7 @@
   }
 
   .template-step-row [data-template-step-remove] {
-    grid-column: 3 / 4;
+    grid-column: 4 / 5;
     justify-self: end;
   }
 

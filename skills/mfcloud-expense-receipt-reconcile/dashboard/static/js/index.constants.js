@@ -57,7 +57,7 @@
   };
   const TEMPLATE_STEP_UI_MODE_DEFAULT = TEMPLATE_STEP_UI_MODE.compact;
   const AUTO_TIMER_LABEL_OFF = "+";
-  const AUTO_TIMER_LABEL_ON = "−";
+  const AUTO_TIMER_LABEL_ON = "-";
   const TEMPLATE_REQUIRED_STEPS = [
     { action: "preflight", title: "" },
   ];
