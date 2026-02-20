@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ja">
   <head>
-    {% set page_title = workflow_page.name if workflow_page and workflow_page.name else "workflow" %}
+    {% set page_title = workflow_page.name if workflow_page and workflow_page.name else "経費精算" %}
     {% set page_subheading = workflow_page.subheading if workflow_page and workflow_page.subheading else "" %}
     {% set is_workflow_page = workflow_page and workflow_page.id %}
     <meta charset="utf-8" />
@@ -18,11 +18,8 @@
     >
       <header class="hero">
         <div>
-          <p class="eyebrow" {% if not page_subheading %}hidden{% endif %}>{{ page_subheading }}</p>
           <h1>{{ page_title }}</h1>
-          <p class="subtitle">
-            成果物の確認と実行をまとめて管理します。ローカル専用（127.0.0.1）。
-          </p>
+          <p class="subtitle" {% if not page_subheading %}hidden{% endif %}>{{ page_subheading }}</p>
           <div class="step-actions">
             {% if workflow_page and workflow_page.id %}
               <button type="button" class="secondary" id="workflow-page-edit">ページ設定</button>
@@ -31,7 +28,9 @@
               <span class="muted" id="workflow-page-step-version"></span>
               <button type="button" class="secondary" id="workflow-page-archive">アーカイブ</button>
             {% endif %}
-            <a class="secondary" href="/status">ステータスページを開く</a>
+            {% if not (workflow_page and workflow_page.id) %}
+              <a class="secondary" href="/status">ステータスページを開く</a>
+            {% endif %}
           </div>
         </div>
       </header>
@@ -43,13 +42,13 @@
         data-archive-href-template="/runs/__YM__/archived-receipts"
       >
         <h2>ステップウィザード</h2>
-        <div class="wizard-step">
+        <div id="error-box" class="error-box hidden"></div>
+        <div id="target-settings-card" class="wizard-step" {% if is_workflow_page %}hidden{% endif %}>
           <div class="step-head" {% if is_workflow_page %}hidden{% endif %}>
             <span class="step-num">-</span>
             <span class="step-title">対象設定（実行依頼）</span>
             <span class="step-status pending">入力</span>
           </div>
-          <div id="error-box" class="error-box hidden"></div>
           <form
             id="run-form"
             class="form{% if is_workflow_page %} hidden{% endif %}"

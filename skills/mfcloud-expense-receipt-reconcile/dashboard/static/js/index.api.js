@@ -378,7 +378,7 @@
     const workflowPageId = String(workflowPage?.id || "").trim();
     if (!workflowPageId) return;
     const heroTitleEl = document.querySelector(".hero h1");
-    const heroSubheadingEl = document.querySelector(".hero .eyebrow");
+    const heroSubheadingEl = document.querySelector(".hero .subtitle");
     const currentName = String(workflowPage?.name || heroTitleEl?.textContent || "").trim();
     const currentSubheading = String(workflowPage?.subheading || heroSubheadingEl?.textContent || "").trim();
     const nextValues = await showWorkflowSettingsModal({ name: currentName, subheading: currentSubheading });
@@ -452,7 +452,7 @@
         return;
       }
       showToast("ワークフローをアーカイブしました。", "success");
-      window.location.href = "/";
+      window.location.href = "/expense";
     } catch {
       const message = "アーカイブに失敗しました。";
       showError(message);

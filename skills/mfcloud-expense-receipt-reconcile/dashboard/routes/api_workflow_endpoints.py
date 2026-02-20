@@ -66,6 +66,24 @@ from .api_workspace_routes import register_api_workspace_routes
 
 
 def register_api_workflow_endpoints(router: APIRouter) -> None:
+    legacy_workflow_subheading_values = {
+        "成果物の確認と実行をまとめて管理します。ローカル専用（127.0.0.1）。",
+        "成果物の確認と実行をまとめて管理します。ローカル専用（127.0.0.1）",
+        "成果物の確認と実行をまとめて管理します。ローカル専用(127.0.0.1)。",
+        "成果物の確認と実行をまとめて管理します。ローカル専用(127.0.0.1)",
+        "補足説明（任意）はここに書かれる。",
+        "補足説明（任意）はここに書かれる",
+    }
+
+    def _normalize_workflow_subheading(value: Any, *, max_chars: int) -> str:
+        normalized = " ".join(str(value or "").strip().split())[:max_chars]
+        if not normalized:
+            return ""
+        canonical = normalized.replace(" ", "").replace("\u3000", "")
+        if canonical in legacy_workflow_subheading_values:
+            return ""
+        return normalized
+
     def _run_archive_action(
         *,
         ym: str,
@@ -489,7 +507,7 @@ def register_api_workflow_endpoints(router: APIRouter) -> None:
 
 
     def _normalize_workflow_template_subheading(value: Any) -> str:
-        return " ".join(str(value or "").strip().split())[:WORKFLOW_TEMPLATE_MAX_SUBHEADING_CHARS]
+        return _normalize_workflow_subheading(value, max_chars=WORKFLOW_TEMPLATE_MAX_SUBHEADING_CHARS)
 
 
     def _workflow_template_timestamp_now() -> str:
@@ -706,7 +724,7 @@ def register_api_workflow_endpoints(router: APIRouter) -> None:
 
 
     def _normalize_workflow_page_subheading(value: Any) -> str:
-        return " ".join(str(value or "").strip().split())[:WORKFLOW_PAGE_MAX_SUBHEADING_CHARS]
+        return _normalize_workflow_subheading(value, max_chars=WORKFLOW_PAGE_MAX_SUBHEADING_CHARS)
 
 
     def _normalize_workflow_page_step_version(value: Any) -> int:

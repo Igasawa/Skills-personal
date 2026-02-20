@@ -2437,6 +2437,70 @@ def test_api_get_workflow_templates_supports_search_sort_and_pagination(monkeypa
     assert body_paged["total_count"] == 3
 
 
+def test_api_workflow_subheading_treats_legacy_default_text_as_blank(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _write_json(
+        _workflow_template_store(tmp_path),
+        [
+            {
+                "id": "tmpl-legacy-subheading",
+                "name": "Legacy Template",
+                "year": 2026,
+                "month": 1,
+                "mfcloud_url": "https://example.com/legacy",
+                "notes": "",
+                "subheading": "成果物の確認と実行をまとめて管理します。ローカル専用（127.0.0.1）。",
+                "rakuten_orders_url": "",
+                "created_at": "2026-02-01T10:00:00",
+                "updated_at": "2026-02-01T10:00:00",
+            },
+        ],
+    )
+    _write_json(
+        _workflow_pages_store(tmp_path),
+        [
+            {
+                "id": "wf-legacy-subheading",
+                "name": "Legacy Page",
+                "subheading": "補足説明（任意）はここに書かれる。",
+                "year": 2026,
+                "month": 2,
+                "mfcloud_url": "https://example.com/mf",
+                "source_urls": ["https://example.com/mf"],
+                "steps": [{"id": "step-1", "title": "Amazon取得", "action": "amazon_download"}],
+                "notes": "",
+                "rakuten_orders_url": "",
+                "source_template_id": "tmpl-legacy-subheading",
+                "step_version": 1,
+                "step_versions": [
+                    {
+                        "version": 1,
+                        "updated_at": "2026-02-01T10:00:00",
+                        "steps": [{"id": "step-1", "title": "Amazon取得", "action": "amazon_download"}],
+                    }
+                ],
+                "archived": False,
+                "archived_at": "",
+                "created_at": "2026-02-01T10:00:00",
+                "updated_at": "2026-02-01T10:00:00",
+            },
+        ],
+    )
+    client = _create_client(monkeypatch, tmp_path)
+
+    templates_res = client.get("/api/workflow-templates")
+    assert templates_res.status_code == 200
+    templates = templates_res.json()["templates"]
+    assert templates and templates[0]["subheading"] == ""
+
+    pages_res = client.get("/api/workflow-pages")
+    assert pages_res.status_code == 200
+    pages = pages_res.json()["workflow_pages"]
+    assert pages and pages[0]["subheading"] == ""
+
+
 def test_api_save_workflow_template_duplicate_name_and_update_conflict(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     client = _create_client(monkeypatch, tmp_path)
     create_payload = {

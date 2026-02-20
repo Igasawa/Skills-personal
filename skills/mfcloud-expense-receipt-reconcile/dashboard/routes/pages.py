@@ -59,7 +59,7 @@ WORKFLOW_TEMPLATE_ALLOWED_STEP_ACTIONS = (
 WORKFLOW_PAGE_MAX_STEP_VERSIONS = 30
 DEFAULT_SIDEBAR_LINKS = [
     {"href": "/workspace", "label": "HOME", "tab": "workspace", "section": "home"},
-    {"href": "/", "label": "WorkFlow", "tab": "wizard", "section": "workflow"},
+    {"href": "/expense", "label": "経費精算", "tab": "wizard", "section": "workflow"},
     {"href": "/expense-workflow-copy", "label": "WF作成テンプレート", "tab": "wizard-copy", "section": "admin"},
     {"href": "/errors", "label": "\u7ba1\u7406\u30bb\u30f3\u30bf\u30fc", "tab": "errors", "section": "admin"},
 ]
@@ -71,6 +71,14 @@ ERRORS_INITIAL_TAB_VALUES = {
     "kil-review",
     "ai-skills",
 }
+LEGACY_WORKFLOW_SUBHEADING_CANONICAL_VALUES = {
+    "成果物の確認と実行をまとめて管理します。ローカル専用（127.0.0.1）。",
+    "成果物の確認と実行をまとめて管理します。ローカル専用（127.0.0.1）",
+    "成果物の確認と実行をまとめて管理します。ローカル専用(127.0.0.1)。",
+    "成果物の確認と実行をまとめて管理します。ローカル専用(127.0.0.1)",
+    "補足説明（任意）はここに書かれる。",
+    "補足説明（任意）はここに書かれる",
+}
 
 
 def _workflow_template_store() -> Path:
@@ -79,6 +87,16 @@ def _workflow_template_store() -> Path:
 
 def _workflow_pages_store() -> Path:
     return core._artifact_root() / "_workflow_pages" / "workflow_pages.json"
+
+
+def _normalize_workflow_subheading(value: Any) -> str:
+    normalized = " ".join(str(value or "").strip().split())
+    if not normalized:
+        return ""
+    canonical = normalized.replace(" ", "").replace("\u3000", "")
+    if canonical in LEGACY_WORKFLOW_SUBHEADING_CANONICAL_VALUES:
+        return ""
+    return normalized
 
 
 def _read_workflow_pages(*, include_archived: bool = False) -> list[dict[str, object]]:
@@ -153,7 +171,7 @@ def _read_workflow_pages(*, include_archived: bool = False) -> list[dict[str, ob
             {
                 "id": page_id,
                 "name": name,
-                "subheading": str(row.get("subheading") or "").strip(),
+                "subheading": _normalize_workflow_subheading(row.get("subheading")),
                 "year": year,
                 "month": month,
                 "mfcloud_url": mfcloud_url,
@@ -483,7 +501,7 @@ def _read_workflow_templates() -> list[dict[str, object]]:
                 "source_urls": source_urls,
                 "steps": _normalize_template_steps_for_view(row.get("steps")),
                 "notes": str(row.get("notes") or ""),
-                "subheading": str(row.get("subheading") or "").strip(),
+                "subheading": _normalize_workflow_subheading(row.get("subheading")),
                 "rakuten_orders_url": str(row.get("rakuten_orders_url") or ""),
                 "created_at": str(row.get("created_at") or ""),
                 "updated_at": str(row.get("updated_at") or ""),
@@ -525,7 +543,7 @@ def _workflow_page_sidebar_links() -> list[dict[str, object]]:
     links: list[dict[str, object]] = []
     for page in _read_workflow_pages(include_archived=False)[:WORKFLOW_PAGE_SIDEBAR_LINK_LIMIT]:
         page_id = str(page.get("id") or "").strip()
-        label = str(page.get("name") or "WorkFlow").strip()[:WORKFLOW_PAGE_SIDEBAR_LABEL_LIMIT]
+        label = str(page.get("name") or "経費精算").strip()[:WORKFLOW_PAGE_SIDEBAR_LABEL_LIMIT]
         if not page_id:
             continue
         year = int(page.get("year") or 0)
@@ -611,8 +629,12 @@ def create_pages_router(templates: Jinja2Templates) -> APIRouter:
     def favicon() -> RedirectResponse:
         return RedirectResponse(url="/static/favicon.svg")
 
-    @router.get("/", response_class=HTMLResponse)
-    def index(request: Request) -> HTMLResponse:
+    @router.get("/")
+    def index() -> RedirectResponse:
+        return RedirectResponse(url="/workspace")
+
+    @router.get("/expense", response_class=HTMLResponse)
+    def expense(request: Request) -> HTMLResponse:
         defaults = _sanitize_form_defaults_year_month(core._resolve_form_defaults())
         return templates.TemplateResponse(
             request,

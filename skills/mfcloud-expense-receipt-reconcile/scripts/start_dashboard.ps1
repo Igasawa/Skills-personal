@@ -60,7 +60,7 @@ New-Item -ItemType Directory -Force -Path $logDir | Out-Null
 $logOut = Join-Path $logDir "mf_dashboard_uvicorn.out.log"
 $logErr = Join-Path $logDir "mf_dashboard_uvicorn.err.log"
 
-$url = "http://$BindHost`:$Port/"
+$url = "http://$BindHost`:$Port/workspace"
 $shortcutName = "MF_Expense_Dashboard"
 
 function Get-DesktopDirectory {

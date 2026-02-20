@@ -102,10 +102,11 @@ def test_excluded_pdfs_page_supports_month_switch_and_sort_controls(
     assert 'data-order-month="2026-01"' in res.text
 
 
-def test_index_page_shows_manual_archive_button(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_expense_page_shows_manual_archive_button(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     client = _create_client(monkeypatch, tmp_path)
-    res = client.get("/")
+    res = client.get("/expense")
     assert res.status_code == 200
+    assert "<h1>経費精算</h1>" in res.text
     assert 'data-workspace-link' not in res.text
     assert 'id="run-form"' in res.text
     assert 'id="step-preflight"' in res.text
@@ -113,13 +114,11 @@ def test_index_page_shows_manual_archive_button(monkeypatch: pytest.MonkeyPatch,
     assert 'id="step-rakuten-task"' in res.text
     assert 'id="step-provider-ingest"' in res.text
     assert 'id="step-mf-bulk-upload-task"' in res.text
-    assert 'id="step-mf-reconcile"' in res.text
     assert 'id="step-month-close"' in res.text
     assert 'data-step-id="preflight"' in res.text
     assert 'data-task-id="amazon"' in res.text
     assert 'data-task-id="rakuten"' in res.text
     assert 'data-step-id="provider_ingest"' in res.text
-    assert 'data-step-id="mf_reconcile"' in res.text
     assert 'data-archive-action="archive_outputs"' in res.text
     assert 'data-archive-action="month_close"' in res.text
     assert "data-archive-page-link" not in res.text
@@ -136,7 +135,8 @@ def test_index_page_shows_manual_archive_button(monkeypatch: pytest.MonkeyPatch,
     assert 'data-provider-action="open_shared_inbox"' in res.text
     assert 'data-provider-action="import_provider_receipts"' in res.text
     assert 'data-provider-action="print_provider_receipts"' in res.text
-    assert 'href="/status"' in res.text
+    assert "ステータスページを開く" in res.text
+    assert "成果物の確認と実行をまとめて管理します。ローカル専用（127.0.0.1）。" not in res.text
     assert 'data-provider-source-summary' in res.text
     assert 'data-provider-source-setup-guide' in res.text
     assert "/workspace" in res.text
@@ -160,7 +160,7 @@ def test_index_page_shows_manual_archive_button(monkeypatch: pytest.MonkeyPatch,
     assert links[0].get("label") == "HOME"
     assert links[0].get("section") == "home"
     assert any(
-        link.get("href") == "/" and link.get("label") == "WorkFlow" and link.get("section") == "workflow"
+        link.get("href") == "/expense" and link.get("label") == "経費精算" and link.get("section") == "workflow"
         for link in links
     )
     assert not any(link.get("href") == "/kil-review" and link.get("section") == "admin" for link in links)
@@ -172,6 +172,13 @@ def test_index_page_shows_manual_archive_button(monkeypatch: pytest.MonkeyPatch,
         and link.get("section") == "admin"
         for link in links
     )
+
+
+def test_root_route_redirects_to_workspace(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    client = _create_client(monkeypatch, tmp_path)
+    res = client.get("/", follow_redirects=False)
+    assert res.status_code in {302, 307}
+    assert res.headers["location"] == "/workspace"
 
 
 def test_pptx_polish_page_shows_upload_polish_controls_and_sidebar_link(
@@ -225,7 +232,7 @@ def test_index_page_sidebar_includes_pptx_polish_link(
     tmp_path: Path,
 ) -> None:
     client = _create_client(monkeypatch, tmp_path)
-    res = client.get("/")
+    res = client.get("/expense")
     assert res.status_code == 200
     match = re.search(r"data-sidebar-links='(.*?)'", res.text)
     assert match is not None
@@ -253,7 +260,7 @@ def test_index_page_clamps_invalid_default_month(monkeypatch: pytest.MonkeyPatch
         },
     )
     client = _create_client(monkeypatch, tmp_path)
-    res = client.get("/")
+    res = client.get("/expense")
     assert res.status_code == 200
     assert 'name="month" value="1"' in res.text
 
@@ -277,7 +284,7 @@ def test_index_template_clamps_invalid_month_even_if_route_sanitize_is_bypassed(
         },
     )
     client = _create_client(monkeypatch, tmp_path)
-    res = client.get("/")
+    res = client.get("/expense")
     assert res.status_code == 200
     assert 'name="month" value="1"' in res.text
 
@@ -333,6 +340,7 @@ def test_index_page_shows_archive_history_links(monkeypatch: pytest.MonkeyPatch,
     assert 'data-archive-history-list' in res.text
     assert f"/runs/{ym}/archived-receipts" in res.text
     assert "経費精算ページへ戻る" in res.text
+    assert 'href="/expense"' in res.text
 
 
 def test_expense_workflow_copy_page_shows_shared_wizard(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -418,11 +426,59 @@ def test_workflow_page_hides_target_settings_and_uses_dataset_step_model(
     client = _create_client(monkeypatch, tmp_path)
     res = client.get("/workflow/wf-step-add-check")
     assert res.status_code == 200
+    assert 'id="target-settings-card" class="wizard-step" hidden' in res.text
     assert 'class="step-head" hidden' in res.text
     assert re.search(r'<form\s+id="run-form"\s+class="form hidden"\s+aria-hidden="true"', res.text)
+    assert re.search(r'<p class="subtitle"\s*>\s*draft\s*</p>', res.text)
+    assert "ステータスページを開く" not in res.text
     assert 'id="workflow-page-step-model"' in res.text
     assert 'data-template-step-row data-template-step-action="amazon_download"' in res.text
     assert "<select data-template-step-action>" not in res.text
+
+
+def test_workflow_page_treats_legacy_default_subheading_as_blank(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _write_json(
+        _workflow_pages_store(tmp_path),
+        [
+            {
+                "id": "wf-subheading-migration",
+                "name": "WF SUBHEADING",
+                "subheading": "成果物の確認と実行をまとめて管理します。ローカル専用（127.0.0.1）。",
+                "year": 2026,
+                "month": 2,
+                "mfcloud_url": "https://example.com/mf",
+                "source_urls": ["https://example.com/mf"],
+                "steps": [
+                    {"id": "step-1", "title": "Amazon取得", "action": "amazon_download"},
+                ],
+                "notes": "",
+                "rakuten_orders_url": "",
+                "source_template_id": "tmpl-1",
+                "step_version": 1,
+                "step_versions": [
+                    {
+                        "version": 1,
+                        "updated_at": "2026-02-01T00:00:00",
+                        "steps": [
+                            {"id": "step-1", "title": "Amazon取得", "action": "amazon_download"},
+                        ],
+                    }
+                ],
+                "archived": False,
+                "archived_at": "",
+                "created_at": "2026-02-01T00:00:00",
+                "updated_at": "2026-02-01T00:00:00",
+            }
+        ],
+    )
+    client = _create_client(monkeypatch, tmp_path)
+    res = client.get("/workflow/wf-subheading-migration")
+    assert res.status_code == 200
+    assert '<p class="subtitle" hidden></p>' in res.text
+    assert "成果物の確認と実行をまとめて管理します。ローカル専用（127.0.0.1）。" not in res.text
 
 
 def test_expense_workflow_copy_template_loads_without_scheduler_panel(
