@@ -196,6 +196,7 @@
     - `retry_jobs` キュー（`_workflow_events/retry_jobs.json`）を追加。
     - `GET /api/workflow-events/retry-jobs` と `POST /api/workflow-events/retry-jobs/drain` を追加。
     - `retry_with_backoff` 失敗時のみ再送ジョブを自動登録し、最大試行到達時は `escalated` へ遷移。
+    - `expense_workflow_copy.html` / `scheduler.js` に再送キュー表示（total/due/status別）と手動 `drain` ボタンを追加。
     - `expense_workflow_copy.html` / `scheduler.js` に「再送判断」ブロックを追加し、集計表示を実装。
     - `tests/test_dashboard_api.py` と `tests/test_dashboard_pages.py` を更新し、分類/表示/再送ジョブ挙動を検証。
     - `workflow_external_event_contract.md` / `workflow_external_event_dashboard_requirements.md` / `workflow_external_event_runbook.md` に契約・運用手順を追記。
@@ -211,12 +212,18 @@
     - `pytest skills/mfcloud-expense-receipt-reconcile/tests/test_dashboard_api.py`: 119 passed
     - `pytest skills/mfcloud-expense-receipt-reconcile/tests/test_dashboard_pages.py`: 32 passed
     - `pytest skills/mfcloud-expense-receipt-reconcile/tests/test_dashboard_contract.py`: 5 passed
+    - `node --check skills/mfcloud-expense-receipt-reconcile/dashboard/static/js/scheduler.js`: 成功
+    - Playwright（再送キューUI確認）:
+      - `#workflow-event-retry-drain` と `#workflow-event-summary-retry-queue` のDOM存在を確認（pass）。
+      - 取得物:
+        - `output/playwright/workflow_retry_queue_ui_smoke_20260221_074559.txt`
+        - `.playwright-cli/page-2026-02-20T22-46-07-366Z.png`
   - 未解決:
     - Phase 2.3（繰り返し運用）の実装（daily/weekly/monthly）は未対応
-    - Phase 3.3（再送・再実行運用）の常駐ワーカー化とUI可視化（`retry_queue`）は未対応
+    - Phase 3.3（再送・再実行運用）の常駐ワーカー化（自動drain）と通知連携は未対応
 
 ## 5. 直近タスク（次の更新対象）
-1. Phase 3.3拡張: `retry_queue` のUI表示と運用導線（drain実行）を追加
+1. Phase 3.3拡張: 再送ジョブの常駐ワーカー化（自動drain）と通知連携を追加
 2. Phase 2.3着手: 繰り返し運用（daily/weekly/monthly）の詳細実装に着手
 3. 可視化拡張: `workflow-events/summary` を基に日次トレンド/通知要件を具体化
 

@@ -28,12 +28,14 @@
   const templateHintEl = document.getElementById("scheduler-template-hint");
   const syncReasonEl = document.getElementById("scheduler-sync-reason");
   const workflowEventSummaryPanelEl = document.getElementById("workflow-event-summary-panel");
+  const workflowEventRetryDrainEl = document.getElementById("workflow-event-retry-drain");
   const workflowEventSummaryRefreshEl = document.getElementById("workflow-event-summary-refresh");
   const workflowEventSummaryMetaEl = document.getElementById("workflow-event-summary-meta");
   const workflowEventSummaryKpisEl = document.getElementById("workflow-event-summary-kpis");
   const workflowEventSummaryReasonClassEl = document.getElementById("workflow-event-summary-reason-class");
   const workflowEventSummaryDuplicateEl = document.getElementById("workflow-event-summary-duplicate");
   const workflowEventSummaryRetryAdviceEl = document.getElementById("workflow-event-summary-retry-advice");
+  const workflowEventSummaryRetryQueueEl = document.getElementById("workflow-event-summary-retry-queue");
   const workflowEventSummaryRecentEl = document.getElementById("workflow-event-summary-recent");
   const pageEl = document.querySelector(".page");
   const templateStepsListEl = document.getElementById("template-steps-list");
@@ -236,6 +238,18 @@
     return body;
   }
 
+  async function apiDrainWorkflowEventRetryJobs(payload) {
+    const res = await fetch("/api/workflow-events/retry-jobs/drain", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload || {}),
+    }).catch(() => null);
+    if (!res) throw new Error("network error");
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(body.detail || `HTTP ${res.status}`);
+    return body;
+  }
+
   function readFormValues() {
     const yearEl = form.querySelector("[name=year]");
     const monthEl = form.querySelector("[name=month]");
@@ -400,6 +414,24 @@
       }),
     );
 
+    const retryQueue = data.retry_queue && typeof data.retry_queue === "object" ? data.retry_queue : {};
+    const retryQueueStatusRows = Array.isArray(retryQueue.by_status) ? retryQueue.by_status : [];
+    const retryQueueStatus = {};
+    retryQueueStatusRows.forEach((row) => {
+      const key = String(row?.status || "").trim().toLowerCase();
+      if (!key) return;
+      retryQueueStatus[key] = toInt(row?.count, 0);
+    });
+    replaceChildrenText(workflowEventSummaryRetryQueueEl, [
+      `total: ${toInt(retryQueue.total, 0)}`,
+      `due: ${toInt(retryQueue.due, 0)}`,
+      `pending: ${toInt(retryQueueStatus.pending, 0)}`,
+      `retrying: ${toInt(retryQueueStatus.retrying, 0)}`,
+      `escalated: ${toInt(retryQueueStatus.escalated, 0)}`,
+      `discarded: ${toInt(retryQueueStatus.discarded, 0)}`,
+      `succeeded: ${toInt(retryQueueStatus.succeeded, 0)}`,
+    ]);
+
     renderWorkflowEventSummaryRecentRows(Array.isArray(data.recent) ? data.recent : []);
   }
 
@@ -411,7 +443,18 @@
     replaceChildrenText(workflowEventSummaryReasonClassEl, []);
     replaceChildrenText(workflowEventSummaryDuplicateEl, []);
     replaceChildrenText(workflowEventSummaryRetryAdviceEl, []);
+    replaceChildrenText(workflowEventSummaryRetryQueueEl, []);
     renderWorkflowEventSummaryRecentRows([]);
+  }
+
+  function setWorkflowEventSummaryBusy(nextBusy) {
+    const disabled = Boolean(nextBusy);
+    if (workflowEventSummaryRefreshEl) {
+      workflowEventSummaryRefreshEl.disabled = disabled;
+    }
+    if (workflowEventRetryDrainEl) {
+      workflowEventRetryDrainEl.disabled = disabled;
+    }
   }
 
   async function refreshWorkflowEventSummary(options = {}) {
@@ -426,9 +469,7 @@
     if (workflowEventSummaryMetaEl) {
       workflowEventSummaryMetaEl.textContent = "監査サマリーを読み込み中...";
     }
-    if (workflowEventSummaryRefreshEl) {
-      workflowEventSummaryRefreshEl.disabled = true;
-    }
+    setWorkflowEventSummaryBusy(true);
     try {
       const data = await apiGetWorkflowEventSummary(summaryUrl);
       renderWorkflowEventSummary(data || {});
@@ -442,9 +483,29 @@
         showToast(message, "error");
       }
     } finally {
-      if (workflowEventSummaryRefreshEl) {
-        workflowEventSummaryRefreshEl.disabled = false;
-      }
+      setWorkflowEventSummaryBusy(false);
+    }
+  }
+
+  async function drainWorkflowEventRetryJobs() {
+    setWorkflowEventSummaryBusy(true);
+    try {
+      const data = await apiDrainWorkflowEventRetryJobs({ limit: 10 });
+      const processed = toInt(data?.processed, 0);
+      const succeeded = toInt(data?.succeeded, 0);
+      const retrying = toInt(data?.retrying, 0);
+      const escalated = toInt(data?.escalated, 0);
+      const tone = escalated > 0 ? "error" : "success";
+      showToast(
+        `再送処理: processed ${processed} / success ${succeeded} / retrying ${retrying} / escalated ${escalated}`,
+        tone,
+      );
+    } catch (error) {
+      const message = toFriendlyMessage(error?.message || "workflow event retry drain failed");
+      showToast(message, "error");
+    } finally {
+      setWorkflowEventSummaryBusy(false);
+      await refreshWorkflowEventSummary();
     }
   }
 
@@ -581,6 +642,10 @@
 
   workflowEventSummaryRefreshEl?.addEventListener("click", () => {
     refreshWorkflowEventSummary({ withToast: true });
+  });
+
+  workflowEventRetryDrainEl?.addEventListener("click", () => {
+    drainWorkflowEventRetryJobs();
   });
 
   saveEl.addEventListener("click", () => {

@@ -148,7 +148,10 @@
           >
             <div class="workflow-event-summary-head">
               <h4>外部イベント監査サマリー</h4>
-              <button type="button" id="workflow-event-summary-refresh" class="secondary">集計更新</button>
+              <div class="scheduler-actions">
+                <button type="button" id="workflow-event-retry-drain" class="secondary">再送実行</button>
+                <button type="button" id="workflow-event-summary-refresh" class="secondary">集計更新</button>
+              </div>
             </div>
             <p id="workflow-event-summary-meta" class="muted">監査サマリーを読み込み中...</p>
             <ul id="workflow-event-summary-kpis" class="workflow-event-summary-kpis"></ul>
@@ -164,6 +167,10 @@
               <div class="workflow-event-summary-block">
                 <h5>再送判断</h5>
                 <ul id="workflow-event-summary-retry-advice" class="workflow-event-summary-list"></ul>
+              </div>
+              <div class="workflow-event-summary-block">
+                <h5>再送キュー</h5>
+                <ul id="workflow-event-summary-retry-queue" class="workflow-event-summary-list"></ul>
               </div>
             </div>
             <div class="workflow-event-summary-block">

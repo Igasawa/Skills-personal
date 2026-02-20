@@ -38,6 +38,11 @@
 - `by_retry_advice` を表示。
 - `retry_after_fix` / `retry_with_backoff` / `do_not_retry` を区別できること。
 
+6. 再送キュー（Phase 3.3 MVP）
+- `retry_queue.total` / `retry_queue.due` / `retry_queue.by_status` を表示。
+- 少なくとも `pending` / `retrying` / `escalated` の件数を即時確認できること。
+- `POST /api/workflow-events/retry-jobs/drain` を呼ぶ手動実行導線（ボタン）を提供する。
+
 ## 3. API利用契約（UI側）
 - エンドポイント: `GET /api/workflow-events/summary?ym=YYYY-MM&recent_limit=20`
 - `ym` は画面で選択中の年月を必ず渡す。
@@ -69,5 +74,5 @@
 ## 7. 実装状況（2026-02-20）
 - API: `GET /api/workflow-events/summary` 実装済み。
 - API: `GET /api/workflow-events/retry-jobs`, `POST /api/workflow-events/retry-jobs/drain` 実装済み。
-- UI: `/expense-workflow-copy` の schedulerパネル内にサマリーカード実装済み。
+- UI: `/expense-workflow-copy` の schedulerパネル内にサマリーカード実装済み（再送判断/再送キュー/再送実行ボタン）。
 - テスト: API集計・ページDOM・ルート契約の回帰テスト実装済み。
