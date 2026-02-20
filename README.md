@@ -27,7 +27,7 @@ $env:DASHBOARD_UI_LOCALE = "ja"
 - ブランチ保護で `Encoding Guard / utf8-and-mojibake-check` を Required に設定すると、失敗時はマージ不可にできる。
 
 ```powershell
-Set-Location "$env:USERPROFILE\\.vscode\\Skillpersonal"
+Set-Location "<Skillpersonal_clone_root>"
 powershell -ExecutionPolicy Bypass -File .\scripts\bootstrap_kil.ps1
 ```
 
@@ -60,11 +60,14 @@ npx playwright install chromium
 npx playwright open -b chromium "https://www.amazon.co.jp/gp/your-account/order-history" --save-storage "$env:AX_HOME\\sessions\\amazon.storage.json"
 npx playwright open -b chromium "<貴社のMFクラウド経費URL>" --save-storage "$env:AX_HOME\\sessions\\mfcloud-expense.storage.json"
 ```
+- AX_HOME safety guard: bootstrap blocks repository-subdirectory / UNC AX_HOME to avoid cross-user mixing.
+- Override only when intentional: `AX_ALLOW_UNSAFE_AX_HOME=1` or `-AllowUnsafeAxHome`.
+
 
 ## 実行例
 
 ```powershell
-Set-Location "$env:USERPROFILE\\.vscode\\Skillpersonal\\skills\\mfcloud-expense-receipt-reconcile"
+Set-Location "<Skillpersonal_clone_root>\\skills\\mfcloud-expense-receipt-reconcile"
 python scripts/run.py --mfcloud-expense-list-url "<経費明細一覧URL>" --notes "出張多め・特定PJ集中"
 ```
 
@@ -110,7 +113,7 @@ python scripts/run.py --mfcloud-expense-list-url "<経費明細一覧URL>" --not
 ## テスト（開発者向け）
 
 ```powershell
-Set-Location "$env:USERPROFILE\\.vscode\\Skillpersonal\\skills\\mfcloud-expense-receipt-reconcile"
+Set-Location "<Skillpersonal_clone_root>\\skills\\mfcloud-expense-receipt-reconcile"
 python -m pip install -r requirements-dev.txt
 python -m pytest -q
 npm run check:encoding

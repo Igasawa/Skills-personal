@@ -7,15 +7,66 @@ from pathlib import Path
 from typing import Any
 
 SUPPORTED_DASHBOARD_UI_LOCALES = {"ja", "en"}
+ALLOW_UNSAFE_AX_HOME_ENV = "AX_ALLOW_UNSAFE_AX_HOME"
+REPO_ROOT = Path(__file__).resolve().parents[2]
+
+
+def _is_truthy(value: str | None) -> bool:
+    raw = str(value or "").strip().lower()
+    return raw in {"1", "true", "yes", "on"}
+
+
+def _resolve_for_compare(path: Path) -> Path:
+    try:
+        return path.resolve(strict=False)
+    except Exception:
+        return path.expanduser().absolute()
+
+
+def _is_path_within(path: Path, root: Path) -> bool:
+    if path == root:
+        return True
+    try:
+        path.relative_to(root)
+        return True
+    except ValueError:
+        return False
+
+
+def _assert_safe_ax_home(candidate: Path, *, configured_raw: str | None = None) -> None:
+    if _is_truthy(os.environ.get(ALLOW_UNSAFE_AX_HOME_ENV)):
+        return
+
+    raw = str(configured_raw or str(candidate)).strip()
+    if os.name == "nt" and raw.startswith("\\\\"):
+        raise ValueError(
+            "AX_HOME safety guard: UNC path is blocked to avoid cross-user shared session/config mixing. "
+            f"If intentional, set {ALLOW_UNSAFE_AX_HOME_ENV}=1."
+        )
+
+    resolved_repo = _resolve_for_compare(REPO_ROOT)
+    resolved_candidate = _resolve_for_compare(candidate.expanduser())
+    if _is_path_within(resolved_candidate, resolved_repo):
+        raise ValueError(
+            "AX_HOME safety guard: AX_HOME must be outside repository root to avoid committing local configs/sessions. "
+            f"repo={resolved_repo} ax_home={resolved_candidate}. "
+            f"If intentional, set {ALLOW_UNSAFE_AX_HOME_ENV}=1."
+        )
 
 
 def resolve_ax_home(explicit: Path | None = None) -> Path:
     if explicit is not None:
-        return explicit.expanduser()
+        candidate = explicit.expanduser()
+        _assert_safe_ax_home(candidate, configured_raw=str(explicit))
+        return candidate
     configured = os.environ.get("AX_HOME")
     if configured:
-        return Path(configured).expanduser()
-    return Path.home() / ".ax"
+        candidate = Path(configured).expanduser()
+        _assert_safe_ax_home(candidate, configured_raw=configured)
+        return candidate
+    candidate = Path.home() / ".ax"
+    _assert_safe_ax_home(candidate)
+    return candidate
 
 
 def artifact_root_for_skill(skill_slug: str, *, ax_home: Path | None = None) -> Path:

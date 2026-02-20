@@ -7,6 +7,7 @@ import re
 
 from fastapi import APIRouter
 from fastapi.testclient import TestClient
+import pytest
 
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -27,6 +28,19 @@ def test_common_paths_are_resolved_via_shared_runtime(monkeypatch, tmp_path: Pat
     assert common.artifact_root() == tmp_path / "artifacts" / "mfcloud-expense-receipt-reconcile"
     assert common.runs_root() == tmp_path / "artifacts" / "mfcloud-expense-receipt-reconcile" / "_runs"
     assert common.default_storage_state("amazon") == tmp_path / "sessions" / "amazon.storage.json"
+
+
+def test_common_ax_home_rejects_repo_subpath(monkeypatch) -> None:
+    monkeypatch.delenv("AX_ALLOW_UNSAFE_AX_HOME", raising=False)
+    monkeypatch.setenv("AX_HOME", str(REPO_ROOT / ".ax-unsafe"))
+    with pytest.raises(ValueError, match="AX_HOME safety guard"):
+        common.ax_home()
+
+
+def test_common_ax_home_allows_repo_subpath_with_override(monkeypatch) -> None:
+    monkeypatch.setenv("AX_ALLOW_UNSAFE_AX_HOME", "1")
+    monkeypatch.setenv("AX_HOME", str(REPO_ROOT / ".ax-unsafe"))
+    assert common.ax_home() == REPO_ROOT / ".ax-unsafe"
 
 
 def test_dashboard_app_factory_mounts_and_calls_stop_worker(tmp_path: Path) -> None:

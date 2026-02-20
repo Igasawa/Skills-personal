@@ -1,5 +1,6 @@
 param(
   [string]$AxHome = "",
+  [switch]$AllowUnsafeAxHome,
   [switch]$PersistAxHome,
   [switch]$InstallDependencies,
   [switch]$InstallPlaywrightChromium,
@@ -27,6 +28,71 @@ function Resolve-AxHomePath {
     $candidate = Join-Path $env:USERPROFILE ".ax"
   }
   return [Environment]::ExpandEnvironmentVariables($candidate.Trim())
+}
+
+function Test-Truthy {
+  param([string]$Value)
+  $raw = [string]$Value
+  if (-not $raw.Trim()) {
+    return $false
+  }
+  return @("1", "true", "yes", "on") -contains $raw.Trim().ToLowerInvariant()
+}
+
+function Resolve-FullPathSafe {
+  param([string]$PathValue)
+  $expanded = [Environment]::ExpandEnvironmentVariables($PathValue)
+  return [System.IO.Path]::GetFullPath($expanded)
+}
+
+function Test-PathWithinRoot {
+  param(
+    [string]$CandidatePath,
+    [string]$RootPath
+  )
+
+  $candidateFull = Resolve-FullPathSafe -PathValue $CandidatePath
+  $rootFull = Resolve-FullPathSafe -PathValue $RootPath
+  $comparison = [System.StringComparison]::OrdinalIgnoreCase
+
+  $candidateNormalized = $candidateFull.TrimEnd('\', '/')
+  $rootNormalized = $rootFull.TrimEnd('\', '/')
+  if ($candidateNormalized.Equals($rootNormalized, $comparison)) {
+    return $true
+  }
+
+  $rootWithSep = $rootNormalized + [System.IO.Path]::DirectorySeparatorChar
+  return $candidateFull.StartsWith($rootWithSep, $comparison)
+}
+
+function Assert-SafeAxHome {
+  param(
+    [string]$CandidatePath,
+    [string]$RepoRootPath,
+    [switch]$AllowUnsafe
+  )
+
+  $unsafeAllowed = $false
+  if ($AllowUnsafe) {
+    $unsafeAllowed = $true
+  }
+  elseif (Test-Truthy -Value ([string]$env:AX_ALLOW_UNSAFE_AX_HOME)) {
+    $unsafeAllowed = $true
+  }
+  if ($unsafeAllowed) {
+    return
+  }
+
+  $candidateTrimmed = [string]$CandidatePath
+  if ($candidateTrimmed.Trim().StartsWith("\\")) {
+    throw "AX_HOME safety guard: UNC path is blocked to avoid cross-user shared session/config mixing. If intentional, set AX_ALLOW_UNSAFE_AX_HOME=1 or pass -AllowUnsafeAxHome."
+  }
+
+  if (Test-PathWithinRoot -CandidatePath $CandidatePath -RootPath $RepoRootPath) {
+    $repoFull = Resolve-FullPathSafe -PathValue $RepoRootPath
+    $candidateFull = Resolve-FullPathSafe -PathValue $CandidatePath
+    throw "AX_HOME safety guard: AX_HOME must be outside repository root to avoid committing local configs/sessions. repo=$repoFull ax_home=$candidateFull. If intentional, set AX_ALLOW_UNSAFE_AX_HOME=1 or pass -AllowUnsafeAxHome."
+  }
 }
 
 function Ensure-Directory {
@@ -161,9 +227,10 @@ function Ensure-BootstrapDesktopShortcuts {
 
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $skillRoot = Resolve-Path (Join-Path $scriptDir "..")
-$repoRoot = Resolve-Path (Join-Path $skillRoot "..\..\..")
+$repoRoot = Resolve-Path (Join-Path $skillRoot "..\..")
 
 $resolvedAxHome = Resolve-AxHomePath -Requested $AxHome
+Assert-SafeAxHome -CandidatePath $resolvedAxHome -RepoRootPath $repoRoot -AllowUnsafe:$AllowUnsafeAxHome
 $env:AX_HOME = $resolvedAxHome
 
 if ($PersistAxHome) {
