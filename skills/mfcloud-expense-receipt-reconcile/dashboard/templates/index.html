@@ -4,6 +4,7 @@
     {% set page_title = workflow_page.name if workflow_page and workflow_page.name else "経費精算" %}
     {% set page_subheading = workflow_page.subheading if workflow_page and workflow_page.subheading else "" %}
     {% set is_workflow_page = workflow_page and workflow_page.id %}
+    {% set page_lifecycle = workflow_page.lifecycle_state if workflow_page and workflow_page.lifecycle_state else "draft" %}
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>{{ page_title }}</title>
@@ -22,6 +23,16 @@
           <p class="subtitle" {% if not page_subheading %}hidden{% endif %}>{{ page_subheading }}</p>
           <div class="step-actions">
             {% if workflow_page and workflow_page.id %}
+              <span
+                class="workflow-page-lifecycle-pill {% if page_lifecycle == 'fixed' %}is-fixed{% else %}is-draft{% endif %}"
+                id="workflow-page-lifecycle-pill"
+                data-lifecycle-state="{{ page_lifecycle }}"
+              >
+                {% if page_lifecycle == "fixed" %}Fixed{% else %}Draft{% endif %}
+              </span>
+              <button type="button" class="primary" id="workflow-page-lifecycle-toggle">
+                {% if page_lifecycle == "fixed" %}Draftに戻す{% else %}固定保存{% endif %}
+              </button>
               <button type="button" class="secondary" id="workflow-page-edit">ページ設定</button>
               <button type="button" class="secondary" id="workflow-page-edit-steps">手順編集</button>
               <button type="button" class="secondary" id="workflow-page-rollback-steps">前版に戻す</button>

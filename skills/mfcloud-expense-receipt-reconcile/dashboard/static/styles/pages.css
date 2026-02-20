@@ -58,9 +58,62 @@
   min-height: 34px;
 }
 
+.template-copy-scope-notice {
+  display: grid;
+  gap: 8px;
+  margin: 0 0 14px;
+  padding: 12px;
+  border-radius: var(--radius-default);
+  border: 1px solid rgb(var(--semantic-field-border-default));
+  background: rgb(var(--surface-2));
+}
+
+.template-copy-scope-notice-title {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 700;
+  color: rgb(var(--text-secondary));
+}
+
+.template-copy-scope-notice-list {
+  margin: 0;
+  padding-left: 20px;
+  display: grid;
+  gap: 4px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: rgb(var(--text-secondary));
+}
+
 .template-source-url-list {
   display: grid;
   gap: 10px;
+}
+
+.workflow-page-lifecycle-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 32px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid rgb(var(--semantic-field-border-default));
+  background: rgb(var(--surface-1));
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.workflow-page-lifecycle-pill.is-draft {
+  border-color: rgb(var(--semantic-feedback-warning-surface) / 0.42);
+  background: rgb(var(--semantic-feedback-warning-surface) / 0.18);
+  color: rgb(var(--semantic-feedback-warning-text));
+}
+
+.workflow-page-lifecycle-pill.is-fixed {
+  border-color: rgb(var(--semantic-feedback-success-surface) / 0.42);
+  background: rgb(var(--semantic-feedback-success-surface) / 0.2);
+  color: rgb(var(--semantic-feedback-warning-text));
 }
 
 .template-source-url-row {

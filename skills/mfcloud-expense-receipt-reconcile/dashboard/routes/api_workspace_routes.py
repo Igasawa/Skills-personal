@@ -748,8 +748,12 @@ def register_api_workspace_routes(
     @router.post("/api/workflow-pages")
     def api_create_workflow_page(payload: dict[str, Any]) -> JSONResponse:
         page = normalize_workflow_page_payload(payload)
-        page_id = str(page.get("id") or "").strip()
-        source_template_id = normalize_workflow_template_id(page.get("source_template_id"))
+        page["mfcloud_url"] = ""
+        page["source_urls"] = []
+        page["notes"] = ""
+        page["rakuten_orders_url"] = ""
+        page["lifecycle_state"] = "draft"
+        page["fixed_at"] = ""
         existing = read_workflow_pages(include_archived=True)
         if workflow_page_name_taken(existing, str(page.get("name") or "")):
             raise HTTPException(status_code=409, detail="Workflow page name already exists.")
@@ -758,15 +762,8 @@ def register_api_workspace_routes(
         existing.append(page)
         existing.sort(key=lambda row: str(row.get("updated_at") or row.get("created_at") or ""), reverse=True)
         write_workflow_pages(existing)
-        scheduler_copied = False
-        if page_id and source_template_id:
-            try:
-                core_scheduler.copy_timer_state(source_template_id, page_id)
-                scheduler_copied = True
-            except Exception:
-                scheduler_copied = False
         return JSONResponse(
-            {"status": "ok", "workflow_page": page, "count": len(existing), "scheduler_copied": scheduler_copied},
+            {"status": "ok", "workflow_page": page, "count": len(existing), "scheduler_copied": False},
             headers={"Cache-Control": "no-store"},
         )
 
@@ -802,6 +799,25 @@ def register_api_workspace_routes(
                 raise HTTPException(
                     status_code=409,
                     detail="Workflow steps were updated by another action. Reload and try again.",
+                )
+            lifecycle_state = str(page.get("lifecycle_state") or "draft").strip().lower()
+            if lifecycle_state not in {"draft", "fixed"}:
+                lifecycle_state = "draft"
+            mutable_when_fixed = {
+                "name",
+                "subheading",
+                "notes",
+                "rakuten_orders_url",
+                "year",
+                "month",
+                "steps",
+                "source_urls",
+                "mfcloud_url",
+            }
+            if lifecycle_state == "fixed" and any(key in updates for key in mutable_when_fixed):
+                raise HTTPException(
+                    status_code=409,
+                    detail="Workflow page is fixed. Switch to draft before editing.",
                 )
             next_name = str(updates.get("name") or page.get("name") or "").strip().lower()
             if next_name:
@@ -861,6 +877,14 @@ def register_api_workspace_routes(
                     merged["step_version"] = current_step_version
             if "archived" in updates:
                 merged["archived_at"] = workflow_template_timestamp_now() if bool(updates.get("archived")) else ""
+            if "lifecycle_state" in updates:
+                next_lifecycle_state = str(updates.get("lifecycle_state") or "draft").strip().lower()
+                if next_lifecycle_state == "fixed":
+                    merged["fixed_at"] = str(page.get("fixed_at") or "").strip() or workflow_template_timestamp_now()
+                else:
+                    merged["fixed_at"] = ""
+            else:
+                merged["fixed_at"] = str(page.get("fixed_at") or "").strip() if lifecycle_state == "fixed" else ""
             merged["updated_at"] = updated_at
             existing[index] = merged
             saved = dict(merged)

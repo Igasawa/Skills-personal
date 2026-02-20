@@ -79,9 +79,30 @@
     if (text.includes("Workflow page name already exists.")) return "同名のワークフローが既に存在します。";
     if (text.includes("Workflow page limit reached.")) return "ワークフローの上限に達しました。不要なページを整理してください。";
     if (text.includes("Workflow page was updated by another action.")) return "ページ設定が他の操作で更新されました。再読み込みしてやり直してください。";
+    if (text.includes("Workflow page is fixed. Switch to draft before editing.")) {
+      return "固定保存済みです。編集する場合は先にDraftへ戻してください。";
+    }
     if (text.includes("Workflow page not found.")) return "対象のワークフローページが見つかりません。";
     if (text.includes("No updates.")) return "変更内容がありません。";
     if (text.includes("Invalid workflow page id.")) return "ワークフローページIDが不正です。";
+    if (text.includes("Step 1 trigger_kind must be manual_start, scheduled, or external_event")) {
+      return "先頭手順の開始条件は「手動開始 / スケジュール / 外部イベント」のみ選択できます。";
+    }
+    if (text.includes("trigger_kind must be after_previous")) {
+      return "2手順目以降の開始条件は「前手順完了後」のみ選択できます。";
+    }
+    if (text.includes("manual step must use execution_mode=manual_confirm")) {
+      return "人ステップの実行方法は「手動確認」のみ選択できます。";
+    }
+    if (text.includes("execution_mode=auto requires timer_minutes")) {
+      return "実行方法で「自動実行」を選択した場合、タイマー（分）は1-10080の範囲で指定してください。";
+    }
+    if (text.includes("browser step requires a valid target_url")) {
+      return "Browserステップでは遷移URL（http/https）が必要です。";
+    }
+    if (text.includes("agent step requires agent_prompt")) {
+      return "AIステップではAgentプロンプトが必要です。";
+    }
     if (text.includes("MF Cloud expense list URL is required.")) return "ソースURLを入力してください。";
     if (text.includes("Invalid year/month")) return "年月が正しくありません。";
     if (text.includes("MF Cloud expense list URL is required")) return "ソースURLを入力してください。";

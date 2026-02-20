@@ -31,6 +31,14 @@
 
       <section class="card">
         <h2>新規ワークフロー設定</h2>
+        <div class="template-copy-scope-notice" role="note" aria-label="コピー範囲">
+          <p class="template-copy-scope-notice-title">コピー範囲</p>
+          <ul class="template-copy-scope-notice-list">
+            <li>この作成では、テンプレートのワークフロー設計（手順・開始条件・実行方法）だけを引き継ぎます。</li>
+            <li>テンプレートに紐づくカードや添付情報は複製されません。</li>
+            <li>作成後は Draft で調整し、最後に固定保存してください。</li>
+          </ul>
+        </div>
         <form id="run-form" class="form">
           <input type="hidden" name="template_id" value="{{ template_id | default('', true) }}" />
           <input type="hidden" name="template_mode" value="{{ template_mode | default('edit', true) }}" />

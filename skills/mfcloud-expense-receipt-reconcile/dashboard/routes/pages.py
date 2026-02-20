@@ -143,6 +143,10 @@ def _read_workflow_pages(*, include_archived: bool = False) -> list[dict[str, ob
         archived_at = str(row.get("archived_at") or "").strip() if archived else ""
         if archived and not include_archived:
             continue
+        lifecycle_state = str(row.get("lifecycle_state") or row.get("state") or "draft").strip().lower()
+        if lifecycle_state not in {"draft", "fixed"}:
+            lifecycle_state = "draft"
+        fixed_at = str(row.get("fixed_at") or "").strip() if lifecycle_state == "fixed" else ""
         steps = _normalize_template_steps_for_view(row.get("steps"))
         created_at = str(row.get("created_at") or "").strip()
         updated_at = str(row.get("updated_at") or "").strip()
@@ -184,6 +188,8 @@ def _read_workflow_pages(*, include_archived: bool = False) -> list[dict[str, ob
                 "step_versions": step_versions,
                 "archived": archived,
                 "archived_at": archived_at,
+                "lifecycle_state": lifecycle_state,
+                "fixed_at": fixed_at,
                 "created_at": created_at,
                 "updated_at": updated_at,
             }
@@ -622,16 +628,20 @@ def _workflow_page_sidebar_links() -> list[dict[str, object]]:
         label = str(page.get("name") or "経費精算").strip()[:WORKFLOW_PAGE_SIDEBAR_LABEL_LIMIT]
         if not page_id:
             continue
+        lifecycle_state = str(page.get("lifecycle_state") or "draft").strip().lower()
+        is_fixed = lifecycle_state == "fixed"
         year = int(page.get("year") or 0)
         month = int(page.get("month") or 0)
         if 1 <= month <= 12 and 2000 <= year <= 3000:
             label = f"{label} ({year:04d}-{month:02d})"
+        if not is_fixed:
+            label = f"Draft: {label}"
         links.append(
             {
                 "href": f"/workflow/{page_id}",
                 "label": label,
                 "tab": "wizard",
-                "section": "workflow",
+                "section": "workflow" if is_fixed else "draft",
             }
         )
     return links

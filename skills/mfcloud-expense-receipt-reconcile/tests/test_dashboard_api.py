@@ -2630,16 +2630,129 @@ def test_api_create_workflow_page_keeps_blank_action_steps(
     )
     assert res.status_code == 200
     page = res.json()["workflow_page"]
+    assert page["lifecycle_state"] == "draft"
+    assert page["fixed_at"] == ""
+    assert page["mfcloud_url"] == ""
+    assert page["source_urls"] == []
+    assert page["notes"] == ""
+    assert page["rakuten_orders_url"] == ""
     steps = page.get("steps") if isinstance(page.get("steps"), list) else []
     assert len(steps) == 2
     assert all(str(step.get("action") or "") == "" for step in steps if isinstance(step, dict))
 
     rows = json.loads(_workflow_pages_store(tmp_path).read_text(encoding="utf-8"))
     assert isinstance(rows, list) and rows
+    assert str(rows[0].get("lifecycle_state") or "") == "draft"
+    assert str(rows[0].get("fixed_at") or "") == ""
     stored_steps = rows[0].get("steps") if isinstance(rows[0], dict) else []
     assert isinstance(stored_steps, list)
     assert len(stored_steps) == 2
     assert all(str(step.get("action") or "") == "" for step in stored_steps if isinstance(step, dict))
+
+
+def test_api_create_workflow_page_does_not_copy_scheduler_or_template_card_context(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    copy_calls: list[tuple[str, str]] = []
+
+    def _fake_copy_timer_state(source_template_id: str, target_template_id: str) -> dict[str, Any]:
+        copy_calls.append((source_template_id, target_template_id))
+        return {"status": "ok"}
+
+    monkeypatch.setattr(public_core_scheduler, "copy_timer_state", _fake_copy_timer_state)
+    client = _create_client(monkeypatch, tmp_path)
+    res = client.post(
+        "/api/workflow-pages",
+        json={
+            "name": "Workflow Only",
+            "year": 2026,
+            "month": 2,
+            "mfcloud_url": "https://example.com/from-template",
+            "source_urls": ["https://example.com/from-template"],
+            "notes": "template notes should not be copied",
+            "rakuten_orders_url": "https://example.com/rakuten",
+            "source_template_id": "template-source-1",
+            "steps": [{"title": "Step 1", "action": "preflight"}],
+        },
+    )
+    assert res.status_code == 200
+    body = res.json()
+    assert body.get("scheduler_copied") is False
+    page = body.get("workflow_page") if isinstance(body.get("workflow_page"), dict) else {}
+    assert page.get("lifecycle_state") == "draft"
+    assert page.get("fixed_at") == ""
+    assert page.get("mfcloud_url") == ""
+    assert page.get("source_urls") == []
+    assert page.get("notes") == ""
+    assert page.get("rakuten_orders_url") == ""
+    assert copy_calls == []
+
+
+def test_api_workflow_page_fixed_state_blocks_mutations_until_draft(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    client = _create_client(monkeypatch, tmp_path)
+    create_res = client.post(
+        "/api/workflow-pages",
+        json={
+            "name": "Lock Target",
+            "year": 2026,
+            "month": 2,
+            "steps": [{"title": "Step 1", "action": "preflight"}],
+        },
+    )
+    assert create_res.status_code == 200
+    created_page = create_res.json()["workflow_page"]
+    page_id = str(created_page.get("id") or "")
+    assert page_id
+
+    fixed_res = client.patch(
+        f"/api/workflow-pages/{page_id}",
+        json={
+            "lifecycle_state": "fixed",
+            "base_updated_at": str(created_page.get("updated_at") or ""),
+        },
+    )
+    assert fixed_res.status_code == 200
+    fixed_page = fixed_res.json()["workflow_page"]
+    assert fixed_page["lifecycle_state"] == "fixed"
+    assert str(fixed_page.get("fixed_at") or "")
+
+    blocked_res = client.patch(
+        f"/api/workflow-pages/{page_id}",
+        json={
+            "steps": [{"title": "Step 1 updated", "action": "preflight"}],
+            "base_updated_at": str(fixed_page.get("updated_at") or ""),
+            "base_step_version": int(fixed_page.get("step_version") or 1),
+        },
+    )
+    assert blocked_res.status_code == 409
+    assert "Workflow page is fixed. Switch to draft before editing." in str(blocked_res.json().get("detail"))
+
+    to_draft_res = client.patch(
+        f"/api/workflow-pages/{page_id}",
+        json={
+            "lifecycle_state": "draft",
+            "base_updated_at": str(fixed_page.get("updated_at") or ""),
+        },
+    )
+    assert to_draft_res.status_code == 200
+    draft_page = to_draft_res.json()["workflow_page"]
+    assert draft_page["lifecycle_state"] == "draft"
+    assert str(draft_page.get("fixed_at") or "") == ""
+
+    edit_res = client.patch(
+        f"/api/workflow-pages/{page_id}",
+        json={
+            "steps": [{"title": "Step 1 updated", "action": "preflight"}],
+            "base_updated_at": str(draft_page.get("updated_at") or ""),
+            "base_step_version": int(draft_page.get("step_version") or 1),
+        },
+    )
+    assert edit_res.status_code == 200
+    edited_page = edit_res.json()["workflow_page"]
+    edited_steps = edited_page.get("steps") if isinstance(edited_page.get("steps"), list) else []
+    assert edited_steps and str(edited_steps[0].get("title") or "") == "Step 1 updated"
 
 
 def test_api_save_workflow_template_persists_step_timer_minutes(
@@ -2903,6 +3016,27 @@ def test_api_save_workflow_template_rejects_invalid_trigger_by_position(
     assert "Step 2 trigger_kind must be after_previous" in detail
 
 
+def test_api_save_workflow_template_rejects_invalid_first_trigger_kind(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    client = _create_client(monkeypatch, tmp_path)
+    res = client.post(
+        "/api/workflow-templates",
+        json={
+            "name": "Invalid First Trigger",
+            "year": 2026,
+            "month": 2,
+            "mfcloud_url": "https://example.com/invalid-first-trigger",
+            "steps": [
+                {"title": "Step 1", "trigger_kind": "after_previous"},
+            ],
+        },
+    )
+    assert res.status_code == 400
+    detail = str(res.json().get("detail") or "")
+    assert "Step 1 trigger_kind must be manual_start, scheduled, or external_event" in detail
+
+
 def test_api_save_workflow_template_rejects_manual_auto_execution_mode(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -2998,6 +3132,34 @@ def test_api_save_workflow_template_rejects_auto_mode_without_timer(
                     "trigger_kind": "manual_start",
                     "execution_mode": "auto",
                     "agent_prompt": "run task",
+                }
+            ],
+        },
+    )
+    assert res.status_code == 400
+    detail = str(res.json().get("detail") or "")
+    assert "execution_mode=auto requires timer_minutes" in detail
+
+
+def test_api_save_workflow_template_rejects_auto_mode_with_zero_timer(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    client = _create_client(monkeypatch, tmp_path)
+    res = client.post(
+        "/api/workflow-templates",
+        json={
+            "name": "Invalid Auto Zero Timer",
+            "year": 2026,
+            "month": 2,
+            "mfcloud_url": "https://example.com/auto-zero",
+            "steps": [
+                {
+                    "title": "Step 1",
+                    "type": "agent",
+                    "trigger_kind": "manual_start",
+                    "execution_mode": "auto",
+                    "agent_prompt": "run task",
+                    "timer_minutes": 0,
                 }
             ],
         },

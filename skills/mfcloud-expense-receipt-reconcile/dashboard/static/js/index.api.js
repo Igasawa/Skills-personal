@@ -227,12 +227,9 @@
       subheading: payload.subheading,
       year: payload.year,
       month: payload.month,
-      mfcloud_url: payload.mfcloud_url,
-      source_urls: Array.isArray(payload.source_urls) ? payload.source_urls : [],
       steps: Array.isArray(payload.steps) ? payload.steps : [],
-      notes: payload.notes,
-      rakuten_orders_url: payload.rakuten_orders_url,
       source_template_id: sourceTemplateId,
+      lifecycle_state: "draft",
     };
   }
 
@@ -302,7 +299,6 @@
 
   async function createWorkflowPage() {
     if (!form || workflowPageCreateState.inFlight) return;
-    if (!validateTemplateSourceUrls()) return;
     if (!validateTemplateStepRows()) return;
     const payload = buildWorkflowPagePayload();
     if (!payload) return;
@@ -319,7 +315,7 @@
         `ページ名: ${payload.name}`,
         `補足説明: ${payload.subheading || "(なし)"}`,
         ...buildWorkflowStepPreviewLines(payload.steps).map((line) => `手順: ${line}`),
-        "テンプレートの手順定義と自動実行設定を引き継ぎます。",
+        "テンプレートのワークフロー定義のみを引き継ぎます（カードや添付情報は引き継ぎません）。",
       ],
       confirmLabel: "作成して開く",
       cancelLabel: "戻る",
@@ -352,11 +348,7 @@
 
       const workflowPage = data.workflow_page || null;
       const workflowPageId = String(workflowPage?.id || "").trim();
-      if (data.scheduler_copied === true) {
-        showToast("ワークフローを作成しました。自動実行設定も引き継ぎました。", "success");
-      } else {
-        showToast("ワークフローページを作成しました。", "success");
-      }
+      showToast("ワークフローページを Draft として作成しました。", "success");
       if (workflowPageId) {
         window.location.href = `/workflow/${encodeURIComponent(workflowPageId)}`;
         return;
@@ -383,6 +375,7 @@
   async function editWorkflowPageSettings() {
     const workflowPageId = String(workflowPage?.id || "").trim();
     if (!workflowPageId) return;
+    if (!ensureWorkflowPageEditable("ページ設定の更新")) return;
     const heroTitleEl = document.querySelector(".hero h1");
     const heroSubheadingEl = document.querySelector(".hero .subtitle");
     const currentName = String(workflowPage?.name || heroTitleEl?.textContent || "").trim();
@@ -506,6 +499,132 @@
     const currentRow = versions.find((row) => Number.parseInt(String(row?.version || 0), 10) === safeVersion);
     const updatedAt = String(currentRow?.updated_at || "").trim();
     labelEl.textContent = updatedAt ? `手順版 v${safeVersion} (${updatedAt})` : `手順版 v${safeVersion}`;
+  }
+
+  const workflowPageLifecycleUpdateState = { inFlight: false };
+
+  function getWorkflowPageLifecycleState() {
+    const raw = String(workflowPage?.lifecycle_state || workflowPage?.state || "").trim().toLowerCase();
+    return raw === "fixed" ? "fixed" : "draft";
+  }
+
+  function isWorkflowPageFixed() {
+    return getWorkflowPageLifecycleState() === "fixed";
+  }
+
+  function ensureWorkflowPageEditable(actionLabel = "この操作") {
+    if (!isWorkflowPageFixed()) return true;
+    showToast(`${actionLabel}は固定保存後は実行できません。Draftに戻してから再実行してください。`, "info");
+    return false;
+  }
+
+  function syncWorkflowPageLifecycleUi() {
+    const workflowPageId = String(workflowPage?.id || "").trim();
+    if (!workflowPageId) return;
+    const state = getWorkflowPageLifecycleState();
+    const isFixed = state === "fixed";
+    const pillEl = document.getElementById("workflow-page-lifecycle-pill");
+    if (pillEl) {
+      pillEl.dataset.lifecycleState = state;
+      pillEl.classList.toggle("is-draft", !isFixed);
+      pillEl.classList.toggle("is-fixed", isFixed);
+      pillEl.textContent = isFixed ? "Fixed" : "Draft";
+    }
+    const toggleButton = document.getElementById("workflow-page-lifecycle-toggle");
+    if (toggleButton) {
+      toggleButton.dataset.lifecycleState = state;
+      toggleButton.disabled = workflowPageLifecycleUpdateState.inFlight;
+      toggleButton.textContent = isFixed ? "Draftに戻す" : "固定保存";
+      toggleButton.classList.remove("primary", "secondary");
+      toggleButton.classList.add(isFixed ? "secondary" : "primary");
+    }
+    ["workflow-page-edit", "workflow-page-edit-steps", "workflow-page-rollback-steps"].forEach((id) => {
+      const button = document.getElementById(id);
+      if (!button) return;
+      button.disabled = isFixed;
+      button.dataset.locked = isFixed ? "1" : "0";
+    });
+  }
+
+  async function setWorkflowPageLifecycleState(nextStateRaw) {
+    const workflowPageId = String(workflowPage?.id || "").trim();
+    if (!workflowPageId || workflowPageLifecycleUpdateState.inFlight) return false;
+    const nextState = String(nextStateRaw || "").trim().toLowerCase() === "fixed" ? "fixed" : "draft";
+    const currentState = getWorkflowPageLifecycleState();
+    if (nextState === currentState) {
+      syncWorkflowPageLifecycleUi();
+      return true;
+    }
+    const isFixing = nextState === "fixed";
+    const confirmed = await showConfirmModal({
+      title: isFixing ? "ワークフローを固定保存" : "ワークフローをDraftへ戻す",
+      lines: isFixing
+        ? [
+            "現在の設定を固定保存します。",
+            "固定中はページ設定と手順編集をロックします。",
+            "必要になれば Draft に戻せます。",
+          ]
+        : [
+            "固定保存を解除して Draft に戻します。",
+            "Draft に戻すとページ設定と手順編集を再開できます。",
+          ],
+      confirmLabel: isFixing ? "固定保存する" : "Draftへ戻す",
+      cancelLabel: "キャンセル",
+    });
+    if (!confirmed) return false;
+    const toggleButton = document.getElementById("workflow-page-lifecycle-toggle");
+    workflowPageLifecycleUpdateState.inFlight = true;
+    if (toggleButton) {
+      toggleButton.disabled = true;
+      toggleButton.dataset.busy = "1";
+      toggleButton.textContent = isFixing ? "固定保存中..." : "更新中...";
+    }
+    try {
+      const res = await fetch(`/api/workflow-pages/${encodeURIComponent(workflowPageId)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          lifecycle_state: nextState,
+          base_updated_at: String(workflowPage?.updated_at || ""),
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const message = toFriendlyMessage(data.detail) || "ワークフロー状態の更新に失敗しました。";
+        showError(message);
+        showToast(message, "error");
+        return false;
+      }
+      const updatedPage = data.workflow_page && typeof data.workflow_page === "object" ? data.workflow_page : null;
+      if (updatedPage) {
+        applyWorkflowPageSnapshot(updatedPage);
+      } else {
+        workflowPage.lifecycle_state = nextState;
+        if (nextState !== "fixed") workflowPage.fixed_at = "";
+        syncWorkflowPageLifecycleUi();
+      }
+      showToast(isFixing ? "固定保存しました。" : "Draftに戻しました。", "success");
+      return true;
+    } catch {
+      const message = "ワークフロー状態の更新に失敗しました。";
+      showError(message);
+      showToast(message, "error");
+      return false;
+    } finally {
+      workflowPageLifecycleUpdateState.inFlight = false;
+      if (toggleButton) {
+        toggleButton.disabled = false;
+        if (toggleButton.dataset) {
+          delete toggleButton.dataset.busy;
+        }
+      }
+      syncWorkflowPageLifecycleUi();
+    }
+  }
+
+  async function toggleWorkflowPageLifecycle() {
+    const nextState = isWorkflowPageFixed() ? "draft" : "fixed";
+    return setWorkflowPageLifecycleState(nextState);
   }
 
   function applyWorkflowPageStepLayout(stepRowsInput = null) {
@@ -643,6 +762,7 @@
     }
     applyWorkflowPageStepLayout(workflowPage.steps);
     renderWorkflowPageStepVersionLabel();
+    syncWorkflowPageLifecycleUi();
   }
 
   function showWorkflowPageStepEditorModal(initialSteps = []) {
@@ -789,6 +909,7 @@
   async function saveWorkflowPageSteps(nextSteps, { successMessage = "手順を更新しました。" } = {}) {
     const workflowPageId = String(workflowPage?.id || "").trim();
     if (!workflowPageId) return false;
+    if (!ensureWorkflowPageEditable("手順編集")) return false;
     const payload = {
       steps: normalizeWorkflowStepRows(nextSteps, {
         ensureRequired: false,
@@ -827,6 +948,7 @@
   async function editWorkflowPageSteps() {
     const workflowPageId = String(workflowPage?.id || "").trim();
     if (!workflowPageId) return;
+    if (!ensureWorkflowPageEditable("手順編集")) return;
     const currentSteps = normalizeWorkflowStepRows(workflowPage?.steps, {
       ensureRequired: false,
       includeTimer: true,
@@ -852,6 +974,7 @@
   async function rollbackWorkflowPageSteps() {
     const workflowPageId = String(workflowPage?.id || "").trim();
     if (!workflowPageId) return;
+    if (!ensureWorkflowPageEditable("前版への復元")) return;
     const versions = Array.isArray(workflowPage?.step_versions) ? workflowPage.step_versions : [];
     if (versions.length < 2) {
       showToast("戻せる前版がありません。", "info");
@@ -1626,6 +1749,12 @@ window.DashboardIndexApi = {
   buildTemplatePayload,
   buildWorkflowPagePayload,
   createWorkflowPage,
+  getWorkflowPageLifecycleState,
+  isWorkflowPageFixed,
+  ensureWorkflowPageEditable,
+  syncWorkflowPageLifecycleUi,
+  setWorkflowPageLifecycleState,
+  toggleWorkflowPageLifecycle,
   editWorkflowPageSettings,
   archiveCurrentWorkflowPage,
   showWorkflowPageStepEditorModal,

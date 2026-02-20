@@ -890,6 +890,16 @@ def register_api_workflow_endpoints(router: APIRouter) -> None:
         return _normalize_workflow_subheading(value, max_chars=WORKFLOW_PAGE_MAX_SUBHEADING_CHARS)
 
 
+    WORKFLOW_PAGE_LIFECYCLE_STATES = {"draft", "fixed"}
+
+
+    def _normalize_workflow_page_lifecycle_state(value: Any) -> str:
+        state = str(value or "").strip().lower()
+        if state not in WORKFLOW_PAGE_LIFECYCLE_STATES:
+            return "draft"
+        return state
+
+
     def _normalize_workflow_page_step_version(value: Any) -> int:
         version = core._safe_non_negative_int(value, default=1)
         return version if version >= 1 else 1
@@ -999,6 +1009,14 @@ def register_api_workflow_endpoints(router: APIRouter) -> None:
                     )
                 steps = _normalize_workflow_template_steps(selected_steps_row.get("steps"))
                 step_version = selected_step_version
+            lifecycle_state = _normalize_workflow_page_lifecycle_state(
+                row.get("lifecycle_state") or row.get("state")
+            )
+            fixed_at = (
+                _normalize_workflow_template_timestamp(row.get("fixed_at"))
+                if lifecycle_state == "fixed"
+                else ""
+            )
             rows.append(
                 {
                     "id": page_id,
@@ -1016,6 +1034,8 @@ def register_api_workflow_endpoints(router: APIRouter) -> None:
                     "step_versions": step_versions,
                     "archived": archived,
                     "archived_at": archived_at,
+                    "lifecycle_state": lifecycle_state,
+                    "fixed_at": fixed_at,
                     "created_at": created_at,
                     "updated_at": updated_at,
                 }
@@ -1080,6 +1100,14 @@ def register_api_workflow_endpoints(router: APIRouter) -> None:
                     )
                 steps = _normalize_workflow_template_steps(selected_steps_row.get("steps"))
                 step_version = selected_step_version
+            lifecycle_state = _normalize_workflow_page_lifecycle_state(
+                row.get("lifecycle_state") or row.get("state")
+            )
+            fixed_at = (
+                _normalize_workflow_template_timestamp(row.get("fixed_at"))
+                if lifecycle_state == "fixed"
+                else ""
+            )
             normalized.append(
                 {
                     "id": page_id,
@@ -1097,6 +1125,8 @@ def register_api_workflow_endpoints(router: APIRouter) -> None:
                     "step_versions": step_versions,
                     "archived": bool(row.get("archived")),
                     "archived_at": _normalize_workflow_template_timestamp(row.get("archived_at")) if bool(row.get("archived")) else "",
+                    "lifecycle_state": lifecycle_state,
+                    "fixed_at": fixed_at,
                     "created_at": created_at,
                     "updated_at": updated_at,
                 }
@@ -1158,6 +1188,8 @@ def register_api_workflow_endpoints(router: APIRouter) -> None:
             "step_versions": step_versions,
             "archived": False,
             "archived_at": "",
+            "lifecycle_state": "draft",
+            "fixed_at": "",
             "created_at": created_at,
             "updated_at": created_at,
         }
@@ -1187,6 +1219,11 @@ def register_api_workflow_endpoints(router: APIRouter) -> None:
             updates["month"] = month
         if "archived" in payload:
             updates["archived"] = bool(payload.get("archived"))
+        if "lifecycle_state" in payload or "state" in payload:
+            raw_state = payload.get("lifecycle_state")
+            if "lifecycle_state" not in payload:
+                raw_state = payload.get("state")
+            updates["lifecycle_state"] = _normalize_workflow_page_lifecycle_state(raw_state)
         if "steps" in payload:
             updates["steps"] = _normalize_workflow_template_steps(payload.get("steps"), strict=True)
 

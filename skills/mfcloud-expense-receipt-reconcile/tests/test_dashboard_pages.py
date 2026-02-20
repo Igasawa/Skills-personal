@@ -347,6 +347,10 @@ def test_expense_workflow_copy_page_shows_shared_wizard(monkeypatch: pytest.Monk
     client = _create_client(monkeypatch, tmp_path)
     res = client.get("/expense-workflow-copy")
     assert res.status_code == 200
+    assert "コピー範囲" in res.text
+    assert "この作成では、テンプレートのワークフロー設計（手順・開始条件・実行方法）だけを引き継ぎます。" in res.text
+    assert "テンプレートに紐づくカードや添付情報は複製されません。" in res.text
+    assert "作成後は Draft で調整し、最後に固定保存してください。" in res.text
     assert 'id="wizard"' in res.text
     assert 'id="run-form"' in res.text
     assert 'name="template_name"' in res.text
@@ -431,9 +435,57 @@ def test_workflow_page_hides_target_settings_and_uses_dataset_step_model(
     assert re.search(r'<form\s+id="run-form"\s+class="form hidden"\s+aria-hidden="true"', res.text)
     assert re.search(r'<p class="subtitle"\s*>\s*draft\s*</p>', res.text)
     assert "ステータスページを開く" not in res.text
+    assert 'id="workflow-page-lifecycle-pill"' in res.text
+    assert 'id="workflow-page-lifecycle-toggle"' in res.text
+    assert "固定保存" in res.text
     assert 'id="workflow-page-step-model"' in res.text
     assert 'data-template-step-row data-template-step-action="amazon_download"' in res.text
     assert "<select data-template-step-action>" not in res.text
+
+
+def test_workflow_page_fixed_state_shows_fixed_badge_and_draft_toggle(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _write_json(
+        _workflow_pages_store(tmp_path),
+        [
+            {
+                "id": "wf-fixed-mode",
+                "name": "WF FIXED",
+                "subheading": "fixed",
+                "year": 2026,
+                "month": 2,
+                "mfcloud_url": "",
+                "source_urls": [],
+                "steps": [{"id": "step-1", "title": "Step 1", "action": "preflight"}],
+                "notes": "",
+                "rakuten_orders_url": "",
+                "source_template_id": "tmpl-1",
+                "lifecycle_state": "fixed",
+                "fixed_at": "2026-02-02T00:00:00",
+                "step_version": 1,
+                "step_versions": [
+                    {
+                        "version": 1,
+                        "updated_at": "2026-02-01T00:00:00",
+                        "steps": [{"id": "step-1", "title": "Step 1", "action": "preflight"}],
+                    }
+                ],
+                "archived": False,
+                "archived_at": "",
+                "created_at": "2026-02-01T00:00:00",
+                "updated_at": "2026-02-02T00:00:00",
+            }
+        ],
+    )
+    client = _create_client(monkeypatch, tmp_path)
+    res = client.get("/workflow/wf-fixed-mode")
+    assert res.status_code == 200
+    assert 'id="workflow-page-lifecycle-pill"' in res.text
+    assert 'data-lifecycle-state="fixed"' in res.text
+    assert "Fixed" in res.text
+    assert "Draftに戻す" in res.text
 
 
 def test_workflow_page_treats_legacy_default_subheading_as_blank(
@@ -873,6 +925,75 @@ def test_expense_workflow_copy_page_does_not_auto_prefill_without_template_query
     assert 'name="template_id" value=""' in res.text
     assert 'name="template_source_id" value=""' in res.text
     assert 'value="Monthly Copy Source"' not in res.text
+
+
+def test_sidebar_classifies_workflow_pages_by_lifecycle_state(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _write_json(
+        _workflow_pages_store(tmp_path),
+        [
+            {
+                "id": "wf-draft",
+                "name": "WF Draft",
+                "subheading": "",
+                "year": 2026,
+                "month": 2,
+                "mfcloud_url": "",
+                "source_urls": [],
+                "steps": [{"id": "step-1", "title": "Step 1", "action": "preflight"}],
+                "notes": "",
+                "rakuten_orders_url": "",
+                "source_template_id": "tmpl-1",
+                "lifecycle_state": "draft",
+                "fixed_at": "",
+                "step_version": 1,
+                "step_versions": [{"version": 1, "updated_at": "2026-02-01T00:00:00", "steps": []}],
+                "archived": False,
+                "archived_at": "",
+                "created_at": "2026-02-01T00:00:00",
+                "updated_at": "2026-02-01T00:00:00",
+            },
+            {
+                "id": "wf-fixed",
+                "name": "WF Fixed",
+                "subheading": "",
+                "year": 2026,
+                "month": 2,
+                "mfcloud_url": "",
+                "source_urls": [],
+                "steps": [{"id": "step-1", "title": "Step 1", "action": "preflight"}],
+                "notes": "",
+                "rakuten_orders_url": "",
+                "source_template_id": "tmpl-1",
+                "lifecycle_state": "fixed",
+                "fixed_at": "2026-02-02T00:00:00",
+                "step_version": 1,
+                "step_versions": [{"version": 1, "updated_at": "2026-02-02T00:00:00", "steps": []}],
+                "archived": False,
+                "archived_at": "",
+                "created_at": "2026-02-01T00:00:00",
+                "updated_at": "2026-02-02T00:00:00",
+            },
+        ],
+    )
+    client = _create_client(monkeypatch, tmp_path)
+    res = client.get("/expense")
+    assert res.status_code == 200
+    match = re.search(r"data-sidebar-links='(.*?)'", res.text)
+    assert match is not None
+    links = json.loads(match.group(1))
+    assert any(
+        link.get("href") == "/workflow/wf-draft"
+        and link.get("section") == "draft"
+        and str(link.get("label") or "").startswith("Draft:")
+        for link in links
+    )
+    assert any(
+        link.get("href") == "/workflow/wf-fixed"
+        and link.get("section") == "workflow"
+        for link in links
+    )
 
 
 def test_expense_workflow_copy_page_copy_mode_prefills_and_clears_template_id_for_create(

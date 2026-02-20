@@ -270,6 +270,11 @@
       event.preventDefault();
       rollbackWorkflowPageSteps();
     });
+    const workflowPageLifecycleToggleButton = document.getElementById("workflow-page-lifecycle-toggle");
+    workflowPageLifecycleToggleButton?.addEventListener("click", (event) => {
+      event.preventDefault();
+      toggleWorkflowPageLifecycle();
+    });
     const onTemplateHeaderChanged = () => {
       syncTemplatePageHeader();
       renderWorkflowCreatePreview();
@@ -292,6 +297,7 @@
     safeInit(renderWorkflowCreatePreview, "renderWorkflowCreatePreview");
     safeInit(() => applyWorkflowPageStepLayout(workflowPage?.steps), "applyWorkflowPageStepLayout");
     safeInit(renderWorkflowPageStepVersionLabel, "renderWorkflowPageStepVersionLabel");
+    safeInit(syncWorkflowPageLifecycleUi, "syncWorkflowPageLifecycleUi");
     safeInit(restoreYmSelection, "restoreYmSelection");
     const initialYm = getYmFromForm();
     applyArchivePageLink(initialYm);
