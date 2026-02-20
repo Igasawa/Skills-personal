@@ -20,6 +20,7 @@
 - Phase 3.2 の可視化基盤として `GET /api/workflow-events/summary` を追加済み。
 - Phase 3.2 の可視化UIとして、`/expense-workflow-copy` に監査サマリーカードを追加済み。
 - Phase 3.3 先行として、監査 `details` に `retry_advice` を追加済み。
+- Phase 3.3 実装として、`retry_jobs` キュー（保存/一覧/drain）と `escalated` 遷移を追加済み。
 
 ## 3. 段階導入
 
@@ -48,7 +49,7 @@
   - 失敗理由の分類コード化（validation / conflict / infra）と `retry_advice` の整合。
   - 運用ダッシュボード表示用の集計キーを定義。
 - 完了条件:
-  - 障害時の一次切り分けに必要な情報が `audit_log.jsonl` だけで揃う。
+  - 障害時の一次切り分けに必要な情報が `audit_log.jsonl` と `retry_jobs.json` で揃う。
 
 ## 4. API契約（MVP固定案）
 - エンドポイント: `POST /api/workflow-events`
@@ -80,5 +81,6 @@
 ## 7. 直近実装タスク
 1. 完了: 受信レシートTTL/上限の運用値をランブックへ反映。
 2. 完了: `workflow_event` 監査分類の集計APIと表示要件を定義。
-3. 継続: 失敗時の再送・再実行フロー（呼び出し側手順 + 運用ドキュメント）を整備。
-4. 次: Phase 3.3 の日次トレンド/通知要件を確定。
+3. 完了: 失敗時の再送キュー API（`retry-jobs`）と `escalated` 制御を実装。
+4. 継続: `retry_queue` を UI に可視化し、運用導線を統合。
+5. 次: Phase 3.3 の日次トレンド/通知要件を確定。

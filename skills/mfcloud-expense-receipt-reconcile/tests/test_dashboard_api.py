@@ -37,6 +37,10 @@ def _workflow_pages_store(ax_home: Path) -> Path:
     return _artifact_root(ax_home) / "_workflow_pages" / "workflow_pages.json"
 
 
+def _workflow_event_retry_jobs_store(ax_home: Path) -> Path:
+    return _artifact_root(ax_home) / "_workflow_events" / "retry_jobs.json"
+
+
 def _write_json(path: Path, data: dict[str, Any] | list[Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -66,6 +70,14 @@ def _read_audit_entries(ax_home: Path, ym: str) -> list[dict[str, Any]]:
             continue
         out.append(json.loads(s))
     return out
+
+
+def _read_workflow_event_retry_jobs(ax_home: Path) -> dict[str, Any]:
+    path = _workflow_event_retry_jobs_store(ax_home)
+    if not path.exists():
+        return {"jobs": {}}
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    return payload if isinstance(payload, dict) else {"jobs": {}}
 
 
 def _create_client(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> TestClient:
@@ -4281,6 +4293,168 @@ def test_api_workflow_events_run_conflict_writes_classified_audit(
     assert str(details.get("reason_code") or "") == "http_409"
     assert str(details.get("retry_advice") or "") == "retry_with_backoff"
 
+    retry_jobs = _read_workflow_event_retry_jobs(tmp_path)
+    jobs = retry_jobs.get("jobs") if isinstance(retry_jobs.get("jobs"), dict) else {}
+    key = f"{template_id}:evt-conflict-001"
+    assert key in jobs
+    queued = jobs.get(key) or {}
+    assert str(queued.get("status") or "") == "pending"
+    assert int(queued.get("attempts") or 0) == 0
+    assert int(queued.get("max_attempts") or 0) >= 1
+
+
+def test_api_workflow_event_retry_jobs_drain_succeeds_and_marks_receipt(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    client = _create_client(monkeypatch, tmp_path)
+    call_count = 0
+
+    def _fake_start_run(payload: dict[str, Any]) -> dict[str, Any]:
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            raise HTTPException(status_code=409, detail="Another run is already in progress.")
+        return {"status": "started", "run_id": "run_retry_success_001"}
+
+    monkeypatch.setattr(public_core, "_start_run", _fake_start_run)
+
+    create_res = client.post(
+        "/api/workflow-templates",
+        json={
+            "name": "External Event Retry Drain Success",
+            "year": 2026,
+            "month": 2,
+            "mfcloud_url": "https://example.com/external-retry-drain-success",
+            "steps": [
+                {
+                    "title": "Step 1",
+                    "action": "preflight",
+                    "trigger_kind": "external_event",
+                    "execution_mode": "manual_confirm",
+                }
+            ],
+        },
+    )
+    assert create_res.status_code == 200
+    template_id = str((create_res.json().get("template") or {}).get("id") or "")
+    assert template_id
+
+    event_res = client.post(
+        "/api/workflow-events",
+        json={"template_id": template_id, "idempotency_key": "evt-retry-drain-001"},
+    )
+    assert event_res.status_code == 409
+
+    queue_before = client.get("/api/workflow-events/retry-jobs")
+    assert queue_before.status_code == 200
+    before_body = queue_before.json()
+    assert int(before_body.get("total") or 0) >= 1
+
+    drain_res = client.post(
+        "/api/workflow-events/retry-jobs/drain",
+        json={"limit": 1, "force": True},
+    )
+    assert drain_res.status_code == 200
+    drain_body = drain_res.json()
+    assert drain_body.get("status") == "ok"
+    assert drain_body.get("processed") == 1
+    assert drain_body.get("succeeded") == 1
+    assert drain_body.get("retrying") == 0
+    assert drain_body.get("escalated") == 0
+
+    retry_jobs = _read_workflow_event_retry_jobs(tmp_path)
+    jobs = retry_jobs.get("jobs") if isinstance(retry_jobs.get("jobs"), dict) else {}
+    key = f"{template_id}:evt-retry-drain-001"
+    assert key in jobs
+    job = jobs.get(key) or {}
+    assert str(job.get("status") or "") == "succeeded"
+    assert int(job.get("attempts") or 0) == 1
+    assert str(job.get("last_run_id") or "") == "run_retry_success_001"
+
+    duplicate_res = client.post(
+        "/api/workflow-events",
+        json={"template_id": template_id, "idempotency_key": "evt-retry-drain-001"},
+    )
+    assert duplicate_res.status_code == 200
+    duplicate_body = duplicate_res.json()
+    assert duplicate_body.get("duplicate") is True
+    assert duplicate_body.get("triggered") is False
+    assert duplicate_body.get("run_id") == "run_retry_success_001"
+
+
+def test_api_workflow_event_retry_jobs_drain_escalates_after_max_attempts(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    client = _create_client(monkeypatch, tmp_path)
+    monkeypatch.setenv("AX_WORKFLOW_EVENT_RETRY_MAX_ATTEMPTS", "2")
+
+    def _fake_start_run(payload: dict[str, Any]) -> dict[str, Any]:
+        raise HTTPException(status_code=409, detail="Another run is already in progress.")
+
+    monkeypatch.setattr(public_core, "_start_run", _fake_start_run)
+
+    create_res = client.post(
+        "/api/workflow-templates",
+        json={
+            "name": "External Event Retry Escalation",
+            "year": 2026,
+            "month": 2,
+            "mfcloud_url": "https://example.com/external-retry-escalation",
+            "steps": [
+                {
+                    "title": "Step 1",
+                    "action": "preflight",
+                    "trigger_kind": "external_event",
+                    "execution_mode": "manual_confirm",
+                }
+            ],
+        },
+    )
+    assert create_res.status_code == 200
+    template_id = str((create_res.json().get("template") or {}).get("id") or "")
+    assert template_id
+
+    first_res = client.post(
+        "/api/workflow-events",
+        json={"template_id": template_id, "idempotency_key": "evt-retry-escalate-001"},
+    )
+    assert first_res.status_code == 409
+
+    drain_retrying = client.post("/api/workflow-events/retry-jobs/drain", json={"force": True})
+    assert drain_retrying.status_code == 200
+    body_retrying = drain_retrying.json()
+    assert body_retrying.get("processed") == 1
+    assert body_retrying.get("retrying") == 1
+    assert body_retrying.get("escalated") == 0
+
+    drain_escalated = client.post("/api/workflow-events/retry-jobs/drain", json={"force": True})
+    assert drain_escalated.status_code == 200
+    body_escalated = drain_escalated.json()
+    assert body_escalated.get("processed") == 1
+    assert body_escalated.get("retrying") == 0
+    assert body_escalated.get("escalated") == 1
+
+    retry_jobs = _read_workflow_event_retry_jobs(tmp_path)
+    jobs = retry_jobs.get("jobs") if isinstance(retry_jobs.get("jobs"), dict) else {}
+    key = f"{template_id}:evt-retry-escalate-001"
+    assert key in jobs
+    job = jobs.get(key) or {}
+    assert str(job.get("status") or "") == "escalated"
+    assert int(job.get("attempts") or 0) == 2
+    assert str(job.get("last_reason_code") or "") == "retry_exhausted"
+    assert str(job.get("last_retry_advice") or "") == "retry_after_fix"
+
+    entries = _read_audit_entries(tmp_path, "2026-02")
+    workflow_entries = [row for row in entries if str(row.get("event_type") or "") == "workflow_event"]
+    assert workflow_entries
+    last = workflow_entries[-1]
+    details = last.get("details") or {}
+    assert str(last.get("status") or "") == "failed"
+    assert str(details.get("reason_code") or "") == "retry_exhausted"
+    assert str(details.get("retry_advice") or "") == "retry_after_fix"
+
 
 def test_api_workflow_events_summary_returns_aggregated_counts(
     monkeypatch: pytest.MonkeyPatch,
@@ -4419,6 +4593,11 @@ def test_api_workflow_events_summary_returns_aggregated_counts(
     receipt_retention = body.get("receipt_retention") or {}
     assert int(receipt_retention.get("ttl_days") or 0) >= 1
     assert int(receipt_retention.get("max_receipts") or 0) >= 1
+    retry_queue = body.get("retry_queue") or {}
+    assert int(retry_queue.get("total") or 0) >= 0
+    assert int(retry_queue.get("due") or 0) >= 0
+    assert isinstance(retry_queue.get("by_status"), list)
+    assert isinstance(retry_queue.get("policy"), dict)
 
 
 def test_api_workflow_events_summary_returns_empty_when_audit_not_found(
@@ -4438,6 +4617,11 @@ def test_api_workflow_events_summary_returns_empty_when_audit_not_found(
     assert body.get("recent") == []
     assert body.get("by_retry_advice") == []
     assert body.get("duplicate") == {"true": 0, "false": 0, "unknown": 0}
+    retry_queue = body.get("retry_queue") or {}
+    assert retry_queue.get("total") == 0
+    assert retry_queue.get("due") == 0
+    assert isinstance(retry_queue.get("by_status"), list)
+    assert isinstance(retry_queue.get("policy"), dict)
     by_status = body.get("by_status") or {}
     assert by_status.get("success") == 0
     assert by_status.get("skipped") == 0

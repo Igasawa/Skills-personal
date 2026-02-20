@@ -29,6 +29,19 @@ WORKFLOW_EVENT_MAX_RECEIPTS_ENV = "AX_WORKFLOW_EVENT_MAX_RECEIPTS"
 WORKFLOW_EVENT_RECEIPT_TTL_DAYS_ENV = "AX_WORKFLOW_EVENT_RECEIPT_TTL_DAYS"
 WORKFLOW_EVENT_MAX_EVENT_NAME_CHARS = 80
 WORKFLOW_EVENT_MAX_SOURCE_CHARS = 80
+WORKFLOW_EVENT_RETRY_MAX_ATTEMPTS = 3
+WORKFLOW_EVENT_RETRY_BASE_DELAY_SECONDS = 30
+WORKFLOW_EVENT_RETRY_TERMINAL_TTL_DAYS = 30
+WORKFLOW_EVENT_RETRY_MAX_JOBS = 2000
+WORKFLOW_EVENT_RETRY_MAX_ATTEMPTS_ENV = "AX_WORKFLOW_EVENT_RETRY_MAX_ATTEMPTS"
+WORKFLOW_EVENT_RETRY_BASE_DELAY_SECONDS_ENV = "AX_WORKFLOW_EVENT_RETRY_BASE_DELAY_SECONDS"
+WORKFLOW_EVENT_RETRY_TERMINAL_TTL_DAYS_ENV = "AX_WORKFLOW_EVENT_RETRY_TERMINAL_TTL_DAYS"
+WORKFLOW_EVENT_RETRY_MAX_JOBS_ENV = "AX_WORKFLOW_EVENT_RETRY_MAX_JOBS"
+WORKFLOW_EVENT_RETRY_ACTIVE_STATUSES = {"pending", "retrying"}
+WORKFLOW_EVENT_RETRY_TERMINAL_STATUSES = {"succeeded", "discarded", "escalated"}
+WORKFLOW_EVENT_RETRY_TEMPLATE_NAME_CHARS = 128
+WORKFLOW_EVENT_RETRY_URL_CHARS = 2000
+WORKFLOW_EVENT_RETRY_NOTES_CHARS = 2000
 
 _GOAL_INLINE_PATTERN = re.compile(r"^(?:目的|goal|ゴール|やりたいこと|狙い|task)\s*[:：]\s*(.+)$", flags=re.IGNORECASE)
 _GOAL_HEADING_PATTERN = re.compile(r"^(?:目的|goal|ゴール|やりたいこと|狙い|task)\s*[:：]?$", flags=re.IGNORECASE)
@@ -582,6 +595,363 @@ def register_api_workspace_routes(
         state["receipts"] = cleaned
         _write_workflow_event_receipts(state)
 
+    def _workflow_event_retry_max_attempts() -> int:
+        raw = os.environ.get(WORKFLOW_EVENT_RETRY_MAX_ATTEMPTS_ENV)
+        value = core._safe_non_negative_int(raw, default=WORKFLOW_EVENT_RETRY_MAX_ATTEMPTS)
+        if value < 1:
+            return WORKFLOW_EVENT_RETRY_MAX_ATTEMPTS
+        if value > 10:
+            return 10
+        return value
+
+    def _workflow_event_retry_base_delay_seconds() -> int:
+        raw = os.environ.get(WORKFLOW_EVENT_RETRY_BASE_DELAY_SECONDS_ENV)
+        value = core._safe_non_negative_int(raw, default=WORKFLOW_EVENT_RETRY_BASE_DELAY_SECONDS)
+        if value < 1:
+            return WORKFLOW_EVENT_RETRY_BASE_DELAY_SECONDS
+        if value > 3600:
+            return 3600
+        return value
+
+    def _workflow_event_retry_terminal_ttl_days() -> int:
+        raw = os.environ.get(WORKFLOW_EVENT_RETRY_TERMINAL_TTL_DAYS_ENV)
+        value = core._safe_non_negative_int(raw, default=WORKFLOW_EVENT_RETRY_TERMINAL_TTL_DAYS)
+        if value < 1:
+            return WORKFLOW_EVENT_RETRY_TERMINAL_TTL_DAYS
+        if value > 3650:
+            return 3650
+        return value
+
+    def _workflow_event_retry_max_jobs() -> int:
+        raw = os.environ.get(WORKFLOW_EVENT_RETRY_MAX_JOBS_ENV)
+        value = core._safe_non_negative_int(raw, default=WORKFLOW_EVENT_RETRY_MAX_JOBS)
+        if value < 10:
+            return WORKFLOW_EVENT_RETRY_MAX_JOBS
+        if value > 20000:
+            return 20000
+        return value
+
+    def _workflow_event_retry_jobs_path():
+        return core._artifact_root() / "_workflow_events" / "retry_jobs.json"
+
+    def _workflow_event_retry_job_key(template_id: str, idempotency_key: str) -> str:
+        normalized_template_id = normalize_workflow_template_id(template_id)
+        normalized_idempotency_key = _normalize_workflow_event_idempotency_key(idempotency_key)
+        if not normalized_template_id or not normalized_idempotency_key:
+            return ""
+        return f"{normalized_template_id}:{normalized_idempotency_key}"
+
+    def _workflow_event_parse_iso(value: Any) -> datetime | None:
+        text = normalize_workflow_template_timestamp(value)
+        if not text:
+            return None
+        try:
+            return datetime.fromisoformat(text)
+        except Exception:
+            return None
+
+    def _normalize_workflow_event_retry_job(value: Any) -> dict[str, Any] | None:
+        row = value if isinstance(value, dict) else {}
+        template_id = normalize_workflow_template_id(row.get("template_id"))
+        idempotency_key = _normalize_workflow_event_idempotency_key(row.get("idempotency_key"))
+        key = _workflow_event_retry_job_key(template_id, idempotency_key)
+        if not key:
+            return None
+
+        year = core._safe_non_negative_int(row.get("year"), default=0)
+        month = core._safe_non_negative_int(row.get("month"), default=0)
+        if year < 2000 or month < 1 or month > 12:
+            return None
+
+        status = str(row.get("status") or "pending").strip().lower()
+        known_statuses = WORKFLOW_EVENT_RETRY_ACTIVE_STATUSES | WORKFLOW_EVENT_RETRY_TERMINAL_STATUSES
+        if status not in known_statuses:
+            status = "pending"
+
+        attempts = core._safe_non_negative_int(row.get("attempts"), default=0)
+        if attempts < 0:
+            attempts = 0
+        if attempts > 100:
+            attempts = 100
+
+        max_attempts = core._safe_non_negative_int(row.get("max_attempts"), default=_workflow_event_retry_max_attempts())
+        if max_attempts < 1:
+            max_attempts = _workflow_event_retry_max_attempts()
+        if max_attempts > 10:
+            max_attempts = 10
+
+        next_retry_at = normalize_workflow_template_timestamp(row.get("next_retry_at"))
+        created_at = normalize_workflow_template_timestamp(row.get("created_at"))
+        updated_at = normalize_workflow_template_timestamp(row.get("updated_at"))
+        if not created_at:
+            created_at = workflow_template_timestamp_now()
+        if not updated_at:
+            updated_at = created_at
+
+        out: dict[str, Any] = {
+            "template_id": template_id,
+            "template_name": str(row.get("template_name") or "").strip()[:WORKFLOW_EVENT_RETRY_TEMPLATE_NAME_CHARS],
+            "action_key": _normalize_step_action(row.get("action_key")),
+            "event_name": str(row.get("event_name") or "").strip()[:WORKFLOW_EVENT_MAX_EVENT_NAME_CHARS],
+            "source": str(row.get("source") or "").strip()[:WORKFLOW_EVENT_MAX_SOURCE_CHARS],
+            "idempotency_key": idempotency_key,
+            "year": year,
+            "month": month,
+            "mfcloud_url": str(row.get("mfcloud_url") or "").strip()[:WORKFLOW_EVENT_RETRY_URL_CHARS],
+            "notes": str(row.get("notes") or "").strip()[:WORKFLOW_EVENT_RETRY_NOTES_CHARS],
+            "status": status,
+            "attempts": attempts,
+            "max_attempts": max_attempts,
+            "next_retry_at": next_retry_at,
+            "last_error": str(row.get("last_error") or "").strip()[:500],
+            "last_reason_class": str(row.get("last_reason_class") or "").strip().lower()[:64],
+            "last_reason_code": str(row.get("last_reason_code") or "").strip().lower()[:64],
+            "last_retry_advice": str(row.get("last_retry_advice") or "").strip().lower()[:64],
+            "last_run_id": str(row.get("last_run_id") or "").strip()[:128],
+            "created_at": created_at,
+            "updated_at": updated_at,
+        }
+        if not out["action_key"]:
+            out["action_key"] = _normalize_step_action(row.get("event_name"))
+        if not out["event_name"]:
+            out["event_name"] = out["action_key"][:WORKFLOW_EVENT_MAX_EVENT_NAME_CHARS]
+        return out
+
+    def _clean_workflow_event_retry_jobs(
+        jobs: dict[str, Any],
+    ) -> tuple[dict[str, dict[str, Any]], bool]:
+        changed = False
+        cleaned: dict[str, dict[str, Any]] = {}
+        expire_before = datetime.now() - timedelta(days=_workflow_event_retry_terminal_ttl_days())
+
+        for key, value in jobs.items():
+            if not isinstance(key, str) or not key.strip():
+                changed = True
+                continue
+            normalized = _normalize_workflow_event_retry_job(value)
+            if not normalized:
+                changed = True
+                continue
+            normalized_key = _workflow_event_retry_job_key(
+                str(normalized.get("template_id") or ""),
+                str(normalized.get("idempotency_key") or ""),
+            )
+            if not normalized_key:
+                changed = True
+                continue
+
+            status = str(normalized.get("status") or "").strip().lower()
+            if status in WORKFLOW_EVENT_RETRY_TERMINAL_STATUSES:
+                updated_dt = _workflow_event_parse_iso(normalized.get("updated_at"))
+                if updated_dt is not None and updated_dt < expire_before:
+                    changed = True
+                    continue
+
+            if normalized_key != key:
+                changed = True
+            cleaned[normalized_key] = normalized
+
+        max_jobs = _workflow_event_retry_max_jobs()
+        if len(cleaned) > max_jobs:
+            drop_count = len(cleaned) - max_jobs
+            keys_sorted = sorted(
+                cleaned.keys(),
+                key=lambda item: (
+                    0
+                    if str(cleaned[item].get("status") or "").strip().lower() in WORKFLOW_EVENT_RETRY_TERMINAL_STATUSES
+                    else 1,
+                    str(cleaned[item].get("updated_at") or ""),
+                    item,
+                ),
+            )
+            for stale_key in keys_sorted[:drop_count]:
+                cleaned.pop(stale_key, None)
+            changed = True
+
+        return cleaned, changed
+
+    def _read_workflow_event_retry_jobs() -> dict[str, dict[str, Any]]:
+        raw = core._read_json(_workflow_event_retry_jobs_path())
+        jobs = raw.get("jobs") if isinstance(raw, dict) else {}
+        if not isinstance(jobs, dict):
+            return {"jobs": {}}
+        cleaned, changed = _clean_workflow_event_retry_jobs(jobs)
+        state = {"jobs": cleaned}
+        if changed:
+            _write_workflow_event_retry_jobs(state)
+        return state
+
+    def _write_workflow_event_retry_jobs(state: dict[str, Any]) -> None:
+        jobs = state.get("jobs") if isinstance(state, dict) else {}
+        payload = {"jobs": jobs if isinstance(jobs, dict) else {}}
+        path = _workflow_event_retry_jobs_path()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        core._write_json(path, payload)
+
+    def _workflow_event_retry_backoff_seconds(attempts: int) -> int:
+        safe_attempts = max(1, core._safe_non_negative_int(attempts, default=1))
+        base = _workflow_event_retry_base_delay_seconds()
+        delay = base * (2 ** max(0, safe_attempts - 1))
+        if delay > 24 * 3600:
+            return 24 * 3600
+        return delay
+
+    def _workflow_event_retry_due(job: dict[str, Any], now: datetime, *, force: bool = False) -> bool:
+        if force:
+            return True
+        next_retry_dt = _workflow_event_parse_iso(job.get("next_retry_at"))
+        if next_retry_dt is None:
+            return True
+        return next_retry_dt <= now
+
+    def _workflow_event_retry_queue_snapshot(*, limit: int = 20) -> dict[str, Any]:
+        state = _read_workflow_event_retry_jobs()
+        jobs = state.get("jobs") if isinstance(state.get("jobs"), dict) else {}
+        now = datetime.now()
+        by_status: Counter[str] = Counter()
+        due = 0
+        rows: list[dict[str, Any]] = []
+
+        for value in jobs.values():
+            if not isinstance(value, dict):
+                continue
+            status = str(value.get("status") or "").strip().lower()
+            if not status:
+                status = "unknown"
+            by_status[status] += 1
+            if status in WORKFLOW_EVENT_RETRY_ACTIVE_STATUSES and _workflow_event_retry_due(value, now):
+                due += 1
+            rows.append(dict(value))
+
+        rows.sort(key=lambda row: str(row.get("updated_at") or ""), reverse=True)
+        bounded_limit = max(1, min(int(limit), 200))
+        return {
+            "total": len(rows),
+            "due": due,
+            "by_status": _workflow_event_counter_rows(by_status, key_name="status"),
+            "jobs": rows[:bounded_limit],
+            "policy": {
+                "max_attempts": _workflow_event_retry_max_attempts(),
+                "base_delay_seconds": _workflow_event_retry_base_delay_seconds(),
+                "terminal_ttl_days": _workflow_event_retry_terminal_ttl_days(),
+                "max_jobs": _workflow_event_retry_max_jobs(),
+            },
+        }
+
+    def _enqueue_workflow_event_retry_job(
+        *,
+        template_id: str,
+        template_name: str,
+        action_key: str,
+        event_name: str,
+        source: str,
+        idempotency_key: str,
+        year: int | None,
+        month: int | None,
+        mfcloud_url: str,
+        notes: str,
+        reason: str,
+        reason_class: str,
+        reason_code: str,
+        retry_advice: str,
+    ) -> dict[str, Any]:
+        normalized_retry_advice = str(retry_advice or "").strip().lower()
+        if normalized_retry_advice != "retry_with_backoff":
+            return {"queued": False, "reason": "retry_advice_not_backoff", "retry_advice": normalized_retry_advice}
+
+        normalized_template_id = normalize_workflow_template_id(template_id)
+        normalized_idempotency_key = _normalize_workflow_event_idempotency_key(idempotency_key)
+        if not normalized_template_id or not normalized_idempotency_key:
+            return {"queued": False, "reason": "missing_idempotency_key", "retry_advice": normalized_retry_advice}
+        if year is None or month is None or year < 2000 or month < 1 or month > 12:
+            return {"queued": False, "reason": "invalid_year_month", "retry_advice": normalized_retry_advice}
+
+        key = _workflow_event_retry_job_key(normalized_template_id, normalized_idempotency_key)
+        if not key:
+            return {"queued": False, "reason": "invalid_job_key", "retry_advice": normalized_retry_advice}
+
+        state = _read_workflow_event_retry_jobs()
+        jobs = state.get("jobs")
+        if not isinstance(jobs, dict):
+            jobs = {}
+        now_iso = workflow_template_timestamp_now()
+        existing = jobs.get(key) if isinstance(jobs.get(key), dict) else None
+        existing_status = str((existing or {}).get("status") or "").strip().lower()
+        is_active = existing_status in WORKFLOW_EVENT_RETRY_ACTIVE_STATUSES
+
+        next_retry_at = normalize_workflow_template_timestamp((existing or {}).get("next_retry_at"))
+        if not next_retry_at:
+            next_retry_at = (datetime.now() + timedelta(seconds=_workflow_event_retry_base_delay_seconds())).isoformat(
+                timespec="seconds"
+            )
+
+        jobs[key] = {
+            "template_id": normalized_template_id,
+            "template_name": str(template_name or "").strip()[:WORKFLOW_EVENT_RETRY_TEMPLATE_NAME_CHARS],
+            "action_key": _normalize_step_action(action_key),
+            "event_name": str(event_name or "").strip()[:WORKFLOW_EVENT_MAX_EVENT_NAME_CHARS],
+            "source": str(source or "").strip()[:WORKFLOW_EVENT_MAX_SOURCE_CHARS],
+            "idempotency_key": normalized_idempotency_key,
+            "year": int(year),
+            "month": int(month),
+            "mfcloud_url": str(mfcloud_url or "").strip()[:WORKFLOW_EVENT_RETRY_URL_CHARS],
+            "notes": str(notes or "").strip()[:WORKFLOW_EVENT_RETRY_NOTES_CHARS],
+            "status": "pending",
+            "attempts": int((existing or {}).get("attempts") or 0) if is_active else 0,
+            "max_attempts": int((existing or {}).get("max_attempts") or _workflow_event_retry_max_attempts()),
+            "next_retry_at": next_retry_at,
+            "last_error": str(reason or "").strip()[:500],
+            "last_reason_class": str(reason_class or "").strip().lower()[:64],
+            "last_reason_code": str(reason_code or "").strip().lower()[:64],
+            "last_retry_advice": normalized_retry_advice,
+            "last_run_id": str((existing or {}).get("last_run_id") or "").strip()[:128],
+            "created_at": normalize_workflow_template_timestamp((existing or {}).get("created_at")) or now_iso,
+            "updated_at": now_iso,
+        }
+        cleaned, _ = _clean_workflow_event_retry_jobs(jobs)
+        state["jobs"] = cleaned
+        _write_workflow_event_retry_jobs(state)
+
+        current = cleaned.get(key) if isinstance(cleaned.get(key), dict) else {}
+        return {
+            "queued": True,
+            "reason": "already_pending" if is_active else "queued",
+            "retry_advice": normalized_retry_advice,
+            "job_key": key,
+            "next_retry_at": str(current.get("next_retry_at") or ""),
+            "attempts": int(current.get("attempts") or 0),
+            "max_attempts": int(current.get("max_attempts") or _workflow_event_retry_max_attempts()),
+        }
+
+    def _mark_workflow_event_retry_job_succeeded(
+        *,
+        template_id: str,
+        idempotency_key: str,
+        run_id: str = "",
+    ) -> None:
+        key = _workflow_event_retry_job_key(template_id, idempotency_key)
+        if not key:
+            return
+        state = _read_workflow_event_retry_jobs()
+        jobs = state.get("jobs")
+        if not isinstance(jobs, dict):
+            return
+        job = jobs.get(key)
+        if not isinstance(job, dict):
+            return
+        job["status"] = "succeeded"
+        job["next_retry_at"] = ""
+        job["last_error"] = ""
+        job["last_reason_class"] = ""
+        job["last_reason_code"] = ""
+        job["last_retry_advice"] = ""
+        if run_id:
+            job["last_run_id"] = str(run_id).strip()[:128]
+        job["updated_at"] = workflow_template_timestamp_now()
+        cleaned, _ = _clean_workflow_event_retry_jobs(jobs)
+        state["jobs"] = cleaned
+        _write_workflow_event_retry_jobs(state)
+
     def _workflow_event_status_for_http(status_code: int) -> str:
         if status_code in {400, 401, 403, 404, 409, 422}:
             return "rejected"
@@ -630,6 +1000,41 @@ def register_api_workspace_routes(
         if normalized_status in {"rejected", "skipped"}:
             return "retry_after_fix"
         return "retry_after_fix"
+
+    def _maybe_enqueue_workflow_event_retry(
+        *,
+        template_id: str,
+        template_name: str,
+        action_key: str,
+        event_name: str,
+        source: str,
+        idempotency_key: str,
+        year: int | None,
+        month: int | None,
+        mfcloud_url: str,
+        notes: str,
+        status: str,
+        reason: str,
+        reason_class: str,
+        reason_code: str,
+    ) -> dict[str, Any]:
+        retry_advice = _workflow_event_retry_advice(status=status, reason_class=reason_class)
+        return _enqueue_workflow_event_retry_job(
+            template_id=template_id,
+            template_name=template_name,
+            action_key=action_key,
+            event_name=event_name,
+            source=source,
+            idempotency_key=idempotency_key,
+            year=year,
+            month=month,
+            mfcloud_url=mfcloud_url,
+            notes=notes,
+            reason=reason,
+            reason_class=reason_class,
+            reason_code=reason_code,
+            retry_advice=retry_advice,
+        )
 
     def _append_workflow_event_audit(
         *,
@@ -1389,6 +1794,7 @@ def register_api_workspace_routes(
         raw_rows = core._read_jsonl(audit_path) if audit_path.exists() else []
         rows = raw_rows if isinstance(raw_rows, list) else []
         summary = _summarize_workflow_event_audit_rows(rows, recent_limit=recent_limit)
+        retry_queue = _workflow_event_retry_queue_snapshot(limit=5)
         return JSONResponse(
             {
                 "status": "ok",
@@ -1397,7 +1803,361 @@ def register_api_workspace_routes(
                     "ttl_days": _workflow_event_receipt_ttl_days(),
                     "max_receipts": _workflow_event_max_receipts(),
                 },
+                "retry_queue": {
+                    "total": int(retry_queue.get("total") or 0),
+                    "due": int(retry_queue.get("due") or 0),
+                    "by_status": retry_queue.get("by_status") if isinstance(retry_queue.get("by_status"), list) else [],
+                    "policy": retry_queue.get("policy") if isinstance(retry_queue.get("policy"), dict) else {},
+                },
                 **summary,
+            },
+            headers={"Cache-Control": "no-store"},
+        )
+
+    @router.get("/api/workflow-events/retry-jobs")
+    def api_workflow_event_retry_jobs(
+        limit: int = Query(default=20, ge=1, le=200),
+    ) -> JSONResponse:
+        snapshot = _workflow_event_retry_queue_snapshot(limit=limit)
+        return JSONResponse(
+            {
+                "status": "ok",
+                **snapshot,
+            },
+            headers={"Cache-Control": "no-store"},
+        )
+
+    @router.post("/api/workflow-events/retry-jobs/drain")
+    def api_workflow_event_retry_jobs_drain(
+        payload: dict[str, Any] | None = None,
+    ) -> JSONResponse:
+        body = payload if isinstance(payload, dict) else {}
+        limit = core._safe_non_negative_int(body.get("limit"), default=10)
+        if limit < 1:
+            limit = 1
+        if limit > 50:
+            limit = 50
+        force = bool(body.get("force"))
+        now = datetime.now()
+        now_iso = now.isoformat(timespec="seconds")
+        retry_actor = {"type": "system", "id": "workflow_event_retry"}
+
+        state = _read_workflow_event_retry_jobs()
+        jobs = state.get("jobs")
+        if not isinstance(jobs, dict):
+            jobs = {}
+
+        templates = read_workflow_templates()
+        templates_by_id = {
+            str(row.get("id") or ""): row
+            for row in templates
+            if isinstance(row, dict) and str(row.get("id") or "").strip()
+        }
+
+        candidate_keys = sorted(
+            jobs.keys(),
+            key=lambda key: (
+                str((jobs.get(key) or {}).get("next_retry_at") or ""),
+                str((jobs.get(key) or {}).get("updated_at") or ""),
+                key,
+            ),
+        )
+
+        processed = 0
+        succeeded = 0
+        retrying = 0
+        escalated = 0
+        discarded = 0
+
+        for key in candidate_keys:
+            if processed >= limit:
+                break
+            job = jobs.get(key)
+            if not isinstance(job, dict):
+                continue
+            status = str(job.get("status") or "").strip().lower()
+            if status not in WORKFLOW_EVENT_RETRY_ACTIVE_STATUSES:
+                continue
+            if not _workflow_event_retry_due(job, now, force=force):
+                continue
+
+            processed += 1
+            template_id = normalize_workflow_template_id(job.get("template_id"))
+            template_name = str(job.get("template_name") or "").strip()
+            action_key = _normalize_step_action(job.get("action_key"))
+            event_name = str(job.get("event_name") or "").strip()[:WORKFLOW_EVENT_MAX_EVENT_NAME_CHARS]
+            source = str(job.get("source") or "retry_queue").strip()[:WORKFLOW_EVENT_MAX_SOURCE_CHARS]
+            idempotency_key = _normalize_workflow_event_idempotency_key(job.get("idempotency_key"))
+            year = core._safe_non_negative_int(job.get("year"), default=0)
+            month = core._safe_non_negative_int(job.get("month"), default=0)
+            mfcloud_url = str(job.get("mfcloud_url") or "").strip()
+            notes = str(job.get("notes") or "").strip()
+            max_attempts = core._safe_non_negative_int(job.get("max_attempts"), default=_workflow_event_retry_max_attempts())
+            if max_attempts < 1:
+                max_attempts = _workflow_event_retry_max_attempts()
+            attempts = core._safe_non_negative_int(job.get("attempts"), default=0) + 1
+
+            def _update_job_failure(
+                *,
+                next_status: str,
+                reason: str,
+                reason_class: str,
+                reason_code: str,
+                retry_advice: str,
+                next_retry_at: str = "",
+                last_run_id: str = "",
+            ) -> None:
+                job["status"] = next_status
+                job["attempts"] = attempts
+                job["max_attempts"] = max_attempts
+                job["last_error"] = str(reason or "").strip()[:500]
+                job["last_reason_class"] = str(reason_class or "").strip().lower()[:64]
+                job["last_reason_code"] = str(reason_code or "").strip().lower()[:64]
+                job["last_retry_advice"] = str(retry_advice or "").strip().lower()[:64]
+                job["last_run_id"] = str(last_run_id or "").strip()[:128]
+                job["next_retry_at"] = str(next_retry_at or "").strip()
+                job["updated_at"] = now_iso
+
+            template = templates_by_id.get(template_id)
+            if not isinstance(template, dict):
+                reason = "Workflow template not found."
+                _update_job_failure(
+                    next_status="discarded",
+                    reason=reason,
+                    reason_class="template_not_found",
+                    reason_code="template_not_found",
+                    retry_advice="retry_after_fix",
+                )
+                _append_workflow_event_audit(
+                    year=year,
+                    month=month,
+                    action_key=action_key,
+                    status="rejected",
+                    actor=retry_actor,
+                    template_id=template_id,
+                    template_name=template_name,
+                    event_name=event_name,
+                    source=f"{source}:retry",
+                    idempotency_key=idempotency_key,
+                    reason=reason,
+                    reason_class="template_not_found",
+                    reason_code="template_not_found",
+                    retry_advice="retry_after_fix",
+                )
+                discarded += 1
+                continue
+
+            first_step = _first_workflow_template_step(template)
+            trigger_kind = _normalize_step_trigger_kind(first_step.get("trigger_kind"))
+            current_action_key = _normalize_step_action(first_step.get("action"))
+            if trigger_kind != "external_event" or (current_action_key and action_key and current_action_key != action_key):
+                reason = "Template external_event settings changed. Retry job discarded."
+                _update_job_failure(
+                    next_status="discarded",
+                    reason=reason,
+                    reason_class="template_conflict",
+                    reason_code="template_conflict",
+                    retry_advice="retry_after_fix",
+                )
+                _append_workflow_event_audit(
+                    year=year,
+                    month=month,
+                    action_key=action_key,
+                    status="rejected",
+                    actor=retry_actor,
+                    template_id=template_id,
+                    template_name=template_name or str(template.get("name") or "").strip(),
+                    event_name=event_name,
+                    source=f"{source}:retry",
+                    idempotency_key=idempotency_key,
+                    reason=reason,
+                    reason_class="template_conflict",
+                    reason_code="template_conflict",
+                    retry_advice="retry_after_fix",
+                )
+                discarded += 1
+                continue
+
+            run_payload: dict[str, Any] = {
+                "year": year,
+                "month": month,
+                "mode": action_key,
+                "mfcloud_url": mfcloud_url or str(template.get("mfcloud_url") or "").strip(),
+                "notes": notes or str(template.get("notes") or "").strip(),
+                "auth_handoff": False,
+                "auto_receipt_name": True,
+                "_audit_actor": retry_actor,
+            }
+            if action_key == "mf_reconcile":
+                run_payload["mf_draft_create"] = True
+
+            try:
+                run_result = core._start_run(run_payload)
+            except HTTPException as exc:
+                detail = str(exc.detail)
+                http_status = int(exc.status_code)
+                event_status = _workflow_event_status_for_http(http_status)
+                reason_class = _workflow_event_error_class(http_status, detail)
+                reason_code = f"http_{http_status}"
+                retry_advice = _workflow_event_retry_advice(status=event_status, reason_class=reason_class)
+
+                if retry_advice == "retry_with_backoff" and attempts < max_attempts:
+                    delay = _workflow_event_retry_backoff_seconds(attempts)
+                    next_retry_at = (now + timedelta(seconds=delay)).isoformat(timespec="seconds")
+                    _update_job_failure(
+                        next_status="retrying",
+                        reason=detail,
+                        reason_class=reason_class,
+                        reason_code=reason_code,
+                        retry_advice=retry_advice,
+                        next_retry_at=next_retry_at,
+                    )
+                    retrying += 1
+                elif retry_advice == "retry_with_backoff":
+                    exhausted_reason = f"retry_exhausted after {attempts} attempts: {detail}"
+                    _update_job_failure(
+                        next_status="escalated",
+                        reason=exhausted_reason,
+                        reason_class=reason_class or "infra",
+                        reason_code="retry_exhausted",
+                        retry_advice="retry_after_fix",
+                    )
+                    escalated += 1
+                else:
+                    _update_job_failure(
+                        next_status="discarded",
+                        reason=detail,
+                        reason_class=reason_class,
+                        reason_code=reason_code,
+                        retry_advice=retry_advice,
+                    )
+                    discarded += 1
+
+                _append_workflow_event_audit(
+                    year=year,
+                    month=month,
+                    action_key=action_key,
+                    status="failed" if str(job.get("status") or "") == "escalated" else event_status,
+                    actor=retry_actor,
+                    template_id=template_id,
+                    template_name=template_name or str(template.get("name") or "").strip(),
+                    event_name=event_name,
+                    source=f"{source}:retry",
+                    idempotency_key=idempotency_key,
+                    reason=str(job.get("last_error") or detail),
+                    reason_class=str(job.get("last_reason_class") or reason_class),
+                    reason_code=str(job.get("last_reason_code") or reason_code),
+                    retry_advice=str(job.get("last_retry_advice") or retry_advice),
+                )
+                continue
+            except Exception as exc:
+                detail = str(exc)
+                reason_class = "infra"
+                reason_code = "exception"
+                retry_advice = "retry_with_backoff"
+                if attempts < max_attempts:
+                    delay = _workflow_event_retry_backoff_seconds(attempts)
+                    next_retry_at = (now + timedelta(seconds=delay)).isoformat(timespec="seconds")
+                    _update_job_failure(
+                        next_status="retrying",
+                        reason=detail,
+                        reason_class=reason_class,
+                        reason_code=reason_code,
+                        retry_advice=retry_advice,
+                        next_retry_at=next_retry_at,
+                    )
+                    retrying += 1
+                else:
+                    exhausted_reason = f"retry_exhausted after {attempts} attempts: {detail}"
+                    _update_job_failure(
+                        next_status="escalated",
+                        reason=exhausted_reason,
+                        reason_class=reason_class,
+                        reason_code="retry_exhausted",
+                        retry_advice="retry_after_fix",
+                    )
+                    escalated += 1
+
+                _append_workflow_event_audit(
+                    year=year,
+                    month=month,
+                    action_key=action_key,
+                    status="failed",
+                    actor=retry_actor,
+                    template_id=template_id,
+                    template_name=template_name or str(template.get("name") or "").strip(),
+                    event_name=event_name,
+                    source=f"{source}:retry",
+                    idempotency_key=idempotency_key,
+                    reason=str(job.get("last_error") or detail),
+                    reason_class=str(job.get("last_reason_class") or reason_class),
+                    reason_code=str(job.get("last_reason_code") or reason_code),
+                    retry_advice=str(job.get("last_retry_advice") or "retry_with_backoff"),
+                )
+                continue
+
+            run_id = str(run_result.get("run_id") or "").strip()
+            _save_workflow_event_receipt(
+                template_id=template_id,
+                template_name=template_name or str(template.get("name") or "").strip(),
+                action_key=action_key,
+                event_name=event_name,
+                source=f"{source}:retry",
+                idempotency_key=idempotency_key,
+                run_id=run_id,
+            )
+            job["status"] = "succeeded"
+            job["attempts"] = attempts
+            job["max_attempts"] = max_attempts
+            job["next_retry_at"] = ""
+            job["last_error"] = ""
+            job["last_reason_class"] = ""
+            job["last_reason_code"] = ""
+            job["last_retry_advice"] = ""
+            job["last_run_id"] = run_id[:128]
+            job["updated_at"] = now_iso
+
+            _append_workflow_event_audit(
+                year=year,
+                month=month,
+                action_key=action_key,
+                status="success",
+                actor=retry_actor,
+                template_id=template_id,
+                template_name=template_name or str(template.get("name") or "").strip(),
+                event_name=event_name,
+                source=f"{source}:retry",
+                idempotency_key=idempotency_key,
+                run_id=run_id,
+                duplicate=False,
+            )
+            succeeded += 1
+
+        cleaned, _ = _clean_workflow_event_retry_jobs(jobs)
+        state["jobs"] = cleaned
+        _write_workflow_event_retry_jobs(state)
+
+        remaining_due = 0
+        now_after = datetime.now()
+        for value in cleaned.values():
+            if not isinstance(value, dict):
+                continue
+            if str(value.get("status") or "").strip().lower() not in WORKFLOW_EVENT_RETRY_ACTIVE_STATUSES:
+                continue
+            if _workflow_event_retry_due(value, now_after, force=force):
+                remaining_due += 1
+
+        snapshot = _workflow_event_retry_queue_snapshot(limit=20)
+        return JSONResponse(
+            {
+                "status": "ok",
+                "processed": processed,
+                "succeeded": succeeded,
+                "retrying": retrying,
+                "escalated": escalated,
+                "discarded": discarded,
+                "remaining_due": remaining_due,
+                "queue": snapshot,
             },
             headers={"Cache-Control": "no-store"},
         )
@@ -1504,6 +2264,11 @@ def register_api_workspace_routes(
         duplicate = _lookup_workflow_event_receipt(template_id, idempotency_key) if idempotency_key else None
         if duplicate:
             run_id = str(duplicate.get("run_id") or "")
+            _mark_workflow_event_retry_job_succeeded(
+                template_id=template_id,
+                idempotency_key=idempotency_key,
+                run_id=run_id,
+            )
             _append_workflow_event_audit(
                 year=year,
                 month=month,
@@ -1573,23 +2338,44 @@ def register_api_workspace_routes(
         try:
             run_result = core._start_run(run_payload)
         except HTTPException as exc:
+            status = _workflow_event_status_for_http(exc.status_code)
+            reason = str(exc.detail)
+            reason_class = _workflow_event_error_class(exc.status_code, reason)
+            reason_code = f"http_{exc.status_code}"
             _append_workflow_event_audit(
                 year=year,
                 month=month,
                 action_key=action_key,
-                status=_workflow_event_status_for_http(exc.status_code),
+                status=status,
                 actor=actor,
                 template_id=template_id,
                 template_name=template_name,
                 event_name=event_name,
                 source=source,
                 idempotency_key=idempotency_key,
-                reason=str(exc.detail),
-                reason_class=_workflow_event_error_class(exc.status_code, str(exc.detail)),
-                reason_code=f"http_{exc.status_code}",
+                reason=reason,
+                reason_class=reason_class,
+                reason_code=reason_code,
+            )
+            _maybe_enqueue_workflow_event_retry(
+                template_id=template_id,
+                template_name=template_name,
+                action_key=action_key,
+                event_name=event_name,
+                source=source,
+                idempotency_key=idempotency_key,
+                year=year,
+                month=month,
+                mfcloud_url=mfcloud_url,
+                notes=notes,
+                status=status,
+                reason=reason,
+                reason_class=reason_class,
+                reason_code=reason_code,
             )
             raise
         except Exception as exc:
+            reason = str(exc)
             _append_workflow_event_audit(
                 year=year,
                 month=month,
@@ -1601,7 +2387,23 @@ def register_api_workspace_routes(
                 event_name=event_name,
                 source=source,
                 idempotency_key=idempotency_key,
-                reason=str(exc),
+                reason=reason,
+                reason_class="infra",
+                reason_code="exception",
+            )
+            _maybe_enqueue_workflow_event_retry(
+                template_id=template_id,
+                template_name=template_name,
+                action_key=action_key,
+                event_name=event_name,
+                source=source,
+                idempotency_key=idempotency_key,
+                year=year,
+                month=month,
+                mfcloud_url=mfcloud_url,
+                notes=notes,
+                status="failed",
+                reason=reason,
                 reason_class="infra",
                 reason_code="exception",
             )
@@ -1614,6 +2416,11 @@ def register_api_workspace_routes(
             action_key=action_key,
             event_name=event_name,
             source=source,
+            idempotency_key=idempotency_key,
+            run_id=run_id,
+        )
+        _mark_workflow_event_retry_job_succeeded(
+            template_id=template_id,
             idempotency_key=idempotency_key,
             run_id=run_id,
         )

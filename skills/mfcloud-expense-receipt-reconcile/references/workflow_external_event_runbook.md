@@ -1,4 +1,4 @@
-# Workflow Events 運用ランブック（Phase 3.2）
+# Workflow Events 運用ランブック（Phase 3.2/3.3）
 
 最終更新: 2026-02-20
 対象: `POST /api/workflow-events`
@@ -8,6 +8,10 @@
 ### 推奨デフォルト
 - `AX_WORKFLOW_EVENT_RECEIPT_TTL_DAYS=90`
 - `AX_WORKFLOW_EVENT_MAX_RECEIPTS=1000`
+- `AX_WORKFLOW_EVENT_RETRY_MAX_ATTEMPTS=3`
+- `AX_WORKFLOW_EVENT_RETRY_BASE_DELAY_SECONDS=30`
+- `AX_WORKFLOW_EVENT_RETRY_TERMINAL_TTL_DAYS=30`
+- `AX_WORKFLOW_EVENT_RETRY_MAX_JOBS=2000`
 
 ### 高トラフィック環境の目安
 - `AX_WORKFLOW_EVENT_RECEIPT_TTL_DAYS=30`（再送期間が短い場合）
@@ -27,7 +31,9 @@
 - `reason_class` の上位内訳
 - `duplicate=true` の件数推移
 - レシート件数（`_workflow_events/receipts.json`）
+- 再送ジョブ件数（`_workflow_events/retry_jobs.json`）
 - 集計API `GET /api/workflow-events/summary?ym=YYYY-MM` の取得可否
+- 再送ジョブAPI `GET /api/workflow-events/retry-jobs` の取得可否
 
 ## 3.1 集計APIの確認コマンド
 ```powershell
@@ -35,6 +41,13 @@ curl "http://127.0.0.1:8000/api/workflow-events/summary?ym=2026-02&recent_limit=
 ```
 - `status=ok` を確認。
 - `by_status` と `by_reason_class` が監査ログの実態と一致することを確認。
+
+## 3.2 再送ジョブ確認コマンド
+```powershell
+curl "http://127.0.0.1:8000/api/workflow-events/retry-jobs?limit=20"
+```
+- `status=ok` を確認。
+- `due` が増え続ける場合は `drain` 実行または設定修正を行う。
 
 ## 4. 異常時の一次対応
 1. `status=failed` が増えたら `reason_class=infra` を優先調査。
@@ -60,8 +73,11 @@ curl "http://127.0.0.1:8000/api/workflow-events/summary?ym=2026-02&recent_limit=
 ## 4.2 再送・再実行フロー（運用手順）
 1. `GET /api/workflow-events/summary?ym=YYYY-MM` で `by_retry_advice` と `recent` を確認。
 2. `retry_after_fix` は設定修正を先に実施（トークン、template_id、year/month など）。
-3. `retry_with_backoff` は同一 `idempotency_key` を保持したまま再送する。
-4. 3回連続で `retry_with_backoff` が失敗した場合は運用エスカレーション。
+3. `retry_with_backoff` は再送ジョブAPIで実行する。
+```powershell
+curl -X POST "http://127.0.0.1:8000/api/workflow-events/retry-jobs/drain" -H "Content-Type: application/json" -d "{\"limit\":10}"
+```
+4. `escalated` が発生した場合は手動対応へ切り替え、原因修正後に再送。
 5. 再送後に `status=success` を確認し、運用記録へ残す。
 
 ## 5. 運用チェックリスト（月次）

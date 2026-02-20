@@ -190,11 +190,14 @@
     - 完了（契約ドキュメント + 異常系テスト追加まで実施）
   - Phase 3.2（保護強化）:
     - 完了（TTL/上限 + 監査分類 + 集計API + 運用ランブック/要件定義まで実施）
-  - Phase 3.3（再送判断の先行実装）:
+  - Phase 3.3（再送運用のMVP実装）:
     - `api_workspace_routes.py` に `retry_advice` 自動分類を追加（`do_not_retry` / `retry_after_fix` / `retry_with_backoff`）。
     - `GET /api/workflow-events/summary` に `by_retry_advice` 集計と `recent[].retry_advice` を追加。
+    - `retry_jobs` キュー（`_workflow_events/retry_jobs.json`）を追加。
+    - `GET /api/workflow-events/retry-jobs` と `POST /api/workflow-events/retry-jobs/drain` を追加。
+    - `retry_with_backoff` 失敗時のみ再送ジョブを自動登録し、最大試行到達時は `escalated` へ遷移。
     - `expense_workflow_copy.html` / `scheduler.js` に「再送判断」ブロックを追加し、集計表示を実装。
-    - `tests/test_dashboard_api.py` と `tests/test_dashboard_pages.py` を更新し、分類/表示を検証。
+    - `tests/test_dashboard_api.py` と `tests/test_dashboard_pages.py` を更新し、分類/表示/再送ジョブ挙動を検証。
     - `workflow_external_event_contract.md` / `workflow_external_event_dashboard_requirements.md` / `workflow_external_event_runbook.md` に契約・運用手順を追記。
   - 追加検証（Phase 3.3 先行実装分）:
     - `node --check skills/mfcloud-expense-receipt-reconcile/dashboard/static/js/scheduler.js`: 成功
@@ -205,12 +208,15 @@
       - 取得物:
         - `output/playwright/workflow_retry_advice_smoke_20260221_072639.txt`
         - `.playwright-cli/page-2026-02-20T22-26-44-146Z.png`
+    - `pytest skills/mfcloud-expense-receipt-reconcile/tests/test_dashboard_api.py`: 119 passed
+    - `pytest skills/mfcloud-expense-receipt-reconcile/tests/test_dashboard_pages.py`: 32 passed
+    - `pytest skills/mfcloud-expense-receipt-reconcile/tests/test_dashboard_contract.py`: 5 passed
   - 未解決:
     - Phase 2.3（繰り返し運用）の実装（daily/weekly/monthly）は未対応
-    - Phase 3.3（再送・再実行運用）の実ジョブ化（自動バックオフ再送、エスカレーション連携）は未対応
+    - Phase 3.3（再送・再実行運用）の常駐ワーカー化とUI可視化（`retry_queue`）は未対応
 
 ## 5. 直近タスク（次の更新対象）
-1. Phase 3.3拡張: `retry_advice` を基にした自動再送ジョブと失敗時エスカレーション条件を仕様化
+1. Phase 3.3拡張: `retry_queue` のUI表示と運用導線（drain実行）を追加
 2. Phase 2.3着手: 繰り返し運用（daily/weekly/monthly）の詳細実装に着手
 3. 可視化拡張: `workflow-events/summary` を基に日次トレンド/通知要件を具体化
 

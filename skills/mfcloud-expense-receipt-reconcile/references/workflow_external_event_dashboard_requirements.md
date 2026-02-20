@@ -60,6 +60,7 @@
 5. API未取得時でも既存画面機能を阻害しない（表示ブロックのみ劣化）。
 
 ## 6. 次フェーズ拡張（Phase 3.3）
+- 再送キュー（`retry_queue.total/due/by_status`）の可視化
 - 日次トレンド（7日/30日）推移
 - テンプレート別ヒートマップ（`template_id` 軸）
 - SLO閾値監視（`failed` 率 / `duplicate` 率）
@@ -67,5 +68,6 @@
 
 ## 7. 実装状況（2026-02-20）
 - API: `GET /api/workflow-events/summary` 実装済み。
+- API: `GET /api/workflow-events/retry-jobs`, `POST /api/workflow-events/retry-jobs/drain` 実装済み。
 - UI: `/expense-workflow-copy` の schedulerパネル内にサマリーカード実装済み。
 - テスト: API集計・ページDOM・ルート契約の回帰テスト実装済み。

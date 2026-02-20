@@ -1,7 +1,7 @@
-# Workflow Events API 契約（Phase 3.1/3.2）
+# Workflow Events API 契約（Phase 3.1/3.2/3.3）
 
 最終更新: 2026-02-20  
-対象: `POST /api/workflow-events`, `GET /api/workflow-events/summary`
+対象: `POST /api/workflow-events`, `GET /api/workflow-events/summary`, `GET /api/workflow-events/retry-jobs`, `POST /api/workflow-events/retry-jobs/drain`
 
 ## 1. 目的
 - `trigger_kind=external_event` のテンプレートを、外部イベントで安全に起動する。
@@ -127,6 +127,7 @@
   - `by_reason_class`（件数降順）
   - `by_reason_code`（件数降順）
   - `by_retry_advice`（件数降順）
+  - `retry_queue`（再送キュー件数・due件数・状態別件数）
   - `duplicate`（`true/false/unknown`）
   - `recent`（時刻降順）
   - `receipt_retention`（`ttl_days`, `max_receipts`）
@@ -135,3 +136,39 @@
 - `at`, `status`, `action`, `run_id`
 - `template_id`, `template_name`, `event_name`, `source`
 - `idempotency_key`, `reason`, `reason_class`, `reason_code`, `retry_advice`, `duplicate`
+
+## 11. 再送ジョブAPI契約（Phase 3.3）
+
+### キュー保存ルール
+- `POST /api/workflow-events` の失敗時に `retry_advice=retry_with_backoff` の場合のみ再送ジョブを作成。
+- 安全性のため `idempotency_key` が解決できないイベントは自動再送対象外。
+- 保存先: `artifacts/mfcloud-expense-receipt-reconcile/_workflow_events/retry_jobs.json`
+
+### 再送ジョブ一覧
+- エンドポイント: `GET /api/workflow-events/retry-jobs`
+- クエリ:
+  - `limit`（任意, 既定20, 範囲1..200）
+- 主要レスポンス:
+  - `status=ok`
+  - `total`, `due`
+  - `by_status`（`pending` / `retrying` / `succeeded` / `discarded` / `escalated`）
+  - `jobs`（更新時刻降順）
+  - `policy`（`max_attempts`, `base_delay_seconds`, `terminal_ttl_days`, `max_jobs`）
+
+### 再送ジョブ実行
+- エンドポイント: `POST /api/workflow-events/retry-jobs/drain`
+- リクエスト（任意）:
+  - `limit`（既定10, 範囲1..50）
+  - `force`（`true` で `next_retry_at` を無視して実行）
+- 主要レスポンス:
+  - `status=ok`
+  - `processed`, `succeeded`, `retrying`, `escalated`, `discarded`
+  - `remaining_due`
+  - `queue`（実行後スナップショット）
+
+### 再送ポリシー（既定値）
+- `AX_WORKFLOW_EVENT_RETRY_MAX_ATTEMPTS=3`
+- `AX_WORKFLOW_EVENT_RETRY_BASE_DELAY_SECONDS=30`
+- `AX_WORKFLOW_EVENT_RETRY_TERMINAL_TTL_DAYS=30`
+- `AX_WORKFLOW_EVENT_RETRY_MAX_JOBS=2000`
+- 3回失敗で `escalated` とし、自動再送を停止（手動対応へ移行）。
