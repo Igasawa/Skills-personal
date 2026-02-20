@@ -27,7 +27,7 @@ $env:DASHBOARD_UI_LOCALE = "ja"
 - ブランチ保護で `Encoding Guard / utf8-and-mojibake-check` を Required に設定すると、失敗時はマージ不可にできる。
 
 ```powershell
-Set-Location c:\Users\TatsuoIgasawa\.vscode\Skillpersonal
+Set-Location "$env:USERPROFILE\\.vscode\\Skillpersonal"
 powershell -ExecutionPolicy Bypass -File .\scripts\bootstrap_kil.ps1
 ```
 
@@ -58,7 +58,7 @@ npx playwright open -b chromium "<貴社のMFクラウド経費URL>" --save-stor
 ## 実行例
 
 ```powershell
-Set-Location c:\Users\TatsuoIgasawa\.vscode\Skillpersonal\skills\mfcloud-expense-receipt-reconcile
+Set-Location "$env:USERPROFILE\\.vscode\\Skillpersonal\\skills\\mfcloud-expense-receipt-reconcile"
 python scripts/run.py --mfcloud-expense-list-url "<経費明細一覧URL>" --notes "出張多め・特定PJ集中"
 ```
 
@@ -104,7 +104,7 @@ python scripts/run.py --mfcloud-expense-list-url "<経費明細一覧URL>" --not
 ## テスト（開発者向け）
 
 ```powershell
-Set-Location c:\Users\TatsuoIgasawa\.vscode\Skillpersonal\skills\mfcloud-expense-receipt-reconcile
+Set-Location "$env:USERPROFILE\\.vscode\\Skillpersonal\\skills\\mfcloud-expense-receipt-reconcile"
 python -m pip install -r requirements-dev.txt
 python -m pytest -q
 npm run check:encoding

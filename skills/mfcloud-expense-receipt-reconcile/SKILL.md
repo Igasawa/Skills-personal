@@ -33,7 +33,7 @@ npx playwright open -b chromium "<貴社のMFクラウド経費URL>" --save-stor
 `config.tenant.urls.mfcloud_expense_list` は環境ごとに異なるため、**必ず指定**する（経費明細一覧URL）。
 
 ```powershell
-Set-Location c:\Users\TatsuoIgasawa\.vscode\Skillpersonal\skills\mfcloud-expense-receipt-reconcile
+Set-Location "$env:USERPROFILE\\.vscode\\Skillpersonal\\skills\\mfcloud-expense-receipt-reconcile"
 
 # 例: 2026-01 を実行（通常運用は先月がデフォルト）
 python scripts/run.py --year 2026 --month 1 --mfcloud-expense-list-url "<経費明細一覧URL>" --notes "出張多め・特定PJ集中"
@@ -151,7 +151,7 @@ python scripts/run.py --year 2026 --month 1 --dry-run --output-dir "C:\Users\<us
 ## テスト（開発者向け）
 
 ```powershell
-Set-Location c:\Users\TatsuoIgasawa\.vscode\Skillpersonal\skills\mfcloud-expense-receipt-reconcile
+Set-Location "$env:USERPROFILE\\.vscode\\Skillpersonal\\skills\\mfcloud-expense-receipt-reconcile"
 python -m pip install -r requirements-dev.txt
 python -m pytest -q
 ```
@@ -181,7 +181,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "scripts\\archive_outputs.ps
 成果物の可視化と実行依頼ができるローカルUI。
 
 ```powershell
-Set-Location c:\Users\TatsuoIgasawa\.vscode\Skillpersonal\skills\mfcloud-expense-receipt-reconcile
+Set-Location "$env:USERPROFILE\\.vscode\\Skillpersonal\\skills\\mfcloud-expense-receipt-reconcile"
 powershell -NoProfile -ExecutionPolicy Bypass -File "scripts\start_dashboard.ps1"
 ```
 
@@ -234,7 +234,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "scripts\start_dashboard.ps1
   - 手動実行時は workflow_dispatch の inputs で上書き可能
 
 ## Official manual review（月次運用テンプレ）
-- 1. 月初1営業日: `Set-Location C:\Users\...\Skillpersonal` で実行環境に移動
+- 1. 月初1営業日: `Set-Location "$env:USERPROFILE\\.vscode\\Skillpersonal"` で実行環境に移動
 - 2. 月次実行（参照日更新チェックを30日上限で確認）:
   - `npm run review:manual -- --review-type monthly --max-age-days 30`
   - オプションでURL疎通も確認する場合: `npm run review:manual -- --review-type monthly --max-age-days 30 --url-retries 3 --url-retry-delay-seconds 2`

@@ -36,7 +36,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/ax.ps1 jobs dashboar
 5蛻・＃縺ｨ縺ｫ `run-due` 繧貞ｮ溯｡後☆繧倶ｾ・
 
 ```powershell
-schtasks /Create /F /SC MINUTE /MO 5 /TN "AX-Automation-RunDue" /TR "powershell -NoProfile -ExecutionPolicy Bypass -File C:\Users\TatsuoIgasawa\.vscode\Skills\scripts\ax.ps1 jobs run-due --dashboard --days 30"
+schtasks /Create /F /SC MINUTE /MO 5 /TN "AX-Automation-RunDue" /TR "powershell -NoProfile -ExecutionPolicy Bypass -File %USERPROFILE%\.vscode\Skillpersonal\scripts\ax.ps1 jobs run-due --dashboard --days 30"
 ```
 
 ## Notes
@@ -44,4 +44,3 @@ schtasks /Create /F /SC MINUTE /MO 5 /TN "AX-Automation-RunDue" /TR "powershell 
 - kintone 謚慕ｨｿ邉ｻ縺ｯ `preflight_required=true` 繧貞渕譛ｬ縺ｫ縺吶ｋ縲・
 - `--skip-preflight` 縺ｮ萓句､夜°逕ｨ縺ｯ逅・罰繧貞ｿ・★谿九☆・・kintone-gas-price-notification` 縺ｯ `--skip-preflight-reason` 蠢・茨ｼ峨・
 - secrets 縺ｯ蠢・★ `AX_HOME/secrets/*.env` 縺ｧ邂｡逅・＠縲√Μ繝昴ず繝医Μ縺ｫ縺ｯ鄂ｮ縺九↑縺・・
-
