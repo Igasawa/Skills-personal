@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import argparse
+import pytest
 
-from run_core import _parse_config
+from run_core import _parse_config, _validate_receipt_name_guard
 
 
 def _base_args(**overrides: object) -> argparse.Namespace:
@@ -83,6 +84,7 @@ def test_parse_config_prefers_tenant_fields_over_legacy() -> None:
     assert rc.mfcloud_expense_list_url == "https://tenant.example/expenses"
     assert rc.resolved_sources["receipt_name"] == "config.tenant.receipt.name"
     assert rc.resolved_sources["amazon_orders_url"] == "config.tenant.urls.amazon_orders"
+    assert rc.deprecation_warnings == []
 
 
 def test_parse_config_keeps_legacy_compatibility() -> None:
@@ -115,6 +117,8 @@ def test_parse_config_keeps_legacy_compatibility() -> None:
     assert rc.resolved_sources["receipt_name"] == "config.receipt_name"
     assert rc.resolved_sources["amazon_orders_url"] == "config.urls.amazon_orders"
     assert rc.resolved_sources["tenant_name"] == "config.tenant_name"
+    assert any("config.receipt_name" in w for w in rc.deprecation_warnings)
+    assert any("config.urls.amazon_orders" in w for w in rc.deprecation_warnings)
 
 
 def test_parse_config_cli_overrides_tenant() -> None:
@@ -170,3 +174,40 @@ def test_parse_config_amazon_history_flow_defaults_true() -> None:
     rc, _, _ = _parse_config(args, raw)
     assert rc.history_only_receipt_flow is True
     assert rc.resolved_sources["history_only_receipt_flow"] == "default.history_only_receipt_flow"
+
+
+def test_parse_config_receipt_defaults_use_placeholders() -> None:
+    args = _base_args()
+    raw = {"config": {"tenant": {"urls": {"mfcloud_expense_list": "https://example/expenses"}}}}
+
+    rc, _, _ = _parse_config(args, raw)
+    assert rc.receipt_name == "YOUR_COMPANY_NAME"
+    assert rc.receipt_name_fallback == "YOUR_COMPANY_NAME_FALLBACK"
+    assert rc.resolved_sources["receipt_name"] == "default.receipt_name"
+    assert rc.resolved_sources["receipt_name_fallback"] == "default.receipt_name_fallback"
+    assert rc.deprecation_warnings == []
+
+
+def test_receipt_name_guard_blocks_placeholder_on_download_run() -> None:
+    args = _base_args()
+    raw = {"config": {"tenant": {"urls": {"mfcloud_expense_list": "https://example/expenses"}}}}
+    rc, _, _ = _parse_config(args, raw)
+
+    with pytest.raises(ValueError, match="placeholder values are still active"):
+        _validate_receipt_name_guard(args, rc)
+
+
+def test_receipt_name_guard_allows_placeholder_on_dry_run() -> None:
+    args = _base_args(dry_run=True)
+    raw = {"config": {"tenant": {"urls": {"mfcloud_expense_list": "https://example/expenses"}}}}
+    rc, _, _ = _parse_config(args, raw)
+
+    _validate_receipt_name_guard(args, rc)
+
+
+def test_receipt_name_guard_allows_placeholder_when_skip_receipt_name() -> None:
+    args = _base_args(skip_receipt_name=True)
+    raw = {"config": {"tenant": {"urls": {"mfcloud_expense_list": "https://example/expenses"}}}}
+    rc, _, _ = _parse_config(args, raw)
+
+    _validate_receipt_name_guard(args, rc)

@@ -1,0 +1,54 @@
+name: Workflow Smoke (Self-hosted)
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Every Sunday 18:30 UTC (Monday 03:30 JST)
+    - cron: "30 18 * * 0"
+
+jobs:
+  smoke:
+    runs-on: [self-hosted, windows]
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Start Dashboard
+        run: |
+          powershell -NoProfile -ExecutionPolicy Bypass -File "skills/mfcloud-expense-receipt-reconcile/scripts/start_dashboard.ps1" -NoOpen -BindHost 127.0.0.1 -Port 8765 -WaitSeconds 180
+
+      - name: Run Playwright Workflow Smoke
+        run: |
+          powershell -NoProfile -ExecutionPolicy Bypass -File "skills/mfcloud-expense-receipt-reconcile/scripts/playwright_smoke_workflow.ps1" -BaseUrl "http://127.0.0.1:8765"
+
+      - name: Upload Smoke Artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: workflow-smoke-artifacts
+          path: skills/mfcloud-expense-receipt-reconcile/output/playwright/**
+          if-no-files-found: warn
+
+      - name: Stop Dashboard
+        if: always()
+        run: |
+          $listeners = Get-NetTCPConnection -LocalPort 8765 -State Listen -ErrorAction SilentlyContinue
+          foreach ($listener in $listeners) {
+            try {
+              Stop-Process -Id $listener.OwningProcess -Force -ErrorAction Stop
+            } catch {
+            }
+          }

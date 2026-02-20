@@ -70,6 +70,7 @@ def _write_resolved_config(*, output_root: Path, rc: Any, year: int, month: int)
             "receipt_name_fallback": rc.receipt_name_fallback,
             "interactive": rc.interactive,
             "resolved_sources": rc.resolved_sources,
+            "deprecation_warnings": list(getattr(rc, "deprecation_warnings", []) or []),
         },
     )
 

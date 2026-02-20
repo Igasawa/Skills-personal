@@ -50,17 +50,23 @@ python scripts/run.py --year 2026 --month 1 --mfcloud-expense-list-url "<経費�
 
 ### 領収書の宛名
 
-Amazon領収書の宛名は既定で **「株式会社ＨＩＧＨ－ＳＴＡＮＤＡＲＤ＆ＣＯ．」** を設定する。変更する場合は `--receipt-name` を指定する。
+Amazon領収書の宛名は既定で **`YOUR_COMPANY_NAME`**（プレースホルダー）を設定する。実運用では `AX_HOME/configs/...` または `--receipt-name` で必ず上書きする。
+プレースホルダー値のまま通常実行（Amazon/Rakuten取得）した場合は、実行時ガードでエラー停止する。
 
 ```powershell
-python scripts/run.py --year 2026 --month 1 --mfcloud-expense-list-url "<経費明細一覧URL>" --receipt-name "株式会社ＨＩＧＨ－ＳＴＡＮＤＡＲＤ＆ＣＯ．"
+python scripts/run.py --year 2026 --month 1 --mfcloud-expense-list-url "<経費明細一覧URL>" --receipt-name "株式会社Example"
 ```
 
-宛名が入力できない場合は半角表記にフォールバックする（既定：`株式会社HIGH-STANDARD&CO.`）。明示指定は `--receipt-name-fallback`。
+宛名が入力できない場合はフォールバック値を使う（既定：`YOUR_COMPANY_NAME_FALLBACK`）。明示指定は `--receipt-name-fallback`。
 
 ### テナント設定（推奨）
 
 会社/部署ごとの設定は `config.tenant` にまとめる。既存の `config.receipt_name` / `config.urls.*` も互換のため読み込む。
+
+非推奨移行スケジュール:
+- 非推奨開始日: 2026-02-20
+- 廃止目標日: 2026-06-30
+- 旧キー (`config.receipt_name` / `config.urls.*` など) が採用された実行では、CLIで非推奨警告を表示する。
 
 ```json
 {
@@ -289,3 +295,15 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "scripts\start_dashboard.ps1
   - `最終更新日= YYYY-MM-DD`
   - `最終検証日: YYYY-MM-DD`
 - 手動更新時は、2ファイルとも上記いずれかで更新し、`weekly/monthly/change_response` の実行後に `stale=false` を確認すること。
+
+## ワークフロースモーク（self-hosted）
+
+- CI定義: `.github/workflows/workflow-smoke-self-hosted.yml`
+- 実行環境: self-hosted Windows runner（`self-hosted`, `windows` ラベル）
+- 定期実行: 毎週月曜 03:30 JST（UTC: 日曜 18:30）
+- 手動実行: GitHub Actions の `Workflow Smoke (Self-hosted)` を `workflow_dispatch` で起動
+
+失敗時の切り分け:
+1. Actions artifact `workflow-smoke-artifacts` のレポート/スクリーンショットを確認する。
+2. self-hosted 実行機の `AX_HOME/logs/mf_dashboard_uvicorn.out.log` と `AX_HOME/logs/mf_dashboard_uvicorn.err.log` を確認する。
+3. ローカルで `scripts/start_dashboard.ps1` → `scripts/playwright_smoke_workflow.ps1` を順に実行し、再現するかを確認する。

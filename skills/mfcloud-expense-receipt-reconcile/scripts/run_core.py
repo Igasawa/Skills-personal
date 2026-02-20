@@ -6,7 +6,7 @@ Run the skill with a standardized JSON interface.
 from __future__ import annotations
 
 import argparse
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import json
 import os
 from pathlib import Path
@@ -31,11 +31,24 @@ from run_core_io import read_json_input as _read_json_input  # noqa: E402
 from run_core_pipeline import execute_pipeline  # noqa: E402
 from run_core_template import render_monthly_thread  # noqa: E402
 
-DEFAULT_RECEIPT_NAME = "株式会社ＨＩＧＨ－ＳＴＡＮＤＡＲＤ＆ＣＯ．"
-DEFAULT_RECEIPT_NAME_FALLBACK = "株式会社HIGH-STANDARD&CO."
+# Placeholder defaults. Configure actual values in AX_HOME config or CLI options.
+DEFAULT_RECEIPT_NAME = "YOUR_COMPANY_NAME"
+DEFAULT_RECEIPT_NAME_FALLBACK = "YOUR_COMPANY_NAME_FALLBACK"
 DEFAULT_AMAZON_ORDERS_URL = "https://www.amazon.co.jp/gp/your-account/order-history"
 DEFAULT_RAKUTEN_ORDERS_URL = "https://order.my.rakuten.co.jp/?l-id=top_normal_mymenu_order"
 DEFAULT_MFCLOUD_ACCOUNTS_URL = "https://expense.moneyforward.com/accounts"
+LEGACY_CONFIG_DEPRECATED_DATE = "2026-02-20"
+LEGACY_CONFIG_REMOVAL_TARGET_DATE = "2026-06-30"
+LEGACY_SOURCE_REPLACEMENTS: dict[str, str] = {
+    "config.receipt_name": "config.tenant.receipt.name",
+    "config.receipt_name_fallback": "config.tenant.receipt.name_fallback",
+    "config.urls.amazon_orders": "config.tenant.urls.amazon_orders",
+    "config.rakuten.orders_url": "config.tenant.urls.rakuten_orders",
+    "config.urls.mfcloud_accounts": "config.tenant.urls.mfcloud_accounts",
+    "config.urls.mfcloud_expense_list": "config.tenant.urls.mfcloud_expense_list",
+    "config.tenant_name": "config.tenant.name",
+    "config.tenant_key": "config.tenant.key",
+}
 
 
 @dataclass(frozen=True)
@@ -62,7 +75,8 @@ class RunConfig:
     rakuten_storage_state: Path
     tenant_name: str
     tenant_key: str
-    resolved_sources: dict[str, str]
+    resolved_sources: dict[str, str] = field(default_factory=dict)
+    deprecation_warnings: list[str] = field(default_factory=list)
 
 
 def _as_dict(value: Any) -> dict[str, Any]:
@@ -74,6 +88,55 @@ def _pick_with_source(candidates: list[tuple[Any, str]]) -> tuple[Any, str]:
         if value is not None:
             return value, source
     return None, "missing"
+
+
+def _build_legacy_config_warnings(resolved_sources: dict[str, str]) -> list[str]:
+    warnings: list[str] = []
+    seen: set[str] = set()
+    for source in resolved_sources.values():
+        replacement = LEGACY_SOURCE_REPLACEMENTS.get(source)
+        if not replacement:
+            continue
+        msg = (
+            f"[deprecation] Legacy key '{source}' was used. Migrate to '{replacement}'. "
+            f"Deprecated since {LEGACY_CONFIG_DEPRECATED_DATE}; removal target is {LEGACY_CONFIG_REMOVAL_TARGET_DATE}."
+        )
+        if msg in seen:
+            continue
+        seen.add(msg)
+        warnings.append(msg)
+    return warnings
+
+
+def _should_require_receipt_name(args: argparse.Namespace, rc: RunConfig) -> bool:
+    if rc.dry_run:
+        return False
+    if bool(getattr(args, "skip_receipt_name", False)):
+        return False
+    amazon_needed = not bool(getattr(args, "skip_amazon", False))
+    rakuten_needed = rc.rakuten_enabled and not bool(getattr(args, "skip_rakuten", False))
+    return amazon_needed or rakuten_needed
+
+
+def _validate_receipt_name_guard(args: argparse.Namespace, rc: RunConfig) -> None:
+    if not _should_require_receipt_name(args, rc):
+        return
+
+    placeholder_fields: list[str] = []
+    if rc.receipt_name.strip() == DEFAULT_RECEIPT_NAME:
+        placeholder_fields.append("receipt_name")
+    if rc.receipt_name_fallback.strip() == DEFAULT_RECEIPT_NAME_FALLBACK:
+        placeholder_fields.append("receipt_name_fallback")
+    if not placeholder_fields:
+        return
+
+    cfg_path = _ax_home() / "configs" / "mfcloud-expense-receipt-reconcile.json"
+    joined = ", ".join(placeholder_fields)
+    raise ValueError(
+        "Receipt name guard triggered: placeholder values are still active "
+        f"({joined}). Set config.tenant.receipt.name / config.tenant.receipt.name_fallback in "
+        f"{cfg_path}, or pass --receipt-name / --receipt-name-fallback."
+    )
 
 
 def _parse_config(args: argparse.Namespace, raw: dict[str, Any]) -> tuple[RunConfig, int, int]:
@@ -223,6 +286,7 @@ def _parse_config(args: argparse.Namespace, raw: dict[str, Any]) -> tuple[RunCon
     )
     resolved_sources["tenant_key"] = tenant_key_source
     tenant_key = str(tenant_key_raw).strip() if tenant_key_raw is not None else ""
+    deprecation_warnings = _build_legacy_config_warnings(resolved_sources)
 
     output_root = Path(
         _coalesce(args.output_dir, config.get("output_dir"))
@@ -272,6 +336,7 @@ def _parse_config(args: argparse.Namespace, raw: dict[str, Any]) -> tuple[RunCon
         tenant_name=tenant_name,
         tenant_key=tenant_key,
         resolved_sources=resolved_sources,
+        deprecation_warnings=deprecation_warnings,
     )
     return rc, year, month
 
@@ -347,6 +412,9 @@ def main(argv: list[str] | None = None) -> int:
     args = ap.parse_args(argv)
     raw = _read_json_input(args.input)
     rc, year, month = _parse_config(args, raw)
+    for warning in rc.deprecation_warnings:
+        print(warning, file=sys.stderr)
+    _validate_receipt_name_guard(args, rc)
     out = execute_pipeline(
         args=args,
         rc=rc,

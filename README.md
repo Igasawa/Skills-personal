@@ -66,16 +66,26 @@ python scripts/run.py --mfcloud-expense-list-url "<経費明細一覧URL>" --not
 
 `AX_HOME/configs/mfcloud-expense-receipt-reconcile.json` は `config.tenant` に会社/部署設定をまとめる。
 `config.receipt_name` / `config.urls.*` は互換のため読み込まれるが、新規設定は `tenant` を推奨。
+`YOUR_COMPANY_NAME` / `YOUR_COMPANY_NAME_FALLBACK` はプレースホルダーなので、運用前に自社値へ置き換える。
+プレースホルダーのまま通常実行（Amazon/Rakuten取得）すると、実行時ガードでエラー停止する。
+
+### 旧設定キーの移行方針（非推奨）
+
+- 非推奨開始日: 2026-02-20
+- 廃止目標日: 2026-06-30
+- 対象: `config.receipt_name` / `config.receipt_name_fallback` / `config.urls.*` / `config.rakuten.orders_url` / `config.tenant_name` / `config.tenant_key`
+- 移行先: `config.tenant.receipt.*` / `config.tenant.urls.*` / `config.tenant.name` / `config.tenant.key`
+- 旧キーが実際に採用された実行では、CLI実行時に非推奨警告を表示する
 
 ```json
 {
   "config": {
     "tenant": {
       "key": "default",
-      "name": "株式会社ＨＩＧＨ－ＳＴＡＮＤＡＲＤ＆ＣＯ．",
+      "name": "YOUR_COMPANY_NAME",
       "receipt": {
-        "name": "株式会社ＨＩＧＨ－ＳＴＡＮＤＡＲＤ＆ＣＯ．",
-        "name_fallback": "株式会社HIGH-STANDARD&CO."
+        "name": "YOUR_COMPANY_NAME",
+        "name_fallback": "YOUR_COMPANY_NAME_FALLBACK"
       },
       "urls": {
         "amazon_orders": "https://www.amazon.co.jp/gp/your-account/order-history",
