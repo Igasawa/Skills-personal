@@ -28,6 +28,10 @@ WORKFLOW_TEMPLATE_STEP_DEFAULT_TYPE = "manual"
 WORKFLOW_TEMPLATE_STEP_TYPES = {"manual", "agent", "browser"}
 WORKFLOW_TEMPLATE_STEP_DEFAULT_TRIGGER = "manual"
 WORKFLOW_TEMPLATE_STEP_TRIGGERS = {"manual", "schedule", "webhook", "after_step"}
+WORKFLOW_TEMPLATE_STEP_DEFAULT_TRIGGER_KIND = "manual_start"
+WORKFLOW_TEMPLATE_STEP_TRIGGER_KINDS = {"manual_start", "scheduled", "external_event", "after_previous"}
+WORKFLOW_TEMPLATE_STEP_DEFAULT_EXECUTION_MODE = "manual_confirm"
+WORKFLOW_TEMPLATE_STEP_EXECUTION_MODES = {"auto", "manual_confirm"}
 WORKFLOW_TEMPLATE_REQUIRED_STEP_ACTIONS = (
     "preflight",
 )
@@ -261,6 +265,42 @@ def _normalize_template_steps_for_view(value: Any) -> list[dict[str, Any]]:
             return trigger
         return default
 
+    def _normalize_step_trigger_kind(raw: Any, *, default: str = WORKFLOW_TEMPLATE_STEP_DEFAULT_TRIGGER_KIND) -> str:
+        trigger_kind = str(raw or "").strip().lower()
+        if trigger_kind in WORKFLOW_TEMPLATE_STEP_TRIGGER_KINDS:
+            return trigger_kind
+        return default
+
+    def _normalize_execution_mode(raw: Any, *, default: str = WORKFLOW_TEMPLATE_STEP_DEFAULT_EXECUTION_MODE) -> str:
+        execution_mode = str(raw or "").strip().lower()
+        if execution_mode in WORKFLOW_TEMPLATE_STEP_EXECUTION_MODES:
+            return execution_mode
+        return default
+
+    def _legacy_trigger_to_trigger_kind(raw: Any, *, default: str = WORKFLOW_TEMPLATE_STEP_DEFAULT_TRIGGER_KIND) -> str:
+        trigger = _normalize_step_trigger(raw, default="")
+        if trigger == "manual":
+            return "manual_start"
+        if trigger == "schedule":
+            return "scheduled"
+        if trigger == "webhook":
+            return "external_event"
+        if trigger == "after_step":
+            return "after_previous"
+        return default
+
+    def _trigger_kind_to_legacy_trigger(raw: Any, *, default: str = WORKFLOW_TEMPLATE_STEP_DEFAULT_TRIGGER) -> str:
+        trigger_kind = _normalize_step_trigger_kind(raw, default="")
+        if trigger_kind == "manual_start":
+            return "manual"
+        if trigger_kind == "scheduled":
+            return "schedule"
+        if trigger_kind == "external_event":
+            return "webhook"
+        if trigger_kind == "after_previous":
+            return "after_step"
+        return default
+
     def _normalize_step_target_url(raw: Any) -> str:
         text = str(raw or "").strip()
         if not text:
@@ -304,12 +344,15 @@ def _normalize_template_steps_for_view(value: Any) -> list[dict[str, Any]]:
         raw_action = ""
         raw_type: Any = None
         raw_trigger: Any = None
+        raw_trigger_kind: Any = None
+        raw_execution_mode: Any = None
         raw_target_url: Any = None
         raw_agent_prompt: Any = None
         raw_timer_minutes: Any = None
         raw_order: Any = index + 1
         raw_auto_run: Any = False
         raw_execution_log: Any = []
+        raw_configs: Any = None
         if isinstance(row, dict):
             raw_id = str(row.get("id") or "").strip()
             raw_title = row.get("title") or row.get("name")
@@ -333,6 +376,10 @@ def _normalize_template_steps_for_view(value: Any) -> list[dict[str, Any]]:
                 raw_type = row.get("step_type")
             if "trigger" in row:
                 raw_trigger = row.get("trigger")
+            if "trigger_kind" in row:
+                raw_trigger_kind = row.get("trigger_kind")
+            if "execution_mode" in row:
+                raw_execution_mode = row.get("execution_mode")
             if "target_url" in row:
                 raw_target_url = row.get("target_url")
             elif "targetUrl" in row:
@@ -345,6 +392,8 @@ def _normalize_template_steps_for_view(value: Any) -> list[dict[str, Any]]:
                 raw_agent_prompt = row.get("agentPrompt")
             elif "prompt" in row:
                 raw_agent_prompt = row.get("prompt")
+            if "configs" in row:
+                raw_configs = row.get("configs")
         else:
             raw_title = row
 
@@ -362,9 +411,7 @@ def _normalize_template_steps_for_view(value: Any) -> list[dict[str, Any]]:
             if timer_minutes > WORKFLOW_TEMPLATE_STEP_MAX_TIMER_MINUTES:
                 timer_minutes = WORKFLOW_TEMPLATE_STEP_MAX_TIMER_MINUTES
 
-        auto_run = _normalize_auto_run(raw_auto_run)
-        if auto_run and (timer_minutes is None or timer_minutes < WORKFLOW_TEMPLATE_STEP_MIN_TIMER_MINUTES):
-            timer_minutes = WORKFLOW_TEMPLATE_STEP_DEFAULT_TIMER_MINUTES
+        auto_run_from_legacy = _normalize_auto_run(raw_auto_run)
         target_url = _normalize_step_target_url(raw_target_url)
         agent_prompt = _normalize_step_agent_prompt(raw_agent_prompt)
         type_default = WORKFLOW_TEMPLATE_STEP_DEFAULT_TYPE
@@ -373,8 +420,42 @@ def _normalize_template_steps_for_view(value: Any) -> list[dict[str, Any]]:
         elif agent_prompt:
             type_default = "agent"
         step_type = _normalize_step_type(raw_type, default=type_default)
-        trigger_default = "schedule" if auto_run else WORKFLOW_TEMPLATE_STEP_DEFAULT_TRIGGER
-        trigger = _normalize_step_trigger(raw_trigger, default=trigger_default)
+
+        execution_mode_default = "auto" if auto_run_from_legacy else WORKFLOW_TEMPLATE_STEP_DEFAULT_EXECUTION_MODE
+        execution_mode = _normalize_execution_mode(raw_execution_mode, default=execution_mode_default)
+        if step_type == "manual":
+            execution_mode = "manual_confirm"
+
+        auto_run = execution_mode == "auto"
+        if auto_run and (timer_minutes is None or timer_minutes < WORKFLOW_TEMPLATE_STEP_MIN_TIMER_MINUTES):
+            timer_minutes = WORKFLOW_TEMPLATE_STEP_DEFAULT_TIMER_MINUTES
+
+        if index == 0:
+            position_default_trigger_kind = (
+                "scheduled"
+                if execution_mode == "auto"
+                else WORKFLOW_TEMPLATE_STEP_DEFAULT_TRIGGER_KIND
+            )
+        else:
+            position_default_trigger_kind = "after_previous"
+
+        if raw_trigger_kind is not None and str(raw_trigger_kind).strip():
+            trigger_kind = _normalize_step_trigger_kind(raw_trigger_kind, default=position_default_trigger_kind)
+        elif raw_trigger is not None and str(raw_trigger).strip():
+            trigger_kind = _legacy_trigger_to_trigger_kind(raw_trigger, default=position_default_trigger_kind)
+        else:
+            trigger_kind = position_default_trigger_kind
+
+        if index > 0:
+            trigger_kind = "after_previous"
+        trigger = _trigger_kind_to_legacy_trigger(trigger_kind)
+
+        configs_raw = raw_configs if isinstance(raw_configs, dict) else {}
+        configs = {
+            "schedule": dict(configs_raw.get("schedule")) if isinstance(configs_raw.get("schedule"), dict) else {},
+            "event": dict(configs_raw.get("event")) if isinstance(configs_raw.get("event"), dict) else {},
+            "dependency": dict(configs_raw.get("dependency")) if isinstance(configs_raw.get("dependency"), dict) else {},
+        }
 
         order = core._safe_non_negative_int(raw_order, default=index + 1)
         if order < 1:
@@ -394,12 +475,16 @@ def _normalize_template_steps_for_view(value: Any) -> list[dict[str, Any]]:
                 "order": order,
                 "title": title,
                 "action": action,
+                "step_type": step_type,
                 "type": step_type,
+                "trigger_kind": trigger_kind,
                 "trigger": trigger,
+                "execution_mode": execution_mode,
                 "target_url": target_url,
                 "agent_prompt": agent_prompt,
                 "auto_run": auto_run,
                 "timer_minutes": timer_minutes,
+                "configs": configs,
                 "execution_log": _normalize_execution_log(raw_execution_log),
             }
         )

@@ -77,6 +77,18 @@ WORKFLOW_TEMPLATE_STEP_TRIGGERS = (
     "after_step",
 )
 WORKFLOW_TEMPLATE_STEP_DEFAULT_TRIGGER = "manual"
+WORKFLOW_TEMPLATE_STEP_TRIGGER_KINDS = (
+    "manual_start",
+    "scheduled",
+    "external_event",
+    "after_previous",
+)
+WORKFLOW_TEMPLATE_STEP_DEFAULT_TRIGGER_KIND = "manual_start"
+WORKFLOW_TEMPLATE_STEP_EXECUTION_MODES = (
+    "auto",
+    "manual_confirm",
+)
+WORKFLOW_TEMPLATE_STEP_DEFAULT_EXECUTION_MODE = "manual_confirm"
 WORKFLOW_TEMPLATE_REQUIRED_STEP_ACTIONS = (
     "preflight",
 )

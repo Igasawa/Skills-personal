@@ -70,10 +70,52 @@
     return TEMPLATE_STEP_TYPE_VALUES.has(fallback) ? fallback : "manual";
   }
 
-  function normalizeTemplateStepTrigger(value, fallback = "manual") {
+  function legacyTriggerToTriggerKind(value, fallback = "manual_start") {
     const trigger = String(value || "").trim().toLowerCase();
-    if (TEMPLATE_STEP_TRIGGER_VALUES.has(trigger)) return trigger;
-    return TEMPLATE_STEP_TRIGGER_VALUES.has(fallback) ? fallback : "manual";
+    if (!trigger) return fallback;
+    if (trigger === "manual") return "manual_start";
+    if (trigger === "schedule") return "scheduled";
+    if (trigger === "webhook") return "external_event";
+    if (trigger === "after_step") return "after_previous";
+    if (TEMPLATE_STEP_TRIGGER_KIND_VALUES.has(trigger)) return trigger;
+    return fallback;
+  }
+
+  function triggerKindToLegacyTrigger(value, fallback = "manual") {
+    const triggerKind = String(value || "").trim().toLowerCase();
+    if (triggerKind === "manual_start") return "manual";
+    if (triggerKind === "scheduled") return "schedule";
+    if (triggerKind === "external_event") return "webhook";
+    if (triggerKind === "after_previous") return "after_step";
+    return fallback;
+  }
+
+  function normalizeTemplateStepTriggerKind(value, fallback = "manual_start") {
+    const fallbackKind = legacyTriggerToTriggerKind(fallback, "manual_start");
+    const triggerKind = legacyTriggerToTriggerKind(value, fallbackKind);
+    if (TEMPLATE_STEP_TRIGGER_KIND_VALUES.has(triggerKind)) return triggerKind;
+    return fallbackKind;
+  }
+
+  function normalizeTemplateStepTrigger(value, fallback = "manual_start") {
+    return normalizeTemplateStepTriggerKind(value, fallback);
+  }
+
+  function normalizeTemplateStepExecutionMode(value, fallback = "manual_confirm") {
+    const mode = String(value || "").trim().toLowerCase();
+    if (TEMPLATE_STEP_EXECUTION_MODE_VALUES.has(mode)) return mode;
+    if (mode === "manual") return "manual_confirm";
+    if (mode === "confirm") return "manual_confirm";
+    if (mode === "auto_run") return "auto";
+    return TEMPLATE_STEP_EXECUTION_MODE_VALUES.has(fallback) ? fallback : "manual_confirm";
+  }
+
+  function executionModeFromAutoRun(value) {
+    return normalizeTemplateStepAutoRun(value) ? "auto" : "manual_confirm";
+  }
+
+  function autoRunFromExecutionMode(value) {
+    return normalizeTemplateStepExecutionMode(value) === "auto";
   }
 
   function normalizeTemplateStepTargetUrl(value) {
@@ -167,13 +209,28 @@
       if (action && seen.has(action)) return;
       const title = String(raw.title || "").trim();
       const id = String(raw.id || "").trim() || generateTemplateStepId();
-      const autoRun = normalizeTemplateStepAutoRun(raw.auto_run ?? raw.autoRun);
+      const legacyAutoRun = normalizeTemplateStepAutoRun(raw.auto_run ?? raw.autoRun);
       const targetUrl = normalizeTemplateStepTargetUrl(raw.target_url ?? raw.targetUrl ?? raw.url);
       const agentPrompt = normalizeTemplateStepAgentPrompt(raw.agent_prompt ?? raw.agentPrompt ?? raw.prompt);
       const typeDefault = targetUrl ? "browser" : agentPrompt ? "agent" : "manual";
       const stepType = normalizeTemplateStepType(raw.type ?? raw.step_type, typeDefault);
-      const triggerDefault = autoRun ? "schedule" : "manual";
-      const trigger = normalizeTemplateStepTrigger(raw.trigger, triggerDefault);
+      let executionMode = normalizeTemplateStepExecutionMode(
+        raw.execution_mode,
+        executionModeFromAutoRun(legacyAutoRun),
+      );
+      if (stepType === "manual") {
+        executionMode = "manual_confirm";
+      }
+      let triggerDefault = index === 0
+        ? (executionMode === "auto" ? "scheduled" : "manual_start")
+        : "after_previous";
+      const triggerKind = normalizeTemplateStepTriggerKind(
+        raw.trigger_kind ?? raw.trigger,
+        triggerDefault,
+      );
+      const normalizedTriggerKind = index === 0 ? triggerKind : "after_previous";
+      const trigger = triggerKindToLegacyTrigger(normalizedTriggerKind);
+      const autoRun = autoRunFromExecutionMode(executionMode);
       const hasAutoTimerEnabled = Object.prototype.hasOwnProperty.call(raw, "auto_timer_enabled");
       const hasUiMode = Object.prototype.hasOwnProperty.call(raw, "ui_mode");
       const autoTimerEnabled = normalizeTemplateStepAutoTimerEnabled(raw.auto_timer_enabled, false);
@@ -183,6 +240,12 @@
       if (autoRun) {
         timerMinutes = normalizeTemplateStepTimerForAutoRun(timerMinutes);
       }
+      const rawConfigs = raw.configs && typeof raw.configs === "object" ? raw.configs : {};
+      const configs = {
+        schedule: rawConfigs.schedule && typeof rawConfigs.schedule === "object" ? { ...rawConfigs.schedule } : {},
+        event: rawConfigs.event && typeof rawConfigs.event === "object" ? { ...rawConfigs.event } : {},
+        dependency: rawConfigs.dependency && typeof rawConfigs.dependency === "object" ? { ...rawConfigs.dependency } : {},
+      };
       const executionLog = normalizeTemplateStepExecutionLog(raw.execution_log ?? raw.executionLog);
       const order = normalizeTemplateStepOrder(raw.order, index + 1);
       if (action) seen.add(action);
@@ -191,11 +254,15 @@
         order,
         title,
         action,
+        step_type: stepType,
         type: stepType,
+        trigger_kind: normalizedTriggerKind,
         trigger,
+        execution_mode: executionMode,
         target_url: targetUrl,
         agent_prompt: agentPrompt,
         auto_run: autoRun,
+        configs,
         execution_log: executionLog,
       };
       if (hasAutoTimerEnabled || hasUiMode) {
@@ -223,11 +290,15 @@
           id: generateTemplateStepId(),
           title: defaultTitleForStepAction(requiredStep.action, requiredStep.title),
           action: requiredStep.action,
+          step_type: "manual",
           type: "manual",
+          trigger_kind: "manual_start",
           trigger: "manual",
+          execution_mode: "manual_confirm",
           target_url: "",
           agent_prompt: "",
           auto_run: false,
+          configs: { schedule: {}, event: {}, dependency: {} },
           execution_log: [],
         };
         if (includeTimer) {
@@ -642,12 +713,24 @@
     ).join("");
   }
 
-  function getTemplateStepTriggerOptionsHtml(selectedTrigger) {
-    const normalizedTrigger = normalizeTemplateStepTrigger(selectedTrigger, "manual");
-    return TEMPLATE_STEP_TRIGGERS.map(
-      (item) =>
-        `<option value="${item.value}"${item.value === normalizedTrigger ? " selected" : ""}>${item.label}</option>`,
-    ).join("");
+  function getAllowedTriggerKindsForPosition(index) {
+    return index <= 0
+      ? ["manual_start", "scheduled", "external_event"]
+      : ["after_previous"];
+  }
+
+  function getTemplateStepTriggerOptionsHtml(selectedTriggerKind, allowedTriggerKinds = null) {
+    const normalizedTriggerKind = normalizeTemplateStepTriggerKind(selectedTriggerKind, "manual_start");
+    const allowed = Array.isArray(allowedTriggerKinds) && allowedTriggerKinds.length
+      ? allowedTriggerKinds
+      : TEMPLATE_STEP_TRIGGER_KINDS.map((item) => item.value);
+    return TEMPLATE_STEP_TRIGGER_KINDS
+      .filter((item) => allowed.includes(item.value))
+      .map(
+        (item) =>
+          `<option value="${item.value}"${item.value === normalizedTriggerKind ? " selected" : ""}>${item.label}</option>`,
+      )
+      .join("");
   }
 
   function normalizeTemplateStepAction(value) {
@@ -765,7 +848,7 @@
       row?.dataset?.templateStepAction || row?.querySelector("[data-template-step-action]")?.value,
     );
     const typeEl = row?.querySelector("[data-template-step-type]");
-    const triggerEl = row?.querySelector("[data-template-step-trigger]");
+    const triggerEl = row?.querySelector("[data-template-step-trigger-kind]") || row?.querySelector("[data-template-step-trigger]");
     const targetUrlEl = row?.querySelector("[data-template-step-target-url]");
     const agentPromptEl = row?.querySelector("[data-template-step-agent-prompt]");
     const title =
@@ -776,8 +859,20 @@
     const agentPrompt = normalizeTemplateStepAgentPrompt(agentPromptEl?.value);
     const typeDefault = normalizeTemplateStepTargetUrl(targetUrl) ? "browser" : agentPrompt ? "agent" : "manual";
     const stepType = normalizeTemplateStepType(typeEl?.value, typeDefault);
-    const triggerDefault = autoRun ? "schedule" : "manual";
-    const trigger = normalizeTemplateStepTrigger(triggerEl?.value, triggerDefault);
+    const executionModeDefault = executionModeFromAutoRun(autoRun);
+    let executionMode = normalizeTemplateStepExecutionMode(
+      row?.dataset?.templateStepExecutionMode,
+      executionModeDefault,
+    );
+    if (stepType === "manual") {
+      executionMode = "manual_confirm";
+    }
+    const triggerDefault = index === 0
+      ? (executionMode === "auto" ? "scheduled" : "manual_start")
+      : "after_previous";
+    const triggerKind = normalizeTemplateStepTriggerKind(triggerEl?.value, triggerDefault);
+    const normalizedTriggerKind = index === 0 ? triggerKind : "after_previous";
+    const trigger = triggerKindToLegacyTrigger(normalizedTriggerKind);
     const autoTimerEnabled = normalizeTemplateStepAutoTimerEnabled(
       row?.dataset?.templateStepAutoTimer,
       false,
@@ -799,12 +894,16 @@
       auto_timer_enabled: autoTimerEnabled,
       ui_mode: uiMode,
       action,
+      step_type: stepType,
       type: stepType,
+      trigger_kind: normalizedTriggerKind,
       trigger,
+      execution_mode: executionMode,
       target_url: targetUrl,
       agent_prompt: agentPrompt,
-      auto_run: autoRun,
+      auto_run: autoRunFromExecutionMode(executionMode),
       timer_minutes: timerMinutes,
+      configs: { schedule: {}, event: {}, dependency: {} },
       execution_log: executionLog,
     };
   }
@@ -824,12 +923,16 @@
       const parsed = parsedRows[index] || {
         action: "",
         title: "",
+        step_type: "manual",
         type: "manual",
+        trigger_kind: "manual_start",
         trigger: "manual",
+        execution_mode: "manual_confirm",
         target_url: "",
         agent_prompt: "",
         auto_run: false,
         timer_minutes: null,
+        configs: { schedule: {}, event: {}, dependency: {} },
         execution_log: [],
       };
       const action = normalizeTemplateStepAction(parsed.action);
@@ -869,7 +972,7 @@
       }
 
       const stepType = normalizeTemplateStepType(
-        parsed.type,
+        parsed.step_type ?? parsed.type,
         parsed.target_url ? "browser" : parsed.agent_prompt ? "agent" : "manual",
       );
       row.dataset.templateStepType = stepType;
@@ -880,14 +983,33 @@
       }
 
       const autoRunEl = row.querySelector("[data-template-step-auto-run]");
-      const autoRunEnabled = autoRunEl ? Boolean(autoRunEl.checked) : Boolean(parsed.auto_run);
-      const trigger = normalizeTemplateStepTrigger(
-        parsed.trigger,
-        autoRunEnabled ? "schedule" : "manual",
+      let executionMode = normalizeTemplateStepExecutionMode(
+        parsed.execution_mode,
+        executionModeFromAutoRun(parsed.auto_run),
       );
+      if (stepType === "manual") {
+        executionMode = "manual_confirm";
+      }
+      const autoRunEnabled = autoRunFromExecutionMode(executionMode);
+      const triggerDefault = index === 0
+        ? (autoRunEnabled ? "scheduled" : "manual_start")
+        : "after_previous";
+      let triggerKind = normalizeTemplateStepTriggerKind(
+        parsed.trigger_kind ?? parsed.trigger,
+        triggerDefault,
+      );
+      const allowedTriggerKinds = getAllowedTriggerKindsForPosition(index);
+      if (!allowedTriggerKinds.includes(triggerKind)) {
+        triggerKind = allowedTriggerKinds[0];
+      }
+      const trigger = triggerKindToLegacyTrigger(triggerKind);
+      row.dataset.templateStepExecutionMode = executionMode;
+      row.dataset.templateStepTriggerKind = triggerKind;
+      row.dataset.templateStepTrigger = trigger;
       if (autoRunEl) {
         autoRunEl.checked = autoRunEnabled;
         autoRunEl.setAttribute("aria-label", `手順${index + 1}の自動実行`);
+        autoRunEl.disabled = stepType === "manual";
       }
 
       const uiModeEnabled = uiMode === TEMPLATE_STEP_UI_MODE.advanced;
@@ -919,9 +1041,10 @@
         timerEl.setCustomValidity("");
       }
 
-      const triggerEl = row.querySelector("[data-template-step-trigger]");
+      const triggerEl = row.querySelector("[data-template-step-trigger-kind]") || row.querySelector("[data-template-step-trigger]");
       if (triggerEl) {
-        triggerEl.value = trigger;
+        triggerEl.innerHTML = getTemplateStepTriggerOptionsHtml(triggerKind, allowedTriggerKinds);
+        triggerEl.value = triggerKind;
         triggerEl.setAttribute("aria-label", `手順${index + 1}のトリガー`);
       }
 
@@ -1010,6 +1133,34 @@
         row.querySelector("[data-template-step-type]")?.value,
         "manual",
       );
+      const autoRunEnabled = Boolean(row.querySelector("[data-template-step-auto-run]")?.checked);
+      const executionMode = executionModeFromAutoRun(autoRunEnabled);
+      if (type === "manual" && executionMode === "auto") {
+        showToast("人ステップでは自動実行を選択できません。", "error");
+        return false;
+      }
+      const triggerEl = row.querySelector("[data-template-step-trigger-kind]") || row.querySelector("[data-template-step-trigger]");
+      const triggerDefault = index === 0
+        ? (executionMode === "auto" ? "scheduled" : "manual_start")
+        : "after_previous";
+      const triggerKind = normalizeTemplateStepTriggerKind(triggerEl?.value, triggerDefault);
+      const allowedTriggerKinds = getAllowedTriggerKindsForPosition(index);
+      if (!allowedTriggerKinds.includes(triggerKind)) {
+        if (triggerEl) {
+          triggerEl.setCustomValidity(
+            index === 0
+              ? "先頭手順のトリガーは 手動開始 / スケジュール / 外部イベント のみ選択できます。"
+              : "2手順目以降のトリガーは 前手順完了後 のみ選択できます。",
+          );
+          triggerEl.reportValidity();
+        } else {
+          showToast("トリガー設定が不正です。", "error");
+        }
+        return false;
+      }
+      if (triggerEl) {
+        triggerEl.setCustomValidity("");
+      }
       const targetUrlEl = row.querySelector("[data-template-step-target-url]");
       if (targetUrlEl) {
         const rawTargetUrl = String(targetUrlEl.value || "").trim();
@@ -1039,7 +1190,6 @@
         agentPromptEl.setCustomValidity("");
       }
 
-      const autoRunEnabled = Boolean(row.querySelector("[data-template-step-auto-run]")?.checked);
       const timerEl = row.querySelector("[data-template-step-timer]");
       if (!timerEl) continue;
       if (!autoRunEnabled) {
@@ -1075,12 +1225,16 @@
       order: row.order,
       title: row.title,
       action: row.action,
+      step_type: row.step_type ?? row.type,
       type: row.type,
+      trigger_kind: row.trigger_kind,
       trigger: row.trigger,
+      execution_mode: row.execution_mode,
       target_url: row.target_url,
       agent_prompt: row.agent_prompt,
       auto_run: row.auto_run,
       timer_minutes: row.timer_minutes,
+      configs: row.configs || { schedule: {}, event: {}, dependency: {} },
       execution_log: row.execution_log,
     }));
   }
@@ -1092,13 +1246,17 @@
         id: "",
         title: "",
         action,
+        step_type: "manual",
         type: "manual",
+        trigger_kind: "manual_start",
         trigger: "manual",
+        execution_mode: "manual_confirm",
         target_url: "",
         agent_prompt: "",
         auto_run: false,
         auto_timer_enabled: false,
         timer_minutes: null,
+        configs: { schedule: {}, event: {}, dependency: {} },
         execution_log: [],
       },
       options,
@@ -1116,11 +1274,20 @@
     const requiredAction = isRequiredTemplateStepAction(action) ? action : "";
     const targetUrl = normalizeTemplateStepTargetUrl(rawStep?.target_url ?? rawStep?.targetUrl ?? rawStep?.url);
     const agentPrompt = normalizeTemplateStepAgentPrompt(rawStep?.agent_prompt ?? rawStep?.agentPrompt ?? rawStep?.prompt);
-    const autoRun = normalizeTemplateStepAutoRun(rawStep?.auto_run ?? rawStep?.autoRun);
+    const legacyAutoRun = normalizeTemplateStepAutoRun(rawStep?.auto_run ?? rawStep?.autoRun);
     const typeDefault = targetUrl ? "browser" : agentPrompt ? "agent" : "manual";
     const stepType = normalizeTemplateStepType(rawStep?.type ?? rawStep?.step_type, typeDefault);
-    const triggerDefault = autoRun ? "schedule" : "manual";
-    const trigger = normalizeTemplateStepTrigger(rawStep?.trigger, triggerDefault);
+    let executionMode = normalizeTemplateStepExecutionMode(
+      rawStep?.execution_mode,
+      executionModeFromAutoRun(legacyAutoRun),
+    );
+    if (stepType === "manual") {
+      executionMode = "manual_confirm";
+    }
+    const autoRun = autoRunFromExecutionMode(executionMode);
+    const triggerDefault = autoRun ? "scheduled" : "manual_start";
+    const triggerKind = normalizeTemplateStepTriggerKind(rawStep?.trigger_kind ?? rawStep?.trigger, triggerDefault);
+    const trigger = triggerKindToLegacyTrigger(triggerKind);
     const hasAutoTimerEnabled = Object.prototype.hasOwnProperty.call(rawStep || {}, "auto_timer_enabled");
     const autoTimerEnabled = normalizeTemplateStepAutoTimerEnabled(rawStep?.auto_timer_enabled, false);
     const uiMode = normalizeTemplateStepUiMode(
@@ -1144,6 +1311,9 @@
     row.dataset.templateStepOrder = String(normalizeTemplateStepOrder(rawStep?.order, getTemplateStepRows().length + 1));
     row.dataset.templateStepAction = action;
     row.dataset.templateStepType = stepType;
+    row.dataset.templateStepExecutionMode = executionMode;
+    row.dataset.templateStepTriggerKind = triggerKind;
+    row.dataset.templateStepTrigger = trigger;
     row.dataset.templateStepUiMode = uiMode;
     row.dataset.templateStepAutoTimer = autoTimerEnabled ? "1" : "0";
     row.draggable = true;
@@ -1192,8 +1362,9 @@
 
     const triggerEl = document.createElement("select");
     triggerEl.className = "template-step-trigger";
+    triggerEl.dataset.templateStepTriggerKind = "1";
     triggerEl.dataset.templateStepTrigger = "1";
-    triggerEl.innerHTML = getTemplateStepTriggerOptionsHtml(trigger);
+    triggerEl.innerHTML = getTemplateStepTriggerOptionsHtml(triggerKind, getAllowedTriggerKindsForPosition(0));
 
     const autoRunLabel = document.createElement("label");
     autoRunLabel.className = "template-step-auto-run";
@@ -1365,12 +1536,16 @@
           order: row?.order,
           title,
           action,
+          step_type: row?.step_type,
           type: row?.type,
+          trigger_kind: row?.trigger_kind,
           trigger: row?.trigger,
+          execution_mode: row?.execution_mode,
           target_url: row?.target_url,
           agent_prompt: row?.agent_prompt,
           auto_run: row?.auto_run,
           timer_minutes: row?.timer_minutes,
+          configs: row?.configs,
           execution_log: row?.execution_log,
           auto_timer_enabled: row?.auto_timer_enabled,
           ui_mode: row?.ui_mode,
@@ -1620,8 +1795,14 @@ window.DashboardIndexState = {
   workflowPage,
   defaultTitleForStepAction,
   normalizeTemplateStepAutoRun,
+  legacyTriggerToTriggerKind,
+  triggerKindToLegacyTrigger,
+  normalizeTemplateStepTriggerKind,
   normalizeTemplateStepType,
   normalizeTemplateStepTrigger,
+  normalizeTemplateStepExecutionMode,
+  executionModeFromAutoRun,
+  autoRunFromExecutionMode,
   normalizeTemplateStepTargetUrl,
   normalizeTemplateStepAgentPrompt,
   normalizeTemplateStepOrder,
@@ -1650,6 +1831,7 @@ window.DashboardIndexState = {
   getTemplateStepRows,
   getTemplateStepActionOptionsHtml,
   getTemplateStepTypeOptionsHtml,
+  getAllowedTriggerKindsForPosition,
   getTemplateStepTriggerOptionsHtml,
   normalizeTemplateStepAction,
   generateTemplateStepId,

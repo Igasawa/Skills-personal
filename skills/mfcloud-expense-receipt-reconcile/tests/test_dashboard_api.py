@@ -2777,7 +2777,10 @@ def test_api_save_workflow_template_persists_step_v2_fields(
     assert any(
         str(step.get("title") or "") == "Browser Step"
         and str(step.get("type") or "") == "browser"
+        and str(step.get("step_type") or "") == "browser"
+        and str(step.get("trigger_kind") or "") == "external_event"
         and str(step.get("trigger") or "") == "webhook"
+        and str(step.get("execution_mode") or "") == "manual_confirm"
         and str(step.get("target_url") or "") == "https://example.com/browser"
         and str(step.get("agent_prompt") or "") == ""
         for step in steps
@@ -2786,7 +2789,10 @@ def test_api_save_workflow_template_persists_step_v2_fields(
     assert any(
         str(step.get("title") or "") == "Agent Step"
         and str(step.get("type") or "") == "agent"
+        and str(step.get("step_type") or "") == "agent"
+        and str(step.get("trigger_kind") or "") == "after_previous"
         and str(step.get("trigger") or "") == "after_step"
+        and str(step.get("execution_mode") or "") == "manual_confirm"
         and str(step.get("target_url") or "") == ""
         and str(step.get("agent_prompt") or "") == "collect summary and post result"
         for step in steps
@@ -2795,7 +2801,10 @@ def test_api_save_workflow_template_persists_step_v2_fields(
     assert any(
         str(step.get("title") or "") == "Manual Step"
         and str(step.get("type") or "") == "manual"
-        and str(step.get("trigger") or "") == "manual"
+        and str(step.get("step_type") or "") == "manual"
+        and str(step.get("trigger_kind") or "") == "after_previous"
+        and str(step.get("trigger") or "") == "after_step"
+        and str(step.get("execution_mode") or "") == "manual_confirm"
         and str(step.get("target_url") or "") == ""
         and str(step.get("agent_prompt") or "") == ""
         for step in steps
@@ -2808,7 +2817,10 @@ def test_api_save_workflow_template_persists_step_v2_fields(
     assert any(
         str(step.get("title") or "") == "Browser Step"
         and str(step.get("type") or "") == "browser"
+        and str(step.get("step_type") or "") == "browser"
+        and str(step.get("trigger_kind") or "") == "external_event"
         and str(step.get("trigger") or "") == "webhook"
+        and str(step.get("execution_mode") or "") == "manual_confirm"
         and str(step.get("target_url") or "") == "https://example.com/browser"
         for step in stored_steps
         if isinstance(step, dict)
@@ -2816,11 +2828,182 @@ def test_api_save_workflow_template_persists_step_v2_fields(
     assert any(
         str(step.get("title") or "") == "Agent Step"
         and str(step.get("type") or "") == "agent"
+        and str(step.get("step_type") or "") == "agent"
+        and str(step.get("trigger_kind") or "") == "after_previous"
         and str(step.get("trigger") or "") == "after_step"
+        and str(step.get("execution_mode") or "") == "manual_confirm"
         and str(step.get("agent_prompt") or "") == "collect summary and post result"
         for step in stored_steps
         if isinstance(step, dict)
     )
+
+
+def test_api_save_workflow_template_maps_legacy_step_fields_to_canonical(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    client = _create_client(monkeypatch, tmp_path)
+    res = client.post(
+        "/api/workflow-templates",
+        json={
+            "name": "Legacy Mapping Template",
+            "year": 2026,
+            "month": 2,
+            "mfcloud_url": "https://example.com/legacy-map",
+            "steps": [
+                {
+                    "title": "Start",
+                    "type": "agent",
+                    "trigger": "schedule",
+                    "auto_run": True,
+                    "timer_minutes": 10,
+                    "agent_prompt": "collect and summarize",
+                },
+                {
+                    "title": "Follow",
+                    "trigger": "after_step",
+                },
+            ],
+        },
+    )
+    assert res.status_code == 200
+    template = res.json()["template"]
+    steps = template.get("steps") if isinstance(template.get("steps"), list) else []
+    first = next(
+        (step for step in steps if isinstance(step, dict) and str(step.get("title") or "") == "Start"),
+        None,
+    )
+    assert isinstance(first, dict)
+    assert str(first.get("trigger_kind") or "") == "scheduled"
+    assert str(first.get("trigger") or "") == "schedule"
+    assert str(first.get("execution_mode") or "") == "auto"
+    assert bool(first.get("auto_run")) is True
+    assert int(first.get("timer_minutes") or 0) == 10
+
+
+def test_api_save_workflow_template_rejects_invalid_trigger_by_position(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    client = _create_client(monkeypatch, tmp_path)
+    res = client.post(
+        "/api/workflow-templates",
+        json={
+            "name": "Invalid Trigger Position",
+            "year": 2026,
+            "month": 2,
+            "mfcloud_url": "https://example.com/invalid-trigger",
+            "steps": [
+                {"title": "Step 1", "trigger_kind": "manual_start"},
+                {"title": "Step 2", "trigger_kind": "scheduled"},
+            ],
+        },
+    )
+    assert res.status_code == 400
+    detail = str(res.json().get("detail") or "")
+    assert "Step 2 trigger_kind must be after_previous" in detail
+
+
+def test_api_save_workflow_template_rejects_manual_auto_execution_mode(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    client = _create_client(monkeypatch, tmp_path)
+    res = client.post(
+        "/api/workflow-templates",
+        json={
+            "name": "Invalid Manual Auto Mode",
+            "year": 2026,
+            "month": 2,
+            "mfcloud_url": "https://example.com/manual-auto",
+            "steps": [
+                {
+                    "title": "Step 1",
+                    "type": "manual",
+                    "trigger_kind": "manual_start",
+                    "execution_mode": "auto",
+                    "timer_minutes": 5,
+                }
+            ],
+        },
+    )
+    assert res.status_code == 400
+    detail = str(res.json().get("detail") or "")
+    assert "manual step must use execution_mode=manual_confirm" in detail
+
+
+def test_api_save_workflow_template_rejects_browser_without_target_url(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    client = _create_client(monkeypatch, tmp_path)
+    res = client.post(
+        "/api/workflow-templates",
+        json={
+            "name": "Invalid Browser Step",
+            "year": 2026,
+            "month": 2,
+            "mfcloud_url": "https://example.com/browser-invalid",
+            "steps": [
+                {
+                    "title": "Step 1",
+                    "type": "browser",
+                    "trigger_kind": "manual_start",
+                }
+            ],
+        },
+    )
+    assert res.status_code == 400
+    detail = str(res.json().get("detail") or "")
+    assert "browser step requires a valid target_url" in detail
+
+
+def test_api_save_workflow_template_rejects_agent_without_prompt(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    client = _create_client(monkeypatch, tmp_path)
+    res = client.post(
+        "/api/workflow-templates",
+        json={
+            "name": "Invalid Agent Step",
+            "year": 2026,
+            "month": 2,
+            "mfcloud_url": "https://example.com/agent-invalid",
+            "steps": [
+                {
+                    "title": "Step 1",
+                    "type": "agent",
+                    "trigger_kind": "manual_start",
+                }
+            ],
+        },
+    )
+    assert res.status_code == 400
+    detail = str(res.json().get("detail") or "")
+    assert "agent step requires agent_prompt" in detail
+
+
+def test_api_save_workflow_template_rejects_auto_mode_without_timer(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    client = _create_client(monkeypatch, tmp_path)
+    res = client.post(
+        "/api/workflow-templates",
+        json={
+            "name": "Invalid Auto Timer",
+            "year": 2026,
+            "month": 2,
+            "mfcloud_url": "https://example.com/auto-invalid",
+            "steps": [
+                {
+                    "title": "Step 1",
+                    "type": "agent",
+                    "trigger_kind": "manual_start",
+                    "execution_mode": "auto",
+                    "agent_prompt": "run task",
+                }
+            ],
+        },
+    )
+    assert res.status_code == 400
+    detail = str(res.json().get("detail") or "")
+    assert "execution_mode=auto requires timer_minutes" in detail
 
 
 def test_api_save_workflow_template_copy_mode_creates_new_template(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

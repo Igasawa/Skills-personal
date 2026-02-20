@@ -64,6 +64,18 @@
     { value: "after_step", label: "前手順完了後" },
   ];
   const TEMPLATE_STEP_TRIGGER_VALUES = new Set(TEMPLATE_STEP_TRIGGERS.map((item) => item.value));
+  const TEMPLATE_STEP_TRIGGER_KINDS = [
+    { value: "manual_start", label: "手動開始" },
+    { value: "scheduled", label: "スケジュール" },
+    { value: "external_event", label: "外部イベント" },
+    { value: "after_previous", label: "前手順完了後" },
+  ];
+  const TEMPLATE_STEP_TRIGGER_KIND_VALUES = new Set(TEMPLATE_STEP_TRIGGER_KINDS.map((item) => item.value));
+  const TEMPLATE_STEP_EXECUTION_MODES = [
+    { value: "manual_confirm", label: "手動確認" },
+    { value: "auto", label: "自動" },
+  ];
+  const TEMPLATE_STEP_EXECUTION_MODE_VALUES = new Set(TEMPLATE_STEP_EXECUTION_MODES.map((item) => item.value));
   const TEMPLATE_STEP_MAX_AGENT_PROMPT_CHARS = 4000;
   const TEMPLATE_STEP_UI_MODE = {
     compact: "compact",
@@ -176,6 +188,10 @@ window.DashboardIndexConstants = {
   TEMPLATE_STEP_TYPE_VALUES,
   TEMPLATE_STEP_TRIGGERS,
   TEMPLATE_STEP_TRIGGER_VALUES,
+  TEMPLATE_STEP_TRIGGER_KINDS,
+  TEMPLATE_STEP_TRIGGER_KIND_VALUES,
+  TEMPLATE_STEP_EXECUTION_MODES,
+  TEMPLATE_STEP_EXECUTION_MODE_VALUES,
   TEMPLATE_STEP_MAX_AGENT_PROMPT_CHARS,
   TEMPLATE_REQUIRED_STEPS,
   TEMPLATE_REQUIRED_STEP_ACTION_SET,

@@ -57,8 +57,12 @@ from .api_helpers import (
     WORKFLOW_TEMPLATE_REQUIRED_STEP_TITLES,
     WORKFLOW_TEMPLATE_SORT_OPTIONS,
     WORKFLOW_TEMPLATE_STEP_DEFAULT_ACTION,
+    WORKFLOW_TEMPLATE_STEP_DEFAULT_EXECUTION_MODE,
+    WORKFLOW_TEMPLATE_STEP_DEFAULT_TRIGGER_KIND,
     WORKFLOW_TEMPLATE_STEP_DEFAULT_TRIGGER,
     WORKFLOW_TEMPLATE_STEP_DEFAULT_TYPE,
+    WORKFLOW_TEMPLATE_STEP_EXECUTION_MODES,
+    WORKFLOW_TEMPLATE_STEP_TRIGGER_KINDS,
     WORKFLOW_TEMPLATE_STEP_TRIGGERS,
     WORKFLOW_TEMPLATE_STEP_TYPES,
 )
@@ -307,6 +311,74 @@ def register_api_workflow_endpoints(router: APIRouter) -> None:
         return default
 
 
+    def _normalize_workflow_template_step_trigger_kind(
+        value: Any,
+        *,
+        default: str = WORKFLOW_TEMPLATE_STEP_DEFAULT_TRIGGER_KIND,
+    ) -> str:
+        trigger_kind = str(value or "").strip().lower()
+        if trigger_kind in WORKFLOW_TEMPLATE_STEP_TRIGGER_KINDS:
+            return trigger_kind
+        return default
+
+
+    def _normalize_workflow_template_step_execution_mode(
+        value: Any,
+        *,
+        default: str = WORKFLOW_TEMPLATE_STEP_DEFAULT_EXECUTION_MODE,
+    ) -> str:
+        execution_mode = str(value or "").strip().lower()
+        if execution_mode in WORKFLOW_TEMPLATE_STEP_EXECUTION_MODES:
+            return execution_mode
+        return default
+
+
+    def _legacy_trigger_to_trigger_kind(
+        value: Any,
+        *,
+        default: str = WORKFLOW_TEMPLATE_STEP_DEFAULT_TRIGGER_KIND,
+    ) -> str:
+        trigger = _normalize_workflow_template_step_trigger(value, default="")
+        if trigger == "manual":
+            return "manual_start"
+        if trigger == "schedule":
+            return "scheduled"
+        if trigger == "webhook":
+            return "external_event"
+        if trigger == "after_step":
+            return "after_previous"
+        return default
+
+
+    def _trigger_kind_to_legacy_trigger(
+        value: Any,
+        *,
+        default: str = WORKFLOW_TEMPLATE_STEP_DEFAULT_TRIGGER,
+    ) -> str:
+        trigger_kind = _normalize_workflow_template_step_trigger_kind(value, default="")
+        if trigger_kind == "manual_start":
+            return "manual"
+        if trigger_kind == "scheduled":
+            return "schedule"
+        if trigger_kind == "external_event":
+            return "webhook"
+        if trigger_kind == "after_previous":
+            return "after_step"
+        return default
+
+
+    def _normalize_workflow_template_step_configs(value: Any) -> dict[str, dict[str, Any]]:
+        raw = value if isinstance(value, dict) else {}
+        schedule = raw.get("schedule") if isinstance(raw.get("schedule"), dict) else {}
+        event = raw.get("event") if isinstance(raw.get("event"), dict) else {}
+        dependency = raw.get("dependency") if isinstance(raw.get("dependency"), dict) else {}
+        return {
+            "schedule": dict(schedule),
+            "event": dict(event),
+            "dependency": dict(dependency),
+        }
+
+
     def _normalize_workflow_template_step_agent_prompt(value: Any) -> str:
         if value is None:
             return ""
@@ -361,7 +433,62 @@ def register_api_workflow_endpoints(router: APIRouter) -> None:
         return WORKFLOW_TEMPLATE_STEP_DEFAULT_ACTION
 
 
-    def _normalize_workflow_template_steps(value: Any) -> list[dict[str, Any]]:
+    def _validate_workflow_template_steps_strict(steps: list[dict[str, Any]]) -> None:
+        for index, row in enumerate(steps, start=1):
+            trigger_kind = _normalize_workflow_template_step_trigger_kind(row.get("trigger_kind"))
+            execution_mode = _normalize_workflow_template_step_execution_mode(row.get("execution_mode"))
+            step_type = _normalize_workflow_template_step_type(row.get("step_type") or row.get("type"))
+            target_url = _normalize_workflow_template_url(row.get("target_url"))
+            agent_prompt = _normalize_workflow_template_step_agent_prompt(row.get("agent_prompt"))
+            timer_minutes = _normalize_workflow_template_step_timer_minutes(row.get("timer_minutes"))
+
+            if index == 1:
+                if trigger_kind not in {"manual_start", "scheduled", "external_event"}:
+                    raise HTTPException(
+                        status_code=400,
+                        detail="Step 1 trigger_kind must be manual_start, scheduled, or external_event.",
+                    )
+            elif trigger_kind != "after_previous":
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Step {index} trigger_kind must be after_previous.",
+                )
+
+            if step_type == "manual" and execution_mode != "manual_confirm":
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Step {index} manual step must use execution_mode=manual_confirm.",
+                )
+
+            if step_type == "browser" and not target_url:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Step {index} browser step requires a valid target_url.",
+                )
+
+            if step_type == "agent" and not agent_prompt:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Step {index} agent step requires agent_prompt.",
+                )
+
+            if execution_mode == "auto":
+                if (
+                    timer_minutes is None
+                    or timer_minutes < WORKFLOW_TEMPLATE_MIN_STEP_TIMER_MINUTES
+                    or timer_minutes > WORKFLOW_TEMPLATE_MAX_STEP_TIMER_MINUTES
+                ):
+                    raise HTTPException(
+                        status_code=400,
+                        detail=(
+                            f"Step {index} execution_mode=auto requires timer_minutes in "
+                            f"{WORKFLOW_TEMPLATE_MIN_STEP_TIMER_MINUTES}-"
+                            f"{WORKFLOW_TEMPLATE_MAX_STEP_TIMER_MINUTES}."
+                        ),
+                    )
+
+
+    def _normalize_workflow_template_steps(value: Any, *, strict: bool = False) -> list[dict[str, Any]]:
         raw_values = value if isinstance(value, list) else []
         normalized: list[dict[str, Any]] = []
         seen_ids: set[str] = set()
@@ -373,12 +500,15 @@ def register_api_workflow_endpoints(router: APIRouter) -> None:
             raw_action = ""
             raw_type: Any = None
             raw_trigger: Any = None
+            raw_trigger_kind: Any = None
+            raw_execution_mode: Any = None
             raw_target_url: Any = None
             raw_agent_prompt: Any = None
             raw_timer_minutes: Any = None
             raw_order: Any = index + 1
             raw_auto_run: Any = False
             raw_execution_log: Any = []
+            raw_configs: Any = None
             if isinstance(row, dict):
                 has_timer_field = "timer_minutes" in row or "timer" in row
                 raw_id = str(row.get("id") or "").strip()
@@ -406,6 +536,10 @@ def register_api_workflow_endpoints(router: APIRouter) -> None:
                     raw_type = row.get("step_type")
                 if "trigger" in row:
                     raw_trigger = row.get("trigger")
+                if "trigger_kind" in row:
+                    raw_trigger_kind = row.get("trigger_kind")
+                if "execution_mode" in row:
+                    raw_execution_mode = row.get("execution_mode")
                 if "target_url" in row:
                     raw_target_url = row.get("target_url")
                 elif "targetUrl" in row:
@@ -418,6 +552,8 @@ def register_api_workflow_endpoints(router: APIRouter) -> None:
                     raw_agent_prompt = row.get("agentPrompt")
                 elif "prompt" in row:
                     raw_agent_prompt = row.get("prompt")
+                if "configs" in row:
+                    raw_configs = row.get("configs")
             else:
                 raw_title = row
 
@@ -431,12 +567,9 @@ def register_api_workflow_endpoints(router: APIRouter) -> None:
                     title = _default_workflow_template_step_title(action)
                 else:
                     continue
-            auto_run = _normalize_workflow_template_step_auto_run(raw_auto_run)
+
+            auto_run_from_legacy = _normalize_workflow_template_step_auto_run(raw_auto_run)
             timer_minutes = _normalize_workflow_template_step_timer_minutes(raw_timer_minutes) if has_timer_field else None
-            if auto_run and (
-                timer_minutes is None or timer_minutes < WORKFLOW_TEMPLATE_MIN_STEP_TIMER_MINUTES
-            ):
-                timer_minutes = WORKFLOW_TEMPLATE_DEFAULT_STEP_TIMER_MINUTES
             target_url = _normalize_workflow_template_url(raw_target_url)
             agent_prompt = _normalize_workflow_template_step_agent_prompt(raw_agent_prompt)
             type_default = WORKFLOW_TEMPLATE_STEP_DEFAULT_TYPE
@@ -445,20 +578,65 @@ def register_api_workflow_endpoints(router: APIRouter) -> None:
             elif agent_prompt:
                 type_default = "agent"
             step_type = _normalize_workflow_template_step_type(raw_type, default=type_default)
-            trigger_default = "schedule" if auto_run else WORKFLOW_TEMPLATE_STEP_DEFAULT_TRIGGER
-            trigger = _normalize_workflow_template_step_trigger(raw_trigger, default=trigger_default)
+
+            execution_mode_default = "auto" if auto_run_from_legacy else WORKFLOW_TEMPLATE_STEP_DEFAULT_EXECUTION_MODE
+            execution_mode = _normalize_workflow_template_step_execution_mode(
+                raw_execution_mode,
+                default=execution_mode_default,
+            )
+            if not strict and step_type == "manual":
+                execution_mode = "manual_confirm"
+
+            if execution_mode == "auto" and (
+                timer_minutes is None or timer_minutes < WORKFLOW_TEMPLATE_MIN_STEP_TIMER_MINUTES
+            ):
+                if not strict:
+                    timer_minutes = WORKFLOW_TEMPLATE_DEFAULT_STEP_TIMER_MINUTES
+
+            if index == 0:
+                position_default_trigger_kind = (
+                    "scheduled"
+                    if execution_mode == "auto"
+                    else WORKFLOW_TEMPLATE_STEP_DEFAULT_TRIGGER_KIND
+                )
+            else:
+                position_default_trigger_kind = "after_previous"
+
+            if raw_trigger_kind is not None and str(raw_trigger_kind).strip():
+                trigger_kind = _normalize_workflow_template_step_trigger_kind(
+                    raw_trigger_kind,
+                    default=position_default_trigger_kind,
+                )
+            elif raw_trigger is not None and str(raw_trigger).strip():
+                trigger_kind = _legacy_trigger_to_trigger_kind(
+                    raw_trigger,
+                    default=position_default_trigger_kind,
+                )
+            else:
+                trigger_kind = position_default_trigger_kind
+
+            if not strict and index > 0:
+                trigger_kind = "after_previous"
+
+            trigger = _trigger_kind_to_legacy_trigger(trigger_kind)
+            auto_run = execution_mode == "auto"
             order = _normalize_workflow_template_step_order(raw_order, default=index + 1)
             execution_log = _normalize_workflow_template_step_execution_log(raw_execution_log)
+            configs = _normalize_workflow_template_step_configs(raw_configs)
             normalized_row: dict[str, Any] = {
                 "title": title[:WORKFLOW_TEMPLATE_MAX_STEP_TITLE_CHARS],
                 "action": action,
+                "step_type": step_type,
                 "type": step_type,
+                "trigger_kind": trigger_kind,
                 "trigger": trigger,
+                "execution_mode": execution_mode,
                 "target_url": target_url,
                 "agent_prompt": agent_prompt,
                 "order": order,
                 "auto_run": auto_run,
                 "timer_minutes": timer_minutes,
+                "configs": configs,
                 "execution_log": execution_log,
             }
 
@@ -481,6 +659,8 @@ def register_api_workflow_endpoints(router: APIRouter) -> None:
 
         for index, row in enumerate(normalized, start=1):
             row["order"] = index
+        if strict:
+            _validate_workflow_template_steps_strict(normalized)
         return normalized
 
 
@@ -659,7 +839,7 @@ def register_api_workflow_endpoints(router: APIRouter) -> None:
             raise HTTPException(status_code=400, detail="template name is required.")
         source_urls = _normalize_workflow_template_source_urls(payload.get("source_urls"))
         mfcloud_url = _normalize_workflow_template_url(payload.get("mfcloud_url"))
-        steps = _normalize_workflow_template_steps(payload.get("steps"))
+        steps = _normalize_workflow_template_steps(payload.get("steps"), strict=True)
         if not source_urls and mfcloud_url:
             source_urls = [mfcloud_url]
         if source_urls:
@@ -953,7 +1133,7 @@ def register_api_workflow_endpoints(router: APIRouter) -> None:
             mfcloud_url = ""
 
         created_at = _workflow_template_timestamp_now()
-        steps = _normalize_workflow_template_steps(payload.get("steps"))
+        steps = _normalize_workflow_template_steps(payload.get("steps"), strict=True)
         step_version = 1
         step_versions = _normalize_workflow_page_step_versions(
             payload.get("step_versions"),
@@ -1008,7 +1188,7 @@ def register_api_workflow_endpoints(router: APIRouter) -> None:
         if "archived" in payload:
             updates["archived"] = bool(payload.get("archived"))
         if "steps" in payload:
-            updates["steps"] = _normalize_workflow_template_steps(payload.get("steps"))
+            updates["steps"] = _normalize_workflow_template_steps(payload.get("steps"), strict=True)
 
         source_urls = None
         if "source_urls" in payload:

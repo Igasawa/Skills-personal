@@ -244,21 +244,27 @@
     return rows.map((row, index) => {
       const action = String(row.action || "").trim();
       const title = String(row.title || "").trim() || defaultTitleForStepAction(action, `手順${index + 1}`);
-      const stepType = String(row.type || 'manual').trim() || 'manual';
-      const trigger = String(row.trigger || 'manual').trim() || 'manual';
+      const stepType = String(row.step_type || row.type || 'manual').trim() || 'manual';
+      const executionMode = normalizeTemplateStepExecutionMode(
+        row.execution_mode,
+        executionModeFromAutoRun(row.auto_run),
+      );
+      const triggerDefault = index === 0
+        ? (executionMode === "auto" ? "scheduled" : "manual_start")
+        : "after_previous";
+      const triggerKind = normalizeTemplateStepTriggerKind(row.trigger_kind ?? row.trigger, triggerDefault);
       const typeLabel =
         stepType === "browser" ? "Browser" : stepType === "agent" ? "Agent" : "手動";
       const triggerLabel =
-        trigger === "schedule"
+        triggerKind === "scheduled"
           ? "スケジュール"
-          : trigger === "webhook"
-            ? "Webhook"
-            : trigger === "after_step"
+          : triggerKind === "external_event"
+            ? "外部イベント"
+            : triggerKind === "after_previous"
               ? "前手順完了後"
-              : "手動実行";
-      const autoRun = normalizeTemplateStepAutoRun(row.auto_run);
-      const timer = autoRun ? normalizeTemplateStepTimerForAutoRun(row.timer_minutes) : null;
-      const mode = autoRun ? `自動 ${timer}分` : "手動";
+              : "手動開始";
+      const timer = executionMode === "auto" ? normalizeTemplateStepTimerForAutoRun(row.timer_minutes) : null;
+      const mode = executionMode === "auto" ? `自動 ${timer}分` : "手動確認";
       const suffix = [];
       if (stepType === "browser" && String(row.target_url || "").trim()) {
         suffix.push(`URL: ${String(row.target_url || "").trim()}`);
@@ -756,8 +762,11 @@
           id: generateTemplateStepId(),
           title: "",
           action: "",
+          step_type: 'manual',
           type: 'manual',
+          trigger_kind: "manual_start",
           trigger: 'manual',
+          execution_mode: "manual_confirm",
           target_url: "",
           agent_prompt: "",
           auto_run: false,
