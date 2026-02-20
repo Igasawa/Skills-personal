@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 from collections import Counter
 from typing import Any, Callable
@@ -17,6 +18,13 @@ WORKSPACE_PROMPT_OPTIMIZE_MAX_TEXT_CHARS = 12000
 WORKSPACE_PROMPT_OPTIMIZE_MAX_GOAL_CHARS = 240
 WORKSPACE_PROMPT_OPTIMIZE_MAX_LIST_ITEMS = 12
 WORKSPACE_PROMPT_OPTIMIZE_MAX_LIST_ITEM_CHARS = 220
+WORKFLOW_EVENT_TOKEN_ENV = "AX_WORKFLOW_EVENT_TOKEN"
+WORKFLOW_EVENT_TOKEN_HEADER = "x-workflow-event-token"
+WORKFLOW_EVENT_IDEMPOTENCY_HEADER = "x-idempotency-key"
+WORKFLOW_EVENT_MAX_IDEMPOTENCY_KEY_CHARS = 128
+WORKFLOW_EVENT_MAX_RECEIPTS = 1000
+WORKFLOW_EVENT_MAX_EVENT_NAME_CHARS = 80
+WORKFLOW_EVENT_MAX_SOURCE_CHARS = 80
 
 _GOAL_INLINE_PATTERN = re.compile(r"^(?:目的|goal|ゴール|やりたいこと|狙い|task)\s*[:：]\s*(.+)$", flags=re.IGNORECASE)
 _GOAL_HEADING_PATTERN = re.compile(r"^(?:目的|goal|ゴール|やりたいこと|狙い|task)\s*[:：]?$", flags=re.IGNORECASE)
@@ -24,6 +32,7 @@ _GOAL_LEADING_MARKERS_PATTERN = re.compile(r"^[\s\-*・\d\.\)\(]+")
 _PROTECTED_TOKEN_PATTERN = re.compile(
     r"\{\{[^{}\n]+\}\}|\$\{[^{}\n]+\}|\$[A-Za-z_][A-Za-z0-9_]*|\{[A-Za-z_][A-Za-z0-9_]*\}|<[^<>\n]+>"
 )
+_WORKFLOW_EVENT_IDEMPOTENCY_RE = re.compile(r"^[A-Za-z0-9._:@-]{1,128}$")
 
 
 def _trim_prompt_optimize_text(value: Any, *, max_chars: int) -> str:
@@ -283,6 +292,264 @@ def register_api_workspace_routes(
     workflow_template_sort_options: set[str],
     workflow_template_max_search_chars: int,
 ) -> None:
+    def _allowed_scheduler_action_keys() -> set[str]:
+        raw = getattr(core_scheduler, "SCHEDULER_ALLOWED_ACTION_KEYS", set())
+        fallback = {
+            "preflight",
+            "preflight_mf",
+            "amazon_download",
+            "rakuten_download",
+            "amazon_print",
+            "rakuten_print",
+            "mf_reconcile",
+        }
+        if not isinstance(raw, (set, list, tuple)):
+            return fallback
+        normalized = {str(value or "").strip() for value in raw if str(value or "").strip()}
+        return normalized or fallback
+
+    def _first_workflow_template_step(template: dict[str, Any] | None) -> dict[str, Any]:
+        if not isinstance(template, dict):
+            return {}
+        steps = template.get("steps") if isinstance(template.get("steps"), list) else []
+        if not steps:
+            return {}
+        first = steps[0]
+        return first if isinstance(first, dict) else {}
+
+    def _normalize_step_trigger_kind(value: Any) -> str:
+        return str(value or "").strip().lower()
+
+    def _normalize_step_action(value: Any) -> str:
+        return str(value or "").strip()
+
+    def _sync_scheduler_state_for_template(template: dict[str, Any]) -> dict[str, Any]:
+        template_id = normalize_workflow_template_id(template.get("id"))
+        if not template_id:
+            return {"status": "skipped", "reason": "invalid_template_id"}
+
+        first_step = _first_workflow_template_step(template)
+        trigger_kind = _normalize_step_trigger_kind(first_step.get("trigger_kind"))
+        action_key = _normalize_step_action(first_step.get("action"))
+        allowed_action_keys = _allowed_scheduler_action_keys()
+
+        current_state = core_scheduler.get_state(template_id=template_id)
+        current_enabled = bool(current_state.get("enabled"))
+        current_run_date = str(current_state.get("run_date") or "").strip()
+        current_run_time = str(current_state.get("run_time") or "").strip() or "09:00"
+        current_catch_up = str(current_state.get("catch_up_policy") or "run_on_startup").strip() or "run_on_startup"
+        current_recurrence = str(current_state.get("recurrence") or "once").strip() or "once"
+
+        if trigger_kind != "scheduled":
+            state = core_scheduler.update_state({"enabled": False}, template_id=template_id)
+            return {
+                "status": "ok",
+                "reason": "trigger_not_scheduled",
+                "template_id": template_id,
+                "action_key": action_key,
+                "enabled": bool(state.get("enabled")),
+            }
+
+        if action_key not in allowed_action_keys:
+            state = core_scheduler.update_state({"enabled": False}, template_id=template_id)
+            return {
+                "status": "ok",
+                "reason": "unsupported_action",
+                "template_id": template_id,
+                "action_key": action_key,
+                "enabled": bool(state.get("enabled")),
+            }
+
+        year = core._safe_non_negative_int(template.get("year"), default=0)
+        month = core._safe_non_negative_int(template.get("month"), default=0)
+        has_valid_ym = year >= 2000 and 1 <= month <= 12
+        enabled = bool(current_enabled and has_valid_ym and current_run_date)
+
+        sync_payload: dict[str, Any] = {
+            "enabled": enabled,
+            "card_id": str(current_state.get("card_id") or "").strip() or f"workflow-template:{template_id}",
+            "action_key": action_key,
+            "year": year if has_valid_ym else None,
+            "month": month if has_valid_ym else None,
+            "mfcloud_url": str(template.get("mfcloud_url") or "").strip(),
+            "notes": str(template.get("notes") or "").strip(),
+        }
+        if enabled:
+            sync_payload["run_date"] = current_run_date
+            sync_payload["run_time"] = current_run_time
+            sync_payload["catch_up_policy"] = current_catch_up
+            sync_payload["recurrence"] = current_recurrence
+
+        state = core_scheduler.update_state(sync_payload, template_id=template_id)
+        reason = "scheduled_synced"
+        if not has_valid_ym:
+            reason = "disabled_invalid_year_month"
+        elif current_enabled and not current_run_date:
+            reason = "disabled_missing_schedule"
+        elif not current_enabled:
+            reason = "scheduled_not_armed"
+        return {
+            "status": "ok",
+            "reason": reason,
+            "template_id": template_id,
+            "action_key": action_key,
+            "enabled": bool(state.get("enabled")),
+        }
+
+    def _resolve_workflow_event_token(request: Request, token: str | None = None) -> str | None:
+        provided = str(token or "").strip()
+        if not provided:
+            provided = str(request.headers.get(WORKFLOW_EVENT_TOKEN_HEADER) or "").strip()
+        if not provided:
+            auth = str(request.headers.get("authorization") or request.headers.get("Authorization") or "").strip()
+            if auth.lower().startswith("bearer "):
+                provided = auth[7:].strip()
+        return provided or None
+
+    def _validate_workflow_event_token(request: Request, token: str | None = None) -> None:
+        expected = str(os.environ.get(WORKFLOW_EVENT_TOKEN_ENV) or "").strip()
+        if not expected:
+            return
+        provided = _resolve_workflow_event_token(request=request, token=token)
+        if not provided or provided != expected:
+            raise HTTPException(status_code=401, detail="Invalid workflow event token.")
+
+    def _normalize_workflow_event_idempotency_key(value: Any) -> str:
+        key = str(value or "").strip()
+        if not key:
+            return ""
+        if len(key) > WORKFLOW_EVENT_MAX_IDEMPOTENCY_KEY_CHARS:
+            key = key[:WORKFLOW_EVENT_MAX_IDEMPOTENCY_KEY_CHARS]
+        if not _WORKFLOW_EVENT_IDEMPOTENCY_RE.fullmatch(key):
+            return ""
+        return key
+
+    def _resolve_workflow_event_idempotency_key(request: Request, payload: dict[str, Any]) -> str:
+        for candidate in (
+            payload.get("idempotency_key"),
+            payload.get("idempotencyKey"),
+            payload.get("event_id"),
+            payload.get("eventId"),
+            request.headers.get(WORKFLOW_EVENT_IDEMPOTENCY_HEADER),
+        ):
+            key = _normalize_workflow_event_idempotency_key(candidate)
+            if key:
+                return key
+        return ""
+
+    def _workflow_event_receipts_path():
+        return core._artifact_root() / "_workflow_events" / "receipts.json"
+
+    def _read_workflow_event_receipts() -> dict[str, dict[str, Any]]:
+        raw = core._read_json(_workflow_event_receipts_path())
+        receipts = raw.get("receipts") if isinstance(raw, dict) else {}
+        if not isinstance(receipts, dict):
+            return {"receipts": {}}
+        normalized: dict[str, dict[str, Any]] = {}
+        for key, value in receipts.items():
+            if not isinstance(key, str) or not key.strip() or not isinstance(value, dict):
+                continue
+            normalized[key.strip()] = dict(value)
+        return {"receipts": normalized}
+
+    def _write_workflow_event_receipts(state: dict[str, Any]) -> None:
+        receipts = state.get("receipts") if isinstance(state, dict) else {}
+        payload = {"receipts": receipts if isinstance(receipts, dict) else {}}
+        path = _workflow_event_receipts_path()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        core._write_json(path, payload)
+
+    def _workflow_event_receipt_key(template_id: str, idempotency_key: str) -> str:
+        return f"{template_id}:{idempotency_key}"
+
+    def _lookup_workflow_event_receipt(template_id: str, idempotency_key: str) -> dict[str, Any] | None:
+        if not idempotency_key:
+            return None
+        state = _read_workflow_event_receipts()
+        key = _workflow_event_receipt_key(template_id, idempotency_key)
+        row = state.get("receipts", {}).get(key)
+        if isinstance(row, dict):
+            return row
+        return None
+
+    def _save_workflow_event_receipt(
+        *,
+        template_id: str,
+        template_name: str,
+        action_key: str,
+        event_name: str,
+        source: str,
+        idempotency_key: str,
+        run_id: str,
+    ) -> None:
+        if not idempotency_key:
+            return
+        state = _read_workflow_event_receipts()
+        receipts = state.get("receipts")
+        if not isinstance(receipts, dict):
+            receipts = {}
+        key = _workflow_event_receipt_key(template_id, idempotency_key)
+        if key in receipts:
+            return
+        receipts[key] = {
+            "template_id": template_id,
+            "template_name": template_name,
+            "action_key": action_key,
+            "event_name": event_name,
+            "source": source,
+            "idempotency_key": idempotency_key,
+            "run_id": run_id,
+            "created_at": workflow_template_timestamp_now(),
+        }
+        if len(receipts) > WORKFLOW_EVENT_MAX_RECEIPTS:
+            keys_sorted = sorted(receipts.keys(), key=lambda item: str(receipts[item].get("created_at") or ""))
+            drop_count = max(0, len(receipts) - WORKFLOW_EVENT_MAX_RECEIPTS)
+            for stale_key in keys_sorted[:drop_count]:
+                receipts.pop(stale_key, None)
+        state["receipts"] = receipts
+        _write_workflow_event_receipts(state)
+
+    def _resolve_external_event_template(
+        payload: dict[str, Any],
+        templates: list[dict[str, Any]],
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
+        requested_template_id = normalize_workflow_template_id(payload.get("template_id") or payload.get("templateId"))
+        requested_event_name = str(payload.get("event_name") or payload.get("eventName") or "").strip().lower()
+
+        external_templates: list[tuple[dict[str, Any], dict[str, Any]]] = []
+        for template in templates:
+            first_step = _first_workflow_template_step(template)
+            trigger_kind = _normalize_step_trigger_kind(first_step.get("trigger_kind"))
+            if trigger_kind == "external_event":
+                external_templates.append((template, first_step))
+
+        if requested_template_id:
+            for template, first_step in external_templates:
+                if str(template.get("id") or "") == requested_template_id:
+                    return template, first_step
+            for template in templates:
+                if str(template.get("id") or "") == requested_template_id:
+                    raise HTTPException(status_code=409, detail="Template step 1 must use trigger_kind=external_event.")
+            raise HTTPException(status_code=404, detail="Workflow template not found.")
+
+        if requested_event_name:
+            matched = [
+                (template, first_step)
+                for template, first_step in external_templates
+                if _normalize_step_action(first_step.get("action")).lower() == requested_event_name
+            ]
+            if not matched:
+                raise HTTPException(status_code=404, detail="No external_event workflow template matched event_name.")
+            if len(matched) > 1:
+                raise HTTPException(status_code=409, detail="Multiple templates matched event_name. Specify template_id.")
+            return matched[0]
+
+        if len(external_templates) == 1:
+            return external_templates[0]
+        if not external_templates:
+            raise HTTPException(status_code=404, detail="No external_event workflow template was found.")
+        raise HTTPException(status_code=409, detail="Multiple external_event templates found. Specify template_id.")
+
     @router.get("/api/workspace/state")
     def api_get_workspace_state() -> JSONResponse:
         state = read_workspace_state()
@@ -726,8 +993,30 @@ def register_api_workspace_routes(
             except Exception:
                 pass
 
+        scheduler_sync: dict[str, Any] = {"status": "skipped", "reason": "not_synced"}
+        try:
+            scheduler_sync = _sync_scheduler_state_for_template(saved)
+        except HTTPException as exc:
+            scheduler_sync = {
+                "status": "error",
+                "reason": "scheduler_sync_failed",
+                "detail": str(exc.detail),
+            }
+        except Exception as exc:
+            scheduler_sync = {
+                "status": "error",
+                "reason": "scheduler_sync_failed",
+                "detail": str(exc),
+            }
+
         return JSONResponse(
-            {"status": "ok", "template": saved, "count": len(existing), "updated": updated},
+            {
+                "status": "ok",
+                "template": saved,
+                "count": len(existing),
+                "updated": updated,
+                "scheduler_sync": scheduler_sync,
+            },
             headers={"Cache-Control": "no-store"},
         )
 
@@ -785,6 +1074,140 @@ def register_api_workspace_routes(
         body = payload if isinstance(payload, dict) else {}
         state = core_scheduler.update_state(body, template_id=template_id)
         return JSONResponse({"status": "ok", **state}, headers={"Cache-Control": "no-store"})
+
+    @router.post("/api/workflow-events")
+    def api_workflow_events(
+        request: Request,
+        payload: dict[str, Any] | None = None,
+        token: str | None = Query(default=None),
+    ) -> JSONResponse:
+        body = payload if isinstance(payload, dict) else {}
+        req = request
+        _validate_workflow_event_token(req, token=token)
+
+        templates = read_workflow_templates()
+        template, first_step = _resolve_external_event_template(body, templates)
+        template_id = normalize_workflow_template_id(template.get("id"))
+        if not template_id:
+            raise HTTPException(status_code=400, detail="Resolved template id is invalid.")
+
+        action_key = _normalize_step_action(first_step.get("action"))
+        allowed_action_keys = _allowed_scheduler_action_keys()
+        if action_key not in allowed_action_keys:
+            raise HTTPException(
+                status_code=409,
+                detail=f"external_event action is not executable in MVP: {action_key or '(empty)'}",
+            )
+
+        idempotency_key = _resolve_workflow_event_idempotency_key(req, body)
+        duplicate = _lookup_workflow_event_receipt(template_id, idempotency_key) if idempotency_key else None
+        if duplicate:
+            return JSONResponse(
+                {
+                    "status": "ok",
+                    "duplicate": True,
+                    "triggered": False,
+                    "template_id": template_id,
+                    "template_name": str(template.get("name") or "").strip(),
+                    "action_key": action_key,
+                    "idempotency_key": idempotency_key,
+                    "run_id": str(duplicate.get("run_id") or ""),
+                },
+                headers={"Cache-Control": "no-store"},
+            )
+
+        year = core._safe_non_negative_int(body.get("year"), default=0)
+        month = core._safe_non_negative_int(body.get("month"), default=0)
+        if year <= 0:
+            year = core._safe_non_negative_int(template.get("year"), default=0)
+        if month <= 0:
+            month = core._safe_non_negative_int(template.get("month"), default=0)
+        if year < 2000 or month < 1 or month > 12:
+            raise HTTPException(status_code=400, detail="Workflow event requires valid year/month.")
+
+        template_name = str(template.get("name") or "").strip()
+        event_name = (
+            str(body.get("event_name") or body.get("eventName") or action_key).strip()[:WORKFLOW_EVENT_MAX_EVENT_NAME_CHARS]
+        )
+        source = str(body.get("source") or body.get("event_source") or "webhook").strip()[:WORKFLOW_EVENT_MAX_SOURCE_CHARS]
+        mfcloud_url = str(body.get("mfcloud_url") or template.get("mfcloud_url") or "").strip()
+        notes = str(body.get("notes") or template.get("notes") or "").strip()
+        actor = actor_from_request(req)
+
+        run_payload: dict[str, Any] = {
+            "year": year,
+            "month": month,
+            "mode": action_key,
+            "mfcloud_url": mfcloud_url,
+            "notes": notes,
+            "auth_handoff": False,
+            "auto_receipt_name": True,
+            "_audit_actor": actor,
+        }
+        if action_key == "mf_reconcile":
+            run_payload["mf_draft_create"] = True
+
+        try:
+            run_result = core._start_run(run_payload)
+        except HTTPException as exc:
+            core._append_audit_event(
+                year=year,
+                month=month,
+                event_type="workflow_event",
+                action=action_key or "unknown",
+                status="rejected" if exc.status_code in {400, 404, 409} else "failed",
+                actor=actor,
+                details={
+                    "reason": str(exc.detail),
+                    "template_id": template_id,
+                    "template_name": template_name,
+                    "event_name": event_name,
+                    "source": source,
+                    "idempotency_key": idempotency_key,
+                },
+            )
+            raise
+
+        run_id = str(run_result.get("run_id") or "")
+        _save_workflow_event_receipt(
+            template_id=template_id,
+            template_name=template_name,
+            action_key=action_key,
+            event_name=event_name,
+            source=source,
+            idempotency_key=idempotency_key,
+            run_id=run_id,
+        )
+        core._append_audit_event(
+            year=year,
+            month=month,
+            event_type="workflow_event",
+            action=action_key,
+            status="success",
+            actor=actor,
+            mode=action_key,
+            run_id=run_id,
+            details={
+                "template_id": template_id,
+                "template_name": template_name,
+                "event_name": event_name,
+                "source": source,
+                "idempotency_key": idempotency_key,
+            },
+        )
+        return JSONResponse(
+            {
+                "status": "ok",
+                "duplicate": False,
+                "triggered": True,
+                "template_id": template_id,
+                "template_name": template_name,
+                "action_key": action_key,
+                "idempotency_key": idempotency_key,
+                "run_id": run_id,
+            },
+            headers={"Cache-Control": "no-store"},
+        )
 
     @router.post("/api/print-pdf/{ym}/{source}/{filename}")
     def api_print_pdf(ym: str, source: str, filename: str, request: Request) -> JSONResponse:

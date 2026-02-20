@@ -77,6 +77,7 @@ def test_api_router_registers_expected_routes() -> None:
         "/api/steps/{ym}/reset/{step_id}",
         "/api/workflow-pages",
         "/api/workflow-pages/{workflow_page_id}",
+        "/api/workflow-events",
         "/api/workflow-templates",
         "/api/workflow-templates/{template_id}",
         "/api/workspace/prompt/optimize",
