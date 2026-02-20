@@ -274,7 +274,7 @@
         suffix.push(`Prompt: ${promptPreview}${promptPreview.length >= 40 ? "..." : ""}`);
       }
       const suffixText = suffix.length ? ` / ${suffix.join(" / ")}` : "";
-      return `${index + 1}. ${title} / ${typeLabel} / ${triggerLabel} / ${mode}${suffixText}`;
+      return `${index + 1}. ${title} / 担当タイプ: ${typeLabel} / 開始条件: ${triggerLabel} / 実行方法: ${mode}${suffixText}`;
     });
   }
 

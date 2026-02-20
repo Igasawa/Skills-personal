@@ -73,7 +73,7 @@
   const TEMPLATE_STEP_TRIGGER_KIND_VALUES = new Set(TEMPLATE_STEP_TRIGGER_KINDS.map((item) => item.value));
   const TEMPLATE_STEP_EXECUTION_MODES = [
     { value: "manual_confirm", label: "手動確認" },
-    { value: "auto", label: "自動" },
+    { value: "auto", label: "自動実行" },
   ];
   const TEMPLATE_STEP_EXECUTION_MODE_VALUES = new Set(TEMPLATE_STEP_EXECUTION_MODES.map((item) => item.value));
   const TEMPLATE_STEP_MAX_AGENT_PROMPT_CHARS = 4000;

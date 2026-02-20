@@ -719,6 +719,38 @@
       : ["after_previous"];
   }
 
+  function getAllowedExecutionModesForStepType(stepType) {
+    const normalizedType = normalizeTemplateStepType(stepType, "manual");
+    if (normalizedType === "manual") {
+      return ["manual_confirm"];
+    }
+    return ["manual_confirm", "auto"];
+  }
+
+  function getTemplateStepExecutionModeOptionsHtml(selectedExecutionMode, stepType = "manual") {
+    const allowed = getAllowedExecutionModesForStepType(stepType);
+    const fallback = allowed[0] || "manual_confirm";
+    const normalizedExecutionMode = normalizeTemplateStepExecutionMode(selectedExecutionMode, fallback);
+    return TEMPLATE_STEP_EXECUTION_MODES
+      .filter((item) => allowed.includes(item.value))
+      .map(
+        (item) =>
+          `<option value="${item.value}"${item.value === normalizedExecutionMode ? " selected" : ""}>${item.label}</option>`,
+      )
+      .join("");
+  }
+
+  function createTemplateStepSelectField(caption, controlEl) {
+    const field = document.createElement("label");
+    field.className = "template-step-select-field";
+    const captionEl = document.createElement("span");
+    captionEl.className = "template-step-field-caption";
+    captionEl.textContent = String(caption || "").trim();
+    field.appendChild(captionEl);
+    field.appendChild(controlEl);
+    return field;
+  }
+
   function getTemplateStepTriggerOptionsHtml(selectedTriggerKind, allowedTriggerKinds = null) {
     const normalizedTriggerKind = normalizeTemplateStepTriggerKind(selectedTriggerKind, "manual_start");
     const allowed = Array.isArray(allowedTriggerKinds) && allowedTriggerKinds.length
@@ -849,19 +881,20 @@
     );
     const typeEl = row?.querySelector("[data-template-step-type]");
     const triggerEl = row?.querySelector("[data-template-step-trigger-kind]") || row?.querySelector("[data-template-step-trigger]");
+    const executionModeEl = row?.querySelector("[data-template-step-execution-mode]");
     const targetUrlEl = row?.querySelector("[data-template-step-target-url]");
     const agentPromptEl = row?.querySelector("[data-template-step-agent-prompt]");
     const title =
       String(row?.querySelector("[data-template-step-title]")?.value || "").trim();
     const order = normalizeTemplateStepOrder(row?.dataset?.templateStepOrder, index + 1);
-    const autoRun = Boolean(row?.querySelector("[data-template-step-auto-run]")?.checked);
+    const legacyAutoRun = Boolean(row?.querySelector("[data-template-step-auto-run]")?.checked);
     const targetUrl = String(targetUrlEl?.value || "").trim().slice(0, 2048);
     const agentPrompt = normalizeTemplateStepAgentPrompt(agentPromptEl?.value);
     const typeDefault = normalizeTemplateStepTargetUrl(targetUrl) ? "browser" : agentPrompt ? "agent" : "manual";
     const stepType = normalizeTemplateStepType(typeEl?.value, typeDefault);
-    const executionModeDefault = executionModeFromAutoRun(autoRun);
+    const executionModeDefault = executionModeFromAutoRun(legacyAutoRun);
     let executionMode = normalizeTemplateStepExecutionMode(
-      row?.dataset?.templateStepExecutionMode,
+      executionModeEl?.value || row?.dataset?.templateStepExecutionMode,
       executionModeDefault,
     );
     if (stepType === "manual") {
@@ -881,7 +914,7 @@
     const timerInput = row?.querySelector("[data-template-step-timer]");
     const timerRaw = String(timerInput?.value || "").trim();
     let timerMinutes = null;
-    if (autoRun) {
+    if (executionMode === "auto") {
       timerMinutes = normalizeTemplateStepTimerForAutoRun(timerRaw);
     } else if (timerRaw) {
       timerMinutes = normalizeTemplateStepTimerMinutes(timerRaw, null);
@@ -979,16 +1012,21 @@
       const typeEl = row.querySelector("[data-template-step-type]");
       if (typeEl) {
         typeEl.value = stepType;
-        typeEl.setAttribute("aria-label", `手順${index + 1}のタイプ`);
+        typeEl.setAttribute("aria-label", `手順${index + 1}の担当タイプ`);
       }
 
+      const executionModeEl = row.querySelector("[data-template-step-execution-mode]");
       const autoRunEl = row.querySelector("[data-template-step-auto-run]");
       let executionMode = normalizeTemplateStepExecutionMode(
-        parsed.execution_mode,
+        executionModeEl?.value || parsed.execution_mode,
         executionModeFromAutoRun(parsed.auto_run),
       );
       if (stepType === "manual") {
         executionMode = "manual_confirm";
+      }
+      const allowedExecutionModes = getAllowedExecutionModesForStepType(stepType);
+      if (!allowedExecutionModes.includes(executionMode)) {
+        executionMode = allowedExecutionModes[0];
       }
       const autoRunEnabled = autoRunFromExecutionMode(executionMode);
       const triggerDefault = index === 0
@@ -1006,17 +1044,23 @@
       row.dataset.templateStepExecutionMode = executionMode;
       row.dataset.templateStepTriggerKind = triggerKind;
       row.dataset.templateStepTrigger = trigger;
+      if (executionModeEl) {
+        executionModeEl.innerHTML = getTemplateStepExecutionModeOptionsHtml(executionMode, stepType);
+        executionModeEl.value = executionMode;
+        executionModeEl.setAttribute("aria-label", `手順${index + 1}の実行方法`);
+      }
       if (autoRunEl) {
         autoRunEl.checked = autoRunEnabled;
         autoRunEl.setAttribute("aria-label", `手順${index + 1}の自動実行`);
         autoRunEl.disabled = stepType === "manual";
+        autoRunEl.hidden = true;
       }
 
       const uiModeEnabled = uiMode === TEMPLATE_STEP_UI_MODE.advanced;
       const advancedContainer = row.querySelector("[data-template-step-advanced]");
       const toggleButton = row.querySelector("[data-template-step-toggle]");
       if (advancedContainer) {
-    advancedContainer.dataset.templateStepExpanded = uiModeEnabled ? "1" : "0";
+        advancedContainer.dataset.templateStepExpanded = uiModeEnabled ? "1" : "0";
       }
       if (toggleButton) {
         toggleButton.textContent = uiModeEnabled ? AUTO_TIMER_LABEL_ON : AUTO_TIMER_LABEL_OFF;
@@ -1045,7 +1089,7 @@
       if (triggerEl) {
         triggerEl.innerHTML = getTemplateStepTriggerOptionsHtml(triggerKind, allowedTriggerKinds);
         triggerEl.value = triggerKind;
-        triggerEl.setAttribute("aria-label", `手順${index + 1}のトリガー`);
+        triggerEl.setAttribute("aria-label", `手順${index + 1}の開始条件`);
       }
 
       const targetUrlFieldEl = row.querySelector("[data-template-step-target-url-field]");
@@ -1133,8 +1177,12 @@
         row.querySelector("[data-template-step-type]")?.value,
         "manual",
       );
-      const autoRunEnabled = Boolean(row.querySelector("[data-template-step-auto-run]")?.checked);
-      const executionMode = executionModeFromAutoRun(autoRunEnabled);
+      const executionMode = normalizeTemplateStepExecutionMode(
+        row.querySelector("[data-template-step-execution-mode]")?.value
+          || row.dataset.templateStepExecutionMode,
+        "manual_confirm",
+      );
+      const autoRunEnabled = executionMode === "auto";
       if (type === "manual" && executionMode === "auto") {
         showToast("人ステップでは自動実行を選択できません。", "error");
         return false;
@@ -1149,12 +1197,12 @@
         if (triggerEl) {
           triggerEl.setCustomValidity(
             index === 0
-              ? "先頭手順のトリガーは 手動開始 / スケジュール / 外部イベント のみ選択できます。"
-              : "2手順目以降のトリガーは 前手順完了後 のみ選択できます。",
+              ? "先頭手順の開始条件は 手動開始 / スケジュール / 外部イベント のみ選択できます。"
+              : "2手順目以降の開始条件は 前手順完了後 のみ選択できます。",
           );
           triggerEl.reportValidity();
         } else {
-          showToast("トリガー設定が不正です。", "error");
+          showToast("開始条件の設定が不正です。", "error");
         }
         return false;
       }
@@ -1359,23 +1407,28 @@
     typeEl.className = "template-step-type";
     typeEl.dataset.templateStepType = "1";
     typeEl.innerHTML = getTemplateStepTypeOptionsHtml(stepType);
+    const typeFieldEl = createTemplateStepSelectField("担当タイプ", typeEl);
 
     const triggerEl = document.createElement("select");
     triggerEl.className = "template-step-trigger";
     triggerEl.dataset.templateStepTriggerKind = "1";
     triggerEl.dataset.templateStepTrigger = "1";
     triggerEl.innerHTML = getTemplateStepTriggerOptionsHtml(triggerKind, getAllowedTriggerKindsForPosition(0));
+    const triggerFieldEl = createTemplateStepSelectField("開始条件", triggerEl);
 
-    const autoRunLabel = document.createElement("label");
-    autoRunLabel.className = "template-step-auto-run";
+    const executionModeEl = document.createElement("select");
+    executionModeEl.className = "template-step-execution-mode";
+    executionModeEl.dataset.templateStepExecutionMode = "1";
+    executionModeEl.innerHTML = getTemplateStepExecutionModeOptionsHtml(executionMode, stepType);
+    const executionModeFieldEl = createTemplateStepSelectField("実行方法", executionModeEl);
+
+    // Keep hidden legacy field for backward-compatible script hooks.
     const autoRunEl = document.createElement("input");
     autoRunEl.type = "checkbox";
     autoRunEl.dataset.templateStepAutoRun = "1";
     autoRunEl.checked = autoRun;
-    const autoRunText = document.createElement("span");
-    autoRunText.textContent = "自動";
-    autoRunLabel.appendChild(autoRunEl);
-    autoRunLabel.appendChild(autoRunText);
+    autoRunEl.hidden = true;
+    autoRunEl.tabIndex = -1;
 
     const timerEl = document.createElement("input");
     timerEl.type = "number";
@@ -1467,8 +1520,8 @@
       refreshTemplateStepRows();
     });
     triggerEl.addEventListener("change", refreshTemplateStepRows);
-    autoRunEl.addEventListener("change", () => {
-      if (autoRunEl.checked && !String(timerEl.value || "").trim()) {
+    executionModeEl.addEventListener("change", () => {
+      if (executionModeEl.value === "auto" && !String(timerEl.value || "").trim()) {
         timerEl.value = String(TEMPLATE_STEP_TIMER_DEFAULT_MINUTES);
       }
       refreshTemplateStepRows();
@@ -1477,7 +1530,7 @@
       timerEl.setCustomValidity("");
     });
     timerEl.addEventListener("change", () => {
-      if (autoRunEl.checked) {
+      if (executionModeEl.value === "auto") {
         timerEl.value = String(normalizeTemplateStepTimerForAutoRun(timerEl.value));
       } else if (String(timerEl.value || "").trim()) {
         timerEl.value = String(normalizeTemplateStepTimerMinutes(timerEl.value, 0));
@@ -1497,9 +1550,10 @@
     row.appendChild(titleEl);
     row.appendChild(toggleButton);
     row.appendChild(removeButton);
-    advancedContainer.appendChild(typeEl);
-    advancedContainer.appendChild(triggerEl);
-    advancedContainer.appendChild(autoRunLabel);
+    advancedContainer.appendChild(typeFieldEl);
+    advancedContainer.appendChild(triggerFieldEl);
+    advancedContainer.appendChild(executionModeFieldEl);
+    advancedContainer.appendChild(autoRunEl);
     advancedContainer.appendChild(timerEl);
     advancedContainer.appendChild(targetUrlFieldEl);
     advancedContainer.appendChild(agentPromptFieldEl);
@@ -1831,6 +1885,8 @@ window.DashboardIndexState = {
   getTemplateStepRows,
   getTemplateStepActionOptionsHtml,
   getTemplateStepTypeOptionsHtml,
+  getAllowedExecutionModesForStepType,
+  getTemplateStepExecutionModeOptionsHtml,
   getAllowedTriggerKindsForPosition,
   getTemplateStepTriggerOptionsHtml,
   normalizeTemplateStepAction,
