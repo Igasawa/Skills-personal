@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 import subprocess
 import sys
+import threading
 from datetime import datetime, timedelta
 from typing import Any
 
@@ -4628,6 +4629,25 @@ def test_api_workflow_events_summary_returns_empty_when_audit_not_found(
     assert by_status.get("rejected") == 0
     assert by_status.get("failed") == 0
     assert by_status.get("unknown") == 0
+
+
+def test_workflow_event_retry_worker_starts_and_invokes_callback(monkeypatch: pytest.MonkeyPatch) -> None:
+    done = threading.Event()
+
+    def _callback() -> None:
+        done.set()
+
+    monkeypatch.setenv("AX_WORKFLOW_EVENT_RETRY_WORKER_ENABLED", "1")
+    monkeypatch.setenv("AX_WORKFLOW_EVENT_RETRY_WORKER_POLL_SECONDS", "5")
+
+    api_workspace_routes.stop_workflow_event_retry_worker()
+    api_workspace_routes.set_workflow_event_retry_drain_callback(_callback)
+    try:
+        api_workspace_routes.start_workflow_event_retry_worker()
+        assert done.wait(1.5) is True
+    finally:
+        api_workspace_routes.stop_workflow_event_retry_worker()
+        api_workspace_routes.set_workflow_event_retry_drain_callback(None)
 
 
 def test_api_document_freshness_filters_kil_and_classifies(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

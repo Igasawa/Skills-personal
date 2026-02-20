@@ -14,16 +14,21 @@ def create_dashboard_app(
     base_dir: Path,
     create_pages_router: Callable[[Jinja2Templates], object],
     create_api_router: Callable[[], object],
+    start_worker: Callable[[], None] | None = None,
     stop_worker: Callable[[], None] | None = None,
 ) -> FastAPI:
-    if stop_worker is not None:
+    if start_worker is not None or stop_worker is not None:
         @asynccontextmanager
         async def _lifespan(_app: FastAPI):
-            stop_worker()
+            if stop_worker is not None:
+                stop_worker()
+            if start_worker is not None:
+                start_worker()
             try:
                 yield
             finally:
-                stop_worker()
+                if stop_worker is not None:
+                    stop_worker()
 
         app = FastAPI(lifespan=_lifespan)
     else:

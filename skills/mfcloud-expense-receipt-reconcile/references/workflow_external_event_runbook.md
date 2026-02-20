@@ -12,6 +12,8 @@
 - `AX_WORKFLOW_EVENT_RETRY_BASE_DELAY_SECONDS=30`
 - `AX_WORKFLOW_EVENT_RETRY_TERMINAL_TTL_DAYS=30`
 - `AX_WORKFLOW_EVENT_RETRY_MAX_JOBS=2000`
+- `AX_WORKFLOW_EVENT_RETRY_WORKER_ENABLED=1`
+- `AX_WORKFLOW_EVENT_RETRY_WORKER_POLL_SECONDS=30`
 
 ### 高トラフィック環境の目安
 - `AX_WORKFLOW_EVENT_RECEIPT_TTL_DAYS=30`（再送期間が短い場合）
@@ -73,12 +75,13 @@ curl "http://127.0.0.1:8000/api/workflow-events/retry-jobs?limit=20"
 ## 4.2 再送・再実行フロー（運用手順）
 1. `GET /api/workflow-events/summary?ym=YYYY-MM` で `by_retry_advice` と `recent` を確認。
 2. `retry_after_fix` は設定修正を先に実施（トークン、template_id、year/month など）。
-3. `retry_with_backoff` は再送ジョブAPIで実行する。
+3. `retry_with_backoff` は通常は常駐ワーカーが自動drainする（`AX_WORKFLOW_EVENT_RETRY_WORKER_ENABLED=1`）。
+4. 即時実行したい場合は再送ジョブAPIを手動実行する。
 ```powershell
 curl -X POST "http://127.0.0.1:8000/api/workflow-events/retry-jobs/drain" -H "Content-Type: application/json" -d "{\"limit\":10}"
 ```
-4. `escalated` が発生した場合は手動対応へ切り替え、原因修正後に再送。
-5. 再送後に `status=success` を確認し、運用記録へ残す。
+5. `escalated` が発生した場合は手動対応へ切り替え、原因修正後に再送。
+6. 再送後に `status=success` を確認し、運用記録へ残す。
 
 ## 5. 運用チェックリスト（月次）
 - `workflow_event` の `reason_class` 上位3件を記録。

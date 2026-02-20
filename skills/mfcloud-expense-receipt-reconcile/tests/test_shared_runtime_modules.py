@@ -82,6 +82,46 @@ def test_dashboard_app_factory_mounts_and_calls_stop_worker(tmp_path: Path) -> N
     assert len(calls) == 2
 
 
+def test_dashboard_app_factory_calls_start_and_stop_worker(tmp_path: Path) -> None:
+    base = tmp_path / "dashboard"
+    (base / "static").mkdir(parents=True)
+    (base / "templates").mkdir(parents=True)
+
+    calls: list[str] = []
+
+    def _create_pages_router(_templates) -> APIRouter:
+        router = APIRouter()
+
+        @router.get("/ping")
+        def _ping() -> dict[str, bool]:
+            return {"ok": True}
+
+        return router
+
+    def _create_api_router() -> APIRouter:
+        router = APIRouter()
+
+        @router.get("/api/ping")
+        def _api_ping() -> dict[str, bool]:
+            return {"ok": True}
+
+        return router
+
+    app = create_dashboard_app(
+        base_dir=base,
+        create_pages_router=_create_pages_router,
+        create_api_router=_create_api_router,
+        start_worker=lambda: calls.append("start"),
+        stop_worker=lambda: calls.append("stop"),
+    )
+
+    with TestClient(app) as client:
+        assert client.get("/ping").status_code == 200
+        assert client.get("/api/ping").status_code == 200
+
+    assert calls == ["stop", "start", "stop"]
+
+
 def test_common_workflow_template_store_helpers(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.setenv("AX_HOME", str(tmp_path))
     rows = [

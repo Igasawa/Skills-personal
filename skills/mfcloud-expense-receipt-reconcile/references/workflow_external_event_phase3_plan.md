@@ -22,6 +22,7 @@
 - Phase 3.3 先行として、監査 `details` に `retry_advice` を追加済み。
 - Phase 3.3 実装として、`retry_jobs` キュー（保存/一覧/drain）と `escalated` 遷移を追加済み。
 - Phase 3.3 実装として、`/expense-workflow-copy` に再送キュー表示と手動 drain 導線を追加済み。
+- Phase 3.3 実装として、常駐ワーカーによる自動 drain（起動時 + ポーリング）を追加済み。
 
 ## 3. 段階導入
 
@@ -84,4 +85,4 @@
 2. 完了: `workflow_event` 監査分類の集計APIと表示要件を定義。
 3. 完了: 失敗時の再送キュー API（`retry-jobs`）と `escalated` 制御を実装。
 4. 完了: `retry_queue` を UI に可視化し、運用導線を統合。
-5. 次: Phase 3.3 の日次トレンド/通知要件を確定。
+5. 次: `escalated` 通知連携（Slack/メール）を確定。

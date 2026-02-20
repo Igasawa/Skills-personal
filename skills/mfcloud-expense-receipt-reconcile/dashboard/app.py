@@ -12,14 +12,29 @@ if str(SHARED_LIB_DIR) not in sys.path:
     sys.path.insert(0, str(SHARED_LIB_DIR))
 
 from routes.api import create_api_router
+from routes.api_workspace_routes import (
+    start_workflow_event_retry_worker,
+    stop_workflow_event_retry_worker,
+)
 from routes.pages import create_pages_router
 from services import core_scheduler
 from dashboard_app_factory import create_dashboard_app
+
+
+def _start_background_workers() -> None:
+    # Keep scheduler auto-execution disabled for wizard operation.
+    core_scheduler.stop_worker()
+    start_workflow_event_retry_worker()
+
+
+def _stop_background_workers() -> None:
+    stop_workflow_event_retry_worker()
+    core_scheduler.stop_worker()
 
 app = create_dashboard_app(
     base_dir=BASE_DIR,
     create_pages_router=create_pages_router,
     create_api_router=create_api_router,
-    # Timer auto-execution is intentionally disabled for wizard operation.
-    stop_worker=core_scheduler.stop_worker,
+    start_worker=_start_background_workers,
+    stop_worker=_stop_background_workers,
 )

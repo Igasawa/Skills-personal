@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import threading
 from collections import Counter
 from datetime import datetime, timedelta
 from typing import Any, Callable
@@ -42,6 +43,9 @@ WORKFLOW_EVENT_RETRY_TERMINAL_STATUSES = {"succeeded", "discarded", "escalated"}
 WORKFLOW_EVENT_RETRY_TEMPLATE_NAME_CHARS = 128
 WORKFLOW_EVENT_RETRY_URL_CHARS = 2000
 WORKFLOW_EVENT_RETRY_NOTES_CHARS = 2000
+WORKFLOW_EVENT_RETRY_WORKER_ENABLED_ENV = "AX_WORKFLOW_EVENT_RETRY_WORKER_ENABLED"
+WORKFLOW_EVENT_RETRY_WORKER_POLL_SECONDS_ENV = "AX_WORKFLOW_EVENT_RETRY_WORKER_POLL_SECONDS"
+WORKFLOW_EVENT_RETRY_WORKER_DEFAULT_POLL_SECONDS = 30
 
 _GOAL_INLINE_PATTERN = re.compile(r"^(?:目的|goal|ゴール|やりたいこと|狙い|task)\s*[:：]\s*(.+)$", flags=re.IGNORECASE)
 _GOAL_HEADING_PATTERN = re.compile(r"^(?:目的|goal|ゴール|やりたいこと|狙い|task)\s*[:：]?$", flags=re.IGNORECASE)
@@ -50,6 +54,81 @@ _PROTECTED_TOKEN_PATTERN = re.compile(
     r"\{\{[^{}\n]+\}\}|\$\{[^{}\n]+\}|\$[A-Za-z_][A-Za-z0-9_]*|\{[A-Za-z_][A-Za-z0-9_]*\}|<[^<>\n]+>"
 )
 _WORKFLOW_EVENT_IDEMPOTENCY_RE = re.compile(r"^[A-Za-z0-9._:@-]{1,128}$")
+
+_workflow_event_retry_worker_lock = threading.Lock()
+_workflow_event_retry_worker_thread: threading.Thread | None = None
+_workflow_event_retry_worker_stop_event = threading.Event()
+_workflow_event_retry_drain_callback: Callable[[], None] | None = None
+
+
+def _workflow_event_retry_worker_enabled() -> bool:
+    raw = str(os.environ.get(WORKFLOW_EVENT_RETRY_WORKER_ENABLED_ENV) or "").strip().lower()
+    if not raw:
+        return True
+    return raw not in {"0", "false", "off", "no"}
+
+
+def _workflow_event_retry_worker_poll_seconds() -> int:
+    raw = os.environ.get(WORKFLOW_EVENT_RETRY_WORKER_POLL_SECONDS_ENV)
+    try:
+        value = int(str(raw or "").strip())
+    except Exception:
+        value = WORKFLOW_EVENT_RETRY_WORKER_DEFAULT_POLL_SECONDS
+    if value < 5:
+        return 5
+    if value > 3600:
+        return 3600
+    return value
+
+
+def set_workflow_event_retry_drain_callback(callback: Callable[[], None] | None) -> None:
+    global _workflow_event_retry_drain_callback
+    with _workflow_event_retry_worker_lock:
+        _workflow_event_retry_drain_callback = callback
+
+
+def _workflow_event_retry_worker_loop() -> None:
+    while not _workflow_event_retry_worker_stop_event.wait(_workflow_event_retry_worker_poll_seconds()):
+        callback = _workflow_event_retry_drain_callback
+        if callback is None:
+            continue
+        try:
+            callback()
+        except Exception:
+            continue
+
+
+def start_workflow_event_retry_worker() -> None:
+    global _workflow_event_retry_worker_thread
+    if not _workflow_event_retry_worker_enabled():
+        return
+    with _workflow_event_retry_worker_lock:
+        callback = _workflow_event_retry_drain_callback
+        if callback is None:
+            return
+        if _workflow_event_retry_worker_thread and _workflow_event_retry_worker_thread.is_alive():
+            return
+        _workflow_event_retry_worker_stop_event.clear()
+        _workflow_event_retry_worker_thread = threading.Thread(
+            target=_workflow_event_retry_worker_loop,
+            name="workflow-event-retry-worker",
+            daemon=True,
+        )
+        _workflow_event_retry_worker_thread.start()
+    try:
+        callback()
+    except Exception:
+        pass
+
+
+def stop_workflow_event_retry_worker() -> None:
+    global _workflow_event_retry_worker_thread
+    with _workflow_event_retry_worker_lock:
+        _workflow_event_retry_worker_stop_event.set()
+        thread = _workflow_event_retry_worker_thread
+        _workflow_event_retry_worker_thread = None
+    if thread and thread.is_alive():
+        thread.join(timeout=1.5)
 
 
 def _trim_prompt_optimize_text(value: Any, *, max_chars: int) -> str:
@@ -2161,6 +2240,11 @@ def register_api_workspace_routes(
             },
             headers={"Cache-Control": "no-store"},
         )
+
+    def _drain_workflow_event_retry_jobs_for_worker() -> None:
+        api_workflow_event_retry_jobs_drain({"limit": 10, "force": False})
+
+    set_workflow_event_retry_drain_callback(_drain_workflow_event_retry_jobs_for_worker)
 
     @router.post("/api/workflow-events")
     def api_workflow_events(
