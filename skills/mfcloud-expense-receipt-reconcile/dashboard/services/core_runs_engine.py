@@ -15,7 +15,10 @@ from .core_shared import (
     DEFAULT_MFCLOUD_ACCOUNTS_URL,
     DEFAULT_RAKUTEN_URL,
     _artifact_root,
+    _latest_running_job as _latest_running_job_common,
+    _list_run_jobs as _list_run_jobs_common,
     _read_json,
+    _running_job_exists as _running_job_exists_common,
     _runs_root,
     _write_json,
     SKILL_ROOT,
@@ -224,31 +227,18 @@ def _scan_run_jobs(
 ) -> list[dict[str, Any]]:
     reconcile_jobs = _reconcile_running_jobs_fn or _reconcile_running_jobs
     reconcile_jobs(_runs_root_fn=_runs_root_fn, _read_json_fn=_read_json_fn)
-    root = _runs_root_fn()
-    if not root.exists():
-        return []
-    items: list[dict[str, Any]] = []
-    for p in root.glob("run_*.json"):
-        data = _read_json_fn(p) or {}
-        if not data:
-            continue
-        items.append(data)
-    items.sort(key=lambda x: x.get("started_at") or "", reverse=True)
-    return items
+    return _list_run_jobs_common(
+        runs_root_fn=_runs_root_fn(),
+        read_json_fn=_read_json_fn,
+    )
 
 
 def _running_job_exists(*, _scan_run_jobs_fn=_scan_run_jobs) -> bool:
-    for job in _scan_run_jobs_fn():
-        if job.get("status") == "running":
-            return True
-    return False
+    return _running_job_exists_common(_scan_run_jobs_fn())
 
 
 def _get_latest_running_job(*, _scan_run_jobs_fn=_scan_run_jobs) -> dict[str, Any] | None:
-    for job in _scan_run_jobs_fn():
-        if job.get("status") == "running":
-            return job
-    return None
+    return _latest_running_job_common(_scan_run_jobs_fn())
 
 
 def _cancel_step_runs(

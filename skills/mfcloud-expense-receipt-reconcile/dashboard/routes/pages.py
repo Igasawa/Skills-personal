@@ -81,10 +81,6 @@ LEGACY_WORKFLOW_SUBHEADING_CANONICAL_VALUES = {
 }
 
 
-def _workflow_template_store() -> Path:
-    return core._artifact_root() / "_workflow_templates" / "workflow_templates.json"
-
-
 def _workflow_pages_store() -> Path:
     return core._artifact_root() / "_workflow_pages" / "workflow_pages.json"
 
@@ -454,15 +450,10 @@ def _normalize_step_versions_for_view(
 
 
 def _read_workflow_templates() -> list[dict[str, object]]:
-    raw = core._read_json(_workflow_template_store())
-    if not isinstance(raw, list):
-        return []
-
+    raw = core._read_workflow_templates_raw()
     templates: list[dict[str, object]] = []
     seen: set[str] = set()
     for row in raw:
-        if not isinstance(row, dict):
-            continue
         template_id = str(row.get("id") or "").strip()
         if not template_id or template_id in seen:
             continue
@@ -509,11 +500,11 @@ def _read_workflow_templates() -> list[dict[str, object]]:
         )
         seen.add(template_id)
 
-    templates.sort(
-        key=lambda row: str(row.get("updated_at") or row.get("created_at") or ""),
-        reverse=True,
+    return core._sort_workflow_templates_rows(
+        templates,
+        sort="updated_desc",
+        default_sort="updated_desc",
     )
-    return templates
 
 
 def _workflow_template_sidebar_links() -> list[dict[str, object]]:

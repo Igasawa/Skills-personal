@@ -214,10 +214,6 @@ def register_api_workflow_endpoints(router: APIRouter) -> None:
         return JSONResponse({"status": "ok", "checklist": checklist})
 
 
-    def _workflow_templates_path() -> Path:
-        return core._artifact_root() / "_workflow_templates" / "workflow_templates.json"
-
-
     def _normalize_workflow_template_id(value: Any) -> str:
         raw = str(value or "").strip()
         if not raw or not WORKFLOW_TEMPLATE_ID_RE.fullmatch(raw):
@@ -523,32 +519,19 @@ def register_api_workflow_endpoints(router: APIRouter) -> None:
         *,
         sort: str,
     ) -> list[dict[str, Any]]:
-        if sort not in WORKFLOW_TEMPLATE_SORT_OPTIONS:
-            sort = "updated_desc"
-        if sort.startswith("updated"):
-            key = lambda item: str(item.get("updated_at") or item.get("created_at") or "")
-        elif sort.startswith("created"):
-            key = lambda item: str(item.get("created_at") or item.get("updated_at") or "")
-        elif sort == "name_asc":
-            key = lambda item: str(item.get("name") or "").lower()
-        elif sort == "name_desc":
-            key = lambda item: str(item.get("name") or "").lower()
-        else:
-            key = lambda item: (int(item.get("year") or 0), int(item.get("month") or 0))
-        reverse = sort.endswith("desc")
-        return sorted(templates, key=key, reverse=reverse)
+        return core._sort_workflow_templates_rows(
+            templates,
+            sort=sort,
+            allowed_sorts=WORKFLOW_TEMPLATE_SORT_OPTIONS,
+            default_sort="updated_desc",
+        )
 
 
     def _read_workflow_templates() -> list[dict[str, Any]]:
-        raw = core._read_json(_workflow_templates_path())
-        if not isinstance(raw, list):
-            return []
-
+        raw = core._read_workflow_templates_raw()
         rows: list[dict[str, Any]] = []
         seen: set[str] = set()
         for row in raw:
-            if not isinstance(row, dict):
-                continue
             template_id = _normalize_workflow_template_id(row.get("id"))
             if not template_id or template_id in seen:
                 continue
@@ -624,7 +607,7 @@ def register_api_workflow_endpoints(router: APIRouter) -> None:
                     "updated_at": str(row.get("updated_at") or _workflow_template_timestamp_now()),
                 }
             )
-        core._write_json(_workflow_templates_path(), normalized)
+        core._write_workflow_templates_raw(normalized)
 
 
     def _template_name_taken(

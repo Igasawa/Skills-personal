@@ -8,7 +8,15 @@ from pathlib import Path
 from typing import Any
 
 from .core_runs_paths import _audit_log_path
-from .core_shared import SKILL_ROOT, _write_json
+from .core_shared import (
+    SKILL_ROOT,
+    _append_audit_event_to_jsonl,
+    _coerce_non_negative_int as _coerce_non_negative_int_common,
+    _normalize_audit_actor,
+    _safe_int_optional,
+    _tail_text as _tail_text_common,
+    _write_json,
+)
 
 _AUTH_REQUIRED_MARKERS = (
     "auth_required",
@@ -21,45 +29,19 @@ _AUTH_REQUIRED_MARKERS = (
 
 
 def _safe_int(value: Any) -> int | None:
-    try:
-        return int(value)
-    except Exception:
-        return None
+    return _safe_int_optional(value)
 
 
 def _coerce_non_negative_int(value: Any, default: int = 0) -> int:
-    parsed = _safe_int(value)
-    if parsed is None:
-        return default
-    if parsed < 0:
-        return default
-    return parsed
+    return _coerce_non_negative_int_common(value, default=default)
 
 
 def _normalize_actor(actor: Any) -> dict[str, Any]:
-    if isinstance(actor, dict):
-        out: dict[str, Any] = {}
-        for key in ("channel", "id", "ip", "user_agent"):
-            value = actor.get(key)
-            if value is None:
-                continue
-            text = str(value).strip()
-            if text:
-                out[key] = text
-        if out:
-            return out
-    return {"channel": "dashboard", "id": "unknown"}
+    return _normalize_audit_actor(actor)
 
 
 def _tail_text(path: Path, *, max_bytes: int = 32000) -> str:
-    try:
-        data = path.read_bytes()
-    except Exception:
-        return ""
-    limit = max(0, int(max_bytes))
-    if limit and len(data) > limit:
-        data = data[-limit:]
-    return data.decode("utf-8", errors="replace")
+    return _tail_text_common(path, max_bytes=max_bytes)
 
 
 def _is_test_artifact_log_path(log_path: str) -> bool:
@@ -117,27 +99,19 @@ def _append_audit_event(
     _now=datetime.now,
 ) -> None:
     path = _audit_log_path_fn(year, month)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    entry: dict[str, Any] = {
-        "ts": _now().isoformat(timespec="seconds"),
-        "ym": f"{year:04d}-{month:02d}",
-        "year": year,
-        "month": month,
-        "event_type": str(event_type).strip(),
-        "action": str(action).strip(),
-        "status": str(status).strip(),
-        "actor": _normalize_actor_fn(actor),
-    }
-    if source:
-        entry["source"] = str(source).strip()
-    if mode:
-        entry["mode"] = str(mode).strip()
-    if run_id:
-        entry["run_id"] = str(run_id).strip()
-    if isinstance(details, dict) and details:
-        entry["details"] = details
-    with path.open("a", encoding="utf-8") as handle:
-        handle.write(_json_dumps(entry, ensure_ascii=False) + "\n")
+    _append_audit_event_to_jsonl(
+        path=path,
+        year=year,
+        month=month,
+        event_type=event_type,
+        action=action,
+        status=status,
+        actor=_normalize_actor_fn(actor),
+        source=source,
+        mode=mode,
+        run_id=run_id,
+        details=details,
+    )
 
 
 def _capture_failed_run_incident(
