@@ -52,9 +52,9 @@
   ];
   const TEMPLATE_STEP_ACTION_LABELS = Object.fromEntries(TEMPLATE_STEP_ACTIONS.map((item) => [item.value, item.label]));
   const TEMPLATE_STEP_TYPES = [
-    { value: "manual", label: "手動" },
-    { value: "agent", label: "Agent" },
-    { value: "browser", label: "Browser" },
+    { value: "manual", label: "人" },
+    { value: "agent", label: "AI" },
+    { value: "browser", label: "AI（browser）" },
   ];
   const TEMPLATE_STEP_TYPE_VALUES = new Set(TEMPLATE_STEP_TYPES.map((item) => item.value));
   const TEMPLATE_STEP_TRIGGERS = [
