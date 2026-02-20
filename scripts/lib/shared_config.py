@@ -43,6 +43,11 @@ def _as_clean_str(value: Any) -> str:
     return str(value).strip()
 
 
+def _as_optional_clean_str(value: Any) -> str | None:
+    s = _as_clean_str(value)
+    return s if s else None
+
+
 def normalize_org_profile(raw: dict[str, Any]) -> dict[str, Any]:
     data = _as_dict(raw)
     org = _as_dict(data.get("organization"))
@@ -51,11 +56,11 @@ def normalize_org_profile(raw: dict[str, Any]) -> dict[str, Any]:
 
     profile_key = _as_clean_str(data.get("profile_key")) or "default"
     config_version = _as_clean_str(data.get("config_version"))
-    tenant_name = _as_clean_str(org.get("name"))
-    receipt_name = _as_clean_str(receipt.get("name"))
-    receipt_name_fallback = _as_clean_str(receipt.get("name_fallback"))
-    locale = _as_clean_str(org.get("locale"))
-    timezone = _as_clean_str(org.get("timezone"))
+    tenant_name = _as_optional_clean_str(org.get("name"))
+    receipt_name = _as_optional_clean_str(receipt.get("name"))
+    receipt_name_fallback = _as_optional_clean_str(receipt.get("name_fallback"))
+    locale = _as_optional_clean_str(org.get("locale"))
+    timezone = _as_optional_clean_str(org.get("timezone"))
 
     mfcloud_expense_list = urls.get("mfcloud_expense_list")
     if mfcloud_expense_list is not None:
@@ -74,9 +79,9 @@ def normalize_org_profile(raw: dict[str, Any]) -> dict[str, Any]:
             "timezone": timezone,
         },
         "urls": {
-            "amazon_orders": _as_clean_str(urls.get("amazon_orders")),
-            "rakuten_orders": _as_clean_str(urls.get("rakuten_orders")),
-            "mfcloud_accounts": _as_clean_str(urls.get("mfcloud_accounts")),
+            "amazon_orders": _as_optional_clean_str(urls.get("amazon_orders")),
+            "rakuten_orders": _as_optional_clean_str(urls.get("rakuten_orders")),
+            "mfcloud_accounts": _as_optional_clean_str(urls.get("mfcloud_accounts")),
             "mfcloud_expense_list": mfcloud_expense_list,
         },
     }

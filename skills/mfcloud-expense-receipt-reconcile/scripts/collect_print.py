@@ -40,6 +40,16 @@ def _as_dict(value: Any) -> dict[str, Any]:
     return value if isinstance(value, dict) else {}
 
 
+def _pick_non_empty_str(*values: Any) -> str:
+    for value in values:
+        if value is None:
+            continue
+        s = str(value).strip()
+        if s:
+            return s
+    return ""
+
+
 def _read_json_input(path: str | None) -> dict[str, Any]:
     if path:
         with open(path, "r", encoding="utf-8-sig") as f:
@@ -189,20 +199,20 @@ def _resolve_orders_url(config: dict[str, Any], source: str, org_profile: dict[s
     org_profile = _as_dict(org_profile)
     org_urls = _as_dict(org_profile.get("urls"))
     if source == "amazon":
-        return str(
-            tenant_urls.get("amazon_orders")
-            or legacy_urls.get("amazon_orders")
-            or org_urls.get("amazon_orders")
-            or DEFAULT_AMAZON_ORDERS_URL
+        return _pick_non_empty_str(
+            tenant_urls.get("amazon_orders"),
+            legacy_urls.get("amazon_orders"),
+            org_urls.get("amazon_orders"),
+            DEFAULT_AMAZON_ORDERS_URL,
         )
     if source == "rakuten":
         rakuten_cfg = _as_dict(config.get("rakuten"))
-        return str(
-            tenant_urls.get("rakuten_orders")
-            or rakuten_cfg.get("orders_url")
-            or legacy_urls.get("rakuten_orders")
-            or org_urls.get("rakuten_orders")
-            or DEFAULT_RAKUTEN_ORDERS_URL
+        return _pick_non_empty_str(
+            tenant_urls.get("rakuten_orders"),
+            rakuten_cfg.get("orders_url"),
+            legacy_urls.get("rakuten_orders"),
+            org_urls.get("rakuten_orders"),
+            DEFAULT_RAKUTEN_ORDERS_URL,
         )
     return ""
 
@@ -214,16 +224,12 @@ def _resolve_receipt_env(config: dict[str, Any], org_profile: dict[str, Any] | N
     org_organization = _as_dict(org_profile.get("organization"))
     org_receipt = _as_dict(org_organization.get("receipt"))
 
-    receipt_name = str(_coalesce(receipt_cfg.get("name"), config.get("receipt_name"), org_receipt.get("name"), "") or "").strip()
-    receipt_name_fallback = str(
-        _coalesce(
-            receipt_cfg.get("name_fallback"),
-            config.get("receipt_name_fallback"),
-            org_receipt.get("name_fallback"),
-            "",
-        )
-        or ""
-    ).strip()
+    receipt_name = _pick_non_empty_str(receipt_cfg.get("name"), config.get("receipt_name"), org_receipt.get("name"))
+    receipt_name_fallback = _pick_non_empty_str(
+        receipt_cfg.get("name_fallback"),
+        config.get("receipt_name_fallback"),
+        org_receipt.get("name_fallback"),
+    )
     env: dict[str, str] = {}
     if receipt_name:
         env["RECEIPT_NAME"] = receipt_name

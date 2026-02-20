@@ -94,8 +94,11 @@ def _as_dict(value: Any) -> dict[str, Any]:
 
 def _pick_with_source(candidates: list[tuple[Any, str]]) -> tuple[Any, str]:
     for value, source in candidates:
-        if value is not None:
-            return value, source
+        if value is None:
+            continue
+        if isinstance(value, str) and not value.strip():
+            continue
+        return value, source
     return None, "missing"
 
 
@@ -132,17 +135,27 @@ def _validate_receipt_name_guard(args: argparse.Namespace, rc: RunConfig) -> Non
         return
 
     placeholder_fields: list[str] = []
+    missing_fields: list[str] = []
+    if not rc.receipt_name.strip():
+        missing_fields.append("receipt_name")
+    if not rc.receipt_name_fallback.strip():
+        missing_fields.append("receipt_name_fallback")
     if rc.receipt_name.strip() == DEFAULT_RECEIPT_NAME:
         placeholder_fields.append("receipt_name")
     if rc.receipt_name_fallback.strip() == DEFAULT_RECEIPT_NAME_FALLBACK:
         placeholder_fields.append("receipt_name_fallback")
-    if not placeholder_fields:
+    if not placeholder_fields and not missing_fields:
         return
 
     cfg_path = _ax_home() / "configs" / "mfcloud-expense-receipt-reconcile.json"
-    joined = ", ".join(placeholder_fields)
+    details: list[str] = []
+    if placeholder_fields:
+        details.append(f"placeholder: {', '.join(placeholder_fields)}")
+    if missing_fields:
+        details.append(f"empty: {', '.join(missing_fields)}")
+    joined = "; ".join(details)
     raise ValueError(
-        "Receipt name guard triggered: placeholder values are still active "
+        "Receipt name guard triggered: invalid receipt fields are still active "
         f"({joined}). Set config.tenant.receipt.name / config.tenant.receipt.name_fallback in "
         f"{cfg_path}, or pass --receipt-name / --receipt-name-fallback."
     )

@@ -220,6 +220,34 @@ def test_parse_config_uses_org_profile_when_skill_values_missing() -> None:
     assert rc.resolved_sources["amazon_orders_url"] == "org_profile.urls.amazon_orders"
 
 
+def test_parse_config_ignores_blank_org_profile_values() -> None:
+    args = _base_args()
+    raw = {"config": {"tenant": {"urls": {"mfcloud_expense_list": "https://example/expenses"}}}}
+    org_profile = {
+        "profile_key": "default",
+        "organization": {
+            "name": "   ",
+            "receipt": {"name": " ", "name_fallback": "  "},
+        },
+        "urls": {
+            "amazon_orders": " ",
+            "rakuten_orders": " ",
+            "mfcloud_accounts": " ",
+            "mfcloud_expense_list": None,
+        },
+    }
+
+    rc, _, _ = _parse_config(args, raw, org_profile=org_profile)
+
+    assert rc.receipt_name == "YOUR_COMPANY_NAME"
+    assert rc.receipt_name_fallback == "YOUR_COMPANY_NAME_FALLBACK"
+    assert rc.amazon_orders_url == "https://www.amazon.co.jp/gp/your-account/order-history"
+    assert rc.rakuten_orders_url == "https://order.my.rakuten.co.jp/?l-id=top_normal_mymenu_order"
+    assert rc.mfcloud_accounts_url == "https://expense.moneyforward.com/accounts"
+    assert rc.resolved_sources["receipt_name"] == "default.receipt_name"
+    assert rc.resolved_sources["amazon_orders_url"] == "default.amazon_orders_url"
+
+
 def test_parse_config_skill_values_override_org_profile() -> None:
     args = _base_args()
     raw = {
@@ -270,7 +298,7 @@ def test_receipt_name_guard_blocks_placeholder_on_download_run() -> None:
     raw = {"config": {"tenant": {"urls": {"mfcloud_expense_list": "https://example/expenses"}}}}
     rc, _, _ = _parse_config(args, raw)
 
-    with pytest.raises(ValueError, match="placeholder values are still active"):
+    with pytest.raises(ValueError, match="invalid receipt fields are still active"):
         _validate_receipt_name_guard(args, rc)
 
 

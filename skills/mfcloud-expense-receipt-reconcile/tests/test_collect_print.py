@@ -177,6 +177,29 @@ def test_resolve_receipt_env_uses_org_profile_when_skill_values_missing() -> Non
     assert env["RECEIPT_NAME_FALLBACK"] == "Org Fallback"
 
 
+def test_resolve_receipt_env_ignores_blank_skill_values() -> None:
+    env = _resolve_receipt_env(
+        {
+            "tenant": {"receipt": {"name": "   ", "name_fallback": ""}},
+            "receipt_name": "",
+            "receipt_name_fallback": " ",
+        },
+        org_profile={
+            "organization": {
+                "receipt": {"name": "Org Name", "name_fallback": "Org Fallback"},
+            }
+        },
+    )
+    assert env["RECEIPT_NAME"] == "Org Name"
+    assert env["RECEIPT_NAME_FALLBACK"] == "Org Fallback"
+
+
+def test_resolve_orders_url_falls_back_to_defaults_when_org_profile_blank() -> None:
+    org_profile = {"urls": {"amazon_orders": " ", "rakuten_orders": ""}}
+    assert _resolve_orders_url({}, "amazon", org_profile=org_profile).startswith("https://www.amazon.co.jp/")
+    assert _resolve_orders_url({}, "rakuten", org_profile=org_profile).startswith("https://order.my.rakuten.co.jp/")
+
+
 def test_collect_print_writes_source_specific_manifest_for_selected_source(tmp_path: Path) -> None:
     output_root = tmp_path / "artifacts" / "mfcloud-expense-receipt-reconcile" / "2026-01"
     orders_jsonl = output_root / "amazon" / "orders.jsonl"

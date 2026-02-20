@@ -5,6 +5,7 @@ import argparse
 import json
 import os
 from pathlib import Path
+from urllib.parse import urlparse
 from typing import Any
 
 DEFAULT_AMAZON_ORDERS_URL = "https://www.amazon.co.jp/gp/your-account/order-history"
@@ -147,6 +148,57 @@ def _merge_org_profile(existing: dict[str, Any], incoming: dict[str, Any], *, ov
     return merged
 
 
+def _as_non_empty_str(value: Any) -> str | None:
+    if value is None:
+        return None
+    s = str(value).strip()
+    return s if s else None
+
+
+def _looks_like_url(value: str) -> bool:
+    parsed = urlparse(value)
+    return bool(parsed.scheme and parsed.netloc)
+
+
+def _validate_org_profile_minimum(profile: dict[str, Any]) -> list[str]:
+    errors: list[str] = []
+    data = _as_dict(profile)
+    organization = _as_dict(data.get("organization"))
+    receipt = _as_dict(organization.get("receipt"))
+    urls = _as_dict(data.get("urls"))
+
+    config_version = _as_non_empty_str(data.get("config_version"))
+    if config_version != "1":
+        errors.append("config_version must be '1'.")
+
+    org_name = _as_non_empty_str(organization.get("name"))
+    if org_name is None:
+        errors.append("organization.name is required.")
+
+    receipt_name = _as_non_empty_str(receipt.get("name"))
+    if receipt_name is None:
+        errors.append("organization.receipt.name is required.")
+
+    receipt_name_fallback = _as_non_empty_str(receipt.get("name_fallback"))
+    if receipt_name_fallback is None:
+        errors.append("organization.receipt.name_fallback is required.")
+
+    for key in ("amazon_orders", "rakuten_orders", "mfcloud_accounts"):
+        raw = _as_non_empty_str(urls.get(key))
+        if raw is None:
+            errors.append(f"urls.{key} is required.")
+            continue
+        if not _looks_like_url(raw):
+            errors.append(f"urls.{key} must be a valid absolute URL.")
+
+    optional_expense_url = urls.get("mfcloud_expense_list")
+    optional_expense_url_str = _as_non_empty_str(optional_expense_url)
+    if optional_expense_url_str is not None and not _looks_like_url(optional_expense_url_str):
+        errors.append("urls.mfcloud_expense_list must be a valid absolute URL when set.")
+
+    return errors
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Migrate skill config values to org-profile.json")
     parser.add_argument("--ax-home", help="override AX_HOME")
@@ -177,10 +229,11 @@ def main(argv: list[str] | None = None) -> int:
     incoming = _extract_org_profile_fragment(skill_payload)
     existing = _read_json(org_profile_path)
     merged = _merge_org_profile(existing, incoming, overwrite=args.overwrite)
+    validation_errors = _validate_org_profile_minimum(merged)
 
     changed = merged != existing
     result = {
-        "status": "success",
+        "status": "error" if validation_errors else "success",
         "mode": "apply" if args.apply else "dry-run",
         "changed": changed,
         "paths": {
@@ -188,8 +241,14 @@ def main(argv: list[str] | None = None) -> int:
             "org_profile": str(org_profile_path),
         },
         "overwrite": bool(args.overwrite),
+        "validation_errors": validation_errors,
         "org_profile": merged,
     }
+
+    if validation_errors:
+        result["written"] = False
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        return 1
 
     if args.apply and changed:
         _write_json(org_profile_path, merged)
