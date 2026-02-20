@@ -35,7 +35,13 @@ def _create_client(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> TestClien
     return TestClient(app)
 
 
-def _set_chat_env(monkeypatch: pytest.MonkeyPatch, *, api_key: str | None, model: str | None = None) -> None:
+def _set_chat_env(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    api_key: str | None,
+    model: str | None = None,
+    guardrail_mode: str | None = None,
+) -> None:
     monkeypatch.setattr(ai_chat, "_SECRET_ENV_LOADED", True)
     if api_key is None:
         monkeypatch.delenv("GEMINI_API_KEY", raising=False)
@@ -47,6 +53,10 @@ def _set_chat_env(monkeypatch: pytest.MonkeyPatch, *, api_key: str | None, model
         monkeypatch.delenv("KIL_GEMINI_MODEL", raising=False)
     else:
         monkeypatch.setenv("KIL_GEMINI_MODEL", model)
+    if guardrail_mode is None:
+        monkeypatch.delenv("KIL_AI_GUARDRAIL_MODE", raising=False)
+    else:
+        monkeypatch.setenv("KIL_AI_GUARDRAIL_MODE", guardrail_mode)
 
 
 def test_api_ai_chat_status_ready_true_when_key_exists(
@@ -136,6 +146,58 @@ def test_api_ai_chat_success_returns_reply_and_usage(
     first_row = captured_payload["contents"][0]
     first_text = str(first_row.get("parts", [{}])[0].get("text") or "")
     assert "Response style guardrails" in first_text
+    assert "Only use facts explicitly present in messages and page_context." in first_text
+
+
+def test_api_ai_chat_enforce_mode_replaces_invalid_reply_format(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    client = _create_client(monkeypatch, tmp_path)
+    _set_chat_env(monkeypatch, api_key="test-key", guardrail_mode="enforce")
+
+    def _fake_urlopen(req, timeout: int = 0):
+        del req, timeout
+        return _FakeUrlResponse(
+            {
+                "candidates": [
+                    {
+                        "content": {
+                            "parts": [
+                                {"text": "This answer does not follow the required section format."},
+                            ]
+                        }
+                    }
+                ],
+                "usageMetadata": {
+                    "promptTokenCount": 4,
+                    "candidatesTokenCount": 5,
+                    "totalTokenCount": 9,
+                },
+            }
+        )
+
+    monkeypatch.setattr(ai_chat.url_request, "urlopen", _fake_urlopen)
+
+    res = client.post(
+        "/api/ai/chat",
+        json={
+            "messages": [
+                {"role": "user", "content": "確認したいです"},
+            ],
+            "page_context": {
+                "path": "/workspace",
+                "active_tab": "workspace",
+                "title": "Automation Hub",
+            },
+        },
+    )
+    assert res.status_code == 200
+    body = res.json()
+    content = str((body.get("reply") or {}).get("content") or "")
+    assert "回答:" in content
+    assert "根拠:" in content
+    assert "不足情報:" in content
+    assert "messages[0]" in content
 
 
 def test_api_ai_chat_rejects_model_override(

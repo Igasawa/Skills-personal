@@ -97,6 +97,7 @@ def _set_ai_chat_env(monkeypatch: pytest.MonkeyPatch, *, api_key: str | None, mo
         monkeypatch.delenv("GEMINI_API_KEY", raising=False)
     monkeypatch.delenv("KIL_GEMINI_API_KEY", raising=False)
     monkeypatch.setenv("KIL_GEMINI_MODEL", model)
+    monkeypatch.delenv("KIL_AI_GUARDRAIL_MODE", raising=False)
 
 
 def test_api_run_rejects_out_of_order_and_writes_audit(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -2144,10 +2145,17 @@ def test_api_workspace_prompt_optimize_returns_goal_first_payload(
     _set_ai_chat_env(monkeypatch, api_key="test-key")
     captured_messages: list[dict[str, str]] = []
     captured_context: dict[str, str] = {}
+    captured_policy: dict[str, str] = {}
 
-    def _fake_chat(*, messages: list[dict[str, str]], page_context: dict[str, str]) -> dict[str, Any]:
+    def _fake_chat(
+        *,
+        messages: list[dict[str, str]],
+        page_context: dict[str, str],
+        policy_profile: str = "",
+    ) -> dict[str, Any]:
         captured_messages.extend(messages)
         captured_context.update(page_context)
+        captured_policy["value"] = policy_profile
         return {
             "provider": "gemini",
             "model": "gemini-2.0-flash",
@@ -2190,6 +2198,7 @@ def test_api_workspace_prompt_optimize_returns_goal_first_payload(
     assert captured_context["path"] == "/workspace"
     assert captured_context["feature"] == "workspace_prompt_optimize"
     assert captured_messages and captured_messages[-1]["role"] == "user"
+    assert captured_policy["value"] == ai_chat.POLICY_PROFILE_STRUCTURED_JSON
     assert "goal: 月次の未処理をなくす" in captured_messages[-1]["content"]
 
 
@@ -2199,8 +2208,13 @@ def test_api_workspace_prompt_optimize_adds_token_integrity_warning(
     client = _create_client(monkeypatch, tmp_path)
     _set_ai_chat_env(monkeypatch, api_key="test-key")
 
-    def _fake_chat(*, messages: list[dict[str, str]], page_context: dict[str, str]) -> dict[str, Any]:
-        del messages, page_context
+    def _fake_chat(
+        *,
+        messages: list[dict[str, str]],
+        page_context: dict[str, str],
+        policy_profile: str = "",
+    ) -> dict[str, Any]:
+        del messages, page_context, policy_profile
         return {
             "provider": "gemini",
             "model": "gemini-2.0-flash",
@@ -2239,8 +2253,13 @@ def test_api_workspace_prompt_optimize_rejects_invalid_ai_json(
     client = _create_client(monkeypatch, tmp_path)
     _set_ai_chat_env(monkeypatch, api_key="test-key")
 
-    def _fake_chat(*, messages: list[dict[str, str]], page_context: dict[str, str]) -> dict[str, Any]:
-        del messages, page_context
+    def _fake_chat(
+        *,
+        messages: list[dict[str, str]],
+        page_context: dict[str, str],
+        policy_profile: str = "",
+    ) -> dict[str, Any]:
+        del messages, page_context, policy_profile
         return {
             "provider": "gemini",
             "model": "gemini-2.0-flash",

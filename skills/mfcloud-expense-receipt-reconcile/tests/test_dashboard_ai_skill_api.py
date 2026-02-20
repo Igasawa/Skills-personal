@@ -216,7 +216,7 @@ def test_api_ai_chat_skill_list_command_uses_local_skill_provider(
     monkeypatch.setattr(
         api_ai_chat_routes.ai_chat,
         "chat",
-        lambda messages, page_context: (_ for _ in ()).throw(RuntimeError("must not call")),
+        lambda messages, page_context, policy_profile="": (_ for _ in ()).throw(RuntimeError("must not call")),
     )
 
     res = client.post(
@@ -255,7 +255,7 @@ def test_api_ai_chat_skill_list_mentions_runnerless_skill_guidance(
     monkeypatch.setattr(
         api_ai_chat_routes.ai_chat,
         "chat",
-        lambda messages, page_context: (_ for _ in ()).throw(RuntimeError("must not call")),
+        lambda messages, page_context, policy_profile="": (_ for _ in ()).throw(RuntimeError("must not call")),
     )
 
     res = client.post(

@@ -995,8 +995,9 @@ def _generate_ai_plan_payload(
     )
     try:
         response = ai_chat.chat(
-            [{"role": "user", "content": prompt}],
-            {"path": "/errors", "active_tab": "incidents", "title": "管理センター"},
+            messages=[{"role": "user", "content": prompt}],
+            page_context={"path": "/errors", "active_tab": "incidents", "title": "管理センター"},
+            policy_profile=ai_chat.POLICY_PROFILE_STRUCTURED_JSON,
         )
     except Exception as exc:
         planner_meta["fallback_reason"] = f"ai chat failed: {exc}"

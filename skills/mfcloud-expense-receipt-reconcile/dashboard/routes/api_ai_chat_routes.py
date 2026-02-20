@@ -139,7 +139,11 @@ def register_api_ai_chat_routes(router: APIRouter) -> None:
             return JSONResponse(command_response)
 
         try:
-            result = ai_chat.chat(messages=messages, page_context=page_context)
+            result = ai_chat.chat(
+                messages=messages,
+                page_context=page_context,
+                policy_profile=ai_chat.POLICY_PROFILE_DASHBOARD_CHAT_STRICT,
+            )
         except ai_chat.MissingApiKeyError as exc:
             raise HTTPException(status_code=503, detail=str(exc)) from exc
         except ai_chat.UpstreamTimeoutError as exc:

@@ -1446,6 +1446,7 @@ def register_api_workspace_routes(
                     "locale": locale,
                     "style": style_preset,
                 },
+                policy_profile=ai_chat.POLICY_PROFILE_STRUCTURED_JSON,
             )
         except ai_chat.MissingApiKeyError as exc:
             raise HTTPException(status_code=503, detail=str(exc)) from exc
