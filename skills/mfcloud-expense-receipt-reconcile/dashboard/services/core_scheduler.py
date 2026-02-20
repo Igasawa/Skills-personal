@@ -26,6 +26,7 @@ SCHEDULER_RECURRENCE = {"once", "daily", "weekly", "monthly"}
 DEFAULT_RUN_TIME = "09:00"
 DEFAULT_ACTION_KEY = "preflight"
 SCHEDULER_POLL_SECONDS = 15
+ONCE_RECEIPT_MAX_ITEMS = 5000
 SCHEDULE_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 SCHEDULE_TIME_RE = re.compile(r"^\d{2}:\d{2}$")
 _DEFAULT_TEMPLATE_ID = "__default__"
@@ -58,6 +59,14 @@ _TIMER_STATE_COPY_KEYS = {
     "run_time",
     "catch_up_policy",
     "recurrence",
+}
+_ONCE_RECEIPT_KEYS = {
+    "template_id",
+    "run_date",
+    "run_time",
+    "run_id",
+    "status",
+    "triggered_at",
 }
 
 _state_lock = threading.Lock()
@@ -201,7 +210,10 @@ def _normalize_state(payload: Any) -> dict[str, Any]:
 def _read_state_unlocked() -> dict[str, Any]:
     raw = _read_json(_state_path())
     if not isinstance(raw, dict):
-        return {"template_timers": {_DEFAULT_TEMPLATE_ID: _default_state()}}
+        return {
+            "template_timers": {_DEFAULT_TEMPLATE_ID: _default_state()},
+            "once_trigger_receipts": {},
+        }
 
     template_timers: dict[str, dict[str, Any]] = {}
     raw_timers = raw.get("template_timers")
@@ -222,7 +234,10 @@ def _read_state_unlocked() -> dict[str, Any]:
 
     if not template_timers:
         template_timers[_DEFAULT_TEMPLATE_ID] = _default_state()
-    return {"template_timers": template_timers}
+    return {
+        "template_timers": template_timers,
+        "once_trigger_receipts": _get_once_receipts(raw),
+    }
 
 
 def _write_state_unlocked(state: dict[str, Any]) -> None:
@@ -245,12 +260,92 @@ def _write_state_unlocked(state: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     payload = dict(default_state)
     payload["template_timers"] = timers
+    payload["once_trigger_receipts"] = _get_once_receipts(state)
     _write_json(path, payload)
 
 
 def _normalize_template_id(template_id: Any) -> str:
     raw = str(template_id or "").strip()
     return raw or _DEFAULT_TEMPLATE_ID
+
+
+def _once_receipt_key(template_id: str, run_date: Any, run_time: Any) -> str:
+    normalized_template_id = _normalize_template_id(template_id)
+    normalized_run_date = _normalize_run_date(run_date)
+    normalized_run_time = _normalize_run_time(run_time)
+    if not normalized_run_date:
+        return ""
+    return f"{normalized_template_id}|{normalized_run_date}|{normalized_run_time}"
+
+
+def _normalize_once_receipt(value: Any) -> dict[str, Any]:
+    row = value if isinstance(value, dict) else {}
+    out = {key: None for key in _ONCE_RECEIPT_KEYS}
+    out["template_id"] = _normalize_template_id(row.get("template_id"))
+    out["run_date"] = _normalize_run_date(row.get("run_date"))
+    out["run_time"] = _normalize_run_time(row.get("run_time"))
+    out["run_id"] = str(row.get("run_id") or "").strip()
+    status = str(row.get("status") or "").strip().lower()
+    out["status"] = status or "started"
+    out["triggered_at"] = str(row.get("triggered_at") or "").strip() or None
+    return out
+
+
+def _get_once_receipts(state: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    raw = state.get("once_trigger_receipts") if isinstance(state, dict) else {}
+    receipts: dict[str, dict[str, Any]] = {}
+    if not isinstance(raw, dict):
+        return receipts
+    for key, value in raw.items():
+        if not isinstance(key, str):
+            continue
+        receipt_key = key.strip()
+        if not receipt_key:
+            continue
+        normalized = _normalize_once_receipt(value)
+        if not normalized.get("run_date"):
+            continue
+        if not normalized.get("template_id"):
+            continue
+        receipts[receipt_key] = normalized
+        if len(receipts) >= ONCE_RECEIPT_MAX_ITEMS:
+            break
+    return receipts
+
+
+def _record_once_receipt(
+    once_receipts: dict[str, dict[str, Any]],
+    *,
+    template_id: str,
+    run_date: Any,
+    run_time: Any,
+    run_id: str = "",
+    status: str = "started",
+) -> str:
+    receipt_key = _once_receipt_key(template_id, run_date, run_time)
+    if not receipt_key:
+        return ""
+    once_receipts[receipt_key] = {
+        "template_id": _normalize_template_id(template_id),
+        "run_date": _normalize_run_date(run_date),
+        "run_time": _normalize_run_time(run_time),
+        "run_id": str(run_id or "").strip(),
+        "status": str(status or "started").strip().lower() or "started",
+        "triggered_at": _now_iso(),
+    }
+    if len(once_receipts) > ONCE_RECEIPT_MAX_ITEMS:
+        drop = len(once_receipts) - ONCE_RECEIPT_MAX_ITEMS
+        for stale_key in sorted(once_receipts.keys())[:drop]:
+            once_receipts.pop(stale_key, None)
+    return receipt_key
+
+
+def _purge_once_receipts_for_template(once_receipts: dict[str, dict[str, Any]], template_id: str) -> None:
+    normalized_template_id = _normalize_template_id(template_id)
+    prefix = f"{normalized_template_id}|"
+    for key in list(once_receipts.keys()):
+        if key.startswith(prefix):
+            once_receipts.pop(key, None)
 
 
 def _build_copied_timer_state(source_state: dict[str, Any] | None) -> dict[str, Any]:
@@ -322,6 +417,9 @@ def delete_timer_state(template_id: str | None) -> None:
             return
         timers.pop(normalized_id, None)
         state["template_timers"] = timers
+        once_receipts = _get_once_receipts(state)
+        _purge_once_receipts_for_template(once_receipts, normalized_id)
+        state["once_trigger_receipts"] = once_receipts
         _next_retry_at_by_template.pop(normalized_id, None)
         _write_state_unlocked(state)
 
@@ -446,7 +544,54 @@ def _enrich_state(
     return view
 
 
-def _evaluate_single_timer(timer_state: dict[str, Any], template_id: str, now: datetime) -> None:
+def _append_scheduler_audit_event(
+    *,
+    timer_state: dict[str, Any],
+    template_id: str,
+    status: str,
+    scheduled: datetime | None = None,
+    detail: str = "",
+    run_id: str = "",
+    extra: dict[str, Any] | None = None,
+) -> None:
+    try:
+        year, month = _scheduled_month_from_state(timer_state, scheduled=scheduled)
+    except Exception:
+        return
+    action = _normalize_action_key(timer_state.get("action_key"))
+    details = {
+        "template_id": _normalize_template_id(template_id),
+        "recurrence": _normalize_recurrence(timer_state.get("recurrence")),
+    }
+    if scheduled is not None:
+        details["scheduled_for"] = scheduled.isoformat(timespec="seconds")
+    if detail:
+        details["reason"] = detail
+    if extra and isinstance(extra, dict):
+        details.update(extra)
+    try:
+        core_runs._append_audit_event(
+            year=year,
+            month=month,
+            event_type="scheduler",
+            action=action,
+            status=str(status or "unknown").strip() or "unknown",
+            actor={"type": "system", "id": "scheduler"},
+            mode=action,
+            run_id=str(run_id or "").strip() or None,
+            details=details,
+        )
+    except Exception:
+        return
+
+
+def _evaluate_single_timer(
+    timer_state: dict[str, Any],
+    template_id: str,
+    now: datetime,
+    *,
+    once_receipts: dict[str, dict[str, Any]],
+) -> None:
     next_retry_at = _next_retry_at_by_template.get(template_id)
     if not bool(timer_state.get("enabled")):
         timer_state["last_evaluated_at"] = now.isoformat(timespec="seconds")
@@ -463,10 +608,45 @@ def _evaluate_single_timer(timer_state: dict[str, Any], template_id: str, now: d
             "at": _now_iso(),
             "detail": "Scheduler run_date/run_time is invalid.",
         }
+        _append_scheduler_audit_event(
+            timer_state=timer_state,
+            template_id=template_id,
+            status="failed",
+            detail="Scheduler run_date/run_time is invalid.",
+        )
         _next_retry_at_by_template.pop(template_id, None)
         return
 
     signature = _schedule_signature(timer_state)
+    is_repeating = _is_repeating(timer_state)
+    once_receipt_key = ""
+    if not is_repeating:
+        once_receipt_key = _once_receipt_key(template_id, timer_state.get("run_date"), timer_state.get("run_time"))
+        existing_receipt = once_receipts.get(once_receipt_key)
+        if existing_receipt:
+            timer_state["enabled"] = False
+            timer_state["last_triggered_signature"] = signature
+            timer_state["last_triggered_at"] = (
+                str(existing_receipt.get("triggered_at") or "").strip() or now.isoformat(timespec="seconds")
+            )
+            timer_state["last_result"] = {
+                "status": "skipped_duplicate",
+                "at": _now_iso(),
+                "scheduled_for": scheduled.isoformat(timespec="seconds"),
+                "run_id": str(existing_receipt.get("run_id") or "").strip(),
+            }
+            _append_scheduler_audit_event(
+                timer_state=timer_state,
+                template_id=template_id,
+                status="skipped",
+                scheduled=scheduled,
+                run_id=str(existing_receipt.get("run_id") or "").strip(),
+                detail="duplicate_once_schedule",
+                extra={"idempotency_key": once_receipt_key},
+            )
+            _next_retry_at_by_template.pop(template_id, None)
+            return
+
     if signature and signature == str(timer_state.get("last_triggered_signature") or ""):
         _next_retry_at_by_template.pop(template_id, None)
         return
@@ -477,7 +657,7 @@ def _evaluate_single_timer(timer_state: dict[str, Any], template_id: str, now: d
 
     missed = scheduled < _started_at
     if missed and str(timer_state.get("catch_up_policy")) == "skip":
-        if _is_repeating(timer_state):
+        if is_repeating:
             _align_state_for_repetition(timer_state, scheduled)
         else:
             timer_state["enabled"] = False
@@ -488,6 +668,23 @@ def _evaluate_single_timer(timer_state: dict[str, Any], template_id: str, now: d
             "at": _now_iso(),
             "scheduled_for": scheduled.isoformat(timespec="seconds"),
         }
+        if once_receipt_key:
+            _record_once_receipt(
+                once_receipts,
+                template_id=template_id,
+                run_date=timer_state.get("run_date"),
+                run_time=timer_state.get("run_time"),
+                run_id="",
+                status="skipped_missed",
+            )
+        _append_scheduler_audit_event(
+            timer_state=timer_state,
+            template_id=template_id,
+            status="skipped",
+            scheduled=scheduled,
+            detail="skipped_missed",
+            extra={"idempotency_key": once_receipt_key} if once_receipt_key else None,
+        )
         _next_retry_at_by_template.pop(template_id, None)
         return
 
@@ -507,6 +704,13 @@ def _evaluate_single_timer(timer_state: dict[str, Any], template_id: str, now: d
                 "detail": detail,
                 "scheduled_for": scheduled.isoformat(timespec="seconds"),
             }
+            _append_scheduler_audit_event(
+                timer_state=timer_state,
+                template_id=template_id,
+                status="deferred",
+                scheduled=scheduled,
+                detail=detail,
+            )
         else:
             timer_state["enabled"] = False
             timer_state["last_triggered_signature"] = signature
@@ -518,6 +722,13 @@ def _evaluate_single_timer(timer_state: dict[str, Any], template_id: str, now: d
                 "detail": detail,
                 "scheduled_for": scheduled.isoformat(timespec="seconds"),
             }
+            _append_scheduler_audit_event(
+                timer_state=timer_state,
+                template_id=template_id,
+                status="failed",
+                scheduled=scheduled,
+                detail=detail,
+            )
             _next_retry_at_by_template.pop(template_id, None)
         return
     except Exception as exc:  # noqa: BLE001
@@ -530,21 +741,46 @@ def _evaluate_single_timer(timer_state: dict[str, Any], template_id: str, now: d
             "detail": str(exc),
             "scheduled_for": scheduled.isoformat(timespec="seconds"),
         }
+        _append_scheduler_audit_event(
+            timer_state=timer_state,
+            template_id=template_id,
+            status="failed",
+            scheduled=scheduled,
+            detail=str(exc),
+        )
         _next_retry_at_by_template.pop(template_id, None)
         return
 
-    if _is_repeating(timer_state):
+    if is_repeating:
         _align_state_for_repetition(timer_state, scheduled)
     else:
         timer_state["enabled"] = False
     timer_state["last_triggered_signature"] = signature
     timer_state["last_triggered_at"] = now.isoformat(timespec="seconds")
+    run_id = str(run_result.get("run_id") or "")
     timer_state["last_result"] = {
         "status": "started",
         "at": _now_iso(),
         "scheduled_for": scheduled.isoformat(timespec="seconds"),
-        "run_id": str(run_result.get("run_id") or ""),
+        "run_id": run_id,
     }
+    if once_receipt_key:
+        _record_once_receipt(
+            once_receipts,
+            template_id=template_id,
+            run_date=timer_state.get("run_date"),
+            run_time=timer_state.get("run_time"),
+            run_id=run_id,
+            status="started",
+        )
+    _append_scheduler_audit_event(
+        timer_state=timer_state,
+        template_id=template_id,
+        status="started",
+        scheduled=scheduled,
+        run_id=run_id,
+        extra={"idempotency_key": once_receipt_key} if once_receipt_key else None,
+    )
     _next_retry_at_by_template.pop(template_id, None)
 
 
@@ -553,13 +789,21 @@ def evaluate_once(template_id: str | None = None) -> dict[str, Any]:
     with _state_lock:
         state = _read_state_unlocked()
         timers = _get_template_timers(state)
+        once_receipts = _get_once_receipts(state)
         if template_id is None:
             ids = list(timers.keys())
             for template_key in ids:
-                _evaluate_single_timer(timers[template_key], template_key, now)
+                _evaluate_single_timer(
+                    timers[template_key],
+                    template_key,
+                    now,
+                    once_receipts=once_receipts,
+                )
             default_template_id = _DEFAULT_TEMPLATE_ID if _DEFAULT_TEMPLATE_ID in timers else (ids[0] if ids else _DEFAULT_TEMPLATE_ID)
             default_state = timers.get(default_template_id, _default_state())
-            _write_state_unlocked({"template_timers": timers})
+            state["template_timers"] = timers
+            state["once_trigger_receipts"] = once_receipts
+            _write_state_unlocked(state)
             return _enrich_state(
                 default_state,
                 template_id=default_template_id,
@@ -568,7 +812,13 @@ def evaluate_once(template_id: str | None = None) -> dict[str, Any]:
 
         template_key = _normalize_template_id(template_id)
         timer_state = _ensure_template_state_container(state, template_key)
-        _evaluate_single_timer(timer_state, template_key, now)
+        _evaluate_single_timer(
+            timer_state,
+            template_key,
+            now,
+            once_receipts=once_receipts,
+        )
+        state["once_trigger_receipts"] = once_receipts
         _write_state_unlocked(state)
         return _enrich_state(
             timer_state,

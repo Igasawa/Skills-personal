@@ -8,7 +8,7 @@ import sys
 from datetime import datetime, timedelta
 from typing import Any
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
 from pypdf import PdfWriter
 import pytest
@@ -2375,6 +2375,114 @@ def test_api_scheduler_state_daily_recurrence_advances_run_date(monkeypatch: pyt
     assert body["month"] == expected_next.month
 
 
+def test_api_scheduler_state_once_rearm_with_same_slot_is_idempotent(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    client = _create_client(monkeypatch, tmp_path)
+    run_payloads: list[dict[str, Any]] = []
+
+    def fake_start_run(payload: dict[str, Any]) -> dict[str, str]:
+        run_payloads.append(dict(payload))
+        return {"run_id": f"run_{len(run_payloads):03d}"}
+
+    monkeypatch.setattr(public_core_scheduler.core_runs, "_start_run", fake_start_run)
+
+    now = datetime.now()
+    run_time = (now - timedelta(minutes=1)).strftime("%H:%M")
+    run_date = now.strftime("%Y-%m-%d")
+    template_id = "scheduler-once-idempotent"
+
+    payload = {
+        "enabled": True,
+        "action_key": "preflight",
+        "card_id": "once-idempotent-card",
+        "year": now.year,
+        "month": now.month,
+        "run_date": run_date,
+        "run_time": run_time,
+        "recurrence": "once",
+        "catch_up_policy": "run_on_startup",
+    }
+
+    first = client.post(f"/api/scheduler/state?template_id={template_id}", json=payload)
+    assert first.status_code == 200
+    first_body = first.json()
+    assert first_body["status"] == "ok"
+    assert first_body["enabled"] is False
+    assert (first_body.get("last_result") or {}).get("status") == "started"
+    assert len(run_payloads) == 1
+
+    second = client.post(f"/api/scheduler/state?template_id={template_id}", json=payload)
+    assert second.status_code == 200
+    second_body = second.json()
+    assert second_body["status"] == "ok"
+    assert second_body["enabled"] is False
+    assert (second_body.get("last_result") or {}).get("status") == "skipped_duplicate"
+    assert len(run_payloads) == 1
+
+    state_path = _artifact_root(tmp_path) / "_scheduler" / "scheduler_state.json"
+    persisted = json.loads(state_path.read_text(encoding="utf-8"))
+    once_receipts = persisted.get("once_trigger_receipts")
+    assert isinstance(once_receipts, dict)
+    receipt_key = f"{template_id}|{run_date}|{run_time}"
+    assert receipt_key in once_receipts
+    assert str((once_receipts.get(receipt_key) or {}).get("run_id") or "") == "run_001"
+
+    ym = f"{now.year:04d}-{now.month:02d}"
+    entries = _read_audit_entries(tmp_path, ym)
+    scheduler_entries = [row for row in entries if str(row.get("event_type") or "") == "scheduler"]
+    assert any(str(row.get("status") or "") == "started" for row in scheduler_entries)
+    assert any(
+        str(row.get("status") or "") == "skipped"
+        and str((row.get("details") or {}).get("reason") or "") == "duplicate_once_schedule"
+        for row in scheduler_entries
+    )
+
+
+def test_scheduler_delete_timer_state_removes_once_receipts(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    client = _create_client(monkeypatch, tmp_path)
+
+    def fake_start_run(payload: dict[str, Any]) -> dict[str, str]:
+        return {"run_id": "run_001"}
+
+    monkeypatch.setattr(public_core_scheduler.core_runs, "_start_run", fake_start_run)
+
+    now = datetime.now()
+    run_time = (now - timedelta(minutes=1)).strftime("%H:%M")
+    run_date = now.strftime("%Y-%m-%d")
+    template_id = "scheduler-delete-receipt"
+
+    res = client.post(
+        f"/api/scheduler/state?template_id={template_id}",
+        json={
+            "enabled": True,
+            "action_key": "preflight",
+            "card_id": "delete-receipt-card",
+            "year": now.year,
+            "month": now.month,
+            "run_date": run_date,
+            "run_time": run_time,
+            "recurrence": "once",
+            "catch_up_policy": "run_on_startup",
+        },
+    )
+    assert res.status_code == 200
+
+    state_path = _artifact_root(tmp_path) / "_scheduler" / "scheduler_state.json"
+    persisted = json.loads(state_path.read_text(encoding="utf-8"))
+    before_receipts = persisted.get("once_trigger_receipts") or {}
+    assert any(str(key).startswith(f"{template_id}|") for key in before_receipts)
+
+    public_core_scheduler.delete_timer_state(template_id)
+    persisted_after = json.loads(state_path.read_text(encoding="utf-8"))
+    after_receipts = persisted_after.get("once_trigger_receipts") or {}
+    assert not any(str(key).startswith(f"{template_id}|") for key in after_receipts)
+
+
 def test_api_get_workflow_templates_supports_search_sort_and_pagination(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     _write_json(
         _workflow_template_store(tmp_path),
@@ -3798,6 +3906,530 @@ def test_api_workflow_events_validates_token_when_configured(
     assert body["status"] == "ok"
     assert body["triggered"] is True
     assert body["duplicate"] is False
+
+
+def test_api_workflow_events_rejects_unsupported_action_for_mvp(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    client = _create_client(monkeypatch, tmp_path)
+    create_res = client.post(
+        "/api/workflow-templates",
+        json={
+            "name": "External Event Unsupported Action",
+            "year": 2026,
+            "month": 2,
+            "mfcloud_url": "https://example.com/external-unsupported",
+            "steps": [
+                {
+                    "title": "Step 1",
+                    "action": "provider_ingest",
+                    "trigger_kind": "external_event",
+                    "execution_mode": "manual_confirm",
+                }
+            ],
+        },
+    )
+    assert create_res.status_code == 200
+    template_id = str((create_res.json().get("template") or {}).get("id") or "")
+    assert template_id
+
+    res = client.post("/api/workflow-events", json={"template_id": template_id, "event_id": "evt-unsupported-001"})
+    assert res.status_code == 409
+    detail = str(res.json().get("detail") or "")
+    assert "external_event action is not executable in MVP" in detail
+
+
+def test_api_workflow_events_rejects_invalid_year_month_after_template_fallback(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    client = _create_client(monkeypatch, tmp_path)
+    create_res = client.post(
+        "/api/workflow-templates",
+        json={
+            "name": "External Event Invalid YM",
+            "year": 0,
+            "month": 0,
+            "mfcloud_url": "https://example.com/external-invalid-ym",
+            "steps": [
+                {
+                    "title": "Step 1",
+                    "action": "preflight",
+                    "trigger_kind": "external_event",
+                    "execution_mode": "manual_confirm",
+                }
+            ],
+        },
+    )
+    assert create_res.status_code == 200
+    template_id = str((create_res.json().get("template") or {}).get("id") or "")
+    assert template_id
+
+    res = client.post("/api/workflow-events", json={"template_id": template_id, "event_id": "evt-invalid-ym-001"})
+    assert res.status_code == 400
+    detail = str(res.json().get("detail") or "")
+    assert "requires valid year/month" in detail
+
+
+def test_api_workflow_events_event_name_route_rejects_not_matched(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    client = _create_client(monkeypatch, tmp_path)
+    create_res = client.post(
+        "/api/workflow-templates",
+        json={
+            "name": "External Event Name Route",
+            "year": 2026,
+            "month": 2,
+            "mfcloud_url": "https://example.com/external-event-name",
+            "steps": [
+                {
+                    "title": "Step 1",
+                    "action": "preflight",
+                    "trigger_kind": "external_event",
+                    "execution_mode": "manual_confirm",
+                }
+            ],
+        },
+    )
+    assert create_res.status_code == 200
+
+    res = client.post("/api/workflow-events", json={"event_name": "amazon_download", "event_id": "evt-name-404"})
+    assert res.status_code == 404
+    detail = str(res.json().get("detail") or "")
+    assert "matched event_name" in detail
+
+
+def test_api_workflow_events_event_name_route_rejects_multiple_matches(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    client = _create_client(monkeypatch, tmp_path)
+    payload = {
+        "year": 2026,
+        "month": 2,
+        "mfcloud_url": "https://example.com/external-event-duplicate-name",
+        "steps": [
+            {
+                "title": "Step 1",
+                "action": "preflight",
+                "trigger_kind": "external_event",
+                "execution_mode": "manual_confirm",
+            }
+        ],
+    }
+    first = client.post("/api/workflow-templates", json={"name": "External Event Name A", **payload})
+    second = client.post("/api/workflow-templates", json={"name": "External Event Name B", **payload})
+    assert first.status_code == 200
+    assert second.status_code == 200
+
+    res = client.post("/api/workflow-events", json={"event_name": "preflight", "event_id": "evt-name-409"})
+    assert res.status_code == 409
+    detail = str(res.json().get("detail") or "")
+    assert "Multiple templates matched event_name" in detail
+
+
+def test_api_workflow_events_accepts_authorization_bearer_token(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    client = _create_client(monkeypatch, tmp_path)
+    monkeypatch.setenv("AX_WORKFLOW_EVENT_TOKEN", "bearer-token-001")
+
+    def _fake_start_run(payload: dict[str, Any]) -> dict[str, Any]:
+        return {"status": "started", "run_id": "run_external_evt_bearer"}
+
+    monkeypatch.setattr(public_core, "_start_run", _fake_start_run)
+
+    create_res = client.post(
+        "/api/workflow-templates",
+        json={
+            "name": "External Event Bearer Token Template",
+            "year": 2026,
+            "month": 2,
+            "mfcloud_url": "https://example.com/external-bearer-token",
+            "steps": [
+                {
+                    "title": "Step 1",
+                    "action": "preflight",
+                    "trigger_kind": "external_event",
+                    "execution_mode": "manual_confirm",
+                }
+            ],
+        },
+    )
+    assert create_res.status_code == 200
+    template_id = str((create_res.json().get("template") or {}).get("id") or "")
+    assert template_id
+
+    unauthorized_res = client.post("/api/workflow-events", json={"template_id": template_id, "event_id": "evt-bearer-1"})
+    assert unauthorized_res.status_code == 401
+
+    authorized_res = client.post(
+        "/api/workflow-events",
+        headers={"Authorization": "Bearer bearer-token-001"},
+        json={"template_id": template_id, "event_id": "evt-bearer-2"},
+    )
+    assert authorized_res.status_code == 200
+    body = authorized_res.json()
+    assert body["status"] == "ok"
+    assert body["triggered"] is True
+    assert body["duplicate"] is False
+
+
+def test_api_workflow_events_receipt_ttl_expires_duplicate_key(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    client = _create_client(monkeypatch, tmp_path)
+    monkeypatch.setenv("AX_WORKFLOW_EVENT_RECEIPT_TTL_DAYS", "1")
+    run_count = 0
+
+    def _fake_start_run(payload: dict[str, Any]) -> dict[str, Any]:
+        nonlocal run_count
+        run_count += 1
+        return {"status": "started", "run_id": f"run_ttl_{run_count:03d}"}
+
+    monkeypatch.setattr(public_core, "_start_run", _fake_start_run)
+
+    create_res = client.post(
+        "/api/workflow-templates",
+        json={
+            "name": "External Event TTL Template",
+            "year": 2026,
+            "month": 2,
+            "mfcloud_url": "https://example.com/external-ttl",
+            "steps": [
+                {
+                    "title": "Step 1",
+                    "action": "preflight",
+                    "trigger_kind": "external_event",
+                    "execution_mode": "manual_confirm",
+                }
+            ],
+        },
+    )
+    assert create_res.status_code == 200
+    template_id = str((create_res.json().get("template") or {}).get("id") or "")
+    assert template_id
+
+    idempotency_key = "evt-ttl-001"
+    receipts_path = _artifact_root(tmp_path) / "_workflow_events" / "receipts.json"
+    old_created_at = (datetime.now() - timedelta(days=5)).isoformat(timespec="seconds")
+    _write_json(
+        receipts_path,
+        {
+            "receipts": {
+                f"{template_id}:{idempotency_key}": {
+                    "template_id": template_id,
+                    "template_name": "External Event TTL Template",
+                    "action_key": "preflight",
+                    "event_name": "preflight",
+                    "source": "seed",
+                    "idempotency_key": idempotency_key,
+                    "run_id": "run_expired_001",
+                    "created_at": old_created_at,
+                }
+            }
+        },
+    )
+
+    res = client.post(
+        "/api/workflow-events",
+        json={"template_id": template_id, "idempotency_key": idempotency_key},
+    )
+    assert res.status_code == 200
+    body = res.json()
+    assert body["status"] == "ok"
+    assert body["duplicate"] is False
+    assert body["triggered"] is True
+    assert run_count == 1
+
+    persisted = json.loads(receipts_path.read_text(encoding="utf-8"))
+    receipts = persisted.get("receipts") or {}
+    key = f"{template_id}:{idempotency_key}"
+    assert key in receipts
+    assert str((receipts.get(key) or {}).get("run_id") or "") == "run_ttl_001"
+    assert str((receipts.get(key) or {}).get("created_at") or "") != old_created_at
+
+
+def test_api_workflow_events_receipt_max_limit_from_env(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    client = _create_client(monkeypatch, tmp_path)
+    monkeypatch.setenv("AX_WORKFLOW_EVENT_MAX_RECEIPTS", "2")
+    monkeypatch.setenv("AX_WORKFLOW_EVENT_RECEIPT_TTL_DAYS", "3650")
+    run_count = 0
+
+    def _fake_start_run(payload: dict[str, Any]) -> dict[str, Any]:
+        nonlocal run_count
+        run_count += 1
+        return {"status": "started", "run_id": f"run_max_{run_count:03d}"}
+
+    monkeypatch.setattr(public_core, "_start_run", _fake_start_run)
+
+    create_res = client.post(
+        "/api/workflow-templates",
+        json={
+            "name": "External Event Max Receipt Template",
+            "year": 2026,
+            "month": 2,
+            "mfcloud_url": "https://example.com/external-max",
+            "steps": [
+                {
+                    "title": "Step 1",
+                    "action": "preflight",
+                    "trigger_kind": "external_event",
+                    "execution_mode": "manual_confirm",
+                }
+            ],
+        },
+    )
+    assert create_res.status_code == 200
+    template_id = str((create_res.json().get("template") or {}).get("id") or "")
+    assert template_id
+
+    for idx in range(1, 4):
+        res = client.post(
+            "/api/workflow-events",
+            json={"template_id": template_id, "idempotency_key": f"evt-max-{idx:03d}"},
+        )
+        assert res.status_code == 200
+        assert res.json()["triggered"] is True
+        assert res.json()["duplicate"] is False
+
+    receipts_path = _artifact_root(tmp_path) / "_workflow_events" / "receipts.json"
+    persisted = json.loads(receipts_path.read_text(encoding="utf-8"))
+    receipts = persisted.get("receipts") or {}
+    assert len(receipts) == 2
+    assert f"{template_id}:evt-max-001" not in receipts
+
+
+def test_api_workflow_events_auth_failure_writes_classified_audit(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    client = _create_client(monkeypatch, tmp_path)
+    monkeypatch.setenv("AX_WORKFLOW_EVENT_TOKEN", "required-token")
+
+    res = client.post(
+        "/api/workflow-events",
+        json={"year": 2026, "month": 2, "event_name": "preflight"},
+    )
+    assert res.status_code == 401
+    detail = str(res.json().get("detail") or "")
+    assert "Invalid workflow event token" in detail
+
+    entries = _read_audit_entries(tmp_path, "2026-02")
+    workflow_entries = [row for row in entries if str(row.get("event_type") or "") == "workflow_event"]
+    assert workflow_entries
+    last = workflow_entries[-1]
+    assert str(last.get("status") or "") == "rejected"
+    details = last.get("details") or {}
+    assert str(details.get("reason_class") or "") == "auth"
+    assert str(details.get("reason_code") or "") == "http_401"
+
+
+def test_api_workflow_events_run_conflict_writes_classified_audit(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    client = _create_client(monkeypatch, tmp_path)
+
+    def _fake_start_run(payload: dict[str, Any]) -> dict[str, Any]:
+        raise HTTPException(status_code=409, detail="Another run is already in progress.")
+
+    monkeypatch.setattr(public_core, "_start_run", _fake_start_run)
+
+    create_res = client.post(
+        "/api/workflow-templates",
+        json={
+            "name": "External Event Conflict Template",
+            "year": 2026,
+            "month": 2,
+            "mfcloud_url": "https://example.com/external-conflict",
+            "steps": [
+                {
+                    "title": "Step 1",
+                    "action": "preflight",
+                    "trigger_kind": "external_event",
+                    "execution_mode": "manual_confirm",
+                }
+            ],
+        },
+    )
+    assert create_res.status_code == 200
+    template_id = str((create_res.json().get("template") or {}).get("id") or "")
+    assert template_id
+
+    res = client.post("/api/workflow-events", json={"template_id": template_id, "event_id": "evt-conflict-001"})
+    assert res.status_code == 409
+    detail = str(res.json().get("detail") or "")
+    assert "already in progress" in detail
+
+    entries = _read_audit_entries(tmp_path, "2026-02")
+    workflow_entries = [row for row in entries if str(row.get("event_type") or "") == "workflow_event"]
+    assert workflow_entries
+    last = workflow_entries[-1]
+    assert str(last.get("status") or "") == "rejected"
+    details = last.get("details") or {}
+    assert str(details.get("reason_class") or "") == "run_conflict"
+    assert str(details.get("reason_code") or "") == "http_409"
+
+
+def test_api_workflow_events_summary_returns_aggregated_counts(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    client = _create_client(monkeypatch, tmp_path)
+    ym = "2026-02"
+    reports = _reports_dir(tmp_path, ym)
+    reports.mkdir(parents=True, exist_ok=True)
+    audit_path = reports / "audit_log.jsonl"
+    rows = [
+        {
+            "at": "2026-02-20T10:00:00",
+            "event_type": "workflow_event",
+            "action": "preflight",
+            "status": "success",
+            "run_id": "run_001",
+            "details": {
+                "template_id": "tpl_001",
+                "template_name": "Template A",
+                "event_name": "preflight",
+                "source": "webhook",
+                "idempotency_key": "evt-001",
+                "duplicate": False,
+            },
+        },
+        {
+            "at": "2026-02-20T10:05:00",
+            "event_type": "workflow_event",
+            "action": "preflight",
+            "status": "rejected",
+            "details": {
+                "template_id": "tpl_001",
+                "event_name": "preflight",
+                "source": "webhook",
+                "idempotency_key": "evt-002",
+                "reason_class": "auth",
+                "reason_code": "http_401",
+            },
+        },
+        {
+            "at": "2026-02-20T10:06:00",
+            "event_type": "workflow_event",
+            "action": "preflight",
+            "status": "skipped",
+            "run_id": "run_001",
+            "details": {
+                "template_id": "tpl_001",
+                "event_name": "preflight",
+                "source": "webhook",
+                "idempotency_key": "evt-001",
+                "reason_class": "duplicate",
+                "reason_code": "duplicate_idempotency_key",
+                "duplicate": True,
+            },
+        },
+        {
+            "at": "2026-02-20T10:07:00",
+            "event_type": "workflow_event",
+            "action": "preflight",
+            "status": "failed",
+            "details": {
+                "template_id": "tpl_001",
+                "event_name": "preflight",
+                "source": "webhook",
+                "idempotency_key": "evt-003",
+                "reason_class": "infra",
+                "reason_code": "exception",
+                "duplicate": False,
+            },
+        },
+        {
+            "at": "2026-02-20T10:08:00",
+            "event_type": "run",
+            "action": "preflight",
+            "status": "success",
+            "details": {},
+        },
+    ]
+    audit_path.write_text(
+        "\n".join(json.dumps(row, ensure_ascii=False) for row in rows) + "\n",
+        encoding="utf-8",
+    )
+
+    res = client.get("/api/workflow-events/summary?ym=2026-02&recent_limit=2")
+    assert res.status_code == 200
+    body = res.json()
+
+    assert body.get("status") == "ok"
+    assert body.get("ym") == "2026-02"
+    assert body.get("event_type") == "workflow_event"
+    assert body.get("total") == 4
+    assert body.get("first_at") == "2026-02-20T10:00:00"
+    assert body.get("last_at") == "2026-02-20T10:07:00"
+
+    by_status = body.get("by_status") or {}
+    assert by_status.get("success") == 1
+    assert by_status.get("skipped") == 1
+    assert by_status.get("rejected") == 1
+    assert by_status.get("failed") == 1
+    assert by_status.get("unknown") == 0
+
+    by_reason_class_rows = body.get("by_reason_class") if isinstance(body.get("by_reason_class"), list) else []
+    by_reason_class = {str(item.get("reason_class") or ""): int(item.get("count") or 0) for item in by_reason_class_rows}
+    assert by_reason_class.get("auth") == 1
+    assert by_reason_class.get("duplicate") == 1
+    assert by_reason_class.get("infra") == 1
+
+    by_reason_code_rows = body.get("by_reason_code") if isinstance(body.get("by_reason_code"), list) else []
+    by_reason_code = {str(item.get("reason_code") or ""): int(item.get("count") or 0) for item in by_reason_code_rows}
+    assert by_reason_code.get("http_401") == 1
+    assert by_reason_code.get("duplicate_idempotency_key") == 1
+    assert by_reason_code.get("exception") == 1
+
+    duplicate = body.get("duplicate") or {}
+    assert duplicate.get("true") == 1
+    assert duplicate.get("false") == 2
+    assert duplicate.get("unknown") == 1
+
+    recent = body.get("recent") if isinstance(body.get("recent"), list) else []
+    assert len(recent) == 2
+    assert str(recent[0].get("at") or "") == "2026-02-20T10:07:00"
+    assert str(recent[1].get("at") or "") == "2026-02-20T10:06:00"
+
+    receipt_retention = body.get("receipt_retention") or {}
+    assert int(receipt_retention.get("ttl_days") or 0) >= 1
+    assert int(receipt_retention.get("max_receipts") or 0) >= 1
+
+
+def test_api_workflow_events_summary_returns_empty_when_audit_not_found(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    client = _create_client(monkeypatch, tmp_path)
+    res = client.get("/api/workflow-events/summary?ym=2026-02")
+    assert res.status_code == 200
+    body = res.json()
+
+    assert body.get("status") == "ok"
+    assert body.get("ym") == "2026-02"
+    assert body.get("total") == 0
+    assert body.get("first_at") == ""
+    assert body.get("last_at") == ""
+    assert body.get("recent") == []
+    assert body.get("duplicate") == {"true": 0, "false": 0, "unknown": 0}
+    by_status = body.get("by_status") or {}
+    assert by_status.get("success") == 0
+    assert by_status.get("skipped") == 0
+    assert by_status.get("rejected") == 0
+    assert by_status.get("failed") == 0
+    assert by_status.get("unknown") == 0
 
 
 def test_api_document_freshness_filters_kil_and_classifies(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

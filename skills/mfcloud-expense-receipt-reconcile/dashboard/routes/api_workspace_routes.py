@@ -4,6 +4,7 @@ import json
 import os
 import re
 from collections import Counter
+from datetime import datetime, timedelta
 from typing import Any, Callable
 
 from fastapi import APIRouter, HTTPException, Query, Request
@@ -23,6 +24,9 @@ WORKFLOW_EVENT_TOKEN_HEADER = "x-workflow-event-token"
 WORKFLOW_EVENT_IDEMPOTENCY_HEADER = "x-idempotency-key"
 WORKFLOW_EVENT_MAX_IDEMPOTENCY_KEY_CHARS = 128
 WORKFLOW_EVENT_MAX_RECEIPTS = 1000
+WORKFLOW_EVENT_RECEIPT_TTL_DAYS = 90
+WORKFLOW_EVENT_MAX_RECEIPTS_ENV = "AX_WORKFLOW_EVENT_MAX_RECEIPTS"
+WORKFLOW_EVENT_RECEIPT_TTL_DAYS_ENV = "AX_WORKFLOW_EVENT_RECEIPT_TTL_DAYS"
 WORKFLOW_EVENT_MAX_EVENT_NAME_CHARS = 80
 WORKFLOW_EVENT_MAX_SOURCE_CHARS = 80
 
@@ -437,6 +441,80 @@ def register_api_workspace_routes(
                 return key
         return ""
 
+    def _workflow_event_max_receipts() -> int:
+        raw = os.environ.get(WORKFLOW_EVENT_MAX_RECEIPTS_ENV)
+        value = core._safe_non_negative_int(raw, default=WORKFLOW_EVENT_MAX_RECEIPTS)
+        if value < 1:
+            return WORKFLOW_EVENT_MAX_RECEIPTS
+        if value > 20000:
+            return 20000
+        return value
+
+    def _workflow_event_receipt_ttl_days() -> int:
+        raw = os.environ.get(WORKFLOW_EVENT_RECEIPT_TTL_DAYS_ENV)
+        value = core._safe_non_negative_int(raw, default=WORKFLOW_EVENT_RECEIPT_TTL_DAYS)
+        if value < 1:
+            return WORKFLOW_EVENT_RECEIPT_TTL_DAYS
+        if value > 3650:
+            return 3650
+        return value
+
+    def _workflow_event_receipt_created_at(value: Any) -> str:
+        ts = normalize_workflow_template_timestamp(value)
+        if ts:
+            return ts
+        return ""
+
+    def _clean_workflow_event_receipts(
+        receipts: dict[str, Any],
+    ) -> tuple[dict[str, dict[str, Any]], bool]:
+        now = datetime.now()
+        ttl_days = _workflow_event_receipt_ttl_days()
+        expires_at = now - timedelta(days=ttl_days)
+        max_receipts = _workflow_event_max_receipts()
+
+        cleaned: dict[str, dict[str, Any]] = {}
+        changed = False
+
+        for key, value in receipts.items():
+            if not isinstance(key, str) or not key.strip() or not isinstance(value, dict):
+                changed = True
+                continue
+            normalized_key = key.strip()
+            row = dict(value)
+
+            created_at = _workflow_event_receipt_created_at(row.get("created_at"))
+            if created_at:
+                try:
+                    created_dt = datetime.fromisoformat(created_at)
+                except Exception:
+                    created_dt = None
+                if created_dt is not None and created_dt < expires_at:
+                    changed = True
+                    continue
+
+            row["template_id"] = normalize_workflow_template_id(row.get("template_id"))
+            row["template_name"] = str(row.get("template_name") or "").strip()
+            row["action_key"] = _normalize_step_action(row.get("action_key"))
+            row["event_name"] = str(row.get("event_name") or "").strip()[:WORKFLOW_EVENT_MAX_EVENT_NAME_CHARS]
+            row["source"] = str(row.get("source") or "").strip()[:WORKFLOW_EVENT_MAX_SOURCE_CHARS]
+            row["idempotency_key"] = _normalize_workflow_event_idempotency_key(row.get("idempotency_key"))
+            row["run_id"] = str(row.get("run_id") or "").strip()
+            row["created_at"] = created_at
+
+            cleaned[normalized_key] = row
+            if normalized_key != key:
+                changed = True
+
+        if len(cleaned) > max_receipts:
+            keys_sorted = sorted(cleaned.keys(), key=lambda item: str(cleaned[item].get("created_at") or ""))
+            drop_count = len(cleaned) - max_receipts
+            for stale_key in keys_sorted[:drop_count]:
+                cleaned.pop(stale_key, None)
+            changed = True
+
+        return cleaned, changed
+
     def _workflow_event_receipts_path():
         return core._artifact_root() / "_workflow_events" / "receipts.json"
 
@@ -445,12 +523,11 @@ def register_api_workspace_routes(
         receipts = raw.get("receipts") if isinstance(raw, dict) else {}
         if not isinstance(receipts, dict):
             return {"receipts": {}}
-        normalized: dict[str, dict[str, Any]] = {}
-        for key, value in receipts.items():
-            if not isinstance(key, str) or not key.strip() or not isinstance(value, dict):
-                continue
-            normalized[key.strip()] = dict(value)
-        return {"receipts": normalized}
+        cleaned, changed = _clean_workflow_event_receipts(receipts)
+        state = {"receipts": cleaned}
+        if changed:
+            _write_workflow_event_receipts(state)
+        return state
 
     def _write_workflow_event_receipts(state: dict[str, Any]) -> None:
         receipts = state.get("receipts") if isinstance(state, dict) else {}
@@ -501,13 +578,178 @@ def register_api_workspace_routes(
             "run_id": run_id,
             "created_at": workflow_template_timestamp_now(),
         }
-        if len(receipts) > WORKFLOW_EVENT_MAX_RECEIPTS:
-            keys_sorted = sorted(receipts.keys(), key=lambda item: str(receipts[item].get("created_at") or ""))
-            drop_count = max(0, len(receipts) - WORKFLOW_EVENT_MAX_RECEIPTS)
-            for stale_key in keys_sorted[:drop_count]:
-                receipts.pop(stale_key, None)
-        state["receipts"] = receipts
+        cleaned, _ = _clean_workflow_event_receipts(receipts)
+        state["receipts"] = cleaned
         _write_workflow_event_receipts(state)
+
+    def _workflow_event_status_for_http(status_code: int) -> str:
+        if status_code in {400, 401, 403, 404, 409, 422}:
+            return "rejected"
+        return "failed"
+
+    def _workflow_event_error_class(status_code: int, detail: str) -> str:
+        text = str(detail or "").strip().lower()
+        if status_code in {401, 403}:
+            return "auth"
+        if status_code == 404:
+            if "template" in text or "event_name" in text:
+                return "template_not_found"
+            return "not_found"
+        if status_code == 409:
+            if "already in progress" in text:
+                return "run_conflict"
+            if "external_event action is not executable" in text:
+                return "unsupported_action"
+            if "template" in text or "event_name" in text:
+                return "template_conflict"
+            return "conflict"
+        if status_code in {400, 422}:
+            return "validation"
+        return "infra"
+
+    def _append_workflow_event_audit(
+        *,
+        year: int | None,
+        month: int | None,
+        action_key: str,
+        status: str,
+        actor: Any,
+        template_id: str,
+        template_name: str,
+        event_name: str,
+        source: str,
+        idempotency_key: str,
+        run_id: str = "",
+        reason: str = "",
+        reason_class: str = "",
+        reason_code: str = "",
+        duplicate: bool | None = None,
+    ) -> None:
+        if year is None or month is None or year < 2000 or month < 1 or month > 12:
+            return
+        details: dict[str, Any] = {
+            "template_id": template_id,
+            "template_name": template_name,
+            "event_name": event_name,
+            "source": source,
+            "idempotency_key": idempotency_key,
+        }
+        if reason:
+            details["reason"] = reason
+        if reason_class:
+            details["reason_class"] = reason_class
+        if reason_code:
+            details["reason_code"] = reason_code
+        if duplicate is not None:
+            details["duplicate"] = bool(duplicate)
+        core._append_audit_event(
+            year=year,
+            month=month,
+            event_type="workflow_event",
+            action=action_key or "unknown",
+            status=status,
+            actor=actor,
+            mode=action_key or "unknown",
+            run_id=run_id or None,
+            details=details,
+        )
+
+    def _workflow_event_counter_rows(counter: Counter[str], *, key_name: str) -> list[dict[str, Any]]:
+        rows = [
+            {
+                key_name: str(key or ""),
+                "count": int(value),
+            }
+            for key, value in counter.items()
+            if str(key or "").strip() and int(value) > 0
+        ]
+        rows.sort(key=lambda row: (-int(row["count"]), str(row.get(key_name) or "")))
+        return rows
+
+    def _summarize_workflow_event_audit_rows(
+        rows: list[dict[str, Any]],
+        *,
+        recent_limit: int = 20,
+    ) -> dict[str, Any]:
+        status_counter: Counter[str] = Counter()
+        reason_class_counter: Counter[str] = Counter()
+        reason_code_counter: Counter[str] = Counter()
+        duplicate_counter: Counter[str] = Counter()
+        events: list[dict[str, Any]] = []
+
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            if str(row.get("event_type") or "").strip() != "workflow_event":
+                continue
+
+            status = str(row.get("status") or "").strip().lower()
+            if status not in {"success", "skipped", "rejected", "failed"}:
+                status = "unknown"
+            status_counter[status] += 1
+
+            details = row.get("details") if isinstance(row.get("details"), dict) else {}
+            reason_class = str(details.get("reason_class") or "").strip().lower()
+            reason_code = str(details.get("reason_code") or "").strip().lower()
+            if reason_class:
+                reason_class_counter[reason_class] += 1
+            if reason_code:
+                reason_code_counter[reason_code] += 1
+
+            duplicate_raw = details.get("duplicate")
+            duplicate_value: bool | None = None
+            duplicate_key = "unknown"
+            if isinstance(duplicate_raw, bool):
+                duplicate_value = duplicate_raw
+                duplicate_key = "true" if duplicate_raw else "false"
+            duplicate_counter[duplicate_key] += 1
+
+            events.append(
+                {
+                    "at": str(row.get("at") or "").strip(),
+                    "status": status,
+                    "action": str(row.get("action") or "").strip(),
+                    "run_id": str(row.get("run_id") or "").strip(),
+                    "template_id": str(details.get("template_id") or "").strip(),
+                    "template_name": str(details.get("template_name") or "").strip(),
+                    "event_name": str(details.get("event_name") or "").strip(),
+                    "source": str(details.get("source") or "").strip(),
+                    "idempotency_key": str(details.get("idempotency_key") or "").strip(),
+                    "reason": str(details.get("reason") or "").strip(),
+                    "reason_class": reason_class,
+                    "reason_code": reason_code,
+                    "duplicate": duplicate_value,
+                }
+            )
+
+        events.sort(key=lambda row: str(row.get("at") or ""), reverse=True)
+        limit = max(1, min(int(recent_limit), 200))
+        recent = events[:limit]
+
+        first_at = str(events[-1].get("at") or "") if events else ""
+        last_at = str(events[0].get("at") or "") if events else ""
+
+        return {
+            "event_type": "workflow_event",
+            "total": len(events),
+            "first_at": first_at,
+            "last_at": last_at,
+            "by_status": {
+                "success": int(status_counter.get("success", 0)),
+                "skipped": int(status_counter.get("skipped", 0)),
+                "rejected": int(status_counter.get("rejected", 0)),
+                "failed": int(status_counter.get("failed", 0)),
+                "unknown": int(status_counter.get("unknown", 0)),
+            },
+            "by_reason_class": _workflow_event_counter_rows(reason_class_counter, key_name="reason_class"),
+            "by_reason_code": _workflow_event_counter_rows(reason_code_counter, key_name="reason_code"),
+            "duplicate": {
+                "true": int(duplicate_counter.get("true", 0)),
+                "false": int(duplicate_counter.get("false", 0)),
+                "unknown": int(duplicate_counter.get("unknown", 0)),
+            },
+            "recent": recent,
+        }
 
     def _resolve_external_event_template(
         payload: dict[str, Any],
@@ -1099,6 +1341,29 @@ def register_api_workspace_routes(
         state = core_scheduler.update_state(body, template_id=template_id)
         return JSONResponse({"status": "ok", **state}, headers={"Cache-Control": "no-store"})
 
+    @router.get("/api/workflow-events/summary")
+    def api_workflow_events_summary(
+        ym: str = Query(...),
+        recent_limit: int = Query(default=20, ge=1, le=200),
+    ) -> JSONResponse:
+        normalized_ym = core._safe_ym(ym)
+        audit_path = core._artifact_root() / normalized_ym / "reports" / "audit_log.jsonl"
+        raw_rows = core._read_jsonl(audit_path) if audit_path.exists() else []
+        rows = raw_rows if isinstance(raw_rows, list) else []
+        summary = _summarize_workflow_event_audit_rows(rows, recent_limit=recent_limit)
+        return JSONResponse(
+            {
+                "status": "ok",
+                "ym": normalized_ym,
+                "receipt_retention": {
+                    "ttl_days": _workflow_event_receipt_ttl_days(),
+                    "max_receipts": _workflow_event_max_receipts(),
+                },
+                **summary,
+            },
+            headers={"Cache-Control": "no-store"},
+        )
+
     @router.post("/api/workflow-events")
     def api_workflow_events(
         request: Request,
@@ -1107,56 +1372,152 @@ def register_api_workspace_routes(
     ) -> JSONResponse:
         body = payload if isinstance(payload, dict) else {}
         req = request
-        _validate_workflow_event_token(req, token=token)
+        actor = actor_from_request(req)
+        idempotency_key = _resolve_workflow_event_idempotency_key(req, body)
+        action_key = ""
+        template_id = normalize_workflow_template_id(body.get("template_id") or body.get("templateId"))
+        template_name = ""
+        event_name = (
+            str(body.get("event_name") or body.get("eventName") or "").strip()[:WORKFLOW_EVENT_MAX_EVENT_NAME_CHARS]
+        )
+        source = str(body.get("source") or body.get("event_source") or "webhook").strip()[:WORKFLOW_EVENT_MAX_SOURCE_CHARS]
+        year = core._safe_non_negative_int(body.get("year"), default=0)
+        month = core._safe_non_negative_int(body.get("month"), default=0)
+        if year < 2000 or month < 1 or month > 12:
+            year = None
+            month = None
+
+        try:
+            _validate_workflow_event_token(req, token=token)
+        except HTTPException as exc:
+            _append_workflow_event_audit(
+                year=year,
+                month=month,
+                action_key=action_key,
+                status=_workflow_event_status_for_http(exc.status_code),
+                actor=actor,
+                template_id=template_id,
+                template_name=template_name,
+                event_name=event_name,
+                source=source,
+                idempotency_key=idempotency_key,
+                reason=str(exc.detail),
+                reason_class=_workflow_event_error_class(exc.status_code, str(exc.detail)),
+                reason_code=f"http_{exc.status_code}",
+            )
+            raise
 
         templates = read_workflow_templates()
-        template, first_step = _resolve_external_event_template(body, templates)
+        try:
+            template, first_step = _resolve_external_event_template(body, templates)
+        except HTTPException as exc:
+            _append_workflow_event_audit(
+                year=year,
+                month=month,
+                action_key=action_key,
+                status=_workflow_event_status_for_http(exc.status_code),
+                actor=actor,
+                template_id=template_id,
+                template_name=template_name,
+                event_name=event_name,
+                source=source,
+                idempotency_key=idempotency_key,
+                reason=str(exc.detail),
+                reason_class=_workflow_event_error_class(exc.status_code, str(exc.detail)),
+                reason_code=f"http_{exc.status_code}",
+            )
+            raise
+
         template_id = normalize_workflow_template_id(template.get("id"))
         if not template_id:
             raise HTTPException(status_code=400, detail="Resolved template id is invalid.")
-
+        template_name = str(template.get("name") or "").strip()
         action_key = _normalize_step_action(first_step.get("action"))
+        if not event_name:
+            event_name = action_key[:WORKFLOW_EVENT_MAX_EVENT_NAME_CHARS]
+
+        if year is None or month is None:
+            fallback_year = core._safe_non_negative_int(template.get("year"), default=0)
+            fallback_month = core._safe_non_negative_int(template.get("month"), default=0)
+            if 2000 <= fallback_year and 1 <= fallback_month <= 12:
+                year = fallback_year
+                month = fallback_month
+
         allowed_action_keys = _allowed_scheduler_action_keys()
         if action_key not in allowed_action_keys:
-            raise HTTPException(
-                status_code=409,
-                detail=f"external_event action is not executable in MVP: {action_key or '(empty)'}",
+            detail = f"external_event action is not executable in MVP: {action_key or '(empty)'}"
+            _append_workflow_event_audit(
+                year=year,
+                month=month,
+                action_key=action_key,
+                status="rejected",
+                actor=actor,
+                template_id=template_id,
+                template_name=template_name,
+                event_name=event_name,
+                source=source,
+                idempotency_key=idempotency_key,
+                reason=detail,
+                reason_class="unsupported_action",
+                reason_code="unsupported_action",
             )
+            raise HTTPException(status_code=409, detail=detail)
 
-        idempotency_key = _resolve_workflow_event_idempotency_key(req, body)
         duplicate = _lookup_workflow_event_receipt(template_id, idempotency_key) if idempotency_key else None
         if duplicate:
+            run_id = str(duplicate.get("run_id") or "")
+            _append_workflow_event_audit(
+                year=year,
+                month=month,
+                action_key=action_key,
+                status="skipped",
+                actor=actor,
+                template_id=template_id,
+                template_name=template_name,
+                event_name=event_name,
+                source=source,
+                idempotency_key=idempotency_key,
+                run_id=run_id,
+                reason="duplicate_event",
+                reason_class="duplicate",
+                reason_code="duplicate_idempotency_key",
+                duplicate=True,
+            )
             return JSONResponse(
                 {
                     "status": "ok",
                     "duplicate": True,
                     "triggered": False,
                     "template_id": template_id,
-                    "template_name": str(template.get("name") or "").strip(),
+                    "template_name": template_name,
                     "action_key": action_key,
                     "idempotency_key": idempotency_key,
-                    "run_id": str(duplicate.get("run_id") or ""),
+                    "run_id": run_id,
                 },
                 headers={"Cache-Control": "no-store"},
             )
 
-        year = core._safe_non_negative_int(body.get("year"), default=0)
-        month = core._safe_non_negative_int(body.get("month"), default=0)
-        if year <= 0:
-            year = core._safe_non_negative_int(template.get("year"), default=0)
-        if month <= 0:
-            month = core._safe_non_negative_int(template.get("month"), default=0)
-        if year < 2000 or month < 1 or month > 12:
-            raise HTTPException(status_code=400, detail="Workflow event requires valid year/month.")
+        if year is None or month is None or year < 2000 or month < 1 or month > 12:
+            detail = "Workflow event requires valid year/month."
+            _append_workflow_event_audit(
+                year=year,
+                month=month,
+                action_key=action_key,
+                status="rejected",
+                actor=actor,
+                template_id=template_id,
+                template_name=template_name,
+                event_name=event_name,
+                source=source,
+                idempotency_key=idempotency_key,
+                reason=detail,
+                reason_class="validation",
+                reason_code="invalid_year_month",
+            )
+            raise HTTPException(status_code=400, detail=detail)
 
-        template_name = str(template.get("name") or "").strip()
-        event_name = (
-            str(body.get("event_name") or body.get("eventName") or action_key).strip()[:WORKFLOW_EVENT_MAX_EVENT_NAME_CHARS]
-        )
-        source = str(body.get("source") or body.get("event_source") or "webhook").strip()[:WORKFLOW_EVENT_MAX_SOURCE_CHARS]
         mfcloud_url = str(body.get("mfcloud_url") or template.get("mfcloud_url") or "").strip()
         notes = str(body.get("notes") or template.get("notes") or "").strip()
-        actor = actor_from_request(req)
 
         run_payload: dict[str, Any] = {
             "year": year,
@@ -1174,21 +1535,37 @@ def register_api_workspace_routes(
         try:
             run_result = core._start_run(run_payload)
         except HTTPException as exc:
-            core._append_audit_event(
+            _append_workflow_event_audit(
                 year=year,
                 month=month,
-                event_type="workflow_event",
-                action=action_key or "unknown",
-                status="rejected" if exc.status_code in {400, 404, 409} else "failed",
+                action_key=action_key,
+                status=_workflow_event_status_for_http(exc.status_code),
                 actor=actor,
-                details={
-                    "reason": str(exc.detail),
-                    "template_id": template_id,
-                    "template_name": template_name,
-                    "event_name": event_name,
-                    "source": source,
-                    "idempotency_key": idempotency_key,
-                },
+                template_id=template_id,
+                template_name=template_name,
+                event_name=event_name,
+                source=source,
+                idempotency_key=idempotency_key,
+                reason=str(exc.detail),
+                reason_class=_workflow_event_error_class(exc.status_code, str(exc.detail)),
+                reason_code=f"http_{exc.status_code}",
+            )
+            raise
+        except Exception as exc:
+            _append_workflow_event_audit(
+                year=year,
+                month=month,
+                action_key=action_key,
+                status="failed",
+                actor=actor,
+                template_id=template_id,
+                template_name=template_name,
+                event_name=event_name,
+                source=source,
+                idempotency_key=idempotency_key,
+                reason=str(exc),
+                reason_class="infra",
+                reason_code="exception",
             )
             raise
 
@@ -1202,22 +1579,19 @@ def register_api_workspace_routes(
             idempotency_key=idempotency_key,
             run_id=run_id,
         )
-        core._append_audit_event(
+        _append_workflow_event_audit(
             year=year,
             month=month,
-            event_type="workflow_event",
-            action=action_key,
+            action_key=action_key,
             status="success",
             actor=actor,
-            mode=action_key,
+            template_id=template_id,
+            template_name=template_name,
+            event_name=event_name,
+            source=source,
+            idempotency_key=idempotency_key,
             run_id=run_id,
-            details={
-                "template_id": template_id,
-                "template_name": template_name,
-                "event_name": event_name,
-                "source": source,
-                "idempotency_key": idempotency_key,
-            },
+            duplicate=False,
         )
         return JSONResponse(
             {

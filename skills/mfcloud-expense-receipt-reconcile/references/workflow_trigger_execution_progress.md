@@ -14,9 +14,9 @@
 | フェーズ | 目的 | スコープ | 完了条件 | 状態 |
 | --- | --- | --- | --- | --- |
 | Phase 0 | 用語とUIの整流化 | ラベル、ヘルプ文言、バリデーション、プレビュー表記 | `開始条件` / `実行方法` が画面上で明示される | 完了 |
-| Phase 1 | MVPのルール固定 | 先頭手順と後続手順の開始条件制約、タイプ別実行方法制約 | 不正組み合わせを入力時に防止できる | 進行中 |
-| Phase 2 | スケジュール実行増設 | scheduler UI/API/ジョブ実行基盤 | 指定日時/周期で先頭手順を起動できる | 未着手 |
-| Phase 3 | 外部イベント増設 | webhook/event受信、署名検証、再送制御 | 外部イベントで先頭手順を起動できる | 未着手 |
+| Phase 1 | MVPのルール固定 | 先頭手順と後続手順の開始条件制約、タイプ別実行方法制約 | 不正組み合わせを入力時に防止できる | 完了 |
+| Phase 2 | スケジュール実行増設 | scheduler UI/API/ジョブ実行基盤 | 指定日時/周期で先頭手順を起動できる | 進行中 |
+| Phase 3 | 外部イベント増設 | webhook/event受信、署名検証、再送制御 | 外部イベントで先頭手順を起動できる | 進行中 |
 | Phase 4 | 堅牢化 | 監査ログ、再実行戦略、運用メトリクス | 障害時の原因追跡と再処理が可能 | 未着手 |
 
 ## 3. 現在の実装ポリシー（MVP）
@@ -42,6 +42,73 @@
     - MVPノートに「開始条件」と「実行方法」の意味を明記。
   - `pages.css`
     - ラベル付き選択フィールド用スタイルを追加。
+  - `references/workflow_trigger_execution_contract.md`
+    - 開始条件/実行方法の制約マトリクスを実装準拠で固定化。
+    - 手順位置・ステップタイプ・タイマーの許可条件を契約として明文化。
+  - `common.js`
+    - APIの制約エラーを `toFriendlyMessage` で利用者向け文言へ統一（Phase 1B）。
+  - `tests/test_dashboard_api.py`
+    - 制約マトリクスの不足ケースを追加（Phase 1C）。
+    - 追加ケース:
+      - 先頭手順で `trigger_kind=after_previous` を拒否すること
+      - `execution_mode=auto` + `timer_minutes=0` を拒否すること
+  - `scripts/playwright_smoke_trigger_execution.ps1`
+    - UI制約を自動確認するPlaywrightスモークを追加（Phase 1C）。
+    - 確認項目:
+      - 手順詳細の選択フィールド表示
+      - プレビュー形式（手順要約の区切り）
+      - `agent` で `execution_mode=auto` が選択可能
+      - `manual` で `execution_mode=manual_confirm` のみ
+      - 2手順目の `trigger_kind=after_previous` 固定
+  - `expense_workflow_copy.html`
+    - schedulerパネルを再導入し、`/expense-workflow-copy` で状態参照/保存UIを提供（Phase 2.1）。
+    - scheduler用の hidden フィールド（`mfcloud_url` / `notes`）を追加。
+  - `scheduler.js`
+    - template_id必須の安全制御（template未選択時は保存不可）を追加。
+    - 手順1アクションに追従して `action_key` を同期する処理を追加。
+  - `core_scheduler.py`
+    - `once` 用の永続 idempotency キー（`template_id + run_date + run_time`）を `once_trigger_receipts` として追加。
+    - 同一スロット再実行時は `skipped_duplicate` として抑止し、`enabled=false` へ収束させる処理を追加。
+    - scheduler評価結果（started / skipped / deferred / failed）を `reports/audit_log.jsonl` へ `event_type=scheduler` で記録。
+    - テンプレート削除時に対象テンプレートの `once_trigger_receipts` を掃除する処理を追加。
+  - `tests/test_dashboard_api.py`
+    - `once` の再arm時に同一時刻が二重起動しないことを確認するテストを追加。
+    - テンプレート削除時に `once_trigger_receipts` が除去されることを確認するテストを追加。
+  - `index.api.js` / `scheduler.js` / `expense_workflow_copy.html`
+    - テンプレート保存レスポンスの `scheduler_sync.reason` を `sessionStorage` 経由で引き継ぎ、schedulerカード上に表示。
+    - `scheduler_sync.status=error` の場合は保存時トーストでも通知。
+    - 表示要素 `#scheduler-sync-reason` を追加。
+  - `tests/test_dashboard_pages.py`
+    - `#scheduler-sync-reason` の描画有無をページテストで検証。
+  - `references/workflow_external_event_phase3_plan.md`
+    - Phase 3（external_event）を 3.1/3.2/3.3 に分割した計画書を追加。
+  - `references/workflow_external_event_contract.md`
+    - `POST /api/workflow-events` の契約（認証、解決順、idempotency、エラーコード、監査ログ）を固定化。
+    - Phase 3.2 の保持ポリシー（TTL/上限）と監査分類（`reason_class`/`reason_code`）を追記。
+  - `tests/test_dashboard_api.py`
+    - `workflow-events` 異常系を追加（未対応アクション、invalid year/month、event_name不一致/重複、Bearerトークン）。
+    - `workflow-events` Phase 3.2 ケースを追加（レシートTTL失効、保持件数上限、auth分類監査、run_conflict分類監査）。
+  - `api_workspace_routes.py`
+    - `workflow-events` 受信レシートに TTL/上限クリーンアップを追加（`AX_WORKFLOW_EVENT_RECEIPT_TTL_DAYS`, `AX_WORKFLOW_EVENT_MAX_RECEIPTS`）。
+    - `workflow_event` 監査 `details` に `reason_class` / `reason_code` / `duplicate` を追加。
+    - `GET /api/workflow-events/summary` を追加し、`status/reason_class/reason_code/duplicate/recent` を集計返却。
+  - `pages.py`
+    - `expense-workflow-copy` 読み込み時にテンプレートの `year/month` をフォーム既定値へ反映。
+  - `tests/test_dashboard_pages.py` / `tests/test_dashboard_contract.py`
+    - schedulerパネル表示・script読み込み・テンプレート文脈反映のテストへ更新。
+  - `tests/test_dashboard_api.py`
+    - `workflow-events/summary` の集計検証テストを追加（集計値、時刻降順、空データ）。
+  - `references/workflow_external_event_dashboard_requirements.md`
+    - `workflow_event` 監査分類のダッシュボード表示要件（MVP）を新規作成。
+  - `references/workflow_external_event_runbook.md`
+    - 集計APIの運用確認手順を追記。
+  - `expense_workflow_copy.html` / `scheduler.js` / `pages.css`
+    - `workflow-events/summary` を表示する外部イベント監査サマリーカード（KPI/理由分類/重複/直近イベント）を実装。
+    - schedulerパネルから集計更新ボタンで再取得できるように実装。
+  - `tests/test_dashboard_pages.py` / `tests/test_dashboard_contract.py`
+    - サマリーカードDOMの存在確認と `/api/workflow-events/summary` ルート契約を追記。
+  - `references/workflow_scheduler_phase2_plan.md`
+    - Phase 2.3（daily/weekly/monthly, catch-up, retry）の受け入れ条件を具体化。
 - 検証:
   - JS構文チェック
     - `node --check dashboard/static/js/index.constants.js`: 成功
@@ -50,6 +117,22 @@
   - pytest（対象テスト）
     - `pytest tests/test_dashboard_pages.py -k "expense_workflow_copy_page_shows_shared_wizard or expense_workflow_copy_step_card_script_supports_timer_and_default_clone"`: 2 passed
     - `pytest tests/test_dashboard_contract.py -k "dashboard_index_js_exports_contract or dashboard_templates_reference_expected_script_chunks"`: 2 passed
+    - `pytest tests/test_dashboard_api.py -k "rejects_invalid_first_trigger_kind or rejects_auto_mode_with_zero_timer or rejects_invalid_trigger_by_position or rejects_manual_auto_execution_mode or rejects_auto_mode_without_timer"`: 5 passed
+    - `pytest tests/test_dashboard_pages.py -k "expense_workflow_copy_page_shows_shared_wizard or expense_workflow_copy_template_loads_scheduler_panel_with_template_context or expense_workflow_copy_step_card_script_supports_timer_and_default_clone"`: 3 passed
+    - `pytest tests/test_dashboard_contract.py -k "dashboard_templates_reference_expected_script_chunks"`: 1 passed
+    - `pytest tests/test_dashboard_api.py -k "api_scheduler_state_get_returns_default or api_scheduler_state_post_persists_context_fields"`: 2 passed
+    - `pytest tests/test_dashboard_api.py -k "scheduler"`: 11 passed
+    - `pytest tests/test_dashboard_pages.py -k "expense_workflow_copy_page_shows_shared_wizard or expense_workflow_copy_template_loads_scheduler_panel_with_template_context"`: 2 passed
+    - `pytest tests/test_dashboard_contract.py -k "dashboard_templates_reference_expected_script_chunks"`: 1 passed
+    - `pytest tests/test_dashboard_api.py`: 106 passed
+    - `pytest tests/test_dashboard_api.py -k "workflow_events"`: 9 passed
+    - `pytest tests/test_dashboard_api.py -k "workflow_events"`: 13 passed
+    - `pytest tests/test_dashboard_api.py`: 115 passed
+    - `pytest tests/test_dashboard_api.py -k "workflow_events"`: 15 passed
+    - `pytest tests/test_dashboard_api.py`: 117 passed
+    - `node --check dashboard/static/js/scheduler.js`: 成功
+    - `pytest tests/test_dashboard_pages.py -k "expense_workflow_copy_page_shows_shared_wizard or expense_workflow_copy_template_loads_scheduler_panel_with_template_context"`: 2 passed
+    - `pytest tests/test_dashboard_contract.py -k "api_router_registers_expected_routes or dashboard_templates_reference_expected_script_chunks"`: 2 passed
   - Playwright（実画面確認）
     - ページ: `http://127.0.0.1:8011/expense-workflow-copy`
     - 確認項目:
@@ -59,13 +142,70 @@
     - 取得物:
       - `.playwright-cli/page-2026-02-20T02-54-56-429Z.png`
       - `.playwright-cli/page-2026-02-20T02-54-23-820Z.yml`
+  - Playwright（再現可能スモーク）
+    - コマンド:
+      - `powershell -ExecutionPolicy Bypass -File scripts/playwright_smoke_trigger_execution.ps1 -BaseUrl http://127.0.0.1:8012`
+    - 結果:
+      - `workflow_trigger_execution_smoke_20260220_122318.txt` で全チェック `pass`
+    - 取得物:
+      - `output/playwright/workflow_trigger_execution_smoke_20260220_122318.txt`
+      - `.playwright-cli/page-2026-02-20T03-23-26-493Z.png`
+    - 追試（2026-02-21）:
+      - `workflow_trigger_execution_smoke_20260221_055814.txt` で全チェック `pass`
+      - 取得物: `output/playwright/workflow_trigger_execution_smoke_20260221_055814.txt`
+  - Playwright（Phase 2.1 UI/API往復）
+    - ページ: `http://127.0.0.1:8013/expense-workflow-copy?template=3d0477ae024d4591a1dbf6e7`
+    - 操作: schedulerの `run_date/run_time` を更新して保存
+    - API再取得: `/api/scheduler/state?template_id=3d0477ae024d4591a1dbf6e7` で反映を確認
+    - 確認結果:
+      - `enabled=true`
+      - `year=2026`, `month=2`
+      - `run_date=2099-02-03`, `run_time=09:45`
+    - 取得物:
+      - `.playwright-cli/page-2026-02-20T03-44-31-942Z.png`
+  - Playwright（Phase 3.2 サマリーUI確認）
+    - ページ: `http://127.0.0.1:8014/expense-workflow-copy`
+    - 確認項目:
+      - `#workflow-event-summary-panel` が表示されること
+      - `集計更新` 押下で `#workflow-event-summary-meta` が更新されること
+      - `#workflow-event-summary-recent` に最低1行（空データ行含む）が表示されること
+    - 実行結果:
+      - `workflow_event_summary_smoke_20260221_070747.txt` で全チェック `pass`
+    - 取得物:
+      - `output/playwright/workflow_event_summary_smoke_20260221_070747.txt`
+      - `output/playwright/workflow_event_summary_ui_20260221_070821.png`
+  - Phase 1A（仕様固定）:
+    - 完了（契約ドキュメントを作成し、MVPの判断基準を固定）
+  - Phase 1B（UI/APIエラー契約統一）:
+    - 完了（主要制約エラーの利用者向け文言を統一）
+  - Phase 1C（回帰テスト追加）:
+    - 完了（APIケース追加 + UIスモーク自動化まで実施）
+  - Phase 2.1（scheduler状態のAPI/UI往復）:
+    - 完了（UI再導入 + API往復 + Playwright保存確認まで実施）
+  - Phase 2.2（once安全起動 + 二重実行防止）:
+    - 完了（永続idempotencyキー + scheduler監査ログ + 回帰テストまで実施）
+  - Phase 2.2補完（`scheduler_sync.reason` 可視化）:
+    - 完了（保存レスポンス→schedulerカード表示まで実装）
+  - Phase 3.1（external_event 契約固定）:
+    - 完了（契約ドキュメント + 異常系テスト追加まで実施）
+  - Phase 3.2（保護強化）:
+    - 完了（TTL/上限 + 監査分類 + 集計API + 運用ランブック/要件定義まで実施）
+  - 未解決:
+    - Phase 2.3（繰り返し運用）の実装（daily/weekly/monthly）は未対応
+    - Phase 3.3（再送・再実行運用）の詳細手順整備は未対応
 
 ## 5. 直近タスク（次の更新対象）
-1. Phase 1の残タスクを分解（制約ルールの仕様明文化と回帰テスト追加）
-2. Phase 2（スケジューラ増設）の詳細実装計画を分解して着手
-3. Phase 3（外部イベント増設）で必要な受信API契約を先行定義
+1. Phase 3.3準備: 失敗時の再送・再実行フローを運用手順として明文化
+2. Phase 2.3着手: 繰り返し運用（daily/weekly/monthly）の詳細実装に着手
+3. 可視化拡張: `workflow-events/summary` を基に日次トレンド/通知要件を具体化
 
 ## 6. 更新ルール
 - 実装または検証を行った日付ごとに「進捗ログ」を追記する。
 - 各エントリには最低限 `実装`, `検証`, `未解決` を記録する。
 - フェーズ状態の更新は、実装完了時ではなく「検証完了時」に変更する。
+
+## 7. 関連計画書
+- Phase 2（スケジュール実行増設）: `references/workflow_scheduler_phase2_plan.md`
+- Phase 3（外部イベント増設）: `references/workflow_external_event_phase3_plan.md`
+- Phase 3契約（external_event）: `references/workflow_external_event_contract.md`
+- 制約契約（MVP）: `references/workflow_trigger_execution_contract.md`

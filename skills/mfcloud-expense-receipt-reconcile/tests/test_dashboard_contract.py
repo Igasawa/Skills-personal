@@ -78,6 +78,7 @@ def test_api_router_registers_expected_routes() -> None:
         "/api/workflow-pages",
         "/api/workflow-pages/{workflow_page_id}",
         "/api/workflow-events",
+        "/api/workflow-events/summary",
         "/api/workflow-templates",
         "/api/workflow-templates/{template_id}",
         "/api/workspace/prompt/optimize",
@@ -210,6 +211,7 @@ def test_dashboard_templates_reference_expected_script_chunks() -> None:
             "/static/js/index.render.js",
             "/static/js/index.events.js",
             "/static/js/index.js",
+            "/static/js/scheduler.js",
         ],
         base / "pptx_polish.html": [
             "/static/js/common.js",

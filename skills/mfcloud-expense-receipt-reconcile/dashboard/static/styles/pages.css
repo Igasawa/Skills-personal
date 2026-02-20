@@ -647,6 +647,112 @@
   flex: 1 1 240px;
 }
 
+.workflow-event-summary {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px solid rgb(var(--semantic-field-border-default));
+  background: rgb(var(--surface-2));
+}
+
+.workflow-event-summary-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.workflow-event-summary-head h4,
+.workflow-event-summary-block h5 {
+  margin: 0;
+  font-size: 13px;
+}
+
+.workflow-event-summary-kpis {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+}
+
+.workflow-event-summary-kpi {
+  display: grid;
+  gap: 4px;
+  padding: 8px;
+  border-radius: 10px;
+  border: 1px solid rgb(var(--semantic-field-border-default));
+  background: rgb(var(--surface-1));
+}
+
+.workflow-event-summary-kpi-label {
+  font-size: 11px;
+  color: rgb(var(--text-secondary));
+}
+
+.workflow-event-summary-kpi-value {
+  font-size: 16px;
+  line-height: 1;
+}
+
+.workflow-event-summary-grid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+}
+
+.workflow-event-summary-block {
+  display: grid;
+  gap: 6px;
+}
+
+.workflow-event-summary-list {
+  margin: 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 4px;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.workflow-event-summary-table-wrap {
+  border-radius: 10px;
+  border: 1px solid rgb(var(--semantic-field-border-default));
+  background: rgb(var(--surface-1));
+  overflow: auto;
+}
+
+.workflow-event-summary-table {
+  width: 100%;
+  min-width: 520px;
+  border-collapse: collapse;
+}
+
+.workflow-event-summary-table th,
+.workflow-event-summary-table td {
+  padding: 8px 10px;
+  border-bottom: 1px solid rgb(var(--semantic-field-border-default) / 0.6);
+  text-align: left;
+  font-size: 12px;
+  vertical-align: top;
+}
+
+.workflow-event-summary-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: rgb(var(--surface-2));
+  color: rgb(var(--text-secondary));
+  font-weight: 700;
+}
+
+.workflow-event-summary-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
 .wizard-task {
   display: grid;
   gap: 12px;

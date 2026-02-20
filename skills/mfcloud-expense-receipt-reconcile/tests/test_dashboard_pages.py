@@ -359,21 +359,30 @@ def test_expense_workflow_copy_page_shows_shared_wizard(monkeypatch: pytest.Monk
     assert 'id="workflow-create-preview-list"' in res.text
     assert "data-workflow-template" in res.text
     assert 'data-template-steps-list' in res.text
-    assert "id=\"scheduler-panel\"" not in res.text
-    assert "id=\"scheduler-toggle\"" not in res.text
-    assert "id=\"scheduler-run-date\"" not in res.text
-    assert "id=\"scheduler-run-time\"" not in res.text
-    assert "id=\"scheduler-catch-up\"" not in res.text
-    assert "id=\"scheduler-recurrence\"" not in res.text
-    assert "data-scheduler-card-id" not in res.text
-    assert "data-scheduler-action-key" not in res.text
+    assert 'id="scheduler-panel"' in res.text
+    assert 'id="scheduler-toggle"' in res.text
+    assert 'id="scheduler-run-date"' in res.text
+    assert 'id="scheduler-run-time"' in res.text
+    assert 'id="scheduler-catch-up"' in res.text
+    assert 'id="scheduler-recurrence"' in res.text
+    assert "data-scheduler-card-id" in res.text
+    assert "data-scheduler-action-key" in res.text
+    assert 'data-scheduler-require-template="1"' in res.text
+    assert 'id="scheduler-sync-reason"' in res.text
+    assert 'id="workflow-event-summary-panel"' in res.text
+    assert 'id="workflow-event-summary-refresh"' in res.text
+    assert 'id="workflow-event-summary-meta"' in res.text
+    assert 'id="workflow-event-summary-kpis"' in res.text
+    assert 'id="workflow-event-summary-reason-class"' in res.text
+    assert 'id="workflow-event-summary-duplicate"' in res.text
+    assert 'id="workflow-event-summary-recent"' in res.text
     assert 'id="template-step-add"' in res.text
     assert 'id="template-steps-list"' in res.text
     assert "data-template-step-mvp-note" in res.text
     assert "初期状態はタイトルのみ表示します。" in res.text
     assert "Title only by default." not in res.text
     assert "/static/js/index.js" in res.text
-    assert "/static/js/scheduler.js" not in res.text
+    assert "/static/js/scheduler.js" in res.text
     assert "/static/js/template-step-timer.js" not in res.text
 
     match = re.search(r"data-sidebar-links='(.*?)'", res.text)
@@ -533,7 +542,7 @@ def test_workflow_page_treats_legacy_default_subheading_as_blank(
     assert "成果物の確認と実行をまとめて管理します。ローカル専用（127.0.0.1）。" not in res.text
 
 
-def test_expense_workflow_copy_template_loads_without_scheduler_panel(
+def test_expense_workflow_copy_template_loads_scheduler_panel_with_template_context(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
@@ -562,10 +571,15 @@ def test_expense_workflow_copy_template_loads_without_scheduler_panel(
     assert res.status_code == 200
     assert 'id="template-steps-list"' in res.text
     assert "id=\"template-step-add\"" in res.text
-    assert "id=\"scheduler-panel\"" not in res.text
-    assert "data-scheduler-card-id" not in res.text
-    assert "data-scheduler-action-key" not in res.text
-    assert "/static/js/scheduler.js" not in res.text
+    assert 'name="year" value="2026"' in res.text
+    assert 'name="month" value="3"' in res.text
+    assert 'id="scheduler-panel"' in res.text
+    assert 'data-scheduler-card-id="workflow-template:scheduler-context-template"' in res.text
+    assert 'data-scheduler-action-key="amazon_download"' in res.text
+    assert 'id="scheduler-sync-reason"' in res.text
+    assert 'id="workflow-event-summary-panel"' in res.text
+    assert 'data-workflow-event-recent-limit="20"' in res.text
+    assert '/static/js/scheduler.js' in res.text
 
 
 def test_expense_workflow_copy_step_card_script_supports_timer_and_default_clone(

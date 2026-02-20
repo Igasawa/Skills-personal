@@ -775,9 +775,18 @@ def create_pages_router(templates: Jinja2Templates) -> APIRouter:
         workflow_template_source_id = str(workflow_template.get("id") or "") if workflow_template else ""
         page_template_id = workflow_template_source_id
         if workflow_template:
+            try:
+                defaults["year"] = int(workflow_template.get("year"))
+            except Exception:
+                pass
+            try:
+                defaults["month"] = int(workflow_template.get("month"))
+            except Exception:
+                pass
             defaults["mfcloud_url"] = str(workflow_template.get("mfcloud_url") or "")
             defaults["notes"] = str(workflow_template.get("notes") or defaults["notes"])
             defaults["rakuten_orders_url"] = str(workflow_template.get("rakuten_orders_url") or "")
+            defaults = _sanitize_form_defaults_year_month(defaults)
         return templates.TemplateResponse(
             request,
             "expense_workflow_copy.html",

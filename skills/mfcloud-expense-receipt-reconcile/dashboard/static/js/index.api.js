@@ -1021,6 +1021,46 @@
     }
   }
 
+  const SCHEDULER_SYNC_NOTICE_STORAGE_KEY = "workflowSchedulerSyncNotice";
+
+  function schedulerSyncReasonMessage(sync) {
+    const row = sync && typeof sync === "object" ? sync : {};
+    const reason = String(row.reason || "").trim();
+    const detail = String(row.detail || "").trim();
+    if (reason === "scheduled_synced") return "先頭手順の scheduled 設定を scheduler に同期しました。";
+    if (reason === "scheduled_not_armed") return "同期は完了しました。スケジュールは未有効化です。";
+    if (reason === "disabled_missing_schedule") return "同期後に無効化されました。実行日/時刻を設定してください。";
+    if (reason === "disabled_invalid_year_month") return "同期後に無効化されました。対象年月を確認してください。";
+    if (reason === "trigger_not_scheduled") return "先頭手順が scheduled ではないため scheduler を無効化しました。";
+    if (reason === "unsupported_action") return "先頭手順アクションは scheduler 対象外のため無効化しました。";
+    if (reason === "scheduler_sync_failed") {
+      return detail ? `scheduler同期に失敗しました: ${detail}` : "scheduler同期に失敗しました。";
+    }
+    if (detail) return detail;
+    if (reason) return `scheduler同期結果: ${reason}`;
+    return "";
+  }
+
+  function persistSchedulerSyncNotice(templateId, sync) {
+    const normalizedTemplateId = String(templateId || "").trim();
+    const row = sync && typeof sync === "object" ? sync : {};
+    const reason = String(row.reason || "").trim();
+    if (!normalizedTemplateId || !reason || reason === "not_synced") return "";
+    const message = schedulerSyncReasonMessage(row);
+    if (!message) return "";
+    const payload = {
+      template_id: normalizedTemplateId,
+      status: String(row.status || "").trim() || "ok",
+      reason,
+      message,
+      saved_at: new Date().toISOString(),
+    };
+    try {
+      window.sessionStorage?.setItem(SCHEDULER_SYNC_NOTICE_STORAGE_KEY, JSON.stringify(payload));
+    } catch {}
+    return message;
+  }
+
   async function saveWorkflowTemplate() {
     if (!form || templateSaveState.inFlight) return;
     if (!validateTemplateSourceUrls()) return;
@@ -1075,8 +1115,13 @@
       if (templateUpdatedAtInput && template) {
         templateUpdatedAtInput.value = String(template.updated_at || "");
       }
+      const schedulerSync = data.scheduler_sync && typeof data.scheduler_sync === "object" ? data.scheduler_sync : {};
+      const schedulerNotice = persistSchedulerSyncNotice(templateId, schedulerSync);
       const successMessage = config.successMessage;
       showToast(successMessage, "success");
+      if (schedulerNotice && String(schedulerSync.status || "") === "error") {
+        showToast(schedulerNotice, "error");
+      }
       if (templateId && year && month) {
         window.location.href = `/expense-workflow-copy?template=${encodeURIComponent(templateId)}&year=${year}&month=${month}`;
         return;

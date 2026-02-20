@@ -62,6 +62,8 @@
           {% endif %}
           <input type="hidden" name="year" value="{{ defaults.year }}" />
           <input type="hidden" name="month" value="{{ safe_month }}" />
+          <input type="hidden" name="mfcloud_url" value="{{ defaults.mfcloud_url | default('', true) }}" />
+          <input type="hidden" name="notes" value="{{ defaults.notes | default('', true) }}" />
           <label>
             補足説明（任意）
             <input
@@ -81,6 +83,106 @@
         </form>
       </section>
 
+      {% set scheduler_initial_action = 'preflight' %}
+      {% if workflow_template and workflow_template.steps and (workflow_template.steps | length) > 0 %}
+        {% set first_step = workflow_template.steps[0] %}
+        {% if first_step and first_step.action %}
+          {% set scheduler_initial_action = first_step.action %}
+        {% endif %}
+      {% endif %}
+      <section class="card">
+        <h2>実行スケジュール</h2>
+        <div
+          id="scheduler-panel"
+          class="scheduler-panel"
+          data-scheduler-card-id="{{ ('workflow-template:' ~ template_id) if template_id else '' }}"
+          data-scheduler-action-key="{{ scheduler_initial_action }}"
+          data-scheduler-require-template="1"
+        >
+          <div class="scheduler-head">
+            <h3>先頭手順のスケジュール実行</h3>
+            <label class="inline-check scheduler-toggle">
+              有効
+              <input type="checkbox" id="scheduler-toggle" />
+            </label>
+          </div>
+          <div class="scheduler-grid">
+            <label>
+              実行日
+              <input type="date" id="scheduler-run-date" />
+            </label>
+            <label>
+              実行時刻
+              <input type="time" id="scheduler-run-time" step="60" />
+            </label>
+            <label>
+              再起動時の扱い
+              <select id="scheduler-catch-up">
+                <option value="run_on_startup">run_on_startup</option>
+                <option value="skip">skip</option>
+              </select>
+            </label>
+            <label>
+              繰り返し
+              <select id="scheduler-recurrence">
+                <option value="once">once</option>
+                <option value="daily">daily</option>
+                <option value="weekly">weekly</option>
+                <option value="monthly">monthly</option>
+              </select>
+            </label>
+          </div>
+          <div class="scheduler-actions">
+            <button type="button" id="scheduler-refresh" class="secondary">再読込</button>
+            <button type="button" id="scheduler-save" class="primary">保存</button>
+            <p id="scheduler-summary" class="muted">スケジュール状態を読み込み中...</p>
+          </div>
+          <p id="scheduler-sync-reason" class="muted" hidden></p>
+          <p id="scheduler-template-hint" class="muted" hidden>
+            テンプレートを選択するとスケジュール設定を保存できます。
+          </p>
+          <div
+            id="workflow-event-summary-panel"
+            class="workflow-event-summary"
+            data-workflow-event-recent-limit="20"
+          >
+            <div class="workflow-event-summary-head">
+              <h4>外部イベント監査サマリー</h4>
+              <button type="button" id="workflow-event-summary-refresh" class="secondary">集計更新</button>
+            </div>
+            <p id="workflow-event-summary-meta" class="muted">監査サマリーを読み込み中...</p>
+            <ul id="workflow-event-summary-kpis" class="workflow-event-summary-kpis"></ul>
+            <div class="workflow-event-summary-grid">
+              <div class="workflow-event-summary-block">
+                <h5>理由分類（上位）</h5>
+                <ul id="workflow-event-summary-reason-class" class="workflow-event-summary-list"></ul>
+              </div>
+              <div class="workflow-event-summary-block">
+                <h5>重複状況</h5>
+                <ul id="workflow-event-summary-duplicate" class="workflow-event-summary-list"></ul>
+              </div>
+            </div>
+            <div class="workflow-event-summary-block">
+              <h5>直近イベント</h5>
+              <div class="workflow-event-summary-table-wrap">
+                <table class="workflow-event-summary-table">
+                  <thead>
+                    <tr>
+                      <th>時刻</th>
+                      <th>状態</th>
+                      <th>イベント</th>
+                      <th>理由</th>
+                      <th>重複</th>
+                    </tr>
+                  </thead>
+                  <tbody id="workflow-event-summary-recent"></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
       {% include "components/expense_workflow_card.html" %}
 
     </div>
@@ -93,5 +195,6 @@
     <script src="/static/js/index.render.js"></script>
     <script src="/static/js/index.events.js"></script>
     <script src="/static/js/index.js"></script>
+    <script src="/static/js/scheduler.js"></script>
   </body>
 </html>
