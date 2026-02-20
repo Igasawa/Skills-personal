@@ -979,6 +979,22 @@
     ui.status.dataset.state = state;
   }
 
+  function formatAssistantDisplayText(value) {
+    let text = String(value || "");
+    if (!text) return "";
+    text = text.replace(/\r\n?/g, "\n");
+
+    text = text
+      .split("\n")
+      .map((line) => line.replace(/^\s{0,3}#{1,6}\s+/, ""))
+      .filter((line) => !/^\s*(?:-{3,}|\*{3,}|_{3,})\s*$/.test(line))
+      .join("\n");
+
+    text = text.replace(/\*\*([^*\n]+)\*\*/g, "$1");
+    text = text.replace(/\*([^*\n]+)\*/g, "$1");
+    return text.replace(/\n{3,}/g, "\n\n").trim();
+  }
+
   function renderAiChatMessages(ui) {
     if (!ui || !ui.log) return;
     ui.log.innerHTML = "";
@@ -995,7 +1011,34 @@
 
       const bubble = document.createElement("div");
       bubble.className = "dashboard-ai-chat-bubble";
-      bubble.textContent = String(row.content || "");
+      const text = row.role === "assistant" ? formatAssistantDisplayText(row.content) : String(row.content || "");
+      const body = document.createElement("div");
+      body.className = "dashboard-ai-chat-bubble-body";
+      body.textContent = text;
+      bubble.appendChild(body);
+
+      if (row.role === "assistant") {
+        bubble.classList.add("is-assistant");
+        const copyButton = document.createElement("button");
+        copyButton.type = "button";
+        copyButton.className = "dashboard-ai-chat-copy";
+        copyButton.textContent = "コピー";
+        copyButton.setAttribute("aria-label", "AI回答をコピー");
+        copyButton.addEventListener("click", async () => {
+          if (!text) return;
+          try {
+            await navigator.clipboard.writeText(text);
+            copyButton.textContent = "コピー済み";
+            showToast("AI回答をコピーしました。", "success");
+            window.setTimeout(() => {
+              copyButton.textContent = "コピー";
+            }, 1200);
+          } catch (_error) {
+            showToast("コピーに失敗しました。", "error");
+          }
+        });
+        bubble.appendChild(copyButton);
+      }
       item.appendChild(bubble);
       ui.log.appendChild(item);
     });

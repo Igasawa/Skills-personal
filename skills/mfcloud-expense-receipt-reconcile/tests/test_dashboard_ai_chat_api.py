@@ -133,6 +133,9 @@ def test_api_ai_chat_success_returns_reply_and_usage(
     assert body["usage"] == {"prompt_tokens": 12, "completion_tokens": 7, "total_tokens": 19}
     assert isinstance(captured_payload.get("contents"), list)
     assert len(captured_payload["contents"]) >= 2
+    first_row = captured_payload["contents"][0]
+    first_text = str(first_row.get("parts", [{}])[0].get("text") or "")
+    assert "Response style guardrails" in first_text
 
 
 def test_api_ai_chat_rejects_model_override(

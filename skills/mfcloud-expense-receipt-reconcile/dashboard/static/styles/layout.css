@@ -328,6 +328,44 @@
   line-height: 1.5;
   white-space: pre-wrap;
   word-break: break-word;
+  position: relative;
+}
+
+.dashboard-ai-chat-bubble-body {
+  white-space: inherit;
+}
+
+.dashboard-ai-chat-bubble.is-assistant {
+  padding-top: 30px;
+}
+
+.dashboard-ai-chat-copy {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  border: 1px solid rgb(var(--semantic-field-border-default));
+  background: rgb(var(--surface-1));
+  color: rgb(var(--text-secondary));
+  border-radius: 999px;
+  padding: 4px 8px;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  cursor: pointer;
+  transition: background var(--transition-fast), border-color var(--transition-fast), color var(--transition-fast);
+}
+
+.dashboard-ai-chat-copy:hover {
+  background: rgb(var(--semantic-interaction-hover-overlay));
+  border-color: rgb(var(--semantic-field-border-hover));
+  color: rgb(var(--text-default));
+}
+
+.dashboard-ai-chat-copy:focus-visible {
+  outline: none;
+  border-color: rgb(var(--semantic-field-border-focus));
+  box-shadow: 0 0 0 3px rgb(var(--semantic-field-border-focus) / 0.16);
 }
 
 .dashboard-ai-chat-item.is-user .dashboard-ai-chat-bubble {

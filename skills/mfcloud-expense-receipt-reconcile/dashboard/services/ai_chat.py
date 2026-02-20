@@ -21,6 +21,12 @@ MAX_MESSAGES = 40
 MAX_MESSAGE_CHARS = 4000
 MAX_PAGE_CONTEXT_VALUE_CHARS = 200
 MAX_PAGE_CONTEXT_ITEMS = 20
+AI_CHAT_STYLE_GUARDRAIL = (
+    "Response style guardrails:\n"
+    "- Start with the answer directly; avoid long preambles.\n"
+    "- Avoid decorative Markdown such as headings (###), separators (---), and emphasis markers (**).\n"
+    "- Use short numbered lists only when needed."
+)
 
 _SECRET_ENV_LOADED = False
 
@@ -183,7 +189,7 @@ def _to_positive_int(value: Any, default: int = 0) -> int:
 
 
 def _build_contents(messages: list[dict[str, str]], page_context: dict[str, str]) -> list[dict[str, Any]]:
-    contents: list[dict[str, Any]] = []
+    contents: list[dict[str, Any]] = [{"role": "user", "parts": [{"text": AI_CHAT_STYLE_GUARDRAIL}]}]
     if page_context:
         page_context_text = (
             "The following JSON describes the current dashboard context. "
