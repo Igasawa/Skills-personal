@@ -19,6 +19,7 @@
 - Phase 3.2 の運用文書として `references/workflow_external_event_runbook.md` を追加済み。
 - Phase 3.2 の可視化基盤として `GET /api/workflow-events/summary` を追加済み。
 - Phase 3.2 の可視化UIとして、`/expense-workflow-copy` に監査サマリーカードを追加済み。
+- Phase 3.3 先行として、監査 `details` に `retry_advice` を追加済み。
 
 ## 3. 段階導入
 
@@ -44,7 +45,7 @@
 ### Phase 3.3（運用拡張）
 - スコープ:
   - 再送戦略（一時失敗時の再試行 or 呼び出し側再送前提）を明文化。
-  - 失敗理由の分類コード化（validation / conflict / infra）
+  - 失敗理由の分類コード化（validation / conflict / infra）と `retry_advice` の整合。
   - 運用ダッシュボード表示用の集計キーを定義。
 - 完了条件:
   - 障害時の一次切り分けに必要な情報が `audit_log.jsonl` だけで揃う。

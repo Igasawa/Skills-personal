@@ -190,12 +190,27 @@
     - 完了（契約ドキュメント + 異常系テスト追加まで実施）
   - Phase 3.2（保護強化）:
     - 完了（TTL/上限 + 監査分類 + 集計API + 運用ランブック/要件定義まで実施）
+  - Phase 3.3（再送判断の先行実装）:
+    - `api_workspace_routes.py` に `retry_advice` 自動分類を追加（`do_not_retry` / `retry_after_fix` / `retry_with_backoff`）。
+    - `GET /api/workflow-events/summary` に `by_retry_advice` 集計と `recent[].retry_advice` を追加。
+    - `expense_workflow_copy.html` / `scheduler.js` に「再送判断」ブロックを追加し、集計表示を実装。
+    - `tests/test_dashboard_api.py` と `tests/test_dashboard_pages.py` を更新し、分類/表示を検証。
+    - `workflow_external_event_contract.md` / `workflow_external_event_dashboard_requirements.md` / `workflow_external_event_runbook.md` に契約・運用手順を追記。
+  - 追加検証（Phase 3.3 先行実装分）:
+    - `node --check skills/mfcloud-expense-receipt-reconcile/dashboard/static/js/scheduler.js`: 成功
+    - `pytest skills/mfcloud-expense-receipt-reconcile/tests/test_dashboard_api.py -k "workflow_events_auth_failure_writes_classified_audit or workflow_events_run_conflict_writes_classified_audit or workflow_events_summary_returns_aggregated_counts or workflow_events_summary_returns_empty_when_audit_not_found"`: 4 passed
+    - `pytest skills/mfcloud-expense-receipt-reconcile/tests/test_dashboard_pages.py -k "expense_workflow_copy_page_shows_shared_wizard or expense_workflow_copy_template_loads_scheduler_panel_with_template_context"`: 2 passed
+    - Playwright（最小実画面確認）:
+      - `#workflow-event-summary-retry-advice` のDOM存在を `playwright-cli eval` で確認（`present`）。
+      - 取得物:
+        - `output/playwright/workflow_retry_advice_smoke_20260221_072639.txt`
+        - `.playwright-cli/page-2026-02-20T22-26-44-146Z.png`
   - 未解決:
     - Phase 2.3（繰り返し運用）の実装（daily/weekly/monthly）は未対応
-    - Phase 3.3（再送・再実行運用）の詳細手順整備は未対応
+    - Phase 3.3（再送・再実行運用）の実ジョブ化（自動バックオフ再送、エスカレーション連携）は未対応
 
 ## 5. 直近タスク（次の更新対象）
-1. Phase 3.3準備: 失敗時の再送・再実行フローを運用手順として明文化
+1. Phase 3.3拡張: `retry_advice` を基にした自動再送ジョブと失敗時エスカレーション条件を仕様化
 2. Phase 2.3着手: 繰り返し運用（daily/weekly/monthly）の詳細実装に着手
 3. 可視化拡張: `workflow-events/summary` を基に日次トレンド/通知要件を具体化
 

@@ -607,6 +607,30 @@ def register_api_workspace_routes(
             return "validation"
         return "infra"
 
+    def _workflow_event_retry_advice(*, status: str, reason_class: str) -> str:
+        normalized_status = str(status or "").strip().lower()
+        normalized_reason_class = str(reason_class or "").strip().lower()
+        if normalized_status == "success":
+            return ""
+        if normalized_reason_class == "duplicate":
+            return "do_not_retry"
+        if normalized_reason_class in {
+            "auth",
+            "validation",
+            "template_conflict",
+            "template_not_found",
+            "not_found",
+            "unsupported_action",
+        }:
+            return "retry_after_fix"
+        if normalized_reason_class in {"run_conflict", "infra", "conflict"}:
+            return "retry_with_backoff"
+        if normalized_status == "failed":
+            return "retry_with_backoff"
+        if normalized_status in {"rejected", "skipped"}:
+            return "retry_after_fix"
+        return "retry_after_fix"
+
     def _append_workflow_event_audit(
         *,
         year: int | None,
@@ -623,6 +647,7 @@ def register_api_workspace_routes(
         reason: str = "",
         reason_class: str = "",
         reason_code: str = "",
+        retry_advice: str = "",
         duplicate: bool | None = None,
     ) -> None:
         if year is None or month is None or year < 2000 or month < 1 or month > 12:
@@ -640,6 +665,11 @@ def register_api_workspace_routes(
             details["reason_class"] = reason_class
         if reason_code:
             details["reason_code"] = reason_code
+        normalized_retry_advice = str(retry_advice or "").strip().lower()
+        if not normalized_retry_advice:
+            normalized_retry_advice = _workflow_event_retry_advice(status=status, reason_class=reason_class)
+        if normalized_retry_advice:
+            details["retry_advice"] = normalized_retry_advice
         if duplicate is not None:
             details["duplicate"] = bool(duplicate)
         core._append_audit_event(
@@ -674,6 +704,7 @@ def register_api_workspace_routes(
         status_counter: Counter[str] = Counter()
         reason_class_counter: Counter[str] = Counter()
         reason_code_counter: Counter[str] = Counter()
+        retry_advice_counter: Counter[str] = Counter()
         duplicate_counter: Counter[str] = Counter()
         events: list[dict[str, Any]] = []
 
@@ -695,6 +726,11 @@ def register_api_workspace_routes(
                 reason_class_counter[reason_class] += 1
             if reason_code:
                 reason_code_counter[reason_code] += 1
+            retry_advice = str(details.get("retry_advice") or "").strip().lower()
+            if not retry_advice:
+                retry_advice = _workflow_event_retry_advice(status=status, reason_class=reason_class)
+            if retry_advice:
+                retry_advice_counter[retry_advice] += 1
 
             duplicate_raw = details.get("duplicate")
             duplicate_value: bool | None = None
@@ -718,6 +754,7 @@ def register_api_workspace_routes(
                     "reason": str(details.get("reason") or "").strip(),
                     "reason_class": reason_class,
                     "reason_code": reason_code,
+                    "retry_advice": retry_advice,
                     "duplicate": duplicate_value,
                 }
             )
@@ -743,6 +780,7 @@ def register_api_workspace_routes(
             },
             "by_reason_class": _workflow_event_counter_rows(reason_class_counter, key_name="reason_class"),
             "by_reason_code": _workflow_event_counter_rows(reason_code_counter, key_name="reason_code"),
+            "by_retry_advice": _workflow_event_counter_rows(retry_advice_counter, key_name="retry_advice"),
             "duplicate": {
                 "true": int(duplicate_counter.get("true", 0)),
                 "false": int(duplicate_counter.get("false", 0)),

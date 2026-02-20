@@ -4231,6 +4231,7 @@ def test_api_workflow_events_auth_failure_writes_classified_audit(
     details = last.get("details") or {}
     assert str(details.get("reason_class") or "") == "auth"
     assert str(details.get("reason_code") or "") == "http_401"
+    assert str(details.get("retry_advice") or "") == "retry_after_fix"
 
 
 def test_api_workflow_events_run_conflict_writes_classified_audit(
@@ -4278,6 +4279,7 @@ def test_api_workflow_events_run_conflict_writes_classified_audit(
     details = last.get("details") or {}
     assert str(details.get("reason_class") or "") == "run_conflict"
     assert str(details.get("reason_code") or "") == "http_409"
+    assert str(details.get("retry_advice") or "") == "retry_with_backoff"
 
 
 def test_api_workflow_events_summary_returns_aggregated_counts(
@@ -4317,6 +4319,7 @@ def test_api_workflow_events_summary_returns_aggregated_counts(
                 "idempotency_key": "evt-002",
                 "reason_class": "auth",
                 "reason_code": "http_401",
+                "retry_advice": "retry_after_fix",
             },
         },
         {
@@ -4332,6 +4335,7 @@ def test_api_workflow_events_summary_returns_aggregated_counts(
                 "idempotency_key": "evt-001",
                 "reason_class": "duplicate",
                 "reason_code": "duplicate_idempotency_key",
+                "retry_advice": "do_not_retry",
                 "duplicate": True,
             },
         },
@@ -4347,6 +4351,7 @@ def test_api_workflow_events_summary_returns_aggregated_counts(
                 "idempotency_key": "evt-003",
                 "reason_class": "infra",
                 "reason_code": "exception",
+                "retry_advice": "retry_with_backoff",
                 "duplicate": False,
             },
         },
@@ -4393,6 +4398,14 @@ def test_api_workflow_events_summary_returns_aggregated_counts(
     assert by_reason_code.get("duplicate_idempotency_key") == 1
     assert by_reason_code.get("exception") == 1
 
+    by_retry_advice_rows = body.get("by_retry_advice") if isinstance(body.get("by_retry_advice"), list) else []
+    by_retry_advice = {
+        str(item.get("retry_advice") or ""): int(item.get("count") or 0) for item in by_retry_advice_rows
+    }
+    assert by_retry_advice.get("retry_after_fix") == 1
+    assert by_retry_advice.get("do_not_retry") == 1
+    assert by_retry_advice.get("retry_with_backoff") == 1
+
     duplicate = body.get("duplicate") or {}
     assert duplicate.get("true") == 1
     assert duplicate.get("false") == 2
@@ -4423,6 +4436,7 @@ def test_api_workflow_events_summary_returns_empty_when_audit_not_found(
     assert body.get("first_at") == ""
     assert body.get("last_at") == ""
     assert body.get("recent") == []
+    assert body.get("by_retry_advice") == []
     assert body.get("duplicate") == {"true": 0, "false": 0, "unknown": 0}
     by_status = body.get("by_status") or {}
     assert by_status.get("success") == 0

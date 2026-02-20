@@ -11,6 +11,7 @@
   - `status`（`success` / `skipped` / `rejected` / `failed`）
   - `details.reason_class`
   - `details.reason_code`
+  - `details.retry_advice`
   - `details.duplicate`
 
 ## 2. MVP表示コンポーネント
@@ -33,6 +34,10 @@
 - `recent` を時刻降順で表示。
 - 表示列: `at`, `status`, `template_name`, `event_name`, `reason_class`, `reason_code`, `duplicate`, `run_id`
 
+5. 再送判断（必須）
+- `by_retry_advice` を表示。
+- `retry_after_fix` / `retry_with_backoff` / `do_not_retry` を区別できること。
+
 ## 3. API利用契約（UI側）
 - エンドポイント: `GET /api/workflow-events/summary?ym=YYYY-MM&recent_limit=20`
 - `ym` は画面で選択中の年月を必ず渡す。
@@ -50,8 +55,9 @@
 ## 5. 受け入れ基準（Phase 3.2）
 1. `workflow_event` 集計をAPIから取得し、KPIカードへ表示できる。
 2. `reason_class` 上位表示で、少なくとも `auth/validation/run_conflict/infra` を識別できる。
-3. 直近一覧から `run_id` を辿って監査ログ調査に移れる。
-4. API未取得時でも既存画面機能を阻害しない（表示ブロックのみ劣化）。
+3. `by_retry_advice` から再送判断を即時に確認できる。
+4. 直近一覧から `run_id` を辿って監査ログ調査に移れる。
+5. API未取得時でも既存画面機能を阻害しない（表示ブロックのみ劣化）。
 
 ## 6. 次フェーズ拡張（Phase 3.3）
 - 日次トレンド（7日/30日）推移

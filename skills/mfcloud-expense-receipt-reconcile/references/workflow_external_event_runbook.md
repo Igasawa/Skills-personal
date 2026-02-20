@@ -46,6 +46,24 @@ curl "http://127.0.0.1:8000/api/workflow-events/summary?ym=2026-02&recent_limit=
    - `run_conflict`: 同時実行衝突
 3. `duplicate` 急増時は呼び出し側の idempotency_key 生成規約を確認。
 
+## 4.1 再送判断（`retry_advice`）
+- `do_not_retry`
+  - 例: `reason_class=duplicate`
+  - 対応: 同一イベントの再送を止める（重複送信元を修正）
+- `retry_after_fix`
+  - 例: `auth`, `validation`, `template_conflict`, `unsupported_action`
+  - 対応: 設定・データを修正してから再送
+- `retry_with_backoff`
+  - 例: `run_conflict`, `infra`, `failed`
+  - 対応: 指数バックオフで再送（例: 30s, 60s, 120s）
+
+## 4.2 再送・再実行フロー（運用手順）
+1. `GET /api/workflow-events/summary?ym=YYYY-MM` で `by_retry_advice` と `recent` を確認。
+2. `retry_after_fix` は設定修正を先に実施（トークン、template_id、year/month など）。
+3. `retry_with_backoff` は同一 `idempotency_key` を保持したまま再送する。
+4. 3回連続で `retry_with_backoff` が失敗した場合は運用エスカレーション。
+5. 再送後に `status=success` を確認し、運用記録へ残す。
+
 ## 5. 運用チェックリスト（月次）
 - `workflow_event` の `reason_class` 上位3件を記録。
 - `failed` が0でない場合は原因と再発防止を記録。

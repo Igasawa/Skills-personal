@@ -33,6 +33,7 @@
   const workflowEventSummaryKpisEl = document.getElementById("workflow-event-summary-kpis");
   const workflowEventSummaryReasonClassEl = document.getElementById("workflow-event-summary-reason-class");
   const workflowEventSummaryDuplicateEl = document.getElementById("workflow-event-summary-duplicate");
+  const workflowEventSummaryRetryAdviceEl = document.getElementById("workflow-event-summary-retry-advice");
   const workflowEventSummaryRecentEl = document.getElementById("workflow-event-summary-recent");
   const pageEl = document.querySelector(".page");
   const templateStepsListEl = document.getElementById("template-steps-list");
@@ -389,6 +390,16 @@
       `unknown: ${toInt(duplicate.unknown, 0)}`,
     ]);
 
+    const retryAdviceRows = Array.isArray(data.by_retry_advice) ? data.by_retry_advice.slice(0, 5) : [];
+    replaceChildrenText(
+      workflowEventSummaryRetryAdviceEl,
+      retryAdviceRows.map((row) => {
+        const retryAdvice = String(row?.retry_advice || "").trim() || "unknown";
+        const count = toInt(row?.count, 0);
+        return `${retryAdvice}: ${count}`;
+      }),
+    );
+
     renderWorkflowEventSummaryRecentRows(Array.isArray(data.recent) ? data.recent : []);
   }
 
@@ -399,6 +410,7 @@
     replaceChildrenText(workflowEventSummaryKpisEl, []);
     replaceChildrenText(workflowEventSummaryReasonClassEl, []);
     replaceChildrenText(workflowEventSummaryDuplicateEl, []);
+    replaceChildrenText(workflowEventSummaryRetryAdviceEl, []);
     renderWorkflowEventSummaryRecentRows([]);
   }
 

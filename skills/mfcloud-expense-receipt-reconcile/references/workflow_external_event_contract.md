@@ -90,6 +90,7 @@
 - Phase 3.2 追加:
   - `reason_class`（例: `auth` / `validation` / `template_conflict` / `run_conflict` / `unsupported_action` / `infra`）
   - `reason_code`（例: `http_401`, `http_409`, `invalid_year_month`, `duplicate_idempotency_key`）
+  - `retry_advice`（`do_not_retry` / `retry_after_fix` / `retry_with_backoff`）
   - `duplicate`（`true/false`）
 
 ## 8. 代表エラー
@@ -125,6 +126,7 @@
   - `by_status`（`success/skipped/rejected/failed/unknown`）
   - `by_reason_class`（件数降順）
   - `by_reason_code`（件数降順）
+  - `by_retry_advice`（件数降順）
   - `duplicate`（`true/false/unknown`）
   - `recent`（時刻降順）
   - `receipt_retention`（`ttl_days`, `max_receipts`）
@@ -132,4 +134,4 @@
 ### `recent` 要素
 - `at`, `status`, `action`, `run_id`
 - `template_id`, `template_name`, `event_name`, `source`
-- `idempotency_key`, `reason`, `reason_class`, `reason_code`, `duplicate`
+- `idempotency_key`, `reason`, `reason_class`, `reason_code`, `retry_advice`, `duplicate`

@@ -375,6 +375,7 @@ def test_expense_workflow_copy_page_shows_shared_wizard(monkeypatch: pytest.Monk
     assert 'id="workflow-event-summary-kpis"' in res.text
     assert 'id="workflow-event-summary-reason-class"' in res.text
     assert 'id="workflow-event-summary-duplicate"' in res.text
+    assert 'id="workflow-event-summary-retry-advice"' in res.text
     assert 'id="workflow-event-summary-recent"' in res.text
     assert 'id="template-step-add"' in res.text
     assert 'id="template-steps-list"' in res.text
@@ -578,6 +579,7 @@ def test_expense_workflow_copy_template_loads_scheduler_panel_with_template_cont
     assert 'data-scheduler-action-key="amazon_download"' in res.text
     assert 'id="scheduler-sync-reason"' in res.text
     assert 'id="workflow-event-summary-panel"' in res.text
+    assert 'id="workflow-event-summary-retry-advice"' in res.text
     assert 'data-workflow-event-recent-limit="20"' in res.text
     assert '/static/js/scheduler.js' in res.text
 
