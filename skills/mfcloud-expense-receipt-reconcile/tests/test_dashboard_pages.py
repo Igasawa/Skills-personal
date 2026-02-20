@@ -26,6 +26,10 @@ def _workflow_template_store(ax_home: Path) -> Path:
     return _artifact_root(ax_home) / "_workflow_templates" / "workflow_templates.json"
 
 
+def _workflow_pages_store(ax_home: Path) -> Path:
+    return _artifact_root(ax_home) / "_workflow_pages" / "workflow_pages.json"
+
+
 def _write_jsonl(path: Path, rows: list[dict]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8") as handle:
@@ -369,6 +373,56 @@ def test_expense_workflow_copy_page_shows_shared_wizard(monkeypatch: pytest.Monk
         and link.get("section") == "admin"
         for link in links
     )
+
+
+def test_workflow_page_hides_target_settings_and_uses_dataset_step_model(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _write_json(
+        _workflow_pages_store(tmp_path),
+        [
+            {
+                "id": "wf-step-add-check",
+                "name": "WF STEP ADD",
+                "subheading": "draft",
+                "year": 2026,
+                "month": 2,
+                "mfcloud_url": "https://example.com/mf",
+                "source_urls": ["https://example.com/mf"],
+                "steps": [
+                    {"id": "step-1", "title": "Amazon取得", "action": "amazon_download"},
+                    {"id": "step-2", "title": "手順2", "action": ""},
+                ],
+                "notes": "",
+                "rakuten_orders_url": "",
+                "source_template_id": "tmpl-1",
+                "step_version": 1,
+                "step_versions": [
+                    {
+                        "version": 1,
+                        "updated_at": "2026-02-01T00:00:00",
+                        "steps": [
+                            {"id": "step-1", "title": "Amazon取得", "action": "amazon_download"},
+                            {"id": "step-2", "title": "手順2", "action": ""},
+                        ],
+                    }
+                ],
+                "archived": False,
+                "archived_at": "",
+                "created_at": "2026-02-01T00:00:00",
+                "updated_at": "2026-02-01T00:00:00",
+            }
+        ],
+    )
+    client = _create_client(monkeypatch, tmp_path)
+    res = client.get("/workflow/wf-step-add-check")
+    assert res.status_code == 200
+    assert 'class="step-head" hidden' in res.text
+    assert re.search(r'<form\s+id="run-form"\s+class="form hidden"\s+aria-hidden="true"', res.text)
+    assert 'id="workflow-page-step-model"' in res.text
+    assert 'data-template-step-row data-template-step-action="amazon_download"' in res.text
+    assert "<select data-template-step-action>" not in res.text
 
 
 def test_expense_workflow_copy_template_loads_without_scheduler_panel(

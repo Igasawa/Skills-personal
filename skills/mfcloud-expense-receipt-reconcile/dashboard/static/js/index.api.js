@@ -243,7 +243,6 @@
     });
     return rows.map((row, index) => {
       const action = String(row.action || "").trim();
-      const actionLabel = TEMPLATE_STEP_ACTION_LABELS[action] || action || "(未設定)";
       const title = String(row.title || "").trim() || defaultTitleForStepAction(action, `手順${index + 1}`);
       const stepType = String(row.type || 'manual').trim() || 'manual';
       const trigger = String(row.trigger || 'manual').trim() || 'manual';
@@ -269,7 +268,7 @@
         suffix.push(`Prompt: ${promptPreview}${promptPreview.length >= 40 ? "..." : ""}`);
       }
       const suffixText = suffix.length ? ` / ${suffix.join(" / ")}` : "";
-      return `${index + 1}. ${title} / ${actionLabel} / ${typeLabel} / ${triggerLabel} / ${mode}${suffixText}`;
+      return `${index + 1}. ${title} / ${typeLabel} / ${triggerLabel} / ${mode}${suffixText}`;
     });
   }
 
@@ -477,15 +476,12 @@
       const rowEl = document.createElement("div");
       rowEl.dataset.templateStepRow = "1";
       rowEl.dataset.templateStepId = String(row.id || generateTemplateStepId()).trim();
+      rowEl.dataset.templateStepAction = String(row.action || "").trim();
       const titleEl = document.createElement("input");
       titleEl.type = "text";
       titleEl.dataset.templateStepTitle = "1";
       titleEl.value = String(row.title || "").trim() || defaultTitleForStepAction(row.action, `手順${index + 1}`);
-      const actionEl = document.createElement("select");
-      actionEl.dataset.templateStepAction = "1";
-      actionEl.innerHTML = getTemplateStepActionOptionsHtml(row.action);
       rowEl.appendChild(titleEl);
-      rowEl.appendChild(actionEl);
       modelListEl.appendChild(rowEl);
     });
     modelListEl.dispatchEvent(
@@ -715,26 +711,7 @@
             state[index].title = String(titleEl.value || "").trim() || defaultTitleForStepAction(state[index].action);
           });
 
-          const actionEl = document.createElement("select");
-          actionEl.innerHTML = getTemplateStepActionOptionsHtml(row.action);
           const requiredAction = isRequiredTemplateStepAction(row.action);
-          actionEl.disabled = requiredAction;
-          actionEl.title = requiredAction ? "必須手順は変更できません。" : "";
-          actionEl.addEventListener("change", () => {
-            const nextAction = normalizeTemplateStepAction(actionEl.value);
-            const duplicated = Boolean(nextAction)
-              && state.some((step, stepIndex) => stepIndex !== index && step.action === nextAction);
-            if (duplicated) {
-              actionEl.value = state[index].action;
-              showToast("同じ処理は1回だけ追加できます。", "error");
-              return;
-            }
-            state[index].action = nextAction;
-            if (!String(state[index].title || "").trim()) {
-              state[index].title = defaultTitleForStepAction(nextAction);
-            }
-            renderState(index);
-          });
 
           const timerEl = document.createElement("input");
           timerEl.type = "number";
@@ -763,7 +740,6 @@
 
           rowEl.appendChild(indexEl);
           rowEl.appendChild(titleEl);
-          rowEl.appendChild(actionEl);
           rowEl.appendChild(timerEl);
           rowEl.appendChild(removeButton);
           listEl.appendChild(rowEl);
@@ -776,12 +752,10 @@
       };
 
       addButton.addEventListener("click", () => {
-        const usedActions = new Set(state.map((row) => String(row.action || "").trim()));
-        const action = nextAvailableTemplateStepAction(usedActions);
         state.push({
           id: generateTemplateStepId(),
           title: "",
-          action,
+          action: "",
           type: 'manual',
           trigger: 'manual',
           target_url: "",

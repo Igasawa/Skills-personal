@@ -761,7 +761,9 @@
 
   function parseTemplateStepRow(row, index = 0) {
     const rowId = String(row?.dataset?.templateStepId || "").trim();
-    const action = normalizeTemplateStepAction(row?.querySelector("[data-template-step-action]")?.value);
+    const action = normalizeTemplateStepAction(
+      row?.dataset?.templateStepAction || row?.querySelector("[data-template-step-action]")?.value,
+    );
     const typeEl = row?.querySelector("[data-template-step-type]");
     const triggerEl = row?.querySelector("[data-template-step-trigger]");
     const targetUrlEl = row?.querySelector("[data-template-step-target-url]");
@@ -816,14 +818,7 @@
     }
 
     const parsedRows = rows.map((row, index) => parseTemplateStepRow(row, index));
-    const actionCounts = new Map();
-    parsedRows.forEach((step) => {
-      const action = String(step.action || "").trim();
-      if (!action) return;
-      actionCounts.set(action, (actionCounts.get(action) || 0) + 1);
-    });
     const optionalRowsCount = parsedRows.filter((row) => !isRequiredTemplateStepAction(row.action)).length;
-    let hasDuplicates = false;
 
     rows.forEach((row, index) => {
       const parsed = parsedRows[index] || {
@@ -845,6 +840,7 @@
       const autoTimerEnabled = normalizeTemplateStepAutoTimerEnabled(parsed.auto_timer_enabled, false);
       const requiredAction = isRequiredTemplateStepAction(action) ? action : "";
 
+      row.dataset.templateStepAction = action;
       row.dataset.templateStepUiMode = uiMode;
       row.dataset.templateStepAutoTimer = autoTimerEnabled ? "1" : "0";
 
@@ -866,20 +862,10 @@
         titleEl.setAttribute("aria-label", `手順${index + 1}のタイトル`);
       }
 
-      const actionEl = row.querySelector("[data-template-step-action]");
-      if (actionEl) {
-        if (requiredAction) {
-          row.dataset.requiredAction = requiredAction;
-          actionEl.value = requiredAction;
-          actionEl.disabled = true;
-        } else {
-          delete row.dataset.requiredAction;
-          actionEl.disabled = false;
-        }
-        const duplicated = (actionCounts.get(action) || 0) > 1;
-        hasDuplicates = hasDuplicates || duplicated;
-        actionEl.classList.toggle("is-invalid", duplicated);
-        actionEl.setCustomValidity(duplicated ? "同じアクションは1回だけ選択できます。" : "");
+      if (requiredAction) {
+        row.dataset.requiredAction = requiredAction;
+      } else {
+        delete row.dataset.requiredAction;
       }
 
       const stepType = normalizeTemplateStepType(
@@ -998,7 +984,7 @@
       }
     });
 
-    listEl.dataset.stepHasDuplicates = hasDuplicates ? "1" : "0";
+    listEl.dataset.stepHasDuplicates = "0";
     emitTemplateStepsChanged();
   }
 
@@ -1100,7 +1086,7 @@
   }
 
   function addTemplateStepFromDefaultCard(options = {}) {
-    const action = TEMPLATE_STEP_DEFAULT_ACTION || "";
+    const action = "";
     addTemplateStepRow(
       {
         id: "",
@@ -1156,7 +1142,7 @@
     row.dataset.templateStepRow = "1";
     row.dataset.templateStepId = String(rawStep?.id || generateTemplateStepId()).trim();
     row.dataset.templateStepOrder = String(normalizeTemplateStepOrder(rawStep?.order, getTemplateStepRows().length + 1));
-    row.dataset.lastAction = action;
+    row.dataset.templateStepAction = action;
     row.dataset.templateStepType = stepType;
     row.dataset.templateStepUiMode = uiMode;
     row.dataset.templateStepAutoTimer = autoTimerEnabled ? "1" : "0";
@@ -1198,11 +1184,6 @@
     advancedContainer.className = "template-step-advanced";
     advancedContainer.dataset.templateStepAdvanced = "1";
     advancedContainer.dataset.templateStepExpanded = uiMode === TEMPLATE_STEP_UI_MODE.advanced ? "1" : "0";
-
-    const actionEl = document.createElement("select");
-    actionEl.className = "template-step-action";
-    actionEl.dataset.templateStepAction = "1";
-    actionEl.innerHTML = getTemplateStepActionOptionsHtml(action);
 
     const typeEl = document.createElement("select");
     typeEl.className = "template-step-type";
@@ -1340,39 +1321,12 @@
       agentPromptEl.setCustomValidity("");
     });
     agentPromptEl.addEventListener("change", refreshTemplateStepRows);
-    actionEl.addEventListener("change", () => {
-      const lockedAction = String(row.dataset.requiredAction || "").trim();
-      const previousAction = String(row.dataset.lastAction || "").trim() || action;
-      const nextAction = normalizeTemplateStepAction(actionEl.value);
-      if (lockedAction) {
-        actionEl.value = lockedAction;
-        refreshTemplateStepRows();
-        return;
-      }
-      const duplicated = getTemplateStepRows().some((otherRow) => {
-        if (!otherRow || otherRow === row) return false;
-        const otherAction = normalizeTemplateStepAction(
-          otherRow.querySelector("[data-template-step-action]")?.value,
-        );
-        return Boolean(nextAction) && otherAction === nextAction;
-      });
-      if (duplicated) {
-        actionEl.value = previousAction;
-        showToast("同じアクションは1回だけ選択できます。", "error");
-        refreshTemplateStepRows();
-        return;
-      }
-      row.dataset.lastAction = nextAction;
-      refreshTemplateStepRows();
-    });
-
     row.appendChild(dragHandle);
     row.appendChild(indexEl);
     row.appendChild(titleEl);
     row.appendChild(toggleButton);
     row.appendChild(removeButton);
     advancedContainer.appendChild(typeEl);
-    advancedContainer.appendChild(actionEl);
     advancedContainer.appendChild(triggerEl);
     advancedContainer.appendChild(autoRunLabel);
     advancedContainer.appendChild(timerEl);

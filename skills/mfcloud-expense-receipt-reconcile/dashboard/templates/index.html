@@ -3,6 +3,7 @@
   <head>
     {% set page_title = workflow_page.name if workflow_page and workflow_page.name else "workflow" %}
     {% set page_subheading = workflow_page.subheading if workflow_page and workflow_page.subheading else "" %}
+    {% set is_workflow_page = workflow_page and workflow_page.id %}
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>{{ page_title }}</title>
@@ -43,13 +44,17 @@
       >
         <h2>ステップウィザード</h2>
         <div class="wizard-step">
-          <div class="step-head">
+          <div class="step-head" {% if is_workflow_page %}hidden{% endif %}>
             <span class="step-num">-</span>
             <span class="step-title">対象設定（実行依頼）</span>
             <span class="step-status pending">入力</span>
           </div>
           <div id="error-box" class="error-box hidden"></div>
-          <form id="run-form" class="form">
+          <form
+            id="run-form"
+            class="form{% if is_workflow_page %} hidden{% endif %}"
+            {% if is_workflow_page %}aria-hidden="true"{% endif %}
+          >
             {% set safe_month = defaults.month | int %}
             {% if safe_month < 1 or safe_month > 12 %}
               {% set safe_month = 1 %}
@@ -77,13 +82,8 @@
               <div class="hidden" aria-hidden="true" id="workflow-page-step-model">
                 <div data-template-steps-list>
                   {% for step in workflow_page.steps %}
-                    <div data-template-step-row>
+                    <div data-template-step-row data-template-step-action="{{ step.action | default('', true) }}">
                       <input type="text" data-template-step-title value="{{ step.title | default('', true) }}" />
-                      <select data-template-step-action>
-                        <option value="{{ step.action | default('', true) }}" selected>
-                          {{ step.title | default(step.action, true) }}
-                        </option>
-                      </select>
                     </div>
                   {% endfor %}
                 </div>
