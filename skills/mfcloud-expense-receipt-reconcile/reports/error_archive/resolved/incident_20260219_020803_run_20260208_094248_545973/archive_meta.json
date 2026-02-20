@@ -1,8 +1,0 @@
-{
-  "incident_id": "incident_20260219_020803_run_20260208_094248_545973",
-  "result": "resolved",
-  "archived_at": "2026-02-19T06:57:16+00:00",
-  "reason": "verification passed in loop",
-  "source": "C:\\Users\\TatsuoIgasawa\\.vscode\\Skillpersonal\\skills\\mfcloud-expense-receipt-reconcile\\reports\\error_inbox\\incident_20260219_020803_run_20260208_094248_545973",
-  "destination": "C:\\Users\\TatsuoIgasawa\\.vscode\\Skillpersonal\\skills\\mfcloud-expense-receipt-reconcile\\reports\\error_archive\\resolved\\incident_20260219_020803_run_20260208_094248_545973"
-}

@@ -1,8 +1,0 @@
-{
-  "incident_id": "incident_ui_smoke_20260217_114923",
-  "result": "escalated",
-  "archived_at": "2026-02-17T02:50:44+00:00",
-  "reason": "manual archive from errors page",
-  "source": "C:\\Users\\Tatsuo-2023\\Projects\\PersonalSkills\\skills\\mfcloud-expense-receipt-reconcile\\reports\\error_inbox\\incident_ui_smoke_20260217_114923",
-  "destination": "C:\\Users\\Tatsuo-2023\\Projects\\PersonalSkills\\skills\\mfcloud-expense-receipt-reconcile\\reports\\error_archive\\escalated\\incident_ui_smoke_20260217_114923"
-}

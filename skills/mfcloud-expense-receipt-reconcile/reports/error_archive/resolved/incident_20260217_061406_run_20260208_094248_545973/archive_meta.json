@@ -1,8 +1,0 @@
-{
-  "incident_id": "incident_20260217_061406_run_20260208_094248_545973",
-  "result": "resolved",
-  "archived_at": "2026-02-18T03:13:48+00:00",
-  "reason": "manual archive from errors page",
-  "source": "C:\\Users\\Tatsuo-2023\\Projects\\PersonalSkills\\skills\\mfcloud-expense-receipt-reconcile\\reports\\error_inbox\\incident_20260217_061406_run_20260208_094248_545973",
-  "destination": "C:\\Users\\Tatsuo-2023\\Projects\\PersonalSkills\\skills\\mfcloud-expense-receipt-reconcile\\reports\\error_archive\\resolved\\incident_20260217_061406_run_20260208_094248_545973"
-}
