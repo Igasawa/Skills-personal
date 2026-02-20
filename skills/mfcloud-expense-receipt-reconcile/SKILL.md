@@ -15,6 +15,12 @@ Amazon.co.jp（個人）/楽天市場の注文履歴から「領収書/購入明
 ## セットアップ（初回のみ）
 
 ```powershell
+# クローン直後の初期セットアップ（AX_HOME, config雛形, 依存インストール）
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\bootstrap_from_clone.ps1 `
+  -PersistAxHome `
+  -InstallDependencies `
+  -InstallPlaywrightChromium
+
 # ランタイムディレクトリ作成（~/.ax）
 $env:AX_HOME = "$env:USERPROFILE\\.ax"
 New-Item -ItemType Directory -Force -Path "$env:AX_HOME\\sessions" | Out-Null
@@ -109,7 +115,7 @@ python scripts/collect_print.py --year 2026 --month 1
 
 2) 一括印刷（OSの既定アプリで印刷）
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File "C:\Users\<user>\.ax\artifacts\mfcloud-expense-receipt-reconcile\2026-01\reports\print_all.ps1"
+powershell -NoProfile -ExecutionPolicy Bypass -File "$env:AX_HOME\\artifacts\\mfcloud-expense-receipt-reconcile\\2026-01\\reports\\print_all.ps1"
 ```
 
 出力:
@@ -125,7 +131,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "C:\Users\<user>\.ax\artifac
 すでに `output_root/amazon/orders.jsonl` と `output_root/mfcloud/expenses.jsonl` がある場合、ブラウザ操作なしで突き合わせだけ実行できる。
 
 ```powershell
-python scripts/run.py --year 2026 --month 1 --dry-run --output-dir "C:\Users\<user>\.ax\artifacts\mfcloud-expense-receipt-reconcile\2026-01"
+python scripts/run.py --year 2026 --month 1 --dry-run --output-dir "$env:AX_HOME\\artifacts\\mfcloud-expense-receipt-reconcile\\2026-01"
 ```
 
 ## 出力

@@ -43,6 +43,12 @@ powershell -ExecutionPolicy Bypass -File .\scripts\bootstrap_kil.ps1
 PowerShell で実行：
 
 ```powershell
+# クローン直後の初期セットアップ（AX_HOME, config雛形, 依存インストール）
+powershell -NoProfile -ExecutionPolicy Bypass -File .\skills\mfcloud-expense-receipt-reconcile\scripts\bootstrap_from_clone.ps1 `
+  -PersistAxHome `
+  -InstallDependencies `
+  -InstallPlaywrightChromium
+
 # ランタイムディレクトリ作成（~/.ax）
 $env:AX_HOME = "$env:USERPROFILE\\.ax"
 New-Item -ItemType Directory -Force -Path "$env:AX_HOME\\sessions" | Out-Null
