@@ -124,6 +124,34 @@ def test_resolve_orders_url_prefers_tenant_then_legacy() -> None:
     assert _resolve_orders_url(config, "rakuten") == "https://legacy.example/rakuten"
 
 
+def test_resolve_orders_url_uses_org_profile_when_skill_values_missing() -> None:
+    org_profile = {
+        "urls": {
+            "amazon_orders": "https://org.example/amazon",
+            "rakuten_orders": "https://org.example/rakuten",
+        }
+    }
+
+    assert _resolve_orders_url({}, "amazon", org_profile=org_profile) == "https://org.example/amazon"
+    assert _resolve_orders_url({}, "rakuten", org_profile=org_profile) == "https://org.example/rakuten"
+
+
+def test_resolve_orders_url_skill_values_override_org_profile() -> None:
+    config = {
+        "tenant": {"urls": {"amazon_orders": "https://tenant.example/amazon"}},
+        "urls": {"rakuten_orders": "https://legacy.example/rakuten"},
+    }
+    org_profile = {
+        "urls": {
+            "amazon_orders": "https://org.example/amazon",
+            "rakuten_orders": "https://org.example/rakuten",
+        }
+    }
+
+    assert _resolve_orders_url(config, "amazon", org_profile=org_profile) == "https://tenant.example/amazon"
+    assert _resolve_orders_url(config, "rakuten", org_profile=org_profile) == "https://legacy.example/rakuten"
+
+
 def test_resolve_receipt_env_uses_tenant_receipt_values() -> None:
     env = _resolve_receipt_env(
         {
@@ -134,6 +162,19 @@ def test_resolve_receipt_env_uses_tenant_receipt_values() -> None:
     )
     assert env["RECEIPT_NAME"] == "Tenant Name"
     assert env["RECEIPT_NAME_FALLBACK"] == "Tenant Fallback"
+
+
+def test_resolve_receipt_env_uses_org_profile_when_skill_values_missing() -> None:
+    env = _resolve_receipt_env(
+        {},
+        org_profile={
+            "organization": {
+                "receipt": {"name": "Org Name", "name_fallback": "Org Fallback"},
+            }
+        },
+    )
+    assert env["RECEIPT_NAME"] == "Org Name"
+    assert env["RECEIPT_NAME_FALLBACK"] == "Org Fallback"
 
 
 def test_collect_print_writes_source_specific_manifest_for_selected_source(tmp_path: Path) -> None:

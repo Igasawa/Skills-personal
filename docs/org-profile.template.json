@@ -1,0 +1,24 @@
+{
+  "config_version": "1",
+  "profile_key": "default",
+  "organization": {
+    "name": "YOUR_COMPANY_NAME",
+    "receipt": {
+      "name": "YOUR_COMPANY_NAME",
+      "name_fallback": "YOUR_COMPANY_NAME_FALLBACK"
+    },
+    "locale": "ja",
+    "timezone": "Asia/Tokyo"
+  },
+  "urls": {
+    "amazon_orders": "https://www.amazon.co.jp/gp/your-account/order-history",
+    "rakuten_orders": "https://order.my.rakuten.co.jp/?l-id=top_normal_mymenu_order",
+    "mfcloud_accounts": "https://expense.moneyforward.com/accounts",
+    "mfcloud_expense_list": null
+  },
+  "metadata": {
+    "updated_by": "system",
+    "updated_at": "2026-02-20T00:00:00+09:00",
+    "notes": "Template for shared organization profile."
+  }
+}

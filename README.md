@@ -69,6 +69,9 @@ python scripts/run.py --mfcloud-expense-list-url "<経費明細一覧URL>" --not
 `YOUR_COMPANY_NAME` / `YOUR_COMPANY_NAME_FALLBACK` はプレースホルダーなので、運用前に自社値へ置き換える。
 プレースホルダーのまま通常実行（Amazon/Rakuten取得）すると、実行時ガードでエラー停止する。
 
+共有設定（`AX_HOME/configs/org-profile.json`）を置いた場合、優先順位は次の通り:
+`CLI > スキル個別config > org-profile > skill.yaml defaults`
+
 ### 旧設定キーの移行方針（非推奨）
 
 - 非推奨開始日: 2026-02-20

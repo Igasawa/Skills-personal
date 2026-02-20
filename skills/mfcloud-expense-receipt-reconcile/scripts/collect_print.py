@@ -13,6 +13,10 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 SKILL_ROOT = SCRIPT_DIR.parent
 if str(SKILL_ROOT) not in sys.path:
     sys.path.insert(0, str(SKILL_ROOT))
+REPO_ROOT = SKILL_ROOT.parent.parent
+SHARED_LIB_DIR = REPO_ROOT / "scripts" / "lib"
+if str(SHARED_LIB_DIR) not in sys.path:
+    sys.path.insert(0, str(SHARED_LIB_DIR))
 
 from common import (  # noqa: E402
     ax_home as _ax_home,
@@ -25,10 +29,15 @@ from common import (  # noqa: E402
     ym_to_dirname as _ym_to_dirname,
 )
 from run_core_playwright import run_node_playwright_script as _run_node_playwright_script  # noqa: E402
+from shared_config import load_org_profile as _load_org_profile  # noqa: E402
 
 DEFAULT_AMAZON_ORDERS_URL = "https://www.amazon.co.jp/gp/your-account/order-history"
 DEFAULT_RAKUTEN_ORDERS_URL = "https://order.my.rakuten.co.jp/?l-id=top_normal_mymenu_order"
 NON_ACTIONABLE_STATUS = {"out_of_month", "unknown_date", "gift_card"}
+
+
+def _as_dict(value: Any) -> dict[str, Any]:
+    return value if isinstance(value, dict) else {}
 
 
 def _read_json_input(path: str | None) -> dict[str, Any]:
@@ -173,29 +182,47 @@ def _write_print_script(path: Path, files: list[str]) -> None:
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
-def _resolve_orders_url(config: dict[str, Any], source: str) -> str:
-    tenant = config.get("tenant") if isinstance(config.get("tenant"), dict) else {}
-    tenant_urls = tenant.get("urls") if isinstance(tenant.get("urls"), dict) else {}
-    legacy_urls = config.get("urls") if isinstance(config.get("urls"), dict) else {}
+def _resolve_orders_url(config: dict[str, Any], source: str, org_profile: dict[str, Any] | None = None) -> str:
+    tenant = _as_dict(config.get("tenant"))
+    tenant_urls = _as_dict(tenant.get("urls"))
+    legacy_urls = _as_dict(config.get("urls"))
+    org_profile = _as_dict(org_profile)
+    org_urls = _as_dict(org_profile.get("urls"))
     if source == "amazon":
-        return str(tenant_urls.get("amazon_orders") or legacy_urls.get("amazon_orders") or DEFAULT_AMAZON_ORDERS_URL)
+        return str(
+            tenant_urls.get("amazon_orders")
+            or legacy_urls.get("amazon_orders")
+            or org_urls.get("amazon_orders")
+            or DEFAULT_AMAZON_ORDERS_URL
+        )
     if source == "rakuten":
-        rakuten_cfg = config.get("rakuten") if isinstance(config.get("rakuten"), dict) else {}
+        rakuten_cfg = _as_dict(config.get("rakuten"))
         return str(
             tenant_urls.get("rakuten_orders")
             or rakuten_cfg.get("orders_url")
             or legacy_urls.get("rakuten_orders")
+            or org_urls.get("rakuten_orders")
             or DEFAULT_RAKUTEN_ORDERS_URL
         )
     return ""
 
 
-def _resolve_receipt_env(config: dict[str, Any]) -> dict[str, str]:
-    tenant = config.get("tenant") if isinstance(config.get("tenant"), dict) else {}
-    receipt_cfg = tenant.get("receipt") if isinstance(tenant.get("receipt"), dict) else {}
-    receipt_name = str(_coalesce(receipt_cfg.get("name"), config.get("receipt_name"), "") or "").strip()
+def _resolve_receipt_env(config: dict[str, Any], org_profile: dict[str, Any] | None = None) -> dict[str, str]:
+    tenant = _as_dict(config.get("tenant"))
+    receipt_cfg = _as_dict(tenant.get("receipt"))
+    org_profile = _as_dict(org_profile)
+    org_organization = _as_dict(org_profile.get("organization"))
+    org_receipt = _as_dict(org_organization.get("receipt"))
+
+    receipt_name = str(_coalesce(receipt_cfg.get("name"), config.get("receipt_name"), org_receipt.get("name"), "") or "").strip()
     receipt_name_fallback = str(
-        _coalesce(receipt_cfg.get("name_fallback"), config.get("receipt_name_fallback"), "") or ""
+        _coalesce(
+            receipt_cfg.get("name_fallback"),
+            config.get("receipt_name_fallback"),
+            org_receipt.get("name_fallback"),
+            "",
+        )
+        or ""
     ).strip()
     env: dict[str, str] = {}
     if receipt_name:
@@ -281,6 +308,7 @@ def _attempt_source_shortcut_download(
     month: int,
     output_root: Path,
     config: dict[str, Any],
+    org_profile: dict[str, Any] | None,
     exclusions: set[tuple[str, str]],
     interactive: bool,
     headed: bool,
@@ -298,9 +326,9 @@ def _attempt_source_shortcut_download(
     storage_key = "amazon_storage_state" if source == "amazon" else "rakuten_storage_state"
     storage_fallback = "amazon" if source == "amazon" else "rakuten"
     storage_state = Path(_coalesce(sessions.get(storage_key), _default_storage_state(storage_fallback))).expanduser().resolve()
-    orders_url = _resolve_orders_url(config, source)
+    orders_url = _resolve_orders_url(config, source, org_profile=org_profile)
     debug_dir = _ensure_dir(output_root / "debug" / source / "print_hydrate")
-    env = _resolve_receipt_env(config)
+    env = _resolve_receipt_env(config, org_profile=org_profile)
 
     before = len(_collect_orders_pdfs(orders_jsonl, year, month, source, exclusions))
     backup_path: Path | None = None
@@ -389,6 +417,7 @@ def main(argv: list[str] | None = None) -> int:
     config = raw.get("config") if isinstance(raw, dict) else {}
     if not isinstance(config, dict):
         config = {}
+    org_profile, _org_profile_path = _load_org_profile(ax_home=_ax_home())
 
     default_year, default_month = _ym_default()
     year = int(_coalesce(args.year, (raw.get("params") or {}).get("year"), default_year))
@@ -455,6 +484,7 @@ def main(argv: list[str] | None = None) -> int:
                 month=month,
                 output_root=output_root,
                 config=config,
+                org_profile=org_profile,
                 exclusions=exclusions,
                 interactive=bool(args.interactive),
                 headed=bool(args.headed or args.interactive),
@@ -466,6 +496,7 @@ def main(argv: list[str] | None = None) -> int:
                 month=month,
                 output_root=output_root,
                 config=config,
+                org_profile=org_profile,
                 exclusions=exclusions,
                 interactive=bool(args.interactive),
                 headed=bool(args.headed or args.interactive),

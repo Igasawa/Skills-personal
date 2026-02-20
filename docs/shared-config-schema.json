@@ -1,0 +1,124 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://skillpersonal.local/schemas/shared-config/org-profile.schema.json",
+  "title": "Org Profile",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "config_version",
+    "organization",
+    "urls"
+  ],
+  "properties": {
+    "config_version": {
+      "type": "string",
+      "description": "Schema version for compatibility checks.",
+      "pattern": "^1$"
+    },
+    "profile_key": {
+      "type": "string",
+      "description": "Logical profile identifier (e.g. default, corp-a).",
+      "minLength": 1,
+      "maxLength": 64
+    },
+    "organization": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "receipt"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "receipt": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "name",
+            "name_fallback"
+          ],
+          "properties": {
+            "name": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            },
+            "name_fallback": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            }
+          }
+        },
+        "locale": {
+          "type": "string",
+          "description": "Default UI locale for shared dashboards.",
+          "enum": [
+            "ja",
+            "en"
+          ]
+        },
+        "timezone": {
+          "type": "string",
+          "description": "IANA timezone name for scheduling and logs.",
+          "minLength": 1,
+          "maxLength": 64
+        }
+      }
+    },
+    "urls": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "amazon_orders",
+        "rakuten_orders",
+        "mfcloud_accounts"
+      ],
+      "properties": {
+        "amazon_orders": {
+          "type": "string",
+          "format": "uri"
+        },
+        "rakuten_orders": {
+          "type": "string",
+          "format": "uri"
+        },
+        "mfcloud_accounts": {
+          "type": "string",
+          "format": "uri"
+        },
+        "mfcloud_expense_list": {
+          "description": "Optional because this URL often includes user/session specific filters.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "uri"
+        }
+      }
+    },
+    "metadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "updated_by": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "updated_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "notes": {
+          "type": "string",
+          "maxLength": 4000
+        }
+      }
+    }
+  }
+}

@@ -18,6 +18,10 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 SKILL_ROOT = SCRIPT_DIR.parent
 if str(SKILL_ROOT) not in sys.path:
     sys.path.insert(0, str(SKILL_ROOT))
+REPO_ROOT = SKILL_ROOT.parent.parent
+SHARED_LIB_DIR = REPO_ROOT / "scripts" / "lib"
+if str(SHARED_LIB_DIR) not in sys.path:
+    sys.path.insert(0, str(SHARED_LIB_DIR))
 
 from common import (  # noqa: E402
     as_int as _as_int,
@@ -27,6 +31,7 @@ from common import (  # noqa: E402
     ym_default as _ym_default,
     ym_to_dirname as _ym_to_dirname,
 )
+from shared_config import load_org_profile as _load_org_profile  # noqa: E402
 from run_core_io import read_json_input as _read_json_input  # noqa: E402
 from run_core_pipeline import execute_pipeline  # noqa: E402
 from run_core_template import render_monthly_thread  # noqa: E402
@@ -75,6 +80,10 @@ class RunConfig:
     rakuten_storage_state: Path
     tenant_name: str
     tenant_key: str
+    org_profile_loaded: bool = False
+    org_profile_path: str = ""
+    org_profile_config_version: str = ""
+    org_profile_key: str = ""
     resolved_sources: dict[str, str] = field(default_factory=dict)
     deprecation_warnings: list[str] = field(default_factory=list)
 
@@ -139,7 +148,13 @@ def _validate_receipt_name_guard(args: argparse.Namespace, rc: RunConfig) -> Non
     )
 
 
-def _parse_config(args: argparse.Namespace, raw: dict[str, Any]) -> tuple[RunConfig, int, int]:
+def _parse_config(
+    args: argparse.Namespace,
+    raw: dict[str, Any],
+    org_profile: dict[str, Any] | None = None,
+    *,
+    org_profile_path: Path | None = None,
+) -> tuple[RunConfig, int, int]:
     config = raw.get("config") if isinstance(raw, dict) else None
     params = raw.get("params") if isinstance(raw, dict) else None
     config = config if isinstance(config, dict) else {}
@@ -159,6 +174,14 @@ def _parse_config(args: argparse.Namespace, raw: dict[str, Any]) -> tuple[RunCon
     tenant_urls = _as_dict(tenant.get("urls"))
     tenant_receipt = _as_dict(tenant.get("receipt"))
     tenant_amazon = _as_dict(tenant.get("amazon"))
+    org_profile = _as_dict(org_profile)
+    org_organization = _as_dict(org_profile.get("organization"))
+    org_receipt = _as_dict(org_organization.get("receipt"))
+    org_urls = _as_dict(org_profile.get("urls"))
+    org_profile_key = str(org_profile.get("profile_key") or "").strip()
+    org_profile_config_version = str(org_profile.get("config_version") or "").strip()
+    org_profile_loaded = bool(org_profile)
+    org_profile_path_str = str(org_profile_path) if org_profile_path else ""
 
     resolved_sources: dict[str, str] = {}
 
@@ -170,6 +193,7 @@ def _parse_config(args: argparse.Namespace, raw: dict[str, Any]) -> tuple[RunCon
             (args.receipt_name, "cli.receipt_name"),
             (tenant_receipt.get("name"), "config.tenant.receipt.name"),
             (config.get("receipt_name"), "config.receipt_name"),
+            (org_receipt.get("name"), "org_profile.organization.receipt.name"),
             (DEFAULT_RECEIPT_NAME, "default.receipt_name"),
         ]
     )
@@ -181,6 +205,7 @@ def _parse_config(args: argparse.Namespace, raw: dict[str, Any]) -> tuple[RunCon
             (args.receipt_name_fallback, "cli.receipt_name_fallback"),
             (tenant_receipt.get("name_fallback"), "config.tenant.receipt.name_fallback"),
             (config.get("receipt_name_fallback"), "config.receipt_name_fallback"),
+            (org_receipt.get("name_fallback"), "org_profile.organization.receipt.name_fallback"),
             (DEFAULT_RECEIPT_NAME_FALLBACK, "default.receipt_name_fallback"),
         ]
     )
@@ -222,6 +247,7 @@ def _parse_config(args: argparse.Namespace, raw: dict[str, Any]) -> tuple[RunCon
             (args.amazon_orders_url, "cli.amazon_orders_url"),
             (tenant_urls.get("amazon_orders"), "config.tenant.urls.amazon_orders"),
             (urls.get("amazon_orders"), "config.urls.amazon_orders"),
+            (org_urls.get("amazon_orders"), "org_profile.urls.amazon_orders"),
             (DEFAULT_AMAZON_ORDERS_URL, "default.amazon_orders_url"),
         ]
     )
@@ -233,6 +259,7 @@ def _parse_config(args: argparse.Namespace, raw: dict[str, Any]) -> tuple[RunCon
             (args.rakuten_orders_url, "cli.rakuten_orders_url"),
             (tenant_urls.get("rakuten_orders"), "config.tenant.urls.rakuten_orders"),
             (rakuten_cfg.get("orders_url"), "config.rakuten.orders_url"),
+            (org_urls.get("rakuten_orders"), "org_profile.urls.rakuten_orders"),
             (DEFAULT_RAKUTEN_ORDERS_URL, "default.rakuten_orders_url"),
         ]
     )
@@ -243,6 +270,7 @@ def _parse_config(args: argparse.Namespace, raw: dict[str, Any]) -> tuple[RunCon
             (args.mfcloud_accounts_url, "cli.mfcloud_accounts_url"),
             (tenant_urls.get("mfcloud_accounts"), "config.tenant.urls.mfcloud_accounts"),
             (urls.get("mfcloud_accounts"), "config.urls.mfcloud_accounts"),
+            (org_urls.get("mfcloud_accounts"), "org_profile.urls.mfcloud_accounts"),
             (DEFAULT_MFCLOUD_ACCOUNTS_URL, "default.mfcloud_accounts_url"),
         ]
     )
@@ -253,6 +281,7 @@ def _parse_config(args: argparse.Namespace, raw: dict[str, Any]) -> tuple[RunCon
             (args.mfcloud_expense_list_url, "cli.mfcloud_expense_list_url"),
             (tenant_urls.get("mfcloud_expense_list"), "config.tenant.urls.mfcloud_expense_list"),
             (urls.get("mfcloud_expense_list"), "config.urls.mfcloud_expense_list"),
+            (org_urls.get("mfcloud_expense_list"), "org_profile.urls.mfcloud_expense_list"),
         ]
     )
     resolved_sources["mfcloud_expense_list_url"] = mfcloud_expense_list_source
@@ -271,6 +300,7 @@ def _parse_config(args: argparse.Namespace, raw: dict[str, Any]) -> tuple[RunCon
         [
             (tenant.get("name"), "config.tenant.name"),
             (config.get("tenant_name"), "config.tenant_name"),
+            (org_organization.get("name"), "org_profile.organization.name"),
             (receipt_name if receipt_name else None, "resolved.receipt_name"),
             ("default", "default.tenant_name"),
         ]
@@ -281,6 +311,7 @@ def _parse_config(args: argparse.Namespace, raw: dict[str, Any]) -> tuple[RunCon
         [
             (tenant.get("key"), "config.tenant.key"),
             (config.get("tenant_key"), "config.tenant_key"),
+            (org_profile_key if org_profile_key else None, "org_profile.profile_key"),
             ("default", "default.tenant_key"),
         ]
     )
@@ -335,6 +366,10 @@ def _parse_config(args: argparse.Namespace, raw: dict[str, Any]) -> tuple[RunCon
         rakuten_enabled=rakuten_enabled,
         tenant_name=tenant_name,
         tenant_key=tenant_key,
+        org_profile_loaded=org_profile_loaded,
+        org_profile_path=org_profile_path_str,
+        org_profile_config_version=org_profile_config_version,
+        org_profile_key=(org_profile_key or "default") if org_profile_loaded else "",
         resolved_sources=resolved_sources,
         deprecation_warnings=deprecation_warnings,
     )
@@ -411,7 +446,8 @@ def main(argv: list[str] | None = None) -> int:
 
     args = ap.parse_args(argv)
     raw = _read_json_input(args.input)
-    rc, year, month = _parse_config(args, raw)
+    org_profile, org_profile_path = _load_org_profile(ax_home=_ax_home())
+    rc, year, month = _parse_config(args, raw, org_profile=org_profile, org_profile_path=org_profile_path)
     for warning in rc.deprecation_warnings:
         print(warning, file=sys.stderr)
     _validate_receipt_name_guard(args, rc)

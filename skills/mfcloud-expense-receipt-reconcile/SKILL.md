@@ -62,6 +62,7 @@ python scripts/run.py --year 2026 --month 1 --mfcloud-expense-list-url "<経費�
 ### テナント設定（推奨）
 
 会社/部署ごとの設定は `config.tenant` にまとめる。既存の `config.receipt_name` / `config.urls.*` も互換のため読み込む。
+`AX_HOME/configs/org-profile.json` がある場合、優先順位は `CLI > スキル個別config > org-profile > defaults` で解決する。
 
 非推奨移行スケジュール:
 - 非推奨開始日: 2026-02-20

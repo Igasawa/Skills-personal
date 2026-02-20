@@ -55,6 +55,12 @@ def _write_resolved_config(*, output_root: Path, rc: Any, year: int, month: int)
                     "mfcloud_expense_list": rc.mfcloud_expense_list_url,
                 },
             },
+            "org_profile": {
+                "loaded": bool(getattr(rc, "org_profile_loaded", False)),
+                "path": str(getattr(rc, "org_profile_path", "")),
+                "config_version": str(getattr(rc, "org_profile_config_version", "")),
+                "profile_key": str(getattr(rc, "org_profile_key", "")),
+            },
             "rakuten": {
                 "enabled": rc.rakuten_enabled,
                 "orders_url": rc.rakuten_orders_url,

@@ -188,6 +188,83 @@ def test_parse_config_receipt_defaults_use_placeholders() -> None:
     assert rc.deprecation_warnings == []
 
 
+def test_parse_config_uses_org_profile_when_skill_values_missing() -> None:
+    args = _base_args()
+    raw = {"config": {}}
+    org_profile = {
+        "config_version": "1",
+        "profile_key": "corp-shared",
+        "organization": {
+            "name": "Org Tenant",
+            "receipt": {"name": "Org Receipt", "name_fallback": "Org Fallback"},
+        },
+        "urls": {
+            "amazon_orders": "https://org.example/amazon",
+            "rakuten_orders": "https://org.example/rakuten",
+            "mfcloud_accounts": "https://org.example/accounts",
+            "mfcloud_expense_list": "https://org.example/expenses",
+        },
+    }
+
+    rc, _, _ = _parse_config(args, raw, org_profile=org_profile)
+
+    assert rc.receipt_name == "Org Receipt"
+    assert rc.receipt_name_fallback == "Org Fallback"
+    assert rc.amazon_orders_url == "https://org.example/amazon"
+    assert rc.rakuten_orders_url == "https://org.example/rakuten"
+    assert rc.mfcloud_accounts_url == "https://org.example/accounts"
+    assert rc.mfcloud_expense_list_url == "https://org.example/expenses"
+    assert rc.tenant_name == "Org Tenant"
+    assert rc.tenant_key == "corp-shared"
+    assert rc.resolved_sources["receipt_name"] == "org_profile.organization.receipt.name"
+    assert rc.resolved_sources["amazon_orders_url"] == "org_profile.urls.amazon_orders"
+
+
+def test_parse_config_skill_values_override_org_profile() -> None:
+    args = _base_args()
+    raw = {
+        "config": {
+            "tenant": {
+                "key": "skill-tenant",
+                "name": "Skill Tenant",
+                "receipt": {"name": "Skill Receipt", "name_fallback": "Skill Fallback"},
+                "urls": {
+                    "amazon_orders": "https://skill.example/amazon",
+                    "rakuten_orders": "https://skill.example/rakuten",
+                    "mfcloud_accounts": "https://skill.example/accounts",
+                    "mfcloud_expense_list": "https://skill.example/expenses",
+                },
+            }
+        }
+    }
+    org_profile = {
+        "profile_key": "corp-shared",
+        "organization": {
+            "name": "Org Tenant",
+            "receipt": {"name": "Org Receipt", "name_fallback": "Org Fallback"},
+        },
+        "urls": {
+            "amazon_orders": "https://org.example/amazon",
+            "rakuten_orders": "https://org.example/rakuten",
+            "mfcloud_accounts": "https://org.example/accounts",
+            "mfcloud_expense_list": "https://org.example/expenses",
+        },
+    }
+
+    rc, _, _ = _parse_config(args, raw, org_profile=org_profile)
+
+    assert rc.receipt_name == "Skill Receipt"
+    assert rc.receipt_name_fallback == "Skill Fallback"
+    assert rc.amazon_orders_url == "https://skill.example/amazon"
+    assert rc.rakuten_orders_url == "https://skill.example/rakuten"
+    assert rc.mfcloud_accounts_url == "https://skill.example/accounts"
+    assert rc.mfcloud_expense_list_url == "https://skill.example/expenses"
+    assert rc.tenant_name == "Skill Tenant"
+    assert rc.tenant_key == "skill-tenant"
+    assert rc.resolved_sources["receipt_name"] == "config.tenant.receipt.name"
+    assert rc.resolved_sources["amazon_orders_url"] == "config.tenant.urls.amazon_orders"
+
+
 def test_receipt_name_guard_blocks_placeholder_on_download_run() -> None:
     args = _base_args()
     raw = {"config": {"tenant": {"urls": {"mfcloud_expense_list": "https://example/expenses"}}}}
