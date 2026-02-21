@@ -3070,6 +3070,7 @@
     resolvePromptLabel,
     resolvePromptUrl,
     normalizePromptOptimizeList,
+    getPromptOptimizePreview: () => (isObject(promptOptimizePreview) ? promptOptimizePreview : null),
   };
 
   const workspaceRenderApi = {
