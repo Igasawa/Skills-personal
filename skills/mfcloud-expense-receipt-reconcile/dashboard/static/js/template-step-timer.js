@@ -5,6 +5,17 @@
 
   const DEFAULT_TIMER_MINUTES = 5;
   const MAX_TIMER_MINUTES = 7 * 24 * 60;
+  const DEFAULT_ACTION_KEY = "preflight";
+  const ALLOWED_ACTION_KEYS = new Set([
+    "preflight",
+    "preflight_mf",
+    "amazon_download",
+    "rakuten_download",
+    "amazon_print",
+    "rakuten_print",
+    "mf_reconcile",
+  ]);
+  const ALLOWED_CATCH_UP_POLICIES = new Set(["run_on_startup", "skip"]);
 
   const form = document.getElementById("run-form");
   const listEl = document.querySelector("[data-template-steps-list]");
@@ -19,6 +30,40 @@
     if (parsed < 0) return 0;
     if (parsed > MAX_TIMER_MINUTES) return MAX_TIMER_MINUTES;
     return parsed;
+  }
+
+  function normalizeActionKey(value) {
+    const key = String(value || "").trim();
+    if (!key) return DEFAULT_ACTION_KEY;
+    if (!ALLOWED_ACTION_KEYS.has(key)) return DEFAULT_ACTION_KEY;
+    return key;
+  }
+
+  function normalizeCatchUpPolicy(value) {
+    const policy = String(value || "").trim().toLowerCase();
+    if (!policy) return "run_on_startup";
+    if (!ALLOWED_CATCH_UP_POLICIES.has(policy)) return "run_on_startup";
+    return policy;
+  }
+
+  function isValidDateText(value) {
+    const text = String(value || "").trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) return false;
+    const d = new Date(`${text}T00:00:00`);
+    if (Number.isNaN(d.getTime())) return false;
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, "0");
+    const dd = String(d.getDate()).padStart(2, "0");
+    return `${yyyy}-${mm}-${dd}` === text;
+  }
+
+  function isValidTimeText(value) {
+    const text = String(value || "").trim();
+    if (!/^\d{2}:\d{2}$/.test(text)) return false;
+    const hh = Number.parseInt(text.slice(0, 2), 10);
+    const mm = Number.parseInt(text.slice(3, 5), 10);
+    if (!Number.isFinite(hh) || !Number.isFinite(mm)) return false;
+    return hh >= 0 && hh <= 23 && mm >= 0 && mm <= 59;
   }
 
   function getRows() {
@@ -42,6 +87,7 @@
       ["rakuten_download", "Rakuten Download"],
       ["amazon_print", "Amazon Print"],
       ["rakuten_print", "Rakuten Print"],
+      ["mf_reconcile", "MF Reconcile"],
     ];
     return fallback
       .map(([value, label]) => `<option value="${value}"${value === selectedAction ? " selected" : ""}>${label}</option>`)
@@ -127,7 +173,7 @@
   }
 
   async function scheduleRow(row, button) {
-    const action = String(row.querySelector("[data-template-step-action]")?.value || "").trim() || "preflight";
+    const action = normalizeActionKey(row.querySelector("[data-template-step-action]")?.value);
     const title = String(row.querySelector("[data-template-step-title]")?.value || "").trim() || "Task";
     const timerMinutes = normalizeTimerMinutes(row.querySelector("[data-template-step-timer]")?.value);
     const ym = resolveYearMonth();
@@ -141,6 +187,10 @@
     now.setMinutes(now.getMinutes() + timerMinutes);
     const runDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
     const runTime = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+    if (!isValidDateText(runDate) || !isValidTimeText(runTime)) {
+      showToast("Scheduler datetime is invalid.", "error");
+      return;
+    }
 
     const schedulerUrl = buildSchedulerStateUrl();
     const summaryEl = row.querySelector("[data-template-step-schedule-summary]");
@@ -152,6 +202,10 @@
         cache: "no-store",
       }).catch(() => null);
       const currentState = currentRes && currentRes.ok ? await currentRes.json().catch(() => ({})) : {};
+      const mfcloudUrl = String(currentState?.mfcloud_url || resolvePrimarySourceUrl() || "").trim();
+      if (action === "mf_reconcile" && !mfcloudUrl) {
+        throw new Error("MF Cloud expense list URL is required for mf_reconcile.");
+      }
       const cardId = String(row.dataset.templateStepId || row.dataset.templateStepCardId || `workflow-step:${action}`).trim();
       const payload = {
         enabled: true,
@@ -159,11 +213,11 @@
         action_key: action,
         year: ym.year,
         month: ym.month,
-        mfcloud_url: String(currentState?.mfcloud_url || resolvePrimarySourceUrl() || "").trim(),
+        mfcloud_url: mfcloudUrl,
         notes: String(currentState?.notes || form.querySelector("[name=notes]")?.value || "").trim(),
         run_date: runDate,
         run_time: runTime,
-        catch_up_policy: String(currentState?.catch_up_policy || "run_on_startup"),
+        catch_up_policy: normalizeCatchUpPolicy(currentState?.catch_up_policy),
         recurrence: "once",
       };
 
