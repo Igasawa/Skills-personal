@@ -31,6 +31,12 @@ Set-Location "<Skillpersonal_clone_root>"
 powershell -ExecutionPolicy Bypass -File .\scripts\bootstrap_kil.ps1
 ```
 
+## ドキュメント運用
+
+- 現行で利用する手順・仕様は `docs/` 直下を参照してください。
+- 廃止済み/完了済みの計画書・一時メモは `docs/archive/legacy/` にアーカイブします。
+- アーカイブ対象と理由は `docs/archive/README.md` に記録します。
+
 ## 収録スキル
 
 - `skills/dashboard-ja-localization/`  
