@@ -1,4 +1,5 @@
 (function () {
+  const PROMPT_KEY_MF_EXPENSE_REPORTS = "mf_expense_reports";
   const dashboard = window.DashboardWorkspace || {};
   const source = (dashboard.core && dashboard.core.prompt) || {};
   const fallback = window.DashboardWorkspacePrompt || {};
@@ -40,6 +41,8 @@
     resolvePromptLabel: namespace.resolvePromptLabel || function () { return "-"; },
     resolvePromptUrl: namespace.resolvePromptUrl || function () { return ""; },
     normalizePromptOptimizeList: namespace.normalizePromptOptimizeList || function () { return []; },
+    activePromptKey: namespace.activePromptKey || PROMPT_KEY_MF_EXPENSE_REPORTS,
+    activePromptContext: namespace.activePromptContext || {},
   });
 
   dashboard.prompt = namespace;
