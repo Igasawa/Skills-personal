@@ -807,6 +807,18 @@
     renderPromptFrontByKey(activePromptKey);
   }
 
+  function getActivePromptKey() {
+    return activePromptKey;
+  }
+
+  function getActivePromptContext() {
+    return isObject(activePromptContext) ? { ...activePromptContext } : {};
+  }
+
+  function getActivePromptState() {
+    return { key: activePromptKey, context: getActivePromptContext() };
+  }
+
   async function sendPromptForKey(key, context = {}) {
     const safeKey = String(key || "").trim();
     if (!isValidPromptKey(safeKey)) return;
@@ -3048,6 +3060,9 @@
     initializePrompt,
     activatePromptEditorForKey,
     optimizeActivePrompt,
+    getActivePromptKey,
+    getActivePromptContext,
+    getActivePromptState,
     copyHandoffSetForKey,
     resolvePromptContextFromButton,
     resolvePromptContextFromFront,

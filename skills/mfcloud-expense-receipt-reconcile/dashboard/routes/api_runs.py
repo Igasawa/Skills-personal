@@ -621,9 +621,19 @@ def register_api_run_routes(
         max_loops = core._safe_non_negative_int(body.get("max_loops"), default=8) or 8
         max_runtime = core._safe_non_negative_int(body.get("max_runtime_minutes"), default=45) or 45
         same_error_limit = core._safe_non_negative_int(body.get("same_error_limit"), default=3) or 3
+        no_progress_limit = core._safe_non_negative_int(body.get("no_progress_limit"), default=2) or 2
+        auto_replan_on_no_progress = bool(body.get("auto_replan_on_no_progress", True))
+        commit_on_resolve = bool(body.get("commit_on_resolve", True))
+        push_on_resolve = bool(body.get("push_on_resolve", True))
+        commit_message_template = str(body.get("commit_message_template") or "").strip()
+        commit_remote = str(body.get("commit_remote") or "origin").strip() or "origin"
+        commit_branch = str(body.get("commit_branch") or "").strip()
+        commit_scope = str(body.get("commit_scope") or "incident").strip() or "incident"
         single_iteration = bool(body.get("single_iteration"))
         archive_on_success = bool(body.get("archive_on_success", True))
         archive_on_escalate = bool(body.get("archive_on_escalate", True))
+        if commit_scope not in {"incident", "plan", "run"}:
+            commit_scope = "incident"
 
         args = [
             "--incident-id",
@@ -634,7 +644,31 @@ def register_api_run_routes(
             str(max_runtime),
             "--same-error-limit",
             str(same_error_limit),
+            "--no-progress-limit",
+            str(no_progress_limit),
         ]
+        if auto_replan_on_no_progress:
+            args.append("--auto-replan-on-no-progress")
+        else:
+            args.append("--no-auto-replan-on-no-progress")
+        if commit_on_resolve:
+            args.append("--commit-on-resolve")
+        else:
+            args.append("--no-commit-on-resolve")
+        if push_on_resolve:
+            args.append("--push-on-resolve")
+        else:
+            args.append("--no-push-on-resolve")
+        args += [
+            "--commit-remote",
+            commit_remote,
+            "--commit-branch",
+            commit_branch,
+            "--commit-scope",
+            commit_scope,
+        ]
+        if commit_message_template:
+            args += ["--commit-message-template", commit_message_template]
         if single_iteration:
             args.append("--single-iteration")
         if archive_on_success:
@@ -665,6 +699,9 @@ def register_api_run_routes(
                     "loops_used": result.get("loops_used"),
                     "runtime_minutes": result.get("runtime_minutes"),
                     "same_error_repeats": result.get("same_error_repeats"),
+                    "no_progress_streak": result.get("no_progress_streak"),
+                    "replan_requested": bool(result.get("replan", {}).get("requested")),
+                    "commit_requested": bool(result.get("commit", {}).get("requested")),
                 },
             )
         return JSONResponse(result, headers={"Cache-Control": "no-store"})

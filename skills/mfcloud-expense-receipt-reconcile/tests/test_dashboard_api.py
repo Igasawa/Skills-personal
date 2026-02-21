@@ -5407,6 +5407,66 @@ def test_api_workflow_event_retry_jobs_drain_escalation_notification_failure_doe
     assert "google chat unavailable" in str(notification_details.get("reason") or "")
 
 
+def test_api_workflow_event_retry_jobs_drain_escalation_notification_skipped_when_webhook_not_configured(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    client = _create_client(monkeypatch, tmp_path)
+    monkeypatch.setenv("AX_WORKFLOW_EVENT_RETRY_MAX_ATTEMPTS", "1")
+    monkeypatch.delenv("AX_GOOGLE_CHAT_WEBHOOK_URL", raising=False)
+
+    def _fake_start_run(payload: dict[str, Any]) -> dict[str, Any]:
+        raise HTTPException(status_code=409, detail="Another run is already in progress.")
+
+    monkeypatch.setattr(public_core, "_start_run", _fake_start_run)
+
+    create_res = client.post(
+        "/api/workflow-templates",
+        json={
+            "name": "External Event Retry Escalation Notification Skipped",
+            "year": 2026,
+            "month": 2,
+            "mfcloud_url": "https://example.com/external-retry-escalation-notify-skip",
+            "steps": [
+                {
+                    "title": "Step 1",
+                    "action": "preflight",
+                    "trigger_kind": "external_event",
+                    "execution_mode": "manual_confirm",
+                }
+            ],
+        },
+    )
+    assert create_res.status_code == 200
+    template_id = str((create_res.json().get("template") or {}).get("id") or "")
+    assert template_id
+
+    first_res = client.post(
+        "/api/workflow-events",
+        json={"template_id": template_id, "idempotency_key": "evt-retry-escalate-notify-skip-001"},
+    )
+    assert first_res.status_code == 409
+
+    drain_res = client.post("/api/workflow-events/retry-jobs/drain", json={"force": True})
+    assert drain_res.status_code == 200
+    body = drain_res.json()
+    assert body.get("processed") == 1
+    assert body.get("retrying") == 0
+    assert body.get("escalated") == 1
+
+    entries = _read_audit_entries(tmp_path, "2026-02")
+    notification_entries = [
+        row for row in entries if str(row.get("event_type") or "") == "workflow_event_notification"
+    ]
+    assert notification_entries
+    notification_last = notification_entries[-1]
+    notification_details = notification_last.get("details") or {}
+    assert str(notification_last.get("status") or "") == "skipped"
+    assert str(notification_details.get("channel") or "") == "google_chat"
+    assert str(notification_details.get("reason_code") or "") == "webhook_not_configured"
+    assert str(notification_details.get("idempotency_key") or "") == "evt-retry-escalate-notify-skip-001"
+
+
 def test_api_workflow_events_summary_returns_aggregated_counts(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -5719,6 +5779,119 @@ def test_api_workflow_event_notification_settings_save_and_clear(
     assert clear_body.get("source") == "none"
     assert clear_body.get("webhook_url_masked") == ""
     assert _workflow_event_notification_settings_store(tmp_path).exists() is False
+
+
+def test_api_workflow_event_notification_settings_test_prefers_file_over_env(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    env_webhook_url = (
+        "https://chat.googleapis.com/v1/spaces/ENVSPACE/messages"
+        "?key=ENVKEY1234&token=ENVTOKEN5678"
+    )
+    file_webhook_url = (
+        "https://chat.googleapis.com/v1/spaces/FILESPACE/messages"
+        "?key=FILEKEY1234&token=FILETOKEN5678"
+    )
+    monkeypatch.setenv("AX_GOOGLE_CHAT_WEBHOOK_URL", env_webhook_url)
+    client = _create_client(monkeypatch, tmp_path)
+
+    save_res = client.post(
+        "/api/workflow-events/notification-settings",
+        json={"webhook_url": file_webhook_url},
+    )
+    assert save_res.status_code == 200
+    save_body = save_res.json()
+    assert save_body.get("configured") is True
+    assert save_body.get("source") == "file"
+
+    class _FakeWebhookResponse:
+        status = 200
+
+        def __enter__(self) -> "_FakeWebhookResponse":
+            return self
+
+        def __exit__(self, exc_type: Any, exc: Any, tb: Any) -> bool:
+            return False
+
+        def read(self) -> bytes:
+            return b"{\"status\":\"ok\"}"
+
+        def getcode(self) -> int:
+            return 200
+
+    sent_payload: dict[str, Any] = {}
+
+    def _fake_urlopen(req: Any, timeout: int = 0) -> _FakeWebhookResponse:
+        sent_payload["url"] = str(getattr(req, "full_url", "")).strip()
+        sent_payload["timeout"] = int(timeout)
+        return _FakeWebhookResponse()
+
+    monkeypatch.setattr(api_workspace_routes.url_request, "urlopen", _fake_urlopen)
+    test_res = client.post("/api/workflow-events/notification-settings/test", json={})
+    assert test_res.status_code == 200
+    assert str(sent_payload.get("url") or "") == file_webhook_url
+    assert int(sent_payload.get("timeout") or 0) >= 1
+
+
+def test_api_workflow_event_notification_settings_test_uses_env_after_clear(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    env_webhook_url = (
+        "https://chat.googleapis.com/v1/spaces/ENVFALLBACK/messages"
+        "?key=ENVFBKEY1234&token=ENVFBTOKEN5678"
+    )
+    file_webhook_url = (
+        "https://chat.googleapis.com/v1/spaces/CLEARFIRST/messages"
+        "?key=CLEARKEY1234&token=CLEARTOKEN5678"
+    )
+    monkeypatch.setenv("AX_GOOGLE_CHAT_WEBHOOK_URL", env_webhook_url)
+    client = _create_client(monkeypatch, tmp_path)
+
+    save_res = client.post(
+        "/api/workflow-events/notification-settings",
+        json={"webhook_url": file_webhook_url},
+    )
+    assert save_res.status_code == 200
+    assert save_res.json().get("source") == "file"
+
+    clear_res = client.post(
+        "/api/workflow-events/notification-settings",
+        json={"webhook_url": ""},
+    )
+    assert clear_res.status_code == 200
+    clear_body = clear_res.json()
+    assert clear_body.get("configured") is True
+    assert clear_body.get("source") == "env"
+
+    class _FakeWebhookResponse:
+        status = 200
+
+        def __enter__(self) -> "_FakeWebhookResponse":
+            return self
+
+        def __exit__(self, exc_type: Any, exc: Any, tb: Any) -> bool:
+            return False
+
+        def read(self) -> bytes:
+            return b"{\"status\":\"ok\"}"
+
+        def getcode(self) -> int:
+            return 200
+
+    sent_payload: dict[str, Any] = {}
+
+    def _fake_urlopen(req: Any, timeout: int = 0) -> _FakeWebhookResponse:
+        sent_payload["url"] = str(getattr(req, "full_url", "")).strip()
+        sent_payload["timeout"] = int(timeout)
+        return _FakeWebhookResponse()
+
+    monkeypatch.setattr(api_workspace_routes.url_request, "urlopen", _fake_urlopen)
+    test_res = client.post("/api/workflow-events/notification-settings/test", json={})
+    assert test_res.status_code == 200
+    assert str(sent_payload.get("url") or "") == env_webhook_url
+    assert int(sent_payload.get("timeout") or 0) >= 1
 
 
 def test_api_workflow_event_notification_settings_rejects_invalid_url(
@@ -6186,4 +6359,116 @@ def test_api_error_incident_lifecycle_plan_approve_handoff(
     incident_detail = detail_body.get("incident") if isinstance(detail_body.get("incident"), dict) else {}
     assert str(incident_detail.get("handoff_path") or "").endswith("handoff.json")
     assert str(incident_detail.get("handoff_queue_path") or "").endswith(f"{incident_id}.json")
+
+
+def test_api_error_incident_go_forwards_pdca_options(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    reports_root = tmp_path / "reports"
+    incident_id = "incident_api_go_001"
+    incident_dir = reports_root / "error_inbox" / incident_id
+    incident_dir.mkdir(parents=True, exist_ok=True)
+    (incident_dir / "status.txt").write_text("plan_proposed\n", encoding="utf-8")
+    _write_json(
+        incident_dir / "incident.json",
+        {
+            "incident_id": incident_id,
+            "status": "plan_proposed",
+            "created_at": "2026-02-21T00:00:00+00:00",
+            "updated_at": "2026-02-21T00:00:00+00:00",
+            "run_id": "run_api_go_001",
+            "year": 2026,
+            "month": 1,
+            "ym": "2026-01",
+            "step": "amazon_download",
+            "failure_class": "run_failed",
+            "message": "timeout while fetching receipt",
+            "error_signature": "run_failed | amazon_download | timeout while fetching receipt",
+        },
+    )
+
+    captured: dict[str, Any] = {}
+
+    def _fake_run_error_tool(
+        script_name: str,
+        args: list[str],
+        *,
+        timeout_seconds: int = 30,
+    ) -> dict[str, Any]:
+        captured.setdefault("calls", []).append(
+            {
+                "script_name": script_name,
+                "args": list(args),
+                "timeout_seconds": timeout_seconds,
+            }
+        )
+
+        if script_name == "error_exec_loop.py":
+            return {
+                "status": "ok",
+                "incident_id": incident_id,
+                "final_status": "resolved",
+                "loops_used": 1,
+                "runtime_minutes": 0.1,
+                "same_error_repeats": 0,
+                "no_progress_streak": 0,
+                "commit": {"requested": False},
+                "replan": {"requested": False},
+                "run_dir": str(reports_root / "error_runs" / incident_id),
+                "state_path": str(reports_root / "error_runs" / incident_id / "loop_state.json"),
+            }
+
+        assert script_name == "error_status.py"
+        return {
+            "status": "ok",
+            "incident_id": incident_id,
+            "incident": {
+                "incident_id": incident_id,
+                "status": "resolved",
+                "path": str(incident_dir),
+                "ym": "2026-01",
+            },
+        }
+
+    monkeypatch.setattr(api_routes, "_run_error_tool", _fake_run_error_tool)
+    monkeypatch.setattr(api_routes, "_error_reports_root", lambda: reports_root)
+    client = _create_client(monkeypatch, tmp_path)
+    res = client.post(
+        f"/api/errors/incidents/{incident_id}/go",
+        json={
+            "auto_replan_on_no_progress": False,
+            "no_progress_limit": 2,
+            "commit_on_resolve": False,
+            "push_on_resolve": False,
+            "commit_remote": "origin",
+            "commit_branch": "main",
+            "commit_scope": "run",
+            "commit_message_template": "chore(error): resolve {incident_id} by pdca loop",
+            "single_iteration": False,
+            "archive_on_success": False,
+            "archive_on_escalate": False,
+        },
+    )
+
+    assert res.status_code == 200
+    body = res.json()
+    assert body.get("final_status") == "resolved"
+    assert body.get("commit", {}).get("requested") is False
+    assert body.get("replan", {}).get("requested") is False
+
+    calls = captured.get("calls") if isinstance(captured.get("calls"), list) else []
+    exec_calls = [item for item in calls if item.get("script_name") == "error_exec_loop.py"]
+    assert len(exec_calls) == 1
+    args = exec_calls[0].get("args") if isinstance(exec_calls[0].get("args"), list) else []
+    args_text = " ".join(str(value) for value in args)
+    assert "--no-auto-replan-on-no-progress" in args_text
+    assert "--no-commit-on-resolve" in args_text
+    assert "--no-push-on-resolve" in args_text
+    assert "--commit-remote" in args
+    remote_index = args.index("--commit-remote")
+    assert args[remote_index + 1] == "origin"
+    branch_index = args.index("--commit-branch")
+    assert args[branch_index + 1] == "main"
+    scope_index = args.index("--commit-scope")
+    assert args[scope_index + 1] == "run"
+    message_index = args.index("--commit-message-template")
+    assert args[message_index + 1] == "chore(error): resolve {incident_id} by pdca loop"
 

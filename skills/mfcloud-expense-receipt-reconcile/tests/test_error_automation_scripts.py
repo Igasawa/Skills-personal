@@ -2,11 +2,74 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Any
 import subprocess
 import sys
+import importlib.util
+import pytest
 
 
 SCRIPT_DIR = Path(__file__).resolve().parents[1] / "scripts"
+
+
+def _load_error_exec_loop_module():
+    spec = importlib.util.spec_from_file_location("test_error_exec_loop", SCRIPT_DIR / "error_exec_loop.py")
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _prepare_exec_loop_inputs(
+    root: Path,
+    incident_id: str,
+    *,
+    verification_commands: list[str],
+    status: str = "planned",
+) -> Path:
+    incident_dir = root / "error_inbox" / incident_id
+    incident_dir.mkdir(parents=True, exist_ok=True)
+    plan_dir = root / "error_plans" / incident_id
+    plan_dir.mkdir(parents=True, exist_ok=True)
+    (incident_dir / "status.txt").write_text(f"{status}\n", encoding="utf-8")
+    (plan_dir / "plan.json").write_text(
+        json.dumps(
+            {
+                "incident_id": incident_id,
+                "generated_at": "2026-02-17T00:00:00+00:00",
+                "summary": "test plan",
+                "verification_commands": verification_commands,
+                "actions": [{"id": "A1", "title": "verify", "priority": "P0", "risk": "low"}],
+                "done_criteria": ["verification command passes"],
+            },
+            ensure_ascii=False,
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    (incident_dir / "incident.json").write_text(
+        json.dumps(
+            {
+                "incident_id": incident_id,
+                "status": status,
+                "step": "amazon_download",
+                "failure_class": "run_failed",
+                "message": "test",
+                "created_at": "2026-02-17T00:00:00+00:00",
+                "updated_at": "2026-02-17T00:00:00+00:00",
+                "plan_path": str(plan_dir / "plan.json"),
+                "year": 2026,
+                "month": 1,
+                "ym": "2026-01",
+            },
+            ensure_ascii=False,
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    return incident_dir
 
 
 def _run_json(cmd: list[str]) -> dict:
@@ -331,3 +394,291 @@ def test_error_handoff_prepare_creates_handoff_payload(tmp_path: Path) -> None:
     updated_incident = json.loads((incident_dir / "incident.json").read_text(encoding="utf-8"))
     assert updated_incident.get("status") == "handed_off"
     assert (incident_dir / "status.txt").read_text(encoding="utf-8").strip() == "handed_off"
+
+
+def test_error_exec_loop_replan_when_no_progress_streak_reaches_limit(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    module = _load_error_exec_loop_module()
+    root = tmp_path / "reports"
+    incident_id = "incident_test_case_004"
+    incident_dir = _prepare_exec_loop_inputs(
+        root,
+        incident_id,
+        verification_commands=["python -m pytest -q tests/test_reconcile.py"],
+        status="planned",
+    )
+    plan_calls: list[bool] = []
+    command_calls: list[str] = []
+
+    def _fake_run_command(command: str) -> dict[str, Any]:
+        command_calls.append(command)
+        return {
+            "command": command,
+            "returncode": 1,
+            "stdout": "Traceback: simulated failure",
+            "stderr": "failure",
+        }
+
+    def _fake_run_plan_generation(*_args: Any, force: bool, **__kwargs: Any) -> dict[str, Any]:
+        plan_calls.append(bool(force))
+        return {
+            "status": "ok",
+            "plan_json": str(root / "error_plans" / incident_id / "plan.json"),
+            "force": force,
+            "stdout": "",
+            "stderr": "",
+            "returncode": 0,
+        }
+
+    monkeypatch.setattr(module, "_run_command", _fake_run_command)
+    monkeypatch.setattr(module, "_run_plan_generation", _fake_run_plan_generation)
+
+    args = module.parse_args(
+        [
+            "--incident-id",
+            incident_id,
+            "--root",
+            str(root),
+            "--same-error-limit",
+            "5",
+            "--no-progress-limit",
+            "2",
+            "--auto-replan-on-no-progress",
+            "--max-loops",
+            "5",
+        ]
+    )
+
+    result = module.execute_error_loop(args)
+    assert result.get("status") == "ok"
+    assert result.get("final_status") == "replan_requested"
+    assert result.get("replan", {}).get("requested") is True
+    assert int(result.get("replan", {}).get("iteration") or 0) == 2
+    assert "no actionable progress for 2 consecutive loops" in str(result.get("replan", {}).get("reason") or "")
+    assert result.get("replan", {}).get("plan_json", {}).get("status") == "ok"
+    assert plan_calls == [True]
+    assert len(command_calls) == 2
+    incident = json.loads((incident_dir / "incident.json").read_text(encoding="utf-8"))
+    assert incident.get("status") == "plan_proposed"
+
+
+def test_error_exec_loop_commit_success_and_push(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    module = _load_error_exec_loop_module()
+    root = tmp_path / "reports"
+    incident_id = "incident_test_case_005"
+    incident_dir = _prepare_exec_loop_inputs(
+        root,
+        incident_id,
+        verification_commands=["echo ok"],
+        status="planned",
+    )
+
+    def _fake_run_command(command: str) -> dict[str, Any]:
+        return {
+            "command": command,
+            "returncode": 0,
+            "stdout": "ok",
+            "stderr": "",
+        }
+
+    def _fake_run_git_command(command: list[str], timeout_seconds: int = 900) -> dict[str, Any]:
+        assert isinstance(timeout_seconds, int)
+        if not command:
+            return {"command": "", "returncode": 1, "stdout": "", "stderr": "empty"}
+
+        action = command[0]
+        if action == "status":
+            return {
+                "command": " ".join(command),
+                "returncode": 0,
+                "stdout": "M error_inbox/{incident_id}/incident.json",
+                "stderr": "",
+            }
+        if action == "add":
+            return {"command": " ".join(command), "returncode": 0, "stdout": "", "stderr": ""}
+        if action == "commit":
+            return {"command": " ".join(command), "returncode": 0, "stdout": "", "stderr": ""}
+        if action == "push":
+            return {"command": " ".join(command), "returncode": 0, "stdout": "", "stderr": ""}
+        if action == "rev-parse":
+            return {"command": " ".join(command), "returncode": 0, "stdout": "feedfacecafebabef00dbabe\n", "stderr": ""}
+        return {"command": " ".join(command), "returncode": 0, "stdout": "", "stderr": ""}
+
+    monkeypatch.setattr(module, "_run_command", _fake_run_command)
+    monkeypatch.setattr(module, "_run_git_command", _fake_run_git_command)
+
+    args = module.parse_args(
+        [
+            "--incident-id",
+            incident_id,
+            "--root",
+            str(root),
+            "--commit-on-resolve",
+            "--commit-message-template",
+            "chore(error): resolve {incident_id} by pdca loop",
+            "--commit-remote",
+            "origin",
+            "--commit-branch",
+            "main",
+            "--commit-scope",
+            "incident",
+        ]
+    )
+    result = module.execute_error_loop(args)
+    assert result.get("status") == "ok"
+    assert result.get("final_status") == "resolved"
+
+    commit_payload = result.get("commit")
+    assert isinstance(commit_payload, dict)
+    assert commit_payload.get("requested") is True
+    assert commit_payload.get("enabled") is True
+    assert commit_payload.get("ran") is True
+    assert commit_payload.get("skipped") is False
+    assert commit_payload.get("remote") == "origin"
+    assert commit_payload.get("branch") == "main"
+    assert commit_payload.get("scope") == "incident"
+    assert commit_payload.get("commit_message") == "chore(error): resolve incident_test_case_005 by pdca loop"
+    assert commit_payload.get("commit_sha") == "feedfacecafebabef00dbabe"
+    push_payload = commit_payload.get("push")
+    assert isinstance(push_payload, dict)
+    assert push_payload.get("requested") is True
+    assert push_payload.get("ran") is True
+    assert push_payload.get("success") is True
+    assert not push_payload.get("error")
+    assert commit_payload.get("error") is None
+
+
+def test_error_exec_loop_commit_skipped_when_no_changes(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    module = _load_error_exec_loop_module()
+    root = tmp_path / "reports"
+    incident_id = "incident_test_case_006"
+    _prepare_exec_loop_inputs(
+        root,
+        incident_id,
+        verification_commands=["echo ok"],
+        status="planned",
+    )
+
+    def _fake_run_command(command: str) -> dict[str, Any]:
+        return {
+            "command": command,
+            "returncode": 0,
+            "stdout": "ok",
+            "stderr": "",
+        }
+
+    def _fake_run_git_command(command: list[str], timeout_seconds: int = 900) -> dict[str, Any]:
+        action = command[0]
+        if action == "status":
+            return {
+                "command": " ".join(command),
+                "returncode": 0,
+                "stdout": "",
+                "stderr": "",
+            }
+        return {
+            "command": " ".join(command),
+            "returncode": 1,
+            "stdout": "",
+            "stderr": f"unexpected git call: {action}",
+        }
+
+    monkeypatch.setattr(module, "_run_command", _fake_run_command)
+    monkeypatch.setattr(module, "_run_git_command", _fake_run_git_command)
+
+    args = module.parse_args(
+        [
+            "--incident-id",
+            incident_id,
+            "--root",
+            str(root),
+            "--commit-on-resolve",
+            "--commit-scope",
+            "incident",
+        ]
+    )
+    result = module.execute_error_loop(args)
+    assert result.get("status") == "ok"
+    assert result.get("final_status") == "resolved"
+
+    commit_payload = result.get("commit")
+    assert isinstance(commit_payload, dict)
+    assert commit_payload.get("requested") is True
+    assert commit_payload.get("enabled") is True
+    assert commit_payload.get("ran") is False
+    assert commit_payload.get("skipped") is True
+    assert commit_payload.get("error") is None
+
+
+def test_error_exec_loop_commit_push_failure_keeps_resolved_status_and_records_error(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    module = _load_error_exec_loop_module()
+    root = tmp_path / "reports"
+    incident_id = "incident_test_case_007"
+    _prepare_exec_loop_inputs(
+        root,
+        incident_id,
+        verification_commands=["echo ok"],
+        status="planned",
+    )
+
+    def _fake_run_command(command: str) -> dict[str, Any]:
+        return {
+            "command": command,
+            "returncode": 0,
+            "stdout": "ok",
+            "stderr": "",
+        }
+
+    def _fake_run_git_command(command: list[str], timeout_seconds: int = 900) -> dict[str, Any]:
+        action = command[0]
+        if action == "status":
+            return {
+                "command": " ".join(command),
+                "returncode": 0,
+                "stdout": "M error_inbox/{incident_id}/incident.json",
+                "stderr": "",
+            }
+        if action == "add":
+            return {"command": " ".join(command), "returncode": 0, "stdout": "", "stderr": ""}
+        if action == "commit":
+            return {"command": " ".join(command), "returncode": 0, "stdout": "", "stderr": ""}
+        if action == "push":
+            return {"command": " ".join(command), "returncode": 1, "stdout": "", "stderr": "auth failed"}
+        if action == "rev-parse":
+            return {"command": " ".join(command), "returncode": 0, "stdout": "feedfacecafebabef00dbabe\n", "stderr": ""}
+        return {"command": " ".join(command), "returncode": 0, "stdout": "", "stderr": ""}
+
+    monkeypatch.setattr(module, "_run_command", _fake_run_command)
+    monkeypatch.setattr(module, "_run_git_command", _fake_run_git_command)
+
+    args = module.parse_args(
+        [
+            "--incident-id",
+            incident_id,
+            "--root",
+            str(root),
+            "--commit-on-resolve",
+            "--commit-message-template",
+            "chore(error): resolve {incident_id} by pdca loop",
+            "--commit-remote",
+            "origin",
+            "--commit-branch",
+            "main",
+            "--commit-scope",
+            "incident",
+        ]
+    )
+    result = module.execute_error_loop(args)
+    assert result.get("status") == "ok"
+    assert result.get("final_status") == "resolved"
+
+    commit_payload = result.get("commit")
+    assert isinstance(commit_payload, dict)
+    assert commit_payload.get("ran") is True
+    assert commit_payload.get("skipped") is False
+    push_payload = commit_payload.get("push")
+    assert isinstance(push_payload, dict)
+    assert push_payload.get("ran") is True
+    assert push_payload.get("requested") is True
+    assert push_payload.get("success") is False
+    assert push_payload.get("error") == "auth failed"
+    assert commit_payload.get("error") == "auth failed"

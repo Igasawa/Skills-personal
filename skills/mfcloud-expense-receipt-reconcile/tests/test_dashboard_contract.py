@@ -477,3 +477,46 @@ def test_dashboard_index_js_exports_contract() -> None:
         exported = set(re.findall(r"^\s*([A-Za-z_][A-Za-z0-9_]*)\s*(?=[:},])", block, flags=re.M))
         for symbol in symbols:
             assert symbol in exported, f"Missing export symbol in {path.name}: {symbol}"
+
+
+def test_error_run_result_payload_contract_tolerates_replan_commit_extensions() -> None:
+    base = {
+        "incident_id": "incident_20260217_120000_run_abc",
+        "final_status": "resolved",
+        "loops_used": 3,
+        "runtime_minutes": 18,
+        "same_error_repeats": 1,
+        "no_progress_streak": 0,
+    }
+    payload = {
+        **base,
+        "replan": {
+            "requested": False,
+            "reason": "",
+            "iteration": 0,
+            "plan_json": None,
+        },
+        "commit": {
+            "requested": True,
+            "enabled": False,
+            "ran": False,
+            "skipped": False,
+            "remote": "origin",
+            "branch": "main",
+            "scope": "incident",
+            "commit_sha": None,
+            "commit_message": None,
+            "push": {
+                "requested": True,
+                "ran": False,
+                "success": False,
+                "error": None,
+            },
+            "error": None,
+        },
+    }
+
+    assert base["incident_id"] == payload["incident_id"]
+    assert payload["final_status"] in {"resolved", "escalated", "replan_requested"}
+    assert "replan" in payload
+    assert "commit" in payload

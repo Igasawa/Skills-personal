@@ -31,16 +31,18 @@
     const bootstrapState = resolveStateFn("bootstrapWorkspaceState", function () {});
     const initializeLinks = linksNamespace.initializeLinks || function () {};
     const initializePrompt = promptNamespace.initializePrompt || function () {};
-    try {
-      await Promise.resolve().then(() => bootstrapState());
-    } catch (_error) {
-      if (typeof console !== "undefined" && console && typeof console.error === "function") {
-        console.error("Failed to bootstrap workspace state.", _error);
+    const runStage = async (name, action) => {
+      try {
+        await Promise.resolve().then(() => action());
+      } catch (_error) {
+        if (typeof console !== "undefined" && console && typeof console.error === "function") {
+          console.error(`Failed to ${name} workspace initialization.`, _error);
+        }
       }
-      return;
-    }
-    initializeLinks();
-    initializePrompt();
+    };
+    await runStage("bootstrap workspace state", () => bootstrapState());
+    await runStage("initialize workspace links", () => initializeLinks());
+    await runStage("initialize workspace prompt", () => initializePrompt());
   }
 
   register({

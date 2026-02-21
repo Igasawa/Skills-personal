@@ -186,7 +186,9 @@ Loop outputs are written to:
   "verification_commands": ["python -m pytest -q tests/test_provider_download_orchestrator.py"],
   "verification_passed": false,
   "result": "continue",
-  "error_signature": "selector_not_found"
+  "error_signature": "selector_not_found",
+  "same_error_repeats": 1,
+  "no_progress_streak": 2
 }
 ```
 
@@ -199,9 +201,57 @@ Loop outputs are written to:
   "loops_used": 3,
   "runtime_minutes": 18,
   "same_error_repeats": 1,
+  "no_progress_streak": 0,
   "archived_to": "error_archive/resolved/incident_20260217_120000_run_abc"
 }
 ```
+
+### `run_result.json` extended fields
+
+```json
+{
+  "incident_id": "incident_20260217_120000_run_abc",
+  "final_status": "replan_requested",
+  "loops_used": 2,
+  "runtime_minutes": 1,
+  "same_error_repeats": 1,
+  "no_progress_streak": 2,
+  "replan": {
+    "requested": true,
+    "reason": "no actionable progress for 2 consecutive loops",
+    "iteration": 2,
+    "plan_json": {
+      "status": "ok",
+      "plan_json": "error_plans/incident_20260217_120000_run_abc/plan.json",
+      "force": true,
+      "returncode": 0
+    }
+  },
+  "commit": {
+    "requested": true,
+    "enabled": false,
+    "ran": false,
+    "skipped": false,
+    "remote": "origin",
+    "branch": "main",
+    "scope": "incident",
+    "commit_sha": null,
+    "commit_message": null,
+    "push": {
+      "requested": true,
+      "ran": false,
+      "success": false,
+      "error": null
+    },
+    "error": null
+  }
+}
+```
+
+`final_status` may be:
+- `resolved`
+- `escalated`
+- `replan_requested`
 
 ## Archive Rule
 

@@ -34,6 +34,9 @@
   const maxRuntimeInput = document.getElementById("errors-max-runtime");
   const sameErrorLimitInput = document.getElementById("errors-same-error-limit");
   const singleIterationInput = document.getElementById("errors-single-iteration");
+  const autoReplanOnNoProgressInput = document.getElementById("errors-auto-replan-on-no-progress");
+  const commitOnResolveInput = document.getElementById("errors-commit-on-resolve");
+  const pushOnResolveInput = document.getElementById("errors-push-on-resolve");
 
   const planJsonEl = document.getElementById("errors-plan-json");
   const runResultJsonEl = document.getElementById("errors-run-result-json");
@@ -870,6 +873,12 @@
           max_runtime_minutes: toInt(maxRuntimeInput?.value, 45),
           same_error_limit: toInt(sameErrorLimitInput?.value, 3),
           single_iteration: Boolean(singleIterationInput?.checked),
+          auto_replan_on_no_progress: Boolean(autoReplanOnNoProgressInput?.checked),
+          no_progress_limit: 2,
+          commit_on_resolve: Boolean(commitOnResolveInput?.checked),
+          push_on_resolve: Boolean(pushOnResolveInput?.checked),
+          commit_scope: "incident",
+          commit_remote: "origin",
           archive_on_success: true,
           archive_on_escalate: true,
         };
@@ -880,6 +889,18 @@
         showToast(message, "success");
       })
     );
+  }
+
+  if (commitOnResolveInput && pushOnResolveInput) {
+    const syncCommitPush = () => {
+      const enabled = Boolean(commitOnResolveInput?.checked);
+      pushOnResolveInput.disabled = !enabled;
+      if (!enabled) {
+        pushOnResolveInput.checked = false;
+      }
+    };
+    commitOnResolveInput.addEventListener("change", syncCommitPush);
+    syncCommitPush();
   }
 
   if (archiveResolvedButton) {

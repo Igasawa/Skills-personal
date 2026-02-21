@@ -74,6 +74,10 @@
 
     const readActivePromptKey = resolveStateFunction("readActivePromptKey", function () { return ""; });
     const setActivePrompt = resolvePromptFunction("setActivePrompt", function () {});
+    const getActivePromptState = resolvePromptFunction("getActivePromptState", function () {
+      const key = readActivePromptKey() || PROMPT_KEY_MF_EXPENSE_REPORTS;
+      return { key, context: {} };
+    });
     const getPromptTextForKey = resolvePromptFunction("getPromptTextForKey", function () { return ""; });
     const updatePromptMeta = resolvePromptFunction("updatePromptMeta", function () {});
     const renderPromptFronts = resolvePromptFunction("renderPromptFronts", function () {});
@@ -95,11 +99,18 @@
         options.onConfirm();
       }
     });
+    const getCurrentPromptState = () => {
+      const state = getActivePromptState();
+      const key = String(state && state.key ? state.key : readActivePromptKey() || PROMPT_KEY_MF_EXPENSE_REPORTS);
+      const context = isObject(state && state.context) ? state.context : {};
+      return { key, context };
+    };
 
     const initialKey = readActivePromptKey() || PROMPT_KEY_MF_EXPENSE_REPORTS;
     setActivePrompt(initialKey);
 
-    const initialText = getPromptTextForKey(namespace.activePromptKey, namespace.activePromptContext);
+    const initialState = getCurrentPromptState();
+    const initialText = getPromptTextForKey(initialState.key, initialState.context);
     promptEditor.value = initialText;
     updatePromptMeta(initialText, "自動保存待機中。");
     renderPromptFronts();
@@ -111,7 +122,8 @@
       updatePromptMeta(promptEditor.value, "編集中...");
       if (saveTimer) window.clearTimeout(saveTimer);
       saveTimer = window.setTimeout(() => {
-        const ok = savePromptTextForKey(namespace.activePromptKey, promptEditor.value);
+        const current = getCurrentPromptState();
+        const ok = savePromptTextForKey(current.key, promptEditor.value);
         if (ok) updatePromptMeta(promptEditor.value, "保存しました。");
         else updatePromptMeta(promptEditor.value, "保存できませんでした（ストレージ利用不可）。");
       }, 250);
@@ -120,7 +132,8 @@
     if (savePromptButton) {
       savePromptButton.addEventListener("click", () => {
         const text = promptEditor.value || "";
-        const ok = savePromptTextForKey(namespace.activePromptKey, text);
+        const current = getCurrentPromptState();
+        const ok = savePromptTextForKey(current.key, text);
         if (ok) {
           updatePromptMeta(text, "登録しました。");
           showToast("プロンプトを登録しました。", "success");
@@ -139,7 +152,8 @@
 
     if (copyHandoffButton) {
       copyHandoffButton.addEventListener("click", () => {
-        void copyHandoffSetForKey(namespace.activePromptKey, namespace.activePromptContext);
+        const current = getCurrentPromptState();
+        void copyHandoffSetForKey(current.key, current.context);
       });
     }
 
@@ -200,6 +214,18 @@
     resolvePromptLabel: namespace.resolvePromptLabel || function () { return "-"; },
     resolvePromptUrl: namespace.resolvePromptUrl || function () { return ""; },
     normalizePromptOptimizeList: namespace.normalizePromptOptimizeList || function () { return []; },
+    getActivePromptState: namespace.getActivePromptState || function () {
+      return {
+        key: namespace.activePromptKey || PROMPT_KEY_MF_EXPENSE_REPORTS,
+        context: namespace.activePromptContext || {},
+      };
+    },
+    getActivePromptKey: namespace.getActivePromptKey || function () {
+      return namespace.activePromptKey || PROMPT_KEY_MF_EXPENSE_REPORTS;
+    },
+    getActivePromptContext: namespace.getActivePromptContext || function () {
+      return namespace.activePromptContext || {};
+    },
     activePromptKey: namespace.activePromptKey || PROMPT_KEY_MF_EXPENSE_REPORTS,
     activePromptContext: namespace.activePromptContext || {},
   });
