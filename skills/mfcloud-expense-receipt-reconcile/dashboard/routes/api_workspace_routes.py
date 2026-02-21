@@ -52,7 +52,7 @@ WORKFLOW_EVENT_RETRY_WORKER_DEFAULT_POLL_SECONDS = 30
 WORKFLOW_EVENT_GOOGLE_CHAT_WEBHOOK_URL_ENV = "AX_GOOGLE_CHAT_WEBHOOK_URL"
 WORKFLOW_EVENT_GOOGLE_CHAT_TIMEOUT_SECONDS = 10
 WORKFLOW_EVENT_NOTIFICATION_SETTINGS_FILE = "notification_settings.json"
-_WORKSPACE_ROUTES_REGISTERED_ROUTER_IDS: set[int] = set()
+_WORKSPACE_ROUTES_REGISTRATION_FLAG = "_mfcloud_workspace_routes_registered"
 
 _GOAL_INLINE_PATTERN = re.compile(
     r"^(?:\u76ee\u7684|goal|\u30b4\u30fc\u30eb|\u3084\u308a\u305f\u3044\u3053\u3068|\u72d9\u3044|task)\s*[:\uFF1A\-]\s*(.+)$",
@@ -164,11 +164,11 @@ def stop_workflow_event_retry_worker() -> None:
 
 
 def _is_workspace_routes_registered(router: APIRouter) -> bool:
-    return id(router) in _WORKSPACE_ROUTES_REGISTERED_ROUTER_IDS
+    return bool(getattr(router, _WORKSPACE_ROUTES_REGISTRATION_FLAG, False))
 
 
 def _mark_workspace_routes_registered(router: APIRouter) -> None:
-    _WORKSPACE_ROUTES_REGISTERED_ROUTER_IDS.add(id(router))
+    setattr(router, _WORKSPACE_ROUTES_REGISTRATION_FLAG, True)
 
 def _trim_prompt_optimize_text(value: Any, *, max_chars: int) -> str:
     return str(value or "").strip()[: max(0, int(max_chars))]
@@ -1864,226 +1864,40 @@ def _register_api_workspace_routes_impl(
             raise HTTPException(status_code=404, detail="No external_event workflow template was found.")
         raise HTTPException(status_code=409, detail="Multiple external_event templates found. Specify template_id.")
 
-    @router.get("/api/workspace/state")
-    def api_get_workspace_state() -> JSONResponse:
-        state = read_workspace_state()
-        return JSONResponse({"status": "ok", **state}, headers={"Cache-Control": "no-store"})
+    from .api_workspace_state_routes import (
+        register_api_workspace_state_routes as _register_api_workspace_state_routes,
+    )
 
-    @router.post("/api/workspace/state")
-    def api_set_workspace_state(payload: dict[str, Any]) -> JSONResponse:
-        payload = payload if isinstance(payload, dict) else {}
-        current = read_workspace_state()
-        current_revision = core._safe_non_negative_int(current.get("revision"), default=0)
-        base_revision_raw = payload.get("base_revision")
-        has_base_revision = base_revision_raw is not None
-        base_revision = core._safe_non_negative_int(base_revision_raw, default=-1)
-        revision_conflict = bool(has_base_revision and base_revision != current_revision)
-
-        if "links" in payload:
-            links_payload = sanitize_workspace_links(payload.get("links"))
-            if revision_conflict:
-                current["links"] = merge_workspace_links(links_payload, sanitize_workspace_links(current.get("links")))
-            else:
-                current["links"] = links_payload
-        if "pinned_link_groups" in payload:
-            pinned_link_groups_payload = sanitize_workspace_pinned_link_groups(payload.get("pinned_link_groups"))
-            current_server_groups = sanitize_workspace_pinned_link_groups(current.get("pinned_link_groups"))
-            if revision_conflict:
-                current["pinned_link_groups"] = merge_workspace_pinned_link_groups(
-                    pinned_link_groups_payload,
-                    current_server_groups,
-                )
-            else:
-                current["pinned_link_groups"] = pinned_link_groups_payload
-        elif "pinned_links" in payload:
-            current_server_groups = sanitize_workspace_pinned_link_groups(current.get("pinned_link_groups"))
-            first_server_group = current_server_groups[0] if current_server_groups else {}
-            first_label = str(first_server_group.get("label") or "").strip() or "固定リンク1"
-            first_id = str(first_server_group.get("id") or "").strip()
-            legacy_links = sanitize_workspace_pinned_links(payload.get("pinned_links"))
-            legacy_group = {
-                "id": first_id if first_id else "",
-                "label": first_label,
-                "links": legacy_links,
-                "created_at": str(first_server_group.get("created_at") or "").strip() if first_server_group else "",
-            }
-            if current_server_groups:
-                next_groups = current_server_groups[:]
-                if next_groups:
-                    next_groups[0] = legacy_group
-                current["pinned_link_groups"] = next_groups
-            elif legacy_group.get("links"):
-                current["pinned_link_groups"] = [legacy_group]
-            else:
-                current["pinned_link_groups"] = []
-            if revision_conflict:
-                current["pinned_link_groups"] = merge_workspace_pinned_link_groups(
-                    current["pinned_link_groups"],
-                    current_server_groups,
-                )
-        if "pinned_link_groups" in payload or "pinned_links" in payload:
-            pinned_groups = sanitize_workspace_pinned_link_groups(current.get("pinned_link_groups"))
-            current["pinned_links"] = sanitize_workspace_pinned_links(
-                pinned_groups[0].get("links") if pinned_groups else []
-            )
-        if "prompts" in payload:
-            prompts_payload = sanitize_workspace_prompts(payload.get("prompts"))
-            if revision_conflict:
-                current["prompts"] = merge_workspace_prompts(
-                    prompts_payload,
-                    sanitize_workspace_prompts(current.get("prompts")),
-                )
-            else:
-                current["prompts"] = prompts_payload
-        if "link_notes" in payload:
-            notes_payload = sanitize_workspace_link_notes(payload.get("link_notes"))
-            if revision_conflict:
-                current["link_notes"] = merge_workspace_link_notes(
-                    notes_payload,
-                    sanitize_workspace_link_notes(current.get("link_notes")),
-                )
-            else:
-                current["link_notes"] = notes_payload
-        if "link_profiles" in payload:
-            profiles_payload = sanitize_workspace_link_profiles(payload.get("link_profiles"))
-            if revision_conflict:
-                current["link_profiles"] = merge_workspace_link_profiles(
-                    profiles_payload,
-                    sanitize_workspace_link_profiles(current.get("link_profiles")),
-                )
-            else:
-                current["link_profiles"] = profiles_payload
-        if "active_prompt_key" in payload:
-            current["active_prompt_key"] = sanitize_workspace_active_prompt_key(payload.get("active_prompt_key"))
-        saved = write_workspace_state(current, revision=current_revision + 1)
-        return JSONResponse(
-            {"status": "ok", **saved, "conflict_resolved": revision_conflict},
-            headers={"Cache-Control": "no-store"},
-        )
-
-    @router.post("/api/workspace/prompt/optimize")
-    def api_optimize_workspace_prompt(payload: dict[str, Any]) -> JSONResponse:
-        body = payload if isinstance(payload, dict) else {}
-        raw_text = str(body.get("text") or "").strip()
-        if not raw_text:
-            raise HTTPException(status_code=400, detail="text must not be empty.")
-        if len(raw_text) > WORKSPACE_PROMPT_OPTIMIZE_MAX_TEXT_CHARS:
-            raise HTTPException(
-                status_code=400,
-                detail=f"text exceeds {WORKSPACE_PROMPT_OPTIMIZE_MAX_TEXT_CHARS} chars.",
-            )
-        text = raw_text
-
-        goal_from_client = _clean_goal_candidate(body.get("goal"))
-        goal_hint = _extract_goal_hint(text)
-        goal = goal_from_client or str(goal_hint.get("goal") or "").strip() or "\u5bfe\u8c61\u30bf\u30b9\u30af\u3092\u5b8c\u9042\u3067\u304d\u308b\u3088\u3046\u306b\u6700\u9069\u5316\u3059\u308b"
-        locale = _normalize_prompt_optimize_locale(body.get("locale"))
-        style_preset = _normalize_prompt_optimize_style(body.get("stylePreset"))
-
-        optimize_message = _build_goal_first_optimize_prompt(
-            text=text,
-            goal=goal,
-            locale=locale,
-            style_preset=style_preset,
-        )
-
-        try:
-            result = ai_chat.chat(
-                messages=[{"role": "user", "content": optimize_message}],
-                page_context={
-                    "path": "/workspace",
-                    "feature": "workspace_prompt_optimize",
-                    "locale": locale,
-                    "style": style_preset,
-                },
-                policy_profile=ai_chat.POLICY_PROFILE_STRUCTURED_JSON,
-            )
-        except ai_chat.MissingApiKeyError as exc:
-            raise HTTPException(status_code=503, detail=str(exc)) from exc
-        except ai_chat.UpstreamTimeoutError as exc:
-            raise HTTPException(status_code=504, detail=str(exc)) from exc
-        except ai_chat.UpstreamApiError as exc:
-            raise HTTPException(status_code=502, detail=str(exc)) from exc
-
-        reply = result.get("reply") if isinstance(result.get("reply"), dict) else {}
-        reply_text = str(reply.get("content") or "")
-        parsed = _try_parse_json_object(reply_text)
-        if not isinstance(parsed, dict):
-            parsed = {
-                "optimizedPrompt": _enforce_prompt_optimize_rules(
-                    original_text=text,
-                    optimized_text=text,
-                    locale=locale,
-                ),
-                "changes": [
-                    "AIのJSON応答を解析できなかったため、ルールベース最適化にフォールバックしました。"
-                ],
-                "assumptions": [],
-                "risks": [],
-                "needsConfirmation": [
-                    "AI最適化の応答形式が不正だったため、ルールベース最適化を適用しました。"
-                ],
-            }
-
-        try:
-            normalized = _normalize_prompt_optimize_response(parsed)
-        except ValueError as exc:
-            normalized = {
-                "optimizedPrompt": _enforce_prompt_optimize_rules(
-                    original_text=text,
-                    optimized_text=text,
-                    locale=locale,
-                ),
-                "changes": [
-                    "AI最適化の出力が不足していたため、ルールベース最適化にフォールバックしました。"
-                ],
-                "assumptions": [],
-                "risks": [],
-                "needsConfirmation": [f"AI最適化フォーマットエラー: {str(exc)}"],
-            }
-
-        normalized["optimizedPrompt"] = _enforce_prompt_optimize_rules(
-            original_text=text,
-            optimized_text=normalized["optimizedPrompt"],
-            locale=locale,
-        )
-
-        token_warnings = _build_token_integrity_warnings(text, normalized["optimizedPrompt"])
-        needs_confirmation = normalized["needsConfirmation"] + token_warnings
-        if needs_confirmation:
-            deduped: list[str] = []
-            seen: set[str] = set()
-            for row in needs_confirmation:
-                item = str(row or "").strip()
-                if not item or item in seen:
-                    continue
-                seen.add(item)
-                deduped.append(item)
-                if len(deduped) >= WORKSPACE_PROMPT_OPTIMIZE_MAX_LIST_ITEMS:
-                    break
-            needs_confirmation = deduped
-
-        return JSONResponse(
-            {
-                "status": "ok",
-                "optimizedPrompt": normalized["optimizedPrompt"],
-                "changes": normalized["changes"],
-                "assumptions": normalized["assumptions"],
-                "risks": normalized["risks"],
-                "needsConfirmation": needs_confirmation,
-                "changed": normalized["optimizedPrompt"] != text,
-                "goal": goal,
-                "goalMeta": {
-                    "source": "client" if goal_from_client else str(goal_hint.get("method") or "fallback"),
-                    "confidence": 1.0 if goal_from_client else float(goal_hint.get("confidence") or 0.0),
-                    "evidence": goal_hint.get("evidence") if isinstance(goal_hint.get("evidence"), list) else [],
-                },
-                "provider": result.get("provider"),
-                "model": result.get("model"),
-            },
-            headers={"Cache-Control": "no-store"},
-        )
-
+    _register_api_workspace_state_routes(
+        router=router,
+        core=core,
+        ai_chat=ai_chat,
+        read_workspace_state=read_workspace_state,
+        write_workspace_state=write_workspace_state,
+        sanitize_workspace_links=sanitize_workspace_links,
+        merge_workspace_links=merge_workspace_links,
+        sanitize_workspace_pinned_links=sanitize_workspace_pinned_links,
+        merge_workspace_pinned_link_groups=merge_workspace_pinned_link_groups,
+        sanitize_workspace_pinned_link_groups=sanitize_workspace_pinned_link_groups,
+        sanitize_workspace_prompts=sanitize_workspace_prompts,
+        merge_workspace_prompts=merge_workspace_prompts,
+        sanitize_workspace_link_notes=sanitize_workspace_link_notes,
+        merge_workspace_link_notes=merge_workspace_link_notes,
+        sanitize_workspace_link_profiles=sanitize_workspace_link_profiles,
+        merge_workspace_link_profiles=merge_workspace_link_profiles,
+        sanitize_workspace_active_prompt_key=sanitize_workspace_active_prompt_key,
+        WORKSPACE_PROMPT_OPTIMIZE_MAX_TEXT_CHARS=WORKSPACE_PROMPT_OPTIMIZE_MAX_TEXT_CHARS,
+        WORKSPACE_PROMPT_OPTIMIZE_MAX_LIST_ITEMS=WORKSPACE_PROMPT_OPTIMIZE_MAX_LIST_ITEMS,
+        clean_goal_candidate=_clean_goal_candidate,
+        extract_goal_hint=_extract_goal_hint,
+        normalize_prompt_optimize_locale=_normalize_prompt_optimize_locale,
+        normalize_prompt_optimize_style=_normalize_prompt_optimize_style,
+        build_goal_first_optimize_prompt=_build_goal_first_optimize_prompt,
+        try_parse_json_object=_try_parse_json_object,
+        normalize_prompt_optimize_response=_normalize_prompt_optimize_response,
+        enforce_prompt_optimize_rules=_enforce_prompt_optimize_rules,
+        build_token_integrity_warnings=_build_token_integrity_warnings,
+    )
     @router.get("/api/workflow-pages")
     def api_get_workflow_pages(include_archived: bool = Query(default=False)) -> JSONResponse:
         pages = read_workflow_pages(include_archived=include_archived)
@@ -3492,5 +3306,4 @@ __all__ = [
     "url_request",
     "ai_chat",
 ]
-
 
