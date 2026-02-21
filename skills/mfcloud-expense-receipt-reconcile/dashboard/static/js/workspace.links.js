@@ -115,7 +115,7 @@
         event.preventDefault();
         const url = normalizeUrl(linkUrlInput.value);
         if (!url) {
-          showToast("Please enter a valid URL.", "error");
+          showToast("追加リンクを複製できませんでした。", "error");
           linkUrlInput.focus();
           return;
         }
@@ -130,18 +130,18 @@
         );
 
         if (duplicate) {
-          showToast("The same URL is already registered.", "error");
+          showToast("追加リンクを複製できませんでした。", "error");
           return;
         }
 
         const next = [{ label, url }, ...current].slice(0, MAX_LINKS);
         const saved = saveCustomLinks(next);
         if (!saved) {
-          showToast("Failed to save link.", "error");
+          showToast("追加リンクを複製できませんでした。", "error");
           return;
         }
         if (!saveLinkNoteForKey(buildCustomPromptKey(url), purpose)) {
-          showToast("Failed to save link note.", "error");
+          showToast("追加リンクを複製できませんでした。", "error");
         }
 
         clearLinkUndoNotice();
@@ -149,7 +149,7 @@
         linkForm.reset();
         if (linkPurposeInput) linkPurposeInput.value = "";
         linkLabelInput.focus();
-        showToast("Link saved.", "success");
+        showToast("リンクを複製しました。", "success");
       });
     }
 
@@ -157,23 +157,23 @@
       clearLinksButton.addEventListener("click", () => {
         const currentLinks = readCustomLinks();
         if (currentLinks.length <= 0) {
-          showToast("There are no links to clear.", "error");
+          showToast("削除対象の追加リンクがありません。", "error");
           return;
         }
-        showToastConfirmDialog("Are you sure you want to clear all links?", {
-          confirmText: "Clear",
-          cancelText: "Cancel",
+        showToastConfirmDialog("追加リンクを全て削除しますか？", {
+          confirmText: "削除",
+          cancelText: "キャンセル",
           type: "error",
           onConfirm: () => {
             const currentPinned = readPinnedLinkGroups();
             const saved = saveWorkspaceState([], currentPinned);
             if (!saved) {
-              showToast("Failed to clear links.", "error");
+              showToast("追加リンクの全削除に失敗しました。", "error");
               return;
             }
             clearLinkUndoNotice();
             renderLinkLists(saved.links, saved.pinned_link_groups);
-            showToast("All links were cleared.", "success");
+            showToast("追加リンクを全削除しました。", "success");
           },
         });
       });
