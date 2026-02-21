@@ -2491,8 +2491,49 @@ def test_api_scheduler_health_reports_worker_and_timers(
     assert int(body.get("total_timers") or 0) >= 1
     assert int(body.get("enabled_timers") or 0) >= 0
     assert int(body.get("due_timers") or 0) >= 0
+    assert int(body.get("active_locks") or 0) >= 0
+    assert int(body.get("stale_locks") or 0) >= 0
     timers = body.get("timers") if isinstance(body.get("timers"), list) else []
     assert any(str(row.get("template_id") or "") == template_id for row in timers)
+
+
+def test_api_scheduler_health_reports_trigger_lock_counts(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    client = _create_client(monkeypatch, tmp_path)
+    now = datetime.now()
+
+    active_template = "scheduler-lock-active-health"
+    stale_template = "scheduler-lock-stale-health"
+    _write_json(
+        public_core_scheduler._trigger_lock_path(active_template),
+        {
+            "template_id": active_template,
+            "signature": "sig-active",
+            "scheduled_for": now.isoformat(timespec="seconds"),
+            "acquired_at": now.isoformat(timespec="seconds"),
+            "token": "token-active",
+        },
+    )
+    stale_at = now - timedelta(hours=7)
+    _write_json(
+        public_core_scheduler._trigger_lock_path(stale_template),
+        {
+            "template_id": stale_template,
+            "signature": "sig-stale",
+            "scheduled_for": stale_at.isoformat(timespec="seconds"),
+            "acquired_at": stale_at.isoformat(timespec="seconds"),
+            "token": "token-stale",
+        },
+    )
+
+    res = client.get("/api/scheduler/health?limit=10")
+    assert res.status_code == 200
+    body = res.json()
+    assert body.get("status") == "ok"
+    assert int(body.get("active_locks") or 0) >= 1
+    assert int(body.get("stale_locks") or 0) >= 1
 
 
 def test_api_scheduler_restart_returns_health_payload(
@@ -2518,6 +2559,8 @@ def test_api_scheduler_restart_returns_health_payload(
             "total_timers": 1,
             "enabled_timers": 1,
             "due_timers": 0,
+            "active_locks": 0,
+            "stale_locks": 0,
             "timers": [
                 {
                     "template_id": "tmpl-health-001",
@@ -2603,6 +2646,7 @@ def test_api_scheduler_state_daily_recurrence_advances_run_date(monkeypatch: pyt
     assert body["recurrence"] == "daily"
     assert body["enabled"] is True
     assert body["last_result"]["status"] == "started"
+    assert body["last_result"]["reason_code"] == "started"
     assert run_payloads
     assert run_payloads[0]["year"] == now.year
     assert run_payloads[0]["month"] == now.month
@@ -2614,6 +2658,234 @@ def test_api_scheduler_state_daily_recurrence_advances_run_date(monkeypatch: pyt
     assert body["run_time"] == run_time
     assert body["year"] == expected_next.year
     assert body["month"] == expected_next.month
+
+
+def test_api_scheduler_state_daily_recurrence_run_on_startup_does_not_backfill_all_slots(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    client = _create_client(monkeypatch, tmp_path)
+    run_payloads: list[dict[str, Any]] = []
+
+    def fake_start_run(payload: dict[str, Any]) -> dict[str, str]:
+        run_payloads.append(dict(payload))
+        return {"run_id": f"run_{len(run_payloads):03d}"}
+
+    monkeypatch.setattr(public_core_scheduler.core_runs, "_start_run", fake_start_run)
+
+    now = datetime.now()
+    run_time = (now - timedelta(minutes=1)).strftime("%H:%M")
+    run_date = (now - timedelta(days=5)).strftime("%Y-%m-%d")
+
+    res = client.post(
+        "/api/scheduler/state",
+        json={
+            "enabled": True,
+            "action_key": "preflight",
+            "card_id": "daily-missed-run-on-startup",
+            "year": now.year,
+            "month": now.month,
+            "run_date": run_date,
+            "run_time": run_time,
+            "recurrence": "daily",
+            "catch_up_policy": "run_on_startup",
+        },
+    )
+    assert res.status_code == 200
+    body = res.json()
+    assert (body.get("last_result") or {}).get("status") == "started"
+    assert (body.get("last_result") or {}).get("reason_code") == "started"
+    assert len(run_payloads) == 1
+    expected_next = now + timedelta(days=1)
+    assert body["run_date"] == expected_next.strftime("%Y-%m-%d")
+    assert body["run_time"] == run_time
+
+
+def test_api_scheduler_state_daily_recurrence_skip_policy_advances_to_future_slot(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    client = _create_client(monkeypatch, tmp_path)
+    run_payloads: list[dict[str, Any]] = []
+
+    def fake_start_run(payload: dict[str, Any]) -> dict[str, str]:
+        run_payloads.append(dict(payload))
+        return {"run_id": f"run_{len(run_payloads):03d}"}
+
+    monkeypatch.setattr(public_core_scheduler.core_runs, "_start_run", fake_start_run)
+
+    now = datetime.now()
+    run_time = (now - timedelta(minutes=1)).strftime("%H:%M")
+    run_date = (now - timedelta(days=5)).strftime("%Y-%m-%d")
+
+    res = client.post(
+        "/api/scheduler/state",
+        json={
+            "enabled": True,
+            "action_key": "preflight",
+            "card_id": "daily-missed-skip",
+            "year": now.year,
+            "month": now.month,
+            "run_date": run_date,
+            "run_time": run_time,
+            "recurrence": "daily",
+            "catch_up_policy": "skip",
+        },
+    )
+    assert res.status_code == 200
+    body = res.json()
+    assert (body.get("last_result") or {}).get("status") == "skipped_missed"
+    assert (body.get("last_result") or {}).get("reason_code") == "skipped_missed"
+    assert len(run_payloads) == 0
+    expected_next = now + timedelta(days=1)
+    assert body["run_date"] == expected_next.strftime("%Y-%m-%d")
+    assert body["run_time"] == run_time
+
+
+def test_api_scheduler_state_enabled_true_without_transition_keeps_last_result(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    client = _create_client(monkeypatch, tmp_path)
+    run_payloads: list[dict[str, Any]] = []
+
+    def fake_start_run(payload: dict[str, Any]) -> dict[str, str]:
+        run_payloads.append(dict(payload))
+        return {"run_id": f"run_{len(run_payloads):03d}"}
+
+    monkeypatch.setattr(public_core_scheduler.core_runs, "_start_run", fake_start_run)
+
+    now = datetime.now()
+    run_time = (now - timedelta(minutes=1)).strftime("%H:%M")
+    run_date = now.strftime("%Y-%m-%d")
+
+    first = client.post(
+        "/api/scheduler/state",
+        json={
+            "enabled": True,
+            "action_key": "preflight",
+            "card_id": "daily-rearm-transition",
+            "year": now.year,
+            "month": now.month,
+            "run_date": run_date,
+            "run_time": run_time,
+            "recurrence": "daily",
+            "catch_up_policy": "run_on_startup",
+        },
+    )
+    assert first.status_code == 200
+    assert (first.json().get("last_result") or {}).get("status") == "started"
+    assert len(run_payloads) == 1
+
+    second = client.post("/api/scheduler/state", json={"enabled": True})
+    assert second.status_code == 200
+    second_body = second.json()
+    assert (second_body.get("last_result") or {}).get("status") == "started"
+    assert len(run_payloads) == 1
+
+
+def test_api_scheduler_state_defers_when_template_lock_active(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    client = _create_client(monkeypatch, tmp_path)
+    run_payloads: list[dict[str, Any]] = []
+
+    def fake_start_run(payload: dict[str, Any]) -> dict[str, str]:
+        run_payloads.append(dict(payload))
+        return {"run_id": "run_lock_should_not_start"}
+
+    monkeypatch.setattr(public_core_scheduler.core_runs, "_start_run", fake_start_run)
+
+    now = datetime.now()
+    template_id = "scheduler-template-lock-active"
+    lock_path = public_core_scheduler._trigger_lock_path(template_id)
+    _write_json(
+        lock_path,
+        {
+            "template_id": template_id,
+            "signature": "sig-1",
+            "scheduled_for": now.isoformat(timespec="seconds"),
+            "acquired_at": now.isoformat(timespec="seconds"),
+            "token": "token-active",
+        },
+    )
+
+    run_time = (now - timedelta(minutes=1)).strftime("%H:%M")
+    run_date = now.strftime("%Y-%m-%d")
+    res = client.post(
+        f"/api/scheduler/state?template_id={template_id}",
+        json={
+            "enabled": True,
+            "action_key": "preflight",
+            "card_id": "lock-active-card",
+            "year": now.year,
+            "month": now.month,
+            "run_date": run_date,
+            "run_time": run_time,
+            "recurrence": "daily",
+            "catch_up_policy": "run_on_startup",
+        },
+    )
+    assert res.status_code == 200
+    body = res.json()
+    assert body["enabled"] is True
+    assert (body.get("last_result") or {}).get("status") == "deferred"
+    assert (body.get("last_result") or {}).get("reason_code") == "template_lock_active"
+    assert len(run_payloads) == 0
+    assert lock_path.exists() is True
+
+
+def test_api_scheduler_state_reclaims_stale_template_lock_and_runs(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    client = _create_client(monkeypatch, tmp_path)
+    run_payloads: list[dict[str, Any]] = []
+
+    def fake_start_run(payload: dict[str, Any]) -> dict[str, str]:
+        run_payloads.append(dict(payload))
+        return {"run_id": "run_stale_lock_reclaimed"}
+
+    monkeypatch.setattr(public_core_scheduler.core_runs, "_start_run", fake_start_run)
+
+    now = datetime.now()
+    template_id = "scheduler-template-lock-stale"
+    lock_path = public_core_scheduler._trigger_lock_path(template_id)
+    stale_at = now - timedelta(hours=7)
+    _write_json(
+        lock_path,
+        {
+            "template_id": template_id,
+            "signature": "sig-stale",
+            "scheduled_for": stale_at.isoformat(timespec="seconds"),
+            "acquired_at": stale_at.isoformat(timespec="seconds"),
+            "token": "token-stale",
+        },
+    )
+
+    run_time = (now - timedelta(minutes=1)).strftime("%H:%M")
+    run_date = now.strftime("%Y-%m-%d")
+    res = client.post(
+        f"/api/scheduler/state?template_id={template_id}",
+        json={
+            "enabled": True,
+            "action_key": "preflight",
+            "card_id": "lock-stale-card",
+            "year": now.year,
+            "month": now.month,
+            "run_date": run_date,
+            "run_time": run_time,
+            "recurrence": "daily",
+            "catch_up_policy": "run_on_startup",
+        },
+    )
+    assert res.status_code == 200
+    body = res.json()
+    assert (body.get("last_result") or {}).get("status") == "started"
+    assert (body.get("last_result") or {}).get("reason_code") == "started"
+    assert len(run_payloads) == 1
+    assert lock_path.exists() is False
 
 
 def test_api_scheduler_state_once_rearm_with_same_slot_is_idempotent(
@@ -2660,6 +2932,7 @@ def test_api_scheduler_state_once_rearm_with_same_slot_is_idempotent(
     assert second_body["status"] == "ok"
     assert second_body["enabled"] is False
     assert (second_body.get("last_result") or {}).get("status") == "skipped_duplicate"
+    assert (second_body.get("last_result") or {}).get("reason_code") == "duplicate_once_schedule"
     assert len(run_payloads) == 1
 
     state_path = _artifact_root(tmp_path) / "_scheduler" / "scheduler_state.json"

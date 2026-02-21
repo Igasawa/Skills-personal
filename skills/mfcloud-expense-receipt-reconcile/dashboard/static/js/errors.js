@@ -81,6 +81,8 @@
   const schedulerTotalEl = document.getElementById("errors-scheduler-total");
   const schedulerEnabledEl = document.getElementById("errors-scheduler-enabled");
   const schedulerDueEl = document.getElementById("errors-scheduler-due");
+  const schedulerLockActiveEl = document.getElementById("errors-scheduler-lock-active");
+  const schedulerLockStaleEl = document.getElementById("errors-scheduler-lock-stale");
   const schedulerTimersEl = document.getElementById("errors-scheduler-timers");
   const schedulerEmptyEl = document.getElementById("errors-scheduler-empty");
   const schedulerLastResultEl = document.getElementById("errors-scheduler-last-result");
@@ -687,6 +689,8 @@
     const total = toInt(payload?.total_timers, 0);
     const enabled = toInt(payload?.enabled_timers, 0);
     const due = toInt(payload?.due_timers, 0);
+    const activeLocks = toInt(payload?.active_locks, 0);
+    const staleLocks = toInt(payload?.stale_locks, 0);
 
     setText(schedulerWorkerRunningEl, schedulerWorkerLabel(workerRunning));
     setText(schedulerWorkerPollEl, pollSeconds > 0 ? String(pollSeconds) : "-");
@@ -694,9 +698,11 @@
     setText(schedulerTotalEl, String(total));
     setText(schedulerEnabledEl, String(enabled));
     setText(schedulerDueEl, String(due));
+    setText(schedulerLockActiveEl, String(activeLocks));
+    setText(schedulerLockStaleEl, String(staleLocks));
     setText(
       schedulerSummaryEl,
-      `worker=${schedulerWorkerLabel(workerRunning)} / timers=${total} (enabled=${enabled}, due=${due})`,
+      `worker=${schedulerWorkerLabel(workerRunning)} / timers=${total} (enabled=${enabled}, due=${due}) / locks=${activeLocks} (stale=${staleLocks})`,
     );
     renderSchedulerTimers(payload?.timers);
   }

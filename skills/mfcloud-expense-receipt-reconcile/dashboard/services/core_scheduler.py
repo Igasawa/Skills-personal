@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import re
 import threading
 import calendar
@@ -27,6 +28,7 @@ DEFAULT_RUN_TIME = "09:00"
 DEFAULT_ACTION_KEY = "preflight"
 SCHEDULER_POLL_SECONDS = 15
 ONCE_RECEIPT_MAX_ITEMS = 5000
+TRIGGER_LOCK_STALE_SECONDS = 6 * 60 * 60
 SCHEDULE_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 SCHEDULE_TIME_RE = re.compile(r"^\d{2}:\d{2}$")
 _DEFAULT_TEMPLATE_ID = "__default__"
@@ -87,6 +89,20 @@ def _scheduler_root() -> Path:
 
 def _state_path() -> Path:
     return _scheduler_root() / "scheduler_state.json"
+
+
+def _trigger_lock_dir() -> Path:
+    return _scheduler_root() / "trigger_locks"
+
+
+def _trigger_lock_path(template_id: Any) -> Path:
+    normalized = _normalize_template_id(template_id)
+    safe_name = re.sub(r"[^A-Za-z0-9._-]", "_", normalized).strip("._-")
+    if not safe_name:
+        safe_name = "default"
+    if len(safe_name) > 180:
+        safe_name = safe_name[:180]
+    return _trigger_lock_dir() / f"{safe_name}.json"
 
 
 def _default_state() -> dict[str, Any]:
@@ -267,6 +283,118 @@ def _write_state_unlocked(state: dict[str, Any]) -> None:
 def _normalize_template_id(template_id: Any) -> str:
     raw = str(template_id or "").strip()
     return raw or _DEFAULT_TEMPLATE_ID
+
+
+def _parse_datetime(value: Any) -> datetime | None:
+    text = str(value or "").strip()
+    if not text:
+        return None
+    try:
+        parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except Exception:
+        return None
+    if parsed.tzinfo is not None:
+        try:
+            parsed = parsed.astimezone().replace(tzinfo=None)
+        except Exception:
+            return None
+    return parsed
+
+
+def _is_trigger_lock_stale(path: Path, payload: dict[str, Any], *, now: datetime) -> bool:
+    acquired_at = _parse_datetime(payload.get("acquired_at"))
+    if acquired_at is None:
+        try:
+            acquired_at = datetime.fromtimestamp(path.stat().st_mtime)
+        except Exception:
+            return True
+    age_seconds = (now - acquired_at).total_seconds()
+    return age_seconds >= TRIGGER_LOCK_STALE_SECONDS
+
+
+def _acquire_trigger_lock(
+    *,
+    template_id: str,
+    signature: str,
+    scheduled: datetime,
+    now: datetime,
+) -> tuple[str, str]:
+    path = _trigger_lock_path(template_id)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    token = f"{now.isoformat(timespec='seconds')}|{threading.get_ident()}"
+    payload = {
+        "template_id": _normalize_template_id(template_id),
+        "signature": str(signature or "").strip(),
+        "scheduled_for": scheduled.isoformat(timespec="seconds"),
+        "acquired_at": now.isoformat(timespec="seconds"),
+        "token": token,
+    }
+    serialized = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+
+    for _ in range(2):
+        try:
+            with path.open("x", encoding="utf-8") as handle:
+                handle.write(serialized)
+            return token, ""
+        except FileExistsError:
+            existing = _read_json(path)
+            if isinstance(existing, dict) and _is_trigger_lock_stale(path, existing, now=now):
+                try:
+                    path.unlink()
+                except Exception:
+                    return "", "template_lock_active"
+                continue
+            return "", "template_lock_active"
+        except Exception:
+            return "", "template_lock_error"
+
+    return "", "template_lock_active"
+
+
+def _release_trigger_lock(*, template_id: str, token: str) -> None:
+    lock_token = str(token or "").strip()
+    if not lock_token:
+        return
+    path = _trigger_lock_path(template_id)
+    if not path.exists():
+        return
+    payload = _read_json(path)
+    if isinstance(payload, dict):
+        existing = str(payload.get("token") or "").strip()
+        if existing and existing != lock_token:
+            return
+    try:
+        path.unlink()
+    except FileNotFoundError:
+        return
+    except Exception:
+        return
+
+
+def _trigger_lock_rows(now: datetime) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    lock_dir = _trigger_lock_dir()
+    if not lock_dir.exists():
+        return rows
+    try:
+        paths = sorted(lock_dir.glob("*.json"))
+    except Exception:
+        return rows
+    for path in paths:
+        payload = _read_json(path)
+        if not isinstance(payload, dict):
+            continue
+        stale = _is_trigger_lock_stale(path, payload, now=now)
+        rows.append(
+            {
+                "template_id": _normalize_template_id(payload.get("template_id")),
+                "signature": str(payload.get("signature") or "").strip(),
+                "scheduled_for": str(payload.get("scheduled_for") or "").strip(),
+                "acquired_at": str(payload.get("acquired_at") or "").strip(),
+                "stale": bool(stale),
+            }
+        )
+    return rows
 
 
 def _once_receipt_key(template_id: str, run_date: Any, run_time: Any) -> str:
@@ -522,8 +650,25 @@ def _next_recurrence_datetime(scheduled: datetime, recurrence: str) -> datetime:
     return scheduled
 
 
-def _align_state_for_repetition(state: dict[str, Any], scheduled: datetime) -> None:
-    next_scheduled = _next_recurrence_datetime(scheduled, _normalize_recurrence(state.get("recurrence")))
+def _align_state_for_repetition(
+    state: dict[str, Any],
+    scheduled: datetime,
+    *,
+    reference: datetime | None = None,
+) -> None:
+    recurrence = _normalize_recurrence(state.get("recurrence"))
+    next_scheduled = _next_recurrence_datetime(scheduled, recurrence)
+    if reference is not None:
+        guard = 0
+        while next_scheduled <= reference:
+            guard += 1
+            # Guard against malformed recurrence progression.
+            if guard > 5000:
+                break
+            advanced = _next_recurrence_datetime(next_scheduled, recurrence)
+            if advanced <= next_scheduled:
+                break
+            next_scheduled = advanced
     state["enabled"] = True
     state["year"] = next_scheduled.year
     state["month"] = next_scheduled.month
@@ -585,6 +730,33 @@ def _append_scheduler_audit_event(
         return
 
 
+def _set_last_result(
+    timer_state: dict[str, Any],
+    *,
+    status: str,
+    scheduled: datetime | None = None,
+    detail: str = "",
+    run_id: str = "",
+    code: int | None = None,
+    reason_code: str = "",
+) -> None:
+    result: dict[str, Any] = {
+        "status": str(status or "").strip() or "unknown",
+        "at": _now_iso(),
+    }
+    if scheduled is not None:
+        result["scheduled_for"] = scheduled.isoformat(timespec="seconds")
+    if detail:
+        result["detail"] = detail
+    if run_id:
+        result["run_id"] = str(run_id or "").strip()
+    if code is not None:
+        result["code"] = int(code)
+    if reason_code:
+        result["reason_code"] = str(reason_code).strip().lower()
+    timer_state["last_result"] = result
+
+
 def _evaluate_single_timer(
     timer_state: dict[str, Any],
     template_id: str,
@@ -603,11 +775,12 @@ def _evaluate_single_timer(
     scheduled = _scheduled_datetime(timer_state)
     if scheduled is None:
         timer_state["enabled"] = False
-        timer_state["last_result"] = {
-            "status": "failed",
-            "at": _now_iso(),
-            "detail": "Scheduler run_date/run_time is invalid.",
-        }
+        _set_last_result(
+            timer_state,
+            status="failed",
+            detail="Scheduler run_date/run_time is invalid.",
+            reason_code="invalid_schedule",
+        )
         _append_scheduler_audit_event(
             timer_state=timer_state,
             template_id=template_id,
@@ -629,12 +802,13 @@ def _evaluate_single_timer(
             timer_state["last_triggered_at"] = (
                 str(existing_receipt.get("triggered_at") or "").strip() or now.isoformat(timespec="seconds")
             )
-            timer_state["last_result"] = {
-                "status": "skipped_duplicate",
-                "at": _now_iso(),
-                "scheduled_for": scheduled.isoformat(timespec="seconds"),
-                "run_id": str(existing_receipt.get("run_id") or "").strip(),
-            }
+            _set_last_result(
+                timer_state,
+                status="skipped_duplicate",
+                scheduled=scheduled,
+                run_id=str(existing_receipt.get("run_id") or "").strip(),
+                reason_code="duplicate_once_schedule",
+            )
             _append_scheduler_audit_event(
                 timer_state=timer_state,
                 template_id=template_id,
@@ -658,16 +832,17 @@ def _evaluate_single_timer(
     missed = scheduled < _started_at
     if missed and str(timer_state.get("catch_up_policy")) == "skip":
         if is_repeating:
-            _align_state_for_repetition(timer_state, scheduled)
+            _align_state_for_repetition(timer_state, scheduled, reference=now)
         else:
             timer_state["enabled"] = False
         timer_state["last_triggered_signature"] = signature
         timer_state["last_triggered_at"] = now.isoformat(timespec="seconds")
-        timer_state["last_result"] = {
-            "status": "skipped_missed",
-            "at": _now_iso(),
-            "scheduled_for": scheduled.isoformat(timespec="seconds"),
-        }
+        _set_last_result(
+            timer_state,
+            status="skipped_missed",
+            scheduled=scheduled,
+            reason_code="skipped_missed",
+        )
         if once_receipt_key:
             _record_once_receipt(
                 once_receipts,
@@ -691,97 +866,129 @@ def _evaluate_single_timer(
     if next_retry_at is not None and now < next_retry_at:
         return
 
+    lock_token, lock_error = _acquire_trigger_lock(
+        template_id=template_id,
+        signature=signature,
+        scheduled=scheduled,
+        now=now,
+    )
+    if not lock_token:
+        _next_retry_at_by_template[template_id] = now + timedelta(seconds=60)
+        reason = str(lock_error or "template_lock_active").strip().lower() or "template_lock_active"
+        _set_last_result(
+            timer_state,
+            status="deferred",
+            scheduled=scheduled,
+            detail="Scheduler trigger is locked by another worker.",
+            reason_code=reason,
+        )
+        _append_scheduler_audit_event(
+            timer_state=timer_state,
+            template_id=template_id,
+            status="deferred",
+            scheduled=scheduled,
+            detail=reason,
+        )
+        return
+
     try:
-        run_payload = _build_run_payload(timer_state, scheduled=scheduled)
-        run_result = core_runs._start_run(run_payload)
-    except HTTPException as exc:
-        detail = str(exc.detail)
-        if exc.status_code == 409 and "already in progress" in detail.lower():
-            _next_retry_at_by_template[template_id] = now + timedelta(seconds=60)
-            timer_state["last_result"] = {
-                "status": "deferred",
-                "at": _now_iso(),
-                "detail": detail,
-                "scheduled_for": scheduled.isoformat(timespec="seconds"),
-            }
-            _append_scheduler_audit_event(
-                timer_state=timer_state,
-                template_id=template_id,
-                status="deferred",
-                scheduled=scheduled,
-                detail=detail,
-            )
-        else:
+        try:
+            run_payload = _build_run_payload(timer_state, scheduled=scheduled)
+            run_result = core_runs._start_run(run_payload)
+        except HTTPException as exc:
+            detail = str(exc.detail)
+            if exc.status_code == 409 and "already in progress" in detail.lower():
+                _next_retry_at_by_template[template_id] = now + timedelta(seconds=60)
+                _set_last_result(
+                    timer_state,
+                    status="deferred",
+                    scheduled=scheduled,
+                    detail=detail,
+                    reason_code="run_in_progress",
+                )
+                _append_scheduler_audit_event(
+                    timer_state=timer_state,
+                    template_id=template_id,
+                    status="deferred",
+                    scheduled=scheduled,
+                    detail=detail,
+                )
+            else:
+                timer_state["enabled"] = False
+                timer_state["last_triggered_signature"] = signature
+                timer_state["last_triggered_at"] = now.isoformat(timespec="seconds")
+                _set_last_result(
+                    timer_state,
+                    status="failed",
+                    scheduled=scheduled,
+                    detail=detail,
+                    code=int(exc.status_code),
+                    reason_code="http_error",
+                )
+                _append_scheduler_audit_event(
+                    timer_state=timer_state,
+                    template_id=template_id,
+                    status="failed",
+                    scheduled=scheduled,
+                    detail=detail,
+                )
+                _next_retry_at_by_template.pop(template_id, None)
+            return
+        except Exception as exc:  # noqa: BLE001
             timer_state["enabled"] = False
             timer_state["last_triggered_signature"] = signature
             timer_state["last_triggered_at"] = now.isoformat(timespec="seconds")
-            timer_state["last_result"] = {
-                "status": "failed",
-                "at": _now_iso(),
-                "code": int(exc.status_code),
-                "detail": detail,
-                "scheduled_for": scheduled.isoformat(timespec="seconds"),
-            }
+            _set_last_result(
+                timer_state,
+                status="failed",
+                scheduled=scheduled,
+                detail=str(exc),
+                reason_code="unexpected_error",
+            )
             _append_scheduler_audit_event(
                 timer_state=timer_state,
                 template_id=template_id,
                 status="failed",
                 scheduled=scheduled,
-                detail=detail,
+                detail=str(exc),
             )
             _next_retry_at_by_template.pop(template_id, None)
-        return
-    except Exception as exc:  # noqa: BLE001
-        timer_state["enabled"] = False
+            return
+
+        if is_repeating:
+            _align_state_for_repetition(timer_state, scheduled, reference=now)
+        else:
+            timer_state["enabled"] = False
         timer_state["last_triggered_signature"] = signature
         timer_state["last_triggered_at"] = now.isoformat(timespec="seconds")
-        timer_state["last_result"] = {
-            "status": "failed",
-            "at": _now_iso(),
-            "detail": str(exc),
-            "scheduled_for": scheduled.isoformat(timespec="seconds"),
-        }
+        run_id = str(run_result.get("run_id") or "")
+        _set_last_result(
+            timer_state,
+            status="started",
+            scheduled=scheduled,
+            run_id=run_id,
+            reason_code="started",
+        )
+        if once_receipt_key:
+            _record_once_receipt(
+                once_receipts,
+                template_id=template_id,
+                run_date=timer_state.get("run_date"),
+                run_time=timer_state.get("run_time"),
+                run_id=run_id,
+                status="started",
+            )
         _append_scheduler_audit_event(
             timer_state=timer_state,
             template_id=template_id,
-            status="failed",
+            status="started",
             scheduled=scheduled,
-            detail=str(exc),
+            run_id=run_id,
+            extra={"idempotency_key": once_receipt_key} if once_receipt_key else None,
         )
         _next_retry_at_by_template.pop(template_id, None)
-        return
-
-    if is_repeating:
-        _align_state_for_repetition(timer_state, scheduled)
-    else:
-        timer_state["enabled"] = False
-    timer_state["last_triggered_signature"] = signature
-    timer_state["last_triggered_at"] = now.isoformat(timespec="seconds")
-    run_id = str(run_result.get("run_id") or "")
-    timer_state["last_result"] = {
-        "status": "started",
-        "at": _now_iso(),
-        "scheduled_for": scheduled.isoformat(timespec="seconds"),
-        "run_id": run_id,
-    }
-    if once_receipt_key:
-        _record_once_receipt(
-            once_receipts,
-            template_id=template_id,
-            run_date=timer_state.get("run_date"),
-            run_time=timer_state.get("run_time"),
-            run_id=run_id,
-            status="started",
-        )
-    _append_scheduler_audit_event(
-        timer_state=timer_state,
-        template_id=template_id,
-        status="started",
-        scheduled=scheduled,
-        run_id=run_id,
-        extra={"idempotency_key": once_receipt_key} if once_receipt_key else None,
-    )
-    _next_retry_at_by_template.pop(template_id, None)
+    finally:
+        _release_trigger_lock(template_id=template_id, token=lock_token)
 
 
 def evaluate_once(template_id: str | None = None) -> dict[str, Any]:
@@ -865,8 +1072,10 @@ def update_state(payload: dict[str, Any] | None, template_id: str | None = None)
         rearm = False
 
         if "enabled" in body:
-            timer_state["enabled"] = bool(body.get("enabled"))
-            if timer_state["enabled"]:
+            enabled_before = bool(timer_state.get("enabled"))
+            enabled_after = bool(body.get("enabled"))
+            timer_state["enabled"] = enabled_after
+            if enabled_after and not enabled_before:
                 rearm = True
         if "card_id" in body:
             timer_state["card_id"] = _normalize_card_id(body.get("card_id"))
@@ -963,6 +1172,9 @@ def health_snapshot(*, limit: int = 50) -> dict[str, Any]:
     with _state_lock:
         state = _read_state_unlocked()
         timers = _get_template_timers(state)
+    lock_rows = _trigger_lock_rows(now)
+    active_locks = sum(1 for row in lock_rows if not bool(row.get("stale")))
+    stale_locks = sum(1 for row in lock_rows if bool(row.get("stale")))
 
     rows: list[dict[str, Any]] = []
     enabled_timers = 0
@@ -1005,6 +1217,8 @@ def health_snapshot(*, limit: int = 50) -> dict[str, Any]:
         "total_timers": len(rows),
         "enabled_timers": int(enabled_timers),
         "due_timers": int(due_timers),
+        "active_locks": int(active_locks),
+        "stale_locks": int(stale_locks),
         "timers": rows[:limit],
     }
 
