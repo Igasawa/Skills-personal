@@ -22,7 +22,15 @@ GIT_CMD = ["git", "ls-files"]
 TRACKED_FILES = None
 
 REQUIRED_TOP = ("SKILL.md", "skill.yaml", "README.md")
-OPTIONAL_TOP = ("assets", "scripts", "references", "tests", "dashboard", "docs")
+OPTIONAL_TOP = (
+    "assets",
+    "scripts",
+    "references",
+    "tests",
+    "__tests__",
+    "dashboard",
+    "docs",
+)
 
 
 @dataclass
@@ -49,14 +57,14 @@ def scan_skill(skill_dir: Path) -> SkillReport:
 
     optional_dirs = sorted(d.name for d in skill_dir.iterdir() if d.is_dir() and d.name in OPTIONAL_TOP)
 
-    # Encourage tests only if python scripts exist and no tests/ directory.
+    # Encourage tests only if python scripts exist and no tests directory.
     has_python = any(
         p.suffix == ".py" and len(p.parts) >= 3 and p.parts[2] == "scripts"
         for p in tracked
     ) if (skill_dir / "scripts").exists() else False
-    has_tests = (skill_dir / "tests").exists()
+    has_tests = (skill_dir / "tests").exists() or (skill_dir / "__tests__").exists()
     if has_python and not has_tests:
-        issues.append("has scripts/*.py but no tests/ directory")
+        issues.append("has scripts/*.py but no tests/ or __tests__/ directory")
 
     # Keep .pycache/.log artifacts out of repository.
     tmp_patterns = [
