@@ -2,7 +2,12 @@
   const dashboard = window.DashboardWorkspace || {};
   const source = (dashboard.core && dashboard.core.render) || {};
   const fallback = window.DashboardWorkspaceRender || {};
-  const namespace = Object.assign({}, fallback, source, dashboard.render || {});
+  const namespace = dashboard.render || source || fallback || {};
+  if (!dashboard.render) {
+    dashboard.render = namespace;
+  }
+
+  Object.assign(namespace, fallback, source, dashboard.render || {});
 
   const register = function (updates) {
     Object.keys(updates || {}).forEach((key) => {

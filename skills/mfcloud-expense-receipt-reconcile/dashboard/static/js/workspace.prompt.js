@@ -2,7 +2,12 @@
   const dashboard = window.DashboardWorkspace || {};
   const source = (dashboard.core && dashboard.core.prompt) || {};
   const fallback = window.DashboardWorkspacePrompt || {};
-  const namespace = Object.assign({}, fallback, source, dashboard.prompt || {});
+  const namespace = dashboard.prompt || source || fallback || {};
+  if (!dashboard.prompt) {
+    dashboard.prompt = namespace;
+  }
+
+  Object.assign(namespace, fallback, source, dashboard.prompt || {});
 
   const register = function (updates) {
     Object.keys(updates || {}).forEach((key) => {
@@ -35,7 +40,6 @@
     resolvePromptLabel: namespace.resolvePromptLabel || function () { return "-"; },
     resolvePromptUrl: namespace.resolvePromptUrl || function () { return ""; },
     normalizePromptOptimizeList: namespace.normalizePromptOptimizeList || function () { return []; },
-    getPromptMapCached: namespace.getPromptMapCached || function () { return {}; },
   });
 
   dashboard.prompt = namespace;

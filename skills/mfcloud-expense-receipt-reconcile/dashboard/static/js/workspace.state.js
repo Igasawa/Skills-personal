@@ -1,10 +1,13 @@
 (function () {
   const dashboard = window.DashboardWorkspace || {};
-  const core = dashboard.core || {};
-  const source = core.state || {};
+  const source = (dashboard.core && dashboard.core.state) || {};
   const fallback = window.DashboardWorkspaceState || {};
+  const namespace = dashboard.state || source || fallback || {};
+  if (!dashboard.state) {
+    dashboard.state = namespace;
+  }
 
-  const namespace = Object.assign({}, fallback, source, dashboard.state || {});
+  Object.assign(namespace, fallback, source, dashboard.state || {});
   const register = function (updates) {
     Object.keys(updates || {}).forEach((key) => {
       if (typeof updates[key] === "undefined") return;

@@ -2,7 +2,12 @@
   const dashboard = window.DashboardWorkspace || {};
   const source = (dashboard.core && dashboard.core.links) || {};
   const fallback = window.DashboardWorkspaceLinks || {};
-  const namespace = Object.assign({}, fallback, source, dashboard.links || {});
+  const namespace = dashboard.links || source || fallback || {};
+  if (!dashboard.links) {
+    dashboard.links = namespace;
+  }
+
+  Object.assign(namespace, fallback, source, dashboard.links || {});
 
   const register = function (updates) {
     Object.keys(updates || {}).forEach((key) => {
@@ -43,12 +48,12 @@
     bindLinkProfileEditors: namespace.bindLinkProfileEditors || function () {},
     renderCustomLinks: namespace.renderCustomLinks || function () {},
     renderPromptFronts: namespace.renderPromptFronts || function () {},
+    renderProfileStatusForKey: namespace.renderProfileStatusForKey || function () {},
     showLinkUndoNotice: namespace.showLinkUndoNotice || function () {},
     updatePinnedCountMeta: namespace.updatePinnedCountMeta || function () {},
     makePinnedGroup: namespace.makePinnedGroup || function () { return {}; },
     normalizePinnedLinkGroups: namespace.normalizePinnedLinkGroups || function () { return []; },
     normalizeLinkPools: namespace.normalizeLinkPools || function () { return { links: [], pinned_links: [] }; },
-    readPinnedLinksAll: namespace.readPinnedLinksAll || function () { return []; },
   });
 
   namespace.render = namespace.render || {};
