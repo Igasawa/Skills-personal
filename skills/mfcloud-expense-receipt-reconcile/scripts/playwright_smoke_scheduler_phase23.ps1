@@ -138,6 +138,94 @@ if (String(body.run_time || '') !== '10:30') {
   Assert-RunCode -Label "monthly settings persisted via API" -Code $assertMonthlyPersisted
   $lines += "check=monthly_persist:pass"
 
+$saveRetryTarget = @'
+const templateId = "__TEMPLATE_ID__";
+const now = new Date(Date.now() - 90_000);
+const yyyy = now.getFullYear();
+const mm = String(now.getMonth() + 1).padStart(2, '0');
+const dd = String(now.getDate()).padStart(2, '0');
+const hh = String(now.getHours()).padStart(2, '0');
+const mi = String(now.getMinutes()).padStart(2, '0');
+const runDate = `${yyyy}-${mm}-${dd}`;
+const runTime = `${hh}:${mi}`;
+
+const yearInput = document.querySelector('#run-form [name=year]');
+const monthInput = document.querySelector('#run-form [name=month]');
+if (!yearInput || !monthInput) throw new Error('year/month hidden inputs missing');
+yearInput.value = '2099';
+monthInput.value = '12';
+
+document.dispatchEvent(
+  new CustomEvent('scheduler-context-changed', {
+    bubbles: true,
+    detail: {
+      template_id: templateId,
+      card_id: `workflow-template:${templateId}`,
+      action_key: 'amazon_download',
+    },
+  })
+);
+
+await page.locator('#scheduler-toggle').check();
+await page.locator('#scheduler-catch-up').selectOption('run_on_startup');
+await page.locator('#scheduler-recurrence').selectOption('once');
+await page.locator('#scheduler-run-date').fill(runDate);
+await page.locator('#scheduler-run-time').fill(runTime);
+await page.locator('#scheduler-save').click();
+await page.waitForTimeout(500);
+'@
+  $saveRetryTarget = $saveRetryTarget.Replace("__TEMPLATE_ID__", $TemplateId)
+  Assert-RunCode -Label "save retry target state (expected first failure)" -Code $saveRetryTarget
+
+$assertRetryScheduled = @'
+const templateId = "__TEMPLATE_ID__";
+const res = await fetch(`/api/scheduler/state?template_id=${encodeURIComponent(templateId)}`, { cache: 'no-store' });
+if (!res.ok) throw new Error('scheduler GET failed: ' + res.status);
+const body = await res.json();
+const last = body.last_result && typeof body.last_result === 'object' ? body.last_result : {};
+if (String(last.status || '') !== 'deferred') {
+  throw new Error('expected deferred after first failure: ' + JSON.stringify(body));
+}
+if (String(last.reason_code || '') !== 'retry_scheduled') {
+  throw new Error('expected retry_scheduled after first failure: ' + JSON.stringify(body));
+}
+if (body.enabled !== true) {
+  throw new Error('expected enabled=true while retry pending: ' + JSON.stringify(body));
+}
+'@
+  $assertRetryScheduled = $assertRetryScheduled.Replace("__TEMPLATE_ID__", $TemplateId)
+  Assert-RunCode -Label "first failure schedules single retry" -Code $assertRetryScheduled
+  $lines += "check=retry_scheduled:pass"
+
+  Invoke-Pw -CliArgs @("run-code", "await page.waitForTimeout(65000)")
+
+$triggerImmediateRetry = @'
+const templateId = "__TEMPLATE_ID__";
+const res = await fetch(`/api/scheduler/state?template_id=${encodeURIComponent(templateId)}`, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({}),
+});
+if (!res.ok) {
+  const body = await res.json().catch(() => ({}));
+  throw new Error('scheduler POST failed: ' + res.status + ' ' + JSON.stringify(body));
+}
+const body = await res.json();
+const last = body.last_result && typeof body.last_result === 'object' ? body.last_result : {};
+if (String(last.status || '') !== 'failed') {
+  throw new Error('expected failed after retry exhaustion: ' + JSON.stringify(body));
+}
+if (String(last.reason_code || '') !== 'retry_exhausted') {
+  throw new Error('expected retry_exhausted after retry: ' + JSON.stringify(body));
+}
+if (body.enabled !== false) {
+  throw new Error('expected enabled=false after retry exhaustion: ' + JSON.stringify(body));
+}
+'@
+  $triggerImmediateRetry = $triggerImmediateRetry.Replace("__TEMPLATE_ID__", $TemplateId)
+  Assert-RunCode -Label "retry attempt exhausts and fails" -Code $triggerImmediateRetry
+  $lines += "check=retry_exhausted:pass"
+
   Invoke-Pw -CliArgs @("screenshot")
   $lines += "result=pass"
 

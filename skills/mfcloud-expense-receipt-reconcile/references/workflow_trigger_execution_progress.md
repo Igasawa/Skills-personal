@@ -245,14 +245,15 @@
   - `pytest -q skills/mfcloud-expense-receipt-reconcile/tests/test_dashboard_api.py -k "scheduler"`: 28 passed
   - `pytest -q skills/mfcloud-expense-receipt-reconcile/tests/test_dashboard_pages.py -k "expense_workflow_copy_page_shows_shared_wizard or expense_workflow_copy_template_loads_scheduler_panel_with_template_context"`: 2 passed
   - `pytest -q skills/mfcloud-expense-receipt-reconcile/tests/test_dashboard_contract.py -k "api_router_registers_expected_routes or dashboard_templates_reference_expected_script_chunks"`: 2 passed
-  - `powershell -ExecutionPolicy Bypass -File skills/mfcloud-expense-receipt-reconcile/scripts/playwright_smoke_scheduler_phase23.ps1 -BaseUrl http://127.0.0.1:8778`: pass
-    - レポート: `output/playwright/workflow_scheduler_phase23_smoke_20260221_125404.txt`
+  - `powershell -ExecutionPolicy Bypass -File skills/mfcloud-expense-receipt-reconcile/scripts/playwright_smoke_scheduler_phase23.ps1 -BaseUrl http://127.0.0.1:8778 -TemplateId e2e_scheduler_phase23_retry`: pass
+    - レポート: `output/playwright/workflow_scheduler_phase23_smoke_20260221_130149.txt`
+    - 確認項目: `weekly/monthly` 保存往復 + `retry_scheduled` -> `retry_exhausted` の遷移
 - 未解決:
-  - Phase 2.3 の Playwright実画面検証（retry失敗→再試行→確定失敗の可視シナリオ追加）
+  - Phase 2.3 の追加E2E（worker自動再試行の待機時間短縮オプション）は未対応
 
 ## 5. 直近タスク（次の更新対象）
 1. Phase 3.3拡張: `escalated` 通知連携（Slack/メール）を追加
-2. Phase 2.3完了検証: retry失敗→再試行→確定失敗の Playwrightシナリオ追加
+2. Phase 2.3改善: retry E2Eの実行時間短縮（テスト用待機制御）を検討
 3. 可視化拡張: `workflow-events/summary` を基に日次トレンド/通知要件を具体化
 
 ## 6. 更新ルール
