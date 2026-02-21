@@ -72,6 +72,8 @@ def test_api_router_registers_expected_routes() -> None:
         "/api/runs",
         "/api/runs/{run_id}",
         "/api/runs/{run_id}/stop",
+        "/api/scheduler/health",
+        "/api/scheduler/restart",
         "/api/scheduler/state",
         "/api/steps/{ym}",
         "/api/steps/{ym}/reset/{step_id}",

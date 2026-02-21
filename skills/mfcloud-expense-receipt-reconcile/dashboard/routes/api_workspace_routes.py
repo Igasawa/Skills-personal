@@ -1890,7 +1890,7 @@ def register_api_workspace_routes(
         elif "pinned_links" in payload:
             current_server_groups = sanitize_workspace_pinned_link_groups(current.get("pinned_link_groups"))
             first_server_group = current_server_groups[0] if current_server_groups else {}
-            first_label = str(first_server_group.get("label") or "").strip() or "Group 1"
+            first_label = str(first_server_group.get("label") or "").strip() or "固定リンク1"
             first_id = str(first_server_group.get("id") or "").strip()
             legacy_links = sanitize_workspace_pinned_links(payload.get("pinned_links"))
             legacy_group = {
@@ -2427,7 +2427,17 @@ def register_api_workspace_routes(
     @router.get("/api/scheduler/state")
     def api_get_scheduler_state(template_id: str | None = Query(default=None)) -> JSONResponse:
         state = core_scheduler.get_state(template_id=template_id)
-        return JSONResponse({"status": "ok", **state}, headers={"Cache-Control": "no-store"})
+        worker_snapshot = core_scheduler.worker_snapshot() if hasattr(core_scheduler, "worker_snapshot") else {}
+        return JSONResponse(
+            {
+                "status": "ok",
+                "worker_running": bool(worker_snapshot.get("running")),
+                "worker_poll_seconds": core._safe_non_negative_int(worker_snapshot.get("poll_seconds"), default=0),
+                "worker_started_at": str(worker_snapshot.get("started_at") or ""),
+                **state,
+            },
+            headers={"Cache-Control": "no-store"},
+        )
 
     @router.post("/api/scheduler/state")
     def api_set_scheduler_state(
@@ -2436,7 +2446,80 @@ def register_api_workspace_routes(
     ) -> JSONResponse:
         body = payload if isinstance(payload, dict) else {}
         state = core_scheduler.update_state(body, template_id=template_id)
-        return JSONResponse({"status": "ok", **state}, headers={"Cache-Control": "no-store"})
+        worker_snapshot = core_scheduler.worker_snapshot() if hasattr(core_scheduler, "worker_snapshot") else {}
+        return JSONResponse(
+            {
+                "status": "ok",
+                "worker_running": bool(worker_snapshot.get("running")),
+                "worker_poll_seconds": core._safe_non_negative_int(worker_snapshot.get("poll_seconds"), default=0),
+                "worker_started_at": str(worker_snapshot.get("started_at") or ""),
+                **state,
+            },
+            headers={"Cache-Control": "no-store"},
+        )
+
+    @router.get("/api/scheduler/health")
+    def api_get_scheduler_health(
+        limit: int = Query(default=50, ge=1, le=500),
+    ) -> JSONResponse:
+        if hasattr(core_scheduler, "health_snapshot"):
+            health = core_scheduler.health_snapshot(limit=limit)
+        else:
+            state = core_scheduler.get_state()
+            health = {
+                "worker_running": False,
+                "worker_poll_seconds": 0,
+                "worker_started_at": "",
+                "total_timers": 1 if state else 0,
+                "enabled_timers": 1 if bool(state.get("enabled")) else 0,
+                "due_timers": 0,
+                "timers": [state] if state else [],
+            }
+        return JSONResponse(
+            {"status": "ok", **health},
+            headers={"Cache-Control": "no-store"},
+        )
+
+    @router.post("/api/scheduler/restart")
+    def api_restart_scheduler_worker(
+        payload: dict[str, Any] | None = None,
+    ) -> JSONResponse:
+        body = payload if isinstance(payload, dict) else {}
+        limit = core._safe_non_negative_int(body.get("limit"), default=50)
+        if limit < 1:
+            limit = 1
+        if limit > 500:
+            limit = 500
+
+        if hasattr(core_scheduler, "restart_worker"):
+            worker = core_scheduler.restart_worker()
+        else:
+            core_scheduler.stop_worker()
+            core_scheduler.start_worker()
+            worker = {"running": True, "poll_seconds": 0, "started_at": workflow_template_timestamp_now()}
+
+        if hasattr(core_scheduler, "health_snapshot"):
+            health = core_scheduler.health_snapshot(limit=limit)
+        else:
+            state = core_scheduler.get_state()
+            health = {
+                "worker_running": bool(worker.get("running")),
+                "worker_poll_seconds": core._safe_non_negative_int(worker.get("poll_seconds"), default=0),
+                "worker_started_at": str(worker.get("started_at") or ""),
+                "total_timers": 1 if state else 0,
+                "enabled_timers": 1 if bool(state.get("enabled")) else 0,
+                "due_timers": 0,
+                "timers": [state] if state else [],
+            }
+
+        return JSONResponse(
+            {
+                "status": "ok",
+                "restarted": True,
+                **health,
+            },
+            headers={"Cache-Control": "no-store"},
+        )
 
     @router.get("/api/workflow-events/notification-settings")
     def api_workflow_event_notification_settings() -> JSONResponse:

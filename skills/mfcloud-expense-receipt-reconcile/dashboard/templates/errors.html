@@ -31,6 +31,7 @@
         <button type="button" class="pill" data-errors-tab="kil-review" id="errors-tab-kil-review">KIL Review</button>
         <button type="button" class="pill" data-errors-tab="ai-skills" id="errors-tab-ai-skills">AIスキル権限</button>
         <button type="button" class="pill" data-errors-tab="notification-settings" id="errors-tab-notification-settings">通知設定</button>
+        <button type="button" class="pill" data-errors-tab="scheduler-monitor" id="errors-tab-scheduler-monitor">Scheduler Monitor</button>
       </div>
 
       <section class="errors-tab-panel" data-errors-tab-panel="incidents">
@@ -444,6 +445,63 @@
             <button type="button" class="secondary" id="errors-notification-test">テスト送信</button>
           </div>
           <p class="muted" id="errors-notification-last-result">-</p>
+        </section>
+      </section>
+      <section class="errors-tab-panel hidden" data-errors-tab-panel="scheduler-monitor">
+        <section class="card">
+          <div class="section-header">
+            <h2>Scheduler Monitor</h2>
+            <div class="step-actions">
+              <button type="button" class="secondary" id="errors-scheduler-refresh">Refresh</button>
+              <button type="button" class="secondary" id="errors-scheduler-restart">Restart Worker</button>
+            </div>
+          </div>
+          <p class="muted" id="errors-scheduler-summary">Loading scheduler health...</p>
+          <div class="grid two errors-scheduler-grid">
+            <div class="errors-doc-stat">
+              <span class="label">worker</span>
+              <span class="value" id="errors-scheduler-worker-running">-</span>
+            </div>
+            <div class="errors-doc-stat">
+              <span class="label">poll_seconds</span>
+              <span class="value" id="errors-scheduler-worker-poll">-</span>
+            </div>
+            <div class="errors-doc-stat">
+              <span class="label">worker_started_at</span>
+              <span class="value" id="errors-scheduler-worker-started">-</span>
+            </div>
+            <div class="errors-doc-stat">
+              <span class="label">total_timers</span>
+              <span class="value" id="errors-scheduler-total">-</span>
+            </div>
+            <div class="errors-doc-stat">
+              <span class="label">enabled_timers</span>
+              <span class="value" id="errors-scheduler-enabled">-</span>
+            </div>
+            <div class="errors-doc-stat">
+              <span class="label">due_timers</span>
+              <span class="value" id="errors-scheduler-due">-</span>
+            </div>
+          </div>
+          <div class="errors-scheduler-table-wrap">
+            <table class="errors-scheduler-table">
+              <thead>
+                <tr>
+                  <th scope="col">template_id</th>
+                  <th scope="col">enabled</th>
+                  <th scope="col">next_run_at</th>
+                  <th scope="col">action_key</th>
+                  <th scope="col">run_date</th>
+                  <th scope="col">run_time</th>
+                  <th scope="col">updated_at</th>
+                  <th scope="col">last_result</th>
+                </tr>
+              </thead>
+              <tbody id="errors-scheduler-timers"></tbody>
+            </table>
+          </div>
+          <p class="muted" id="errors-scheduler-empty">No timers configured.</p>
+          <p class="muted" id="errors-scheduler-last-result">-</p>
         </section>
       </section>
     </div>

@@ -22,6 +22,17 @@ from dashboard_app_factory import create_dashboard_app
 import common
 
 
+def test_dashboard_app_start_background_workers_starts_scheduler_and_retry(monkeypatch: pytest.MonkeyPatch) -> None:
+    from dashboard import app as dashboard_app
+
+    calls: list[str] = []
+    monkeypatch.setattr(dashboard_app.core_scheduler, "start_worker", lambda: calls.append("scheduler_start"))
+    monkeypatch.setattr(dashboard_app, "start_workflow_event_retry_worker", lambda: calls.append("retry_start"))
+
+    dashboard_app._start_background_workers()
+    assert calls == ["scheduler_start", "retry_start"]
+
+
 def test_common_paths_are_resolved_via_shared_runtime(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.setenv("AX_HOME", str(tmp_path))
     assert common.ax_home() == tmp_path

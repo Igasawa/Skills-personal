@@ -22,8 +22,8 @@ from dashboard_app_factory import create_dashboard_app
 
 
 def _start_background_workers() -> None:
-    # Keep scheduler auto-execution disabled for wizard operation.
-    core_scheduler.stop_worker()
+    # Start scheduler and retry workers so scheduled runs can execute unattended.
+    core_scheduler.start_worker()
     start_workflow_event_retry_worker()
 
 

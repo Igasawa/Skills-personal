@@ -75,6 +75,7 @@ ERRORS_INITIAL_TAB_VALUES = {
     "kil-review",
     "ai-skills",
     "notification-settings",
+    "scheduler-monitor",
 }
 LEGACY_WORKFLOW_SUBHEADING_CANONICAL_VALUES = {
     "成果物の確認と実行をまとめて管理します。ローカル専用（127.0.0.1）。",

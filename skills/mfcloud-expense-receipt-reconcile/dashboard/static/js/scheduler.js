@@ -548,6 +548,11 @@
 
     const recurrence = String(state.recurrence || "once");
     pieces.push(`repeat: ${recurrenceLabel(recurrence)}`);
+    if (state.worker_running === true) {
+      pieces.push("worker: active");
+    } else if (state.worker_running === false) {
+      pieces.push("worker: stopped");
+    }
 
     if (state.last_result && typeof state.last_result === "object") {
       const resultStatus = String(state.last_result.status || "").trim();

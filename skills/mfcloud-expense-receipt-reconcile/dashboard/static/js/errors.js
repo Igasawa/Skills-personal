@@ -72,6 +72,18 @@
   const notificationClearButton = document.getElementById("errors-notification-clear");
   const notificationTestButton = document.getElementById("errors-notification-test");
   const notificationLastResultEl = document.getElementById("errors-notification-last-result");
+  const schedulerRefreshButton = document.getElementById("errors-scheduler-refresh");
+  const schedulerRestartButton = document.getElementById("errors-scheduler-restart");
+  const schedulerSummaryEl = document.getElementById("errors-scheduler-summary");
+  const schedulerWorkerRunningEl = document.getElementById("errors-scheduler-worker-running");
+  const schedulerWorkerPollEl = document.getElementById("errors-scheduler-worker-poll");
+  const schedulerWorkerStartedEl = document.getElementById("errors-scheduler-worker-started");
+  const schedulerTotalEl = document.getElementById("errors-scheduler-total");
+  const schedulerEnabledEl = document.getElementById("errors-scheduler-enabled");
+  const schedulerDueEl = document.getElementById("errors-scheduler-due");
+  const schedulerTimersEl = document.getElementById("errors-scheduler-timers");
+  const schedulerEmptyEl = document.getElementById("errors-scheduler-empty");
+  const schedulerLastResultEl = document.getElementById("errors-scheduler-last-result");
 
   let incidents = [];
   let selectedIncidentId = "";
@@ -81,6 +93,7 @@
   let docTargetsLoaded = false;
   let aiSkillsLoaded = false;
   let notificationSettingsLoaded = false;
+  let schedulerLoaded = false;
   const aiSkillPending = new Set();
   const tabNames = new Set(
     Array.from(tabButtons)
@@ -198,6 +211,8 @@
     if (notificationClearButton) notificationClearButton.disabled = busy;
     if (notificationTestButton) notificationTestButton.disabled = busy;
     if (notificationWebhookInput) notificationWebhookInput.disabled = busy;
+    if (schedulerRefreshButton) schedulerRefreshButton.disabled = busy;
+    if (schedulerRestartButton) schedulerRestartButton.disabled = busy;
 
     document.querySelectorAll("[data-error-action]").forEach((button) => {
       button.disabled = busy || !selectedIncidentId;
@@ -624,6 +639,75 @@
     return payload;
   }
 
+  function schedulerWorkerLabel(running) {
+    return running ? "active" : "stopped";
+  }
+
+  function schedulerToggleLabel(enabled) {
+    return enabled ? "on" : "off";
+  }
+
+  function renderSchedulerTimers(rows) {
+    if (!schedulerTimersEl) return;
+    const timerRows = Array.isArray(rows) ? rows : [];
+    schedulerTimersEl.innerHTML = "";
+    timerRows.forEach((rowRaw) => {
+      const row = rowRaw && typeof rowRaw === "object" ? rowRaw : {};
+      const tr = document.createElement("tr");
+      const lastResult =
+        row.last_result && typeof row.last_result === "object"
+          ? [toText(row.last_result.status), formatDateTime(row.last_result.at)].filter((v) => v && v !== "-").join(" @ ")
+          : "";
+      const cells = [
+        toText(row.template_id, "-"),
+        schedulerToggleLabel(Boolean(row.enabled)),
+        formatDateTime(row.next_run_at),
+        toText(row.action_key, "-"),
+        toText(row.run_date, "-"),
+        toText(row.run_time, "-"),
+        formatDateTime(row.updated_at),
+        lastResult || "-",
+      ];
+      cells.forEach((value) => {
+        const td = document.createElement("td");
+        td.textContent = value;
+        tr.appendChild(td);
+      });
+      schedulerTimersEl.appendChild(tr);
+    });
+    if (schedulerEmptyEl) {
+      schedulerEmptyEl.classList.toggle("hidden", timerRows.length > 0);
+    }
+  }
+
+  function renderSchedulerHealth(payload) {
+    const workerRunning = Boolean(payload?.worker_running);
+    const pollSeconds = toInt(payload?.worker_poll_seconds, 0);
+    const workerStartedAt = formatDateTime(payload?.worker_started_at);
+    const total = toInt(payload?.total_timers, 0);
+    const enabled = toInt(payload?.enabled_timers, 0);
+    const due = toInt(payload?.due_timers, 0);
+
+    setText(schedulerWorkerRunningEl, schedulerWorkerLabel(workerRunning));
+    setText(schedulerWorkerPollEl, pollSeconds > 0 ? String(pollSeconds) : "-");
+    setText(schedulerWorkerStartedEl, workerStartedAt);
+    setText(schedulerTotalEl, String(total));
+    setText(schedulerEnabledEl, String(enabled));
+    setText(schedulerDueEl, String(due));
+    setText(
+      schedulerSummaryEl,
+      `worker=${schedulerWorkerLabel(workerRunning)} / timers=${total} (enabled=${enabled}, due=${due})`,
+    );
+    renderSchedulerTimers(payload?.timers);
+  }
+
+  async function refreshSchedulerHealth() {
+    const payload = await apiGetJson("/api/scheduler/health?limit=100");
+    renderSchedulerHealth(payload);
+    schedulerLoaded = true;
+    return payload;
+  }
+
   async function updateAiSkillPermission(skillId, enabled) {
     const resolvedSkillId = String(skillId || "").trim().toLowerCase();
     if (!resolvedSkillId) return;
@@ -713,6 +797,24 @@
       showToast(message, "error");
       if (notificationLastResultEl) {
         notificationLastResultEl.textContent = message;
+      }
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function runSchedulerAction(fn) {
+    if (busy) return;
+    setBusy(true);
+    try {
+      await fn();
+      setStatus("", "");
+    } catch (error) {
+      const message = toFriendlyMessage(error?.message || "Scheduler action failed");
+      setStatus(message, "error");
+      showToast(message, "error");
+      if (schedulerLastResultEl) {
+        schedulerLastResultEl.textContent = message;
       }
     } finally {
       setBusy(false);
@@ -918,6 +1020,30 @@
     });
   }
 
+  if (schedulerRefreshButton) {
+    schedulerRefreshButton.addEventListener("click", () => {
+      runSchedulerAction(async () => {
+        await refreshSchedulerHealth();
+        if (schedulerLastResultEl) schedulerLastResultEl.textContent = "Scheduler health refreshed.";
+        showToast("Scheduler health refreshed.", "success");
+      });
+    });
+  }
+
+  if (schedulerRestartButton) {
+    schedulerRestartButton.addEventListener("click", () => {
+      runSchedulerAction(async () => {
+        const payload = await apiPostJson("/api/scheduler/restart", { limit: 100 });
+        renderSchedulerHealth(payload);
+        schedulerLoaded = true;
+        const startedAt = formatDateTime(payload?.worker_started_at);
+        const message = startedAt && startedAt !== "-" ? `Scheduler worker restarted at ${startedAt}.` : "Scheduler worker restarted.";
+        if (schedulerLastResultEl) schedulerLastResultEl.textContent = message;
+        showToast(message, "success");
+      });
+    });
+  }
+
   function lazyLoadTabData(tabName) {
     if (tabName === "document-update" && !docStatusLoaded) {
       void refreshDocumentStatus().catch((error) => {
@@ -936,6 +1062,13 @@
     if (tabName === "notification-settings" && !notificationSettingsLoaded) {
       void refreshNotificationSettings().catch((error) => {
         const message = toFriendlyMessage(error?.message || "読み込みに失敗しました");
+        setStatus(message, "error");
+      });
+      return;
+    }
+    if (tabName === "scheduler-monitor" && !schedulerLoaded) {
+      void refreshSchedulerHealth().catch((error) => {
+        const message = toFriendlyMessage(error?.message || "Failed to load scheduler health");
         setStatus(message, "error");
       });
       return;
@@ -972,6 +1105,8 @@
         tasks.push({ name: "対象ドキュメント", run: () => refreshDocumentTargets() });
       } else if (initialTab === "notification-settings") {
         tasks.push({ name: "通知設定", run: () => refreshNotificationSettings() });
+      } else if (initialTab === "scheduler-monitor") {
+        tasks.push({ name: "Scheduler monitor", run: () => refreshSchedulerHealth() });
       } else if (initialTab === "ai-skills") {
         tasks.push({ name: "AIスキル権限", run: () => refreshAiSkills() });
       }

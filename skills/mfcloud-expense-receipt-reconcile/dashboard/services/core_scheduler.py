@@ -940,3 +940,76 @@ def stop_worker() -> None:
         if _worker_thread and _worker_thread.is_alive():
             _worker_thread.join(timeout=1.5)
         _worker_thread = None
+
+
+def worker_snapshot() -> dict[str, Any]:
+    with _worker_lock:
+        thread = _worker_thread
+        running = bool(thread and thread.is_alive())
+    return {
+        "running": running,
+        "poll_seconds": int(SCHEDULER_POLL_SECONDS),
+        "started_at": _started_at.isoformat(timespec="seconds"),
+    }
+
+
+def health_snapshot(*, limit: int = 50) -> dict[str, Any]:
+    if limit < 1:
+        limit = 1
+    if limit > 500:
+        limit = 500
+
+    now = datetime.now()
+    with _state_lock:
+        state = _read_state_unlocked()
+        timers = _get_template_timers(state)
+
+    rows: list[dict[str, Any]] = []
+    enabled_timers = 0
+    due_timers = 0
+    for template_id, timer_state in timers.items():
+        row = _enrich_state(timer_state, template_id=template_id)
+        enabled = bool(row.get("enabled"))
+        if enabled:
+            enabled_timers += 1
+
+        scheduled = _scheduled_datetime(timer_state)
+        if enabled and scheduled is not None and scheduled <= now:
+            due_timers += 1
+
+        # Hide default empty slot from monitoring list.
+        is_default_slot = template_id == _DEFAULT_TEMPLATE_ID
+        has_any_context = bool(
+            str(row.get("card_id") or "").strip()
+            or str(row.get("run_date") or "").strip()
+            or str(row.get("updated_at") or "").strip()
+            or isinstance(row.get("last_result"), dict)
+        )
+        if is_default_slot and not has_any_context:
+            continue
+        rows.append(row)
+
+    rows.sort(
+        key=lambda row: (
+            0 if bool(row.get("enabled")) else 1,
+            0 if str(row.get("next_run_at") or "").strip() else 1,
+            str(row.get("next_run_at") or "9999-99-99T99:99:99"),
+            str(row.get("template_id") or ""),
+        )
+    )
+    worker = worker_snapshot()
+    return {
+        "worker_running": bool(worker.get("running")),
+        "worker_poll_seconds": int(worker.get("poll_seconds") or 0),
+        "worker_started_at": str(worker.get("started_at") or ""),
+        "total_timers": len(rows),
+        "enabled_timers": int(enabled_timers),
+        "due_timers": int(due_timers),
+        "timers": rows[:limit],
+    }
+
+
+def restart_worker() -> dict[str, Any]:
+    stop_worker()
+    start_worker()
+    return worker_snapshot()

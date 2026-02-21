@@ -1663,6 +1663,47 @@
   margin-top: 10px;
 }
 
+.errors-scheduler-grid {
+  margin-top: 14px;
+}
+
+#errors-scheduler-summary,
+#errors-scheduler-last-result {
+  margin-top: 10px;
+}
+
+.errors-scheduler-table-wrap {
+  margin-top: 12px;
+  overflow: auto;
+  border: 1px solid rgb(var(--semantic-field-border-default));
+  border-radius: 12px;
+}
+
+.errors-scheduler-table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 980px;
+}
+
+.errors-scheduler-table th,
+.errors-scheduler-table td {
+  padding: 8px 10px;
+  border-bottom: 1px solid rgb(var(--semantic-field-border-default));
+  text-align: left;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.errors-scheduler-table th {
+  background: rgb(var(--surface-2));
+  color: rgb(var(--text-secondary));
+  font-weight: 700;
+}
+
+.errors-scheduler-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
 .errors-doc-targets-stats {
   margin-top: 8px;
   display: flex;

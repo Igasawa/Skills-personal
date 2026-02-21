@@ -1950,7 +1950,7 @@ def test_api_workspace_state_post_persists_and_sanitizes(monkeypatch: pytest.Mon
     assert body["pinned_links"] == [{"label": "Pinned Ops", "url": "https://ops.example.com/"}]
     pinned_group = body["pinned_link_groups"][0]
     assert pinned_group["id"]
-    assert pinned_group["label"] == "蝗ｺ螳壹Μ繝ｳ繧ｯ1"
+    assert pinned_group["label"] == "固定リンク1"
     assert pinned_group["links"] == [{"label": "Pinned Ops", "url": "https://ops.example.com/"}]
     assert pinned_group["created_at"] == ""
     assert body["prompts"] == {
@@ -2415,6 +2415,9 @@ def test_api_scheduler_state_get_returns_default(monkeypatch: pytest.MonkeyPatch
     assert body["run_time"] == "09:00"
     assert body["catch_up_policy"] == "run_on_startup"
     assert body["next_run_at"] is None
+    assert isinstance(body.get("worker_running"), bool)
+    assert int(body.get("worker_poll_seconds") or 0) >= 1
+    assert str(body.get("worker_started_at") or "")
 
 
 def test_api_scheduler_state_post_persists_context_fields(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -2444,6 +2447,9 @@ def test_api_scheduler_state_post_persists_context_fields(monkeypatch: pytest.Mo
     assert body["run_date"] == "2026-03-01"
     assert body["run_time"] == "08:30"
     assert body["recurrence"] == "daily"
+    assert isinstance(body.get("worker_running"), bool)
+    assert int(body.get("worker_poll_seconds") or 0) >= 1
+    assert str(body.get("worker_started_at") or "")
 
     state_path = _artifact_root(tmp_path) / "_scheduler" / "scheduler_state.json"
     assert state_path.exists()
@@ -2453,6 +2459,94 @@ def test_api_scheduler_state_post_persists_context_fields(monkeypatch: pytest.Mo
     assert persisted["run_date"] == "2026-03-01"
     assert persisted["run_time"] == "08:30"
     assert persisted["recurrence"] == "daily"
+
+
+def test_api_scheduler_health_reports_worker_and_timers(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    client = _create_client(monkeypatch, tmp_path)
+    template_id = "tmpl-health-001"
+
+    post_res = client.post(
+        f"/api/scheduler/state?template_id={template_id}",
+        json={
+            "enabled": False,
+            "card_id": "workflow-status",
+            "action_key": "preflight",
+            "run_time": "09:00",
+            "recurrence": "once",
+            "catch_up_policy": "run_on_startup",
+        },
+    )
+    assert post_res.status_code == 200
+
+    res = client.get("/api/scheduler/health?limit=20")
+    assert res.status_code == 200
+    body = res.json()
+    assert body.get("status") == "ok"
+    assert isinstance(body.get("worker_running"), bool)
+    assert int(body.get("worker_poll_seconds") or 0) >= 1
+    assert str(body.get("worker_started_at") or "")
+    assert int(body.get("total_timers") or 0) >= 1
+    assert int(body.get("enabled_timers") or 0) >= 0
+    assert int(body.get("due_timers") or 0) >= 0
+    timers = body.get("timers") if isinstance(body.get("timers"), list) else []
+    assert any(str(row.get("template_id") or "") == template_id for row in timers)
+
+
+def test_api_scheduler_restart_returns_health_payload(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    called: dict[str, Any] = {}
+
+    def _fake_restart_worker() -> dict[str, Any]:
+        called["restart"] = True
+        return {
+            "running": True,
+            "poll_seconds": 7,
+            "started_at": "2026-02-21T10:00:00",
+        }
+
+    def _fake_health_snapshot(*, limit: int = 50) -> dict[str, Any]:
+        called["limit"] = int(limit)
+        return {
+            "worker_running": True,
+            "worker_poll_seconds": 7,
+            "worker_started_at": "2026-02-21T10:00:00",
+            "total_timers": 1,
+            "enabled_timers": 1,
+            "due_timers": 0,
+            "timers": [
+                {
+                    "template_id": "tmpl-health-001",
+                    "enabled": True,
+                    "next_run_at": "2026-02-21T10:05:00",
+                    "action_key": "preflight",
+                    "run_date": "2026-02-21",
+                    "run_time": "10:05",
+                    "updated_at": "2026-02-21T10:00:00",
+                }
+            ],
+        }
+
+    monkeypatch.setattr(public_core_scheduler, "restart_worker", _fake_restart_worker)
+    monkeypatch.setattr(public_core_scheduler, "health_snapshot", _fake_health_snapshot)
+    client = _create_client(monkeypatch, tmp_path)
+
+    res = client.post("/api/scheduler/restart", json={"limit": 25})
+    assert res.status_code == 200
+    body = res.json()
+    assert body.get("status") == "ok"
+    assert body.get("restarted") is True
+    assert body.get("worker_running") is True
+    assert int(body.get("worker_poll_seconds") or 0) == 7
+    assert body.get("worker_started_at") == "2026-02-21T10:00:00"
+    assert int(body.get("total_timers") or 0) == 1
+    assert isinstance(body.get("timers"), list)
+    assert called.get("restart") is True
+    assert int(called.get("limit") or 0) == 25
 
 
 def test_api_scheduler_state_post_rejects_enable_without_schedule(
