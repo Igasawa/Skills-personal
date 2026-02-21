@@ -2292,6 +2292,12 @@ def _register_api_workspace_routes_impl(
                 "worker_running": False,
                 "worker_poll_seconds": 0,
                 "worker_started_at": "",
+                "failure_retry_seconds": core._safe_non_negative_int(
+                    getattr(core_scheduler, "SCHEDULER_FAILURE_RETRY_SECONDS", 60), default=60
+                ),
+                "failure_retry_max_attempts": core._safe_non_negative_int(
+                    getattr(core_scheduler, "SCHEDULER_FAILURE_RETRY_MAX_ATTEMPTS", 1), default=1
+                ),
                 "total_timers": 1 if state else 0,
                 "enabled_timers": 1 if bool(state.get("enabled")) else 0,
                 "due_timers": 0,
@@ -2328,6 +2334,12 @@ def _register_api_workspace_routes_impl(
                 "worker_running": bool(worker.get("running")),
                 "worker_poll_seconds": core._safe_non_negative_int(worker.get("poll_seconds"), default=0),
                 "worker_started_at": str(worker.get("started_at") or ""),
+                "failure_retry_seconds": core._safe_non_negative_int(
+                    getattr(core_scheduler, "SCHEDULER_FAILURE_RETRY_SECONDS", 60), default=60
+                ),
+                "failure_retry_max_attempts": core._safe_non_negative_int(
+                    getattr(core_scheduler, "SCHEDULER_FAILURE_RETRY_MAX_ATTEMPTS", 1), default=1
+                ),
                 "total_timers": 1 if state else 0,
                 "enabled_timers": 1 if bool(state.get("enabled")) else 0,
                 "due_timers": 0,
@@ -3306,4 +3318,3 @@ __all__ = [
     "url_request",
     "ai_chat",
 ]
-

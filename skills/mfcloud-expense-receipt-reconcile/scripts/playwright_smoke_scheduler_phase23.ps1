@@ -197,34 +197,81 @@ if (body.enabled !== true) {
   Assert-RunCode -Label "first failure schedules single retry" -Code $assertRetryScheduled
   $lines += "check=retry_scheduled:pass"
 
-  Invoke-Pw -CliArgs @("run-code", "await page.waitForTimeout(65000)")
-
-$triggerImmediateRetry = @'
+$waitAndTriggerRetry = @'
 const templateId = "__TEMPLATE_ID__";
-const res = await fetch(`/api/scheduler/state?template_id=${encodeURIComponent(templateId)}`, {
-  method: 'POST',
-  headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify({}),
-});
+let retrySeconds = 60;
+try {
+  const healthRes = await fetch('/api/scheduler/health?limit=1', { cache: 'no-store' });
+  if (healthRes.ok) {
+    const health = await healthRes.json();
+    const fromApi = Number.parseInt(String(health.failure_retry_seconds ?? ''), 10);
+    if (Number.isFinite(fromApi) && fromApi > 0) {
+      retrySeconds = fromApi;
+    }
+  }
+} catch {}
+
+const timeoutMs = (retrySeconds + 20) * 1000;
+const deadline = Date.now() + timeoutMs;
+let lastBody = null;
+while (Date.now() < deadline) {
+  const res = await fetch(`/api/scheduler/state?template_id=${encodeURIComponent(templateId)}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({}),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error('scheduler POST failed: ' + res.status + ' ' + JSON.stringify(body));
+  }
+  const body = await res.json();
+  lastBody = body;
+  const last = body.last_result && typeof body.last_result === 'object' ? body.last_result : {};
+  if (String(last.status || '') === 'failed' && String(last.reason_code || '') === 'retry_exhausted' && body.enabled === false) {
+    return;
+  }
+  await new Promise((resolve) => setTimeout(resolve, 1500));
+}
+throw new Error(
+  'retry exhaustion not observed in time; retrySeconds=' + retrySeconds + '; lastBody=' + JSON.stringify(lastBody)
+);
+'@
+  $waitAndTriggerRetry = $waitAndTriggerRetry.Replace("__TEMPLATE_ID__", $TemplateId)
+  Assert-RunCode -Label "retry attempt exhausts and fails" -Code $waitAndTriggerRetry
+  $lines += "check=retry_exhausted:pass"
+
+$recordRetryConfig = @'
+const res = await fetch('/api/scheduler/health?limit=1', { cache: 'no-store' });
 if (!res.ok) {
-  const body = await res.json().catch(() => ({}));
-  throw new Error('scheduler POST failed: ' + res.status + ' ' + JSON.stringify(body));
+  throw new Error('scheduler health GET failed: ' + res.status);
 }
 const body = await res.json();
-const last = body.last_result && typeof body.last_result === 'object' ? body.last_result : {};
-if (String(last.status || '') !== 'failed') {
-  throw new Error('expected failed after retry exhaustion: ' + JSON.stringify(body));
+const retrySeconds = Number.parseInt(String(body.failure_retry_seconds ?? ''), 10);
+const retryMaxAttempts = Number.parseInt(String(body.failure_retry_max_attempts ?? ''), 10);
+if (!Number.isFinite(retrySeconds) || retrySeconds < 1) {
+  throw new Error('invalid failure_retry_seconds: ' + JSON.stringify(body));
 }
-if (String(last.reason_code || '') !== 'retry_exhausted') {
-  throw new Error('expected retry_exhausted after retry: ' + JSON.stringify(body));
+if (!Number.isFinite(retryMaxAttempts) || retryMaxAttempts < 1) {
+  throw new Error('invalid failure_retry_max_attempts: ' + JSON.stringify(body));
 }
-if (body.enabled !== false) {
-  throw new Error('expected enabled=false after retry exhaustion: ' + JSON.stringify(body));
+window.__schedulerRetryConfig = { retrySeconds, retryMaxAttempts };
+'@
+  Assert-RunCode -Label "read scheduler retry config from health endpoint" -Code $recordRetryConfig
+$readRetryConfig = @'
+const cfg = window.__schedulerRetryConfig || {};
+if (!cfg.retrySeconds || !cfg.retryMaxAttempts) {
+  throw new Error('scheduler retry config not captured');
 }
 '@
-  $triggerImmediateRetry = $triggerImmediateRetry.Replace("__TEMPLATE_ID__", $TemplateId)
-  Assert-RunCode -Label "retry attempt exhausts and fails" -Code $triggerImmediateRetry
-  $lines += "check=retry_exhausted:pass"
+  Assert-RunCode -Label "scheduler retry config captured" -Code $readRetryConfig
+
+$health = Invoke-WebRequest -UseBasicParsing "$BaseUrl/api/scheduler/health?limit=1" | Select-Object -ExpandProperty Content | ConvertFrom-Json
+$retrySeconds = [string]($health.failure_retry_seconds)
+$retryMaxAttempts = [string]($health.failure_retry_max_attempts)
+if (-not $retrySeconds) { $retrySeconds = "unknown" }
+if (-not $retryMaxAttempts) { $retryMaxAttempts = "unknown" }
+$lines += "retry_seconds=$retrySeconds"
+$lines += "retry_max_attempts=$retryMaxAttempts"
 
   Invoke-Pw -CliArgs @("screenshot")
   $lines += "result=pass"

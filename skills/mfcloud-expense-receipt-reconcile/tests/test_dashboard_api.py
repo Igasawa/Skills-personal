@@ -2488,6 +2488,8 @@ def test_api_scheduler_health_reports_worker_and_timers(
     assert isinstance(body.get("worker_running"), bool)
     assert int(body.get("worker_poll_seconds") or 0) >= 1
     assert str(body.get("worker_started_at") or "")
+    assert int(body.get("failure_retry_seconds") or 0) >= 1
+    assert int(body.get("failure_retry_max_attempts") or 0) >= 1
     assert int(body.get("total_timers") or 0) >= 1
     assert int(body.get("enabled_timers") or 0) >= 0
     assert int(body.get("due_timers") or 0) >= 0

@@ -4,6 +4,7 @@ import json
 import re
 import threading
 import calendar
+import os
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -26,9 +27,6 @@ CATCH_UP_POLICIES = {"run_on_startup", "skip"}
 SCHEDULER_RECURRENCE = {"once", "daily", "weekly", "monthly"}
 DEFAULT_RUN_TIME = "09:00"
 DEFAULT_ACTION_KEY = "preflight"
-SCHEDULER_POLL_SECONDS = 15
-SCHEDULER_FAILURE_RETRY_SECONDS = 60
-SCHEDULER_FAILURE_RETRY_MAX_ATTEMPTS = 1
 ONCE_RECEIPT_MAX_ITEMS = 5000
 TRIGGER_LOCK_STALE_SECONDS = 6 * 60 * 60
 SCHEDULE_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
@@ -84,6 +82,24 @@ _worker_thread: threading.Thread | None = None
 _stop_event = threading.Event()
 _started_at = datetime.now()
 _next_retry_at_by_template: dict[str, datetime | None] = {}
+
+
+def _env_int(name: str, default: int, *, minimum: int = 0) -> int:
+    raw = str(os.environ.get(name, "") or "").strip()
+    if not raw:
+        return default
+    try:
+        value = int(raw)
+    except Exception:
+        return default
+    if value < minimum:
+        return default
+    return value
+
+
+SCHEDULER_POLL_SECONDS = _env_int("AX_SCHEDULER_POLL_SECONDS", 15, minimum=1)
+SCHEDULER_FAILURE_RETRY_SECONDS = _env_int("AX_SCHEDULER_FAILURE_RETRY_SECONDS", 60, minimum=1)
+SCHEDULER_FAILURE_RETRY_MAX_ATTEMPTS = _env_int("AX_SCHEDULER_FAILURE_RETRY_MAX_ATTEMPTS", 1, minimum=1)
 
 
 def _now_iso() -> str:
@@ -1432,6 +1448,8 @@ def health_snapshot(*, limit: int = 50) -> dict[str, Any]:
         "worker_running": bool(worker.get("running")),
         "worker_poll_seconds": int(worker.get("poll_seconds") or 0),
         "worker_started_at": str(worker.get("started_at") or ""),
+        "failure_retry_seconds": int(SCHEDULER_FAILURE_RETRY_SECONDS),
+        "failure_retry_max_attempts": int(SCHEDULER_FAILURE_RETRY_MAX_ATTEMPTS),
         "total_timers": len(rows),
         "enabled_timers": int(enabled_timers),
         "due_timers": int(due_timers),
