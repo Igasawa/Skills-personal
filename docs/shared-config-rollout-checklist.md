@@ -1,15 +1,15 @@
 # Shared Config Rollout Checklist
 
-Updated: 2026-02-20  
-Target priority: high-frequency skills first
+更新日: 2026-02-20  
+対象優先度: 高頻度スキル優先
 
 ## Rollout Rules
 
 - Resolution order must be `CLI > skill config > org-profile > defaults`.
 - Existing skill config must remain backward compatible during rollout.
 - Add tests for both:
-- `org-profile` fallback when skill config is missing
-- skill config override precedence over `org-profile`
+  - `org-profile` fallback when skill config is missing
+  - skill config override precedence over `org-profile`
 
 ## Skill Checklist
 
@@ -31,11 +31,11 @@ Target priority: high-frequency skills first
 ## Current Wave Summary
 
 - Wave 1 complete:
-- `mfcloud-expense-receipt-reconcile` migrated as pilot
-- `run_core.py` shared-config resolution implemented
-- `collect_print.py` shared-config resolution implemented
-- run metadata now includes `org_profile` details
+  - `mfcloud-expense-receipt-reconcile` migrated as pilot
+  - `run_core.py` shared-config resolution implemented
+  - `collect_print.py` shared-config resolution implemented
+  - run metadata now includes `org_profile` details
 
 - Wave 2 candidate:
-- evaluate P1 skill applicability
-- implement only if shared organization fields are needed
+  - evaluate P1 skill applicability
+  - implement only if shared organization fields are needed

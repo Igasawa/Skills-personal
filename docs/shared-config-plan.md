@@ -1,7 +1,7 @@
 # Shared Config Plan
 
 作成日: 2026-02-20  
-対象リポジトリ: `Skillpersonal`
+対象リポジトリ: `Skills-personal`
 
 ## 1. 背景
 
@@ -158,5 +158,5 @@
 - 追加: `docs/shared-config-runbook.md`
 - 適用: `skills/mfcloud-expense-receipt-reconcile/scripts/run_core.py`（org-profile読込と優先順位反映）
 - 適用: `skills/mfcloud-expense-receipt-reconcile/scripts/collect_print.py`（org-profile読込と優先順位反映）
-- 検証: `tests/test_run_core_config.py` に org-profile 優先順位テストを追加し、関連テスト通過
-- 検証: `tests/test_collect_print.py` に org-profile 優先順位テストを追加し、関連テスト通過
+- 検証: `skills/mfcloud-expense-receipt-reconcile/tests/test_run_core_config.py` に org-profile 優先順位テストを追加し、関連テスト通過
+- 検証: `skills/mfcloud-expense-receipt-reconcile/tests/test_collect_print.py` に org-profile 優先順位テストを追加し、関連テスト通過

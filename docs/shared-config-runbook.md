@@ -1,7 +1,18 @@
 # Shared Config Runbook
 
-Last updated: 2026-02-20  
-Scope: `AX_HOME/configs/org-profile.json` rollout and operations
+更新日: 2026-02-20  
+対象: `AX_HOME/configs/org-profile.json` の展開と運用
+
+## 0. Prerequisites
+
+- Python 3.11+
+- `jsonschema` package (required by `scripts/validate_org_profile.py`)
+
+Install example:
+
+```bash
+python -m pip install jsonschema
+```
 
 ## 1. Purpose
 
