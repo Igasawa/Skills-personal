@@ -1890,7 +1890,7 @@ def register_api_workspace_routes(
         elif "pinned_links" in payload:
             current_server_groups = sanitize_workspace_pinned_link_groups(current.get("pinned_link_groups"))
             first_server_group = current_server_groups[0] if current_server_groups else {}
-            first_label = str(first_server_group.get("label") or "").strip() or "蝗ｺ螳壹Μ繝ｳ繧ｯ1"
+            first_label = str(first_server_group.get("label") or "").strip() or "Group 1"
             first_id = str(first_server_group.get("id") or "").strip()
             legacy_links = sanitize_workspace_pinned_links(payload.get("pinned_links"))
             legacy_group = {
