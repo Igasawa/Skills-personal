@@ -1,11 +1,12 @@
 (function () {
   const dashboard = window.DashboardWorkspace || {};
-  const source = (dashboard.core && dashboard.core.sync) || {};
+  const core = dashboard.core || {};
+  const source = core.sync || {};
   const fallback = window.DashboardWorkspaceSync || {};
   const namespace = dashboard.sync || source || fallback || {};
-  const stateNamespace = dashboard.state || {};
-  const linksNamespace = dashboard.links || {};
-  const promptNamespace = dashboard.prompt || {};
+  const stateNamespace = core.state || dashboard.state || {};
+  const linksNamespace = core.links || dashboard.links || {};
+  const promptNamespace = core.prompt || dashboard.prompt || {};
   if (!dashboard.sync) {
     dashboard.sync = namespace;
   }
@@ -27,10 +28,17 @@
   };
 
   async function bootstrapWorkspace() {
-    const bootstrapState = namespace.bootstrapWorkspaceState || function () {};
+    const bootstrapState = resolveStateFn("bootstrapWorkspaceState", function () {});
     const initializeLinks = linksNamespace.initializeLinks || function () {};
     const initializePrompt = promptNamespace.initializePrompt || function () {};
-    await Promise.resolve().then(() => bootstrapState());
+    try {
+      await Promise.resolve().then(() => bootstrapState());
+    } catch (_error) {
+      if (typeof console !== "undefined" && console && typeof console.error === "function") {
+        console.error("Failed to bootstrap workspace state.", _error);
+      }
+      return;
+    }
     initializeLinks();
     initializePrompt();
   }
@@ -50,15 +58,12 @@
   namespace.schedule = namespace.scheduleWorkspaceSync;
 
   dashboard.sync = namespace;
+  dashboard.bootstrap = bootstrapWorkspace;
   dashboard.core = Object.assign(dashboard.core || {}, {
     sync: namespace,
     bootstrap: bootstrapWorkspace,
   });
   window.DashboardWorkspaceSync = namespace;
-  dashboard.bootstrap = dashboard.core.bootstrap || bootstrapWorkspace;
-  if (typeof dashboard.bootstrap !== "function") {
-    dashboard.bootstrap = bootstrapWorkspace;
-  }
 
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", () => {

@@ -2996,6 +2996,16 @@
     saveLinkProfileForKey,
   };
 
+  const workspaceSyncApi = {
+    bootstrapWorkspaceState,
+    scheduleWorkspaceSync,
+    readPromptMap,
+    saveWorkspaceState,
+    pushWorkspaceStateToServer,
+    fetchWorkspaceStateFromServer,
+    collectLocalWorkspaceState,
+  };
+
   const workspaceLinksApi = {
     initializeLinks,
     renderLinkLists,
@@ -3085,6 +3095,7 @@
   dashboardWorkspace.links = Object.assign(dashboardWorkspace.links || {}, workspaceLinksApi);
   dashboardWorkspace.prompt = Object.assign(dashboardWorkspace.prompt || {}, workspacePromptApi);
   dashboardWorkspace.render = Object.assign(dashboardWorkspace.render || {}, workspaceRenderApi);
+  dashboardWorkspace.sync = Object.assign(dashboardWorkspace.sync || {}, workspaceSyncApi);
   dashboardWorkspace.core = Object.assign(dashboardWorkspace.core || {}, {
     state: dashboardWorkspace.state,
     links: dashboardWorkspace.links,
