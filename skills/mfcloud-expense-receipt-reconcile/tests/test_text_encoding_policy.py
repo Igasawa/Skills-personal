@@ -3,8 +3,11 @@ from __future__ import annotations
 import codecs
 import os
 import re
+import subprocess
+import shutil
 from pathlib import Path
 
+import pytest
 REPO_ROOT = Path(__file__).resolve().parents[3]
 SKIP_DIR_NAMES = {
     ".git",
@@ -136,6 +139,25 @@ def test_dashboard_text_files_have_no_obvious_mojibake_markers() -> None:
                     break
 
     assert not findings, f"dashboard mojibake markers found: {findings}"
+
+
+def test_dashboard_js_files_have_valid_syntax() -> None:
+    if shutil.which("node") is None:
+        pytest.skip("node runtime is not available in this environment.")
+    failures: list[str] = []
+    for path in _iter_text_files(REPO_DASHBOARD_ROOT):
+        if path.suffix.lower() != ".js":
+            continue
+        proc = subprocess.run(
+            ["node", "--check", str(path)],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        if proc.returncode != 0:
+            failures.append(f"{path.relative_to(REPO_ROOT).as_posix()}: {proc.stderr.strip() or proc.stdout.strip()}")
+
+    assert not failures, f"invalid JS syntax in dashboard scripts:\n" + "\n".join(failures)
 
 
 def test_powershell_scripts_do_not_use_utf8_encoding_alias() -> None:
