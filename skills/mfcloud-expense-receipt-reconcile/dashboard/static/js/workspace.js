@@ -2971,15 +2971,8 @@
     }
   }
 
-  async function bootstrap() {
-    await bootstrapWorkspaceState();
-    initializeLinks();
-    initializePrompt();
-  }
-
   const workspaceStateApi = {
     bootstrapWorkspaceState,
-    bootstrap,
     readRawCustomLinks,
     readCustomLinks,
     readLinkNoteMap,
@@ -3074,7 +3067,6 @@
     scheduleWorkspaceSync,
     readPromptMap,
     saveWorkspaceState,
-    bootstrap,
     pushWorkspaceStateToServer,
     fetchWorkspaceStateFromServer,
     collectLocalWorkspaceState,
@@ -3110,9 +3102,7 @@
     prompt: dashboardWorkspace.prompt,
     sync: dashboardWorkspace.sync,
     render: dashboardWorkspace.render,
-    bootstrap,
   });
-  dashboardWorkspace.bootstrap = dashboardWorkspace.bootstrap || bootstrap;
   window.DashboardWorkspace = dashboardWorkspace;
 
   window.DashboardWorkspaceState = dashboardWorkspace.state;
@@ -3120,6 +3110,4 @@
   window.DashboardWorkspacePrompt = dashboardWorkspace.prompt;
   window.DashboardWorkspaceSync = dashboardWorkspace.sync;
   window.DashboardWorkspaceRender = dashboardWorkspace.render;
-
-  void bootstrap();
 })();

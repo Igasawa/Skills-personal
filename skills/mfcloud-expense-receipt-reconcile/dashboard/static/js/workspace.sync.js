@@ -3,6 +3,8 @@
   const source = (dashboard.core && dashboard.core.sync) || {};
   const fallback = window.DashboardWorkspaceSync || {};
   const namespace = dashboard.sync || source || fallback || {};
+  const linksNamespace = dashboard.links || {};
+  const promptNamespace = dashboard.prompt || {};
   if (!dashboard.sync) {
     dashboard.sync = namespace;
   }
@@ -16,12 +18,21 @@
     });
   };
 
+  async function bootstrapWorkspace() {
+    const bootstrapState = namespace.bootstrapWorkspaceState || function () {};
+    const initializeLinks = linksNamespace.initializeLinks || function () {};
+    const initializePrompt = promptNamespace.initializePrompt || function () {};
+    await Promise.resolve().then(() => bootstrapState());
+    initializeLinks();
+    initializePrompt();
+  }
+
   register({
     bootstrapWorkspaceState: namespace.bootstrapWorkspaceState || function () {},
     scheduleWorkspaceSync: namespace.scheduleWorkspaceSync || function () {},
     readPromptMap: namespace.readPromptMap || function () { return {}; },
     saveWorkspaceState: namespace.saveWorkspaceState || function () { return null; },
-    bootstrap: namespace.bootstrap || function () {},
+    bootstrap: bootstrapWorkspace,
     pushWorkspaceStateToServer: namespace.pushWorkspaceStateToServer || function () { return Promise.resolve(false); },
     fetchWorkspaceStateFromServer: namespace.fetchWorkspaceStateFromServer || function () { return null; },
     collectLocalWorkspaceState: namespace.collectLocalWorkspaceState || function () { return {}; },
@@ -33,7 +44,21 @@
   dashboard.sync = namespace;
   dashboard.core = Object.assign(dashboard.core || {}, {
     sync: namespace,
+    bootstrap: bootstrapWorkspace,
   });
   window.DashboardWorkspaceSync = namespace;
+  dashboard.bootstrap = dashboard.core.bootstrap || bootstrapWorkspace;
+  if (typeof dashboard.bootstrap !== "function") {
+    dashboard.bootstrap = bootstrapWorkspace;
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", () => {
+      void dashboard.bootstrap();
+    });
+  } else {
+    void dashboard.bootstrap();
+  }
+
   window.DashboardWorkspace = dashboard;
 })();
