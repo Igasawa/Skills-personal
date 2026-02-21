@@ -2977,9 +2977,9 @@
     initializePrompt();
   }
 
-  window.DashboardWorkspaceState = {
+  const workspaceStateApi = {
     bootstrapWorkspaceState,
-    bootstrap: bootstrap,
+    bootstrap,
     readRawCustomLinks,
     readCustomLinks,
     readLinkNoteMap,
@@ -2992,9 +2992,18 @@
     storeActivePromptKey,
     saveWorkspaceState,
     scheduleWorkspaceSync,
+    collectLocalWorkspaceState,
+    fetchWorkspaceStateFromServer,
+    pushWorkspaceStateToServer,
+    applyWorkspaceStateToLocalStorage,
+    hasMeaningfulWorkspaceState,
+    getLinkNoteForKey,
+    getLinkProfileForKey,
+    saveLinkNoteForKey,
+    saveLinkProfileForKey,
   };
 
-  window.DashboardWorkspaceLinks = {
+  const workspaceLinksApi = {
     initializeLinks,
     renderLinkLists,
     renderPinnedLinkGroups,
@@ -3008,9 +3017,31 @@
     showToastConfirmDialog,
     getAllPinnedLinksFromGroups,
     buildCustomPromptKey,
+    readCustomLinks,
+    readPinnedLinksFromGroup,
+    readRawCustomLinks,
+    getPinnedGroupIndexById,
+    readPinnedLinks,
+    getAllPinnedLinksFromGroups,
+    createPinnedGroup,
+    savePinnedLinksToGroup,
+    promoteCustomLinkToGroup,
+    demotePinnedLinkByUrl,
+    demoteGroupLink,
+    bindStaticCopyButtons,
+    bindCustomLinkDragAndDrop,
+    bindLinkListDragAndDrop,
+    bindLinkNoteEditors,
+    bindWorkspaceMetadataToggle,
+    bindLinkProfileEditors,
+    renderCustomLinks,
+    renderPromptFronts,
+    clearPromptUndoNotice,
+    showLinkUndoNotice,
+    updatePinnedCountMeta,
   };
 
-  window.DashboardWorkspacePrompt = {
+  const workspacePromptApi = {
     initializePrompt,
     activatePromptEditorForKey,
     optimizeActivePrompt,
@@ -3021,17 +3052,35 @@
     setActivePrompt,
     getPromptMapCached,
     closePromptOptimizePreview,
+    getPromptTextForKey,
+    sendPromptForKey,
+    copyToClipboard,
+    showPromptUndoNotice,
+    applyPromptOptimizePreview,
+    requestPromptOptimization,
+    setPromptOptimizeButtonLoading,
+    updatePromptMeta,
+    buildDefaultPromptForKey,
+    hasStoredPromptForKey,
+    activePromptKey,
+    activePromptContext,
+    resolvePromptLabel,
+    resolvePromptUrl,
+    normalizePromptOptimizeList,
   };
 
-  window.DashboardWorkspaceSync = {
+  const workspaceSyncApi = {
     bootstrapWorkspaceState,
     scheduleWorkspaceSync,
     readPromptMap,
     saveWorkspaceState,
     bootstrap,
+    pushWorkspaceStateToServer,
+    fetchWorkspaceStateFromServer,
+    collectLocalWorkspaceState,
   };
 
-  window.DashboardWorkspaceRender = {
+  const workspaceRenderApi = {
     renderPromptFrontElement,
     renderPromptFronts,
     renderLinkLists,
@@ -3040,7 +3089,37 @@
     updatePromptMeta,
     setPromptOptimizeButtonLoading,
     setPromptDiffVisibility,
+    renderPromptDiffList,
+    createLinkNode,
+    createPinnedGroupNode,
+    renderCustomLinks,
+    openPromptOptimizePreview,
+    buildPromptPreview,
+    renderProfileStatusForKey,
   };
+
+  const dashboardWorkspace = window.DashboardWorkspace || {};
+  dashboardWorkspace.state = Object.assign(dashboardWorkspace.state || {}, workspaceStateApi);
+  dashboardWorkspace.links = Object.assign(dashboardWorkspace.links || {}, workspaceLinksApi);
+  dashboardWorkspace.prompt = Object.assign(dashboardWorkspace.prompt || {}, workspacePromptApi);
+  dashboardWorkspace.sync = Object.assign(dashboardWorkspace.sync || {}, workspaceSyncApi);
+  dashboardWorkspace.render = Object.assign(dashboardWorkspace.render || {}, workspaceRenderApi);
+  dashboardWorkspace.core = Object.assign(dashboardWorkspace.core || {}, {
+    state: dashboardWorkspace.state,
+    links: dashboardWorkspace.links,
+    prompt: dashboardWorkspace.prompt,
+    sync: dashboardWorkspace.sync,
+    render: dashboardWorkspace.render,
+    bootstrap,
+  });
+  dashboardWorkspace.bootstrap = dashboardWorkspace.bootstrap || bootstrap;
+  window.DashboardWorkspace = dashboardWorkspace;
+
+  window.DashboardWorkspaceState = dashboardWorkspace.state;
+  window.DashboardWorkspaceLinks = dashboardWorkspace.links;
+  window.DashboardWorkspacePrompt = dashboardWorkspace.prompt;
+  window.DashboardWorkspaceSync = dashboardWorkspace.sync;
+  window.DashboardWorkspaceRender = dashboardWorkspace.render;
 
   void bootstrap();
 })();
