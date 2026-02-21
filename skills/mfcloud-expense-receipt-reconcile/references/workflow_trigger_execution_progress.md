@@ -243,6 +243,7 @@
     - `weekly` 起動後に `run_date` が 7日進行するケースを追加。
     - `monthly` 31日指定が短月を挟んでもアンカー日を維持するケースを追加。
     - 起動失敗が1回再試行されること、再試行成功/再失敗の確定挙動を検証するケースを追加。
+    - retry設定の環境変数解釈（`_env_int`）の境界値回帰テストを追加。
   - `scripts/playwright_smoke_scheduler_phase23.ps1`
     - schedulerの recurrence 選択肢（once/daily/weekly/monthly）と weekly/monthly 保存のUI/API往復を確認するスモークを追加。
     - retry検証を固定待機（65秒）から、health APIの retry秒数を参照したポーリング方式へ変更。
@@ -254,10 +255,17 @@
   - `pytest -q skills/mfcloud-expense-receipt-reconcile/tests/test_dashboard_pages.py -k "expense_workflow_copy_page_shows_shared_wizard or expense_workflow_copy_template_loads_scheduler_panel_with_template_context"`: 2 passed
   - `pytest -q skills/mfcloud-expense-receipt-reconcile/tests/test_dashboard_contract.py -k "api_router_registers_expected_routes or dashboard_templates_reference_expected_script_chunks"`: 2 passed
   - `python -m py_compile skills/mfcloud-expense-receipt-reconcile/dashboard/services/core_scheduler.py skills/mfcloud-expense-receipt-reconcile/dashboard/routes/api_workspace_routes.py`: 成功
+  - regression比較（`regression-tester`）:
+    - 変更前 `37b572a47` と現行で同一回帰ケースを比較実行
+    - コマンド: `pytest -q skills/mfcloud-expense-receipt-reconcile/tests/test_dashboard_api.py -k "weekly_recurrence_advances_by_week or monthly_recurrence_preserves_anchor_day_after_short_month or run_failure_retries_once_then_fails or run_failure_retry_succeeds_on_second_attempt"`
+    - 結果: old/new ともに `4 passed`
   - `powershell -ExecutionPolicy Bypass -File skills/mfcloud-expense-receipt-reconcile/scripts/start_dashboard.ps1 -NoOpen -BindHost 127.0.0.1 -Port 8779 -Restart -WaitSeconds 120`（`AX_SCHEDULER_FAILURE_RETRY_SECONDS=3` で起動）: 成功
   - `powershell -ExecutionPolicy Bypass -File skills/mfcloud-expense-receipt-reconcile/scripts/playwright_smoke_scheduler_phase23.ps1 -BaseUrl http://127.0.0.1:8779 -TemplateId e2e_scheduler_phase23_retry_fast2`: pass
     - レポート: `output/playwright/workflow_scheduler_phase23_smoke_20260221_130737.txt`
     - 確認項目: `weekly/monthly` 保存往復 + `retry_scheduled` -> `retry_exhausted` の遷移 + `retry_seconds=3` 記録
+  - `powershell -ExecutionPolicy Bypass -File skills/mfcloud-expense-receipt-reconcile/scripts/playwright_smoke_scheduler_phase23.ps1 -BaseUrl http://127.0.0.1:8779 -TemplateId e2e_scheduler_phase23_pdca`: pass
+    - レポート: `output/playwright/workflow_scheduler_phase23_smoke_20260221_131755.txt`
+  - `pytest -q skills/mfcloud-expense-receipt-reconcile/tests/test_dashboard_api.py -k "scheduler_env_int_parses_and_falls_back or scheduler"`: 29 passed
 - 未解決:
   - Phase 3.3（再送・再実行運用）の `escalated` 通知連携（Slack/メール）は未対応
 

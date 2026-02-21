@@ -2499,6 +2499,24 @@ def test_api_scheduler_health_reports_worker_and_timers(
     assert any(str(row.get("template_id") or "") == template_id for row in timers)
 
 
+def test_scheduler_env_int_parses_and_falls_back(monkeypatch: pytest.MonkeyPatch) -> None:
+    key = "AX_TEST_SCHEDULER_INT"
+    monkeypatch.delenv(key, raising=False)
+    assert public_core_scheduler._env_int(key, 15, minimum=1) == 15
+
+    monkeypatch.setenv(key, "7")
+    assert public_core_scheduler._env_int(key, 15, minimum=1) == 7
+
+    monkeypatch.setenv(key, "0")
+    assert public_core_scheduler._env_int(key, 15, minimum=1) == 15
+
+    monkeypatch.setenv(key, "-3")
+    assert public_core_scheduler._env_int(key, 15, minimum=1) == 15
+
+    monkeypatch.setenv(key, "abc")
+    assert public_core_scheduler._env_int(key, 15, minimum=1) == 15
+
+
 def test_api_scheduler_health_reports_trigger_lock_counts(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
