@@ -69,7 +69,7 @@
 - 日次トレンド（7日/30日）推移
 - テンプレート別ヒートマップ（`template_id` 軸）
 - SLO閾値監視（`failed` 率 / `duplicate` 率）
-- 自動リロードと通知連携（Slack/メール）
+- 自動リロードと通知連携（Google Chat、将来の通知チャネル拡張を考慮）
 
 ## 7. 実装状況（2026-02-20）
 - API: `GET /api/workflow-events/summary` 実装済み。

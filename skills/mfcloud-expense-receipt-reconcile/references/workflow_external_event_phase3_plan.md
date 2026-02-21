@@ -1,6 +1,6 @@
 # Phase 3 計画: 外部イベント実行（`trigger_kind=external_event`）
 
-最終更新: 2026-02-20  
+最終更新: 2026-02-21  
 前提: MVPスケルトンを維持しつつ、段階導入で安全性と運用性を上げる。
 
 ## 1. ゴール
@@ -23,6 +23,7 @@
 - Phase 3.3 実装として、`retry_jobs` キュー（保存/一覧/drain）と `escalated` 遷移を追加済み。
 - Phase 3.3 実装として、`/expense-workflow-copy` に再送キュー表示と手動 drain 導線を追加済み。
 - Phase 3.3 実装として、常駐ワーカーによる自動 drain（起動時 + ポーリング）を追加済み。
+- Phase 3.3 実装として、`escalated` 通知連携（Google Chat）と管理センター通知設定UI（`/errors`）を追加済み。
 
 ## 3. 段階導入
 
@@ -85,4 +86,5 @@
 2. 完了: `workflow_event` 監査分類の集計APIと表示要件を定義。
 3. 完了: 失敗時の再送キュー API（`retry-jobs`）と `escalated` 制御を実装。
 4. 完了: `retry_queue` を UI に可視化し、運用導線を統合。
-5. 次: `escalated` 通知連携（Slack/メール）を確定。
+5. 完了: `escalated` 通知連携（Google Chat）を確定し、Webhook URL の保存/クリア/テスト送信APIを実装。
+6. 次: 通知ポリシー拡張（成功通知ON/OFF、通知対象イベント選択）を設計。

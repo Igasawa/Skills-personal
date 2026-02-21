@@ -137,11 +137,13 @@
       const dirty = Boolean(excludeDirtyBySource[source]);
       if (ready && !dirty) {
         button.dataset.action = "run";
-        button.textContent = `${label}一括印刷（結合PDFを開く）`;
+        button.textContent = `🖨 ${label}一括印刷（結合PDFを開く）`;
         return;
       }
       button.dataset.action = "prepare";
-      button.textContent = dirty ? `${label}で保存して印刷対象を更新（変更あり）` : `${label}で保存して印刷対象を更新`;
+      button.textContent = dirty
+        ? `🔧 ${label}で保存して印刷対象を更新（変更あり）`
+        : `💾 ${label}で保存して印刷対象を更新`;
     });
   }
 

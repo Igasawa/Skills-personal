@@ -83,6 +83,27 @@ curl -X POST "http://127.0.0.1:8000/api/workflow-events/retry-jobs/drain" -H "Co
 5. `escalated` が発生した場合は手動対応へ切り替え、原因修正後に再送。
 6. 再送後に `status=success` を確認し、運用記録へ残す。
 
+## 4.3 通知設定（Google Chat）
+- 設定確認:
+```powershell
+curl "http://127.0.0.1:8000/api/workflow-events/notification-settings"
+```
+- Webhook保存:
+```powershell
+curl -X POST "http://127.0.0.1:8000/api/workflow-events/notification-settings" -H "Content-Type: application/json" -d "{\"webhook_url\":\"https://chat.googleapis.com/v1/spaces/.../messages?key=...&token=...\"}"
+```
+- Webhookクリア:
+```powershell
+curl -X POST "http://127.0.0.1:8000/api/workflow-events/notification-settings" -H "Content-Type: application/json" -d "{\"webhook_url\":\"\"}"
+```
+- 疎通確認:
+```powershell
+curl -X POST "http://127.0.0.1:8000/api/workflow-events/notification-settings/test" -H "Content-Type: application/json" -d "{}"
+```
+- 注意:
+  - 解決順は `file` 優先、`AX_GOOGLE_CHAT_WEBHOOK_URL` はフォールバック。
+  - APIレスポンスは常にマスク値のみ返し、生URLは返さない。
+
 ## 5. 運用チェックリスト（月次）
 - `workflow_event` の `reason_class` 上位3件を記録。
 - `failed` が0でない場合は原因と再発防止を記録。

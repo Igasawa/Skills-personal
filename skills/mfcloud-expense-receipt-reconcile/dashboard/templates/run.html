@@ -126,7 +126,7 @@
             data-source="amazon"
             data-print-ready="{{ 1 if amazon_bulk_print_ready else 0 }}"
           >
-            Amazonで保存して印刷対象を更新
+            📥 Amazonで保存して印刷対象を更新
           </button>
           <button
             type="button"
@@ -134,7 +134,7 @@
             data-source="rakuten"
             data-print-ready="{{ 1 if rakuten_bulk_print_ready else 0 }}"
           >
-            楽天で保存して印刷対象を更新
+            📥 楽天で保存して印刷対象を更新
           </button>
           <button
             type="button"
@@ -142,7 +142,7 @@
             data-source="amazon"
             {% if not amazon_print_prepared %}disabled{% endif %}
           >
-            Amazon印刷完了を記録
+            ✔️ Amazon印刷完了を記録
           </button>
           <button
             type="button"
@@ -150,10 +150,10 @@
             data-source="rakuten"
             {% if not rakuten_print_prepared %}disabled{% endif %}
           >
-            楽天印刷完了を記録
+            ✔️ 楽天印刷完了を記録
           </button>
           <a class="secondary" href="/runs/{{ ym }}/excluded-pdfs">除外PDF一覧</a>
-          <button type="button" class="secondary" id="open-receipts-folder" data-ym="{{ ym }}">領収書フォルダを開く</button>
+          <button type="button" class="secondary" id="open-receipts-folder" data-ym="{{ ym }}">📂 領収書フォルダを開く</button>
           <span
             id="exclude-status"
             class="status-note"
@@ -171,7 +171,7 @@
           <div class="print-actions">
             <a id="print-next-open" class="secondary" href="#" target="_blank" rel="noopener">除外PDF一覧を開く（1件ずつ印刷）</a>
             <div class="print-cmd" id="print-next-cmd"></div>
-            <button type="button" class="copy-button" data-copy-target="print-next-cmd">コマンドをコピー</button>
+            <button type="button" class="copy-button" data-copy-target="print-next-cmd">📋 コマンドをコピー</button>
           </div>
           <div class="muted">印刷ダイアログは自動では開きません。迷う場合は「除外PDF一覧」で1件ずつ印刷してください。</div>
           <div class="muted">モノクロ出力にする場合は印刷ダイアログで「白黒/グレースケール」を選択してください。</div>
@@ -253,7 +253,7 @@
             <span>絞り込み</span>
             <input type="text" id="mf-draft-filter" placeholder="mf_expense_id / order_id / reason で検索" />
           </label>
-          <button type="button" class="secondary" id="mf-draft-refresh">更新</button>
+          <button type="button" class="secondary" id="mf-draft-refresh">🔄 更新</button>
           <a class="secondary" id="mf-draft-download" href="/files/{{ ym }}/mf_draft_actions">JSONLをダウンロード</a>
           <span id="mf-draft-status" class="status-note"></span>
         </div>

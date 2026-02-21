@@ -448,7 +448,7 @@
   function setBusy(state) {
     if (refreshButton) {
       refreshButton.disabled = !!state;
-      refreshButton.textContent = state ? "更新中..." : "更新";
+      refreshButton.textContent = state ? "🔄 更新中..." : "🔄 更新";
     }
 
     if (statusEl) {

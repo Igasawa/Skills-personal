@@ -317,8 +317,8 @@
         ...buildWorkflowStepPreviewLines(payload.steps).map((line) => `手順: ${line}`),
         "テンプレートのワークフロー定義のみを引き継ぎます（カードや添付情報は引き継ぎません）。",
       ],
-      confirmLabel: "作成して開く",
-      cancelLabel: "戻る",
+      confirmLabel: "🛠️ 作成して開く",
+      cancelLabel: "↩️ 戻る",
     });
     if (!confirmed) return;
 
@@ -327,7 +327,7 @@
     workflowPageCreateState.inFlight = true;
     if (createButton) {
       createButton.disabled = true;
-      createButton.textContent = "作成中...";
+      createButton.textContent = "⚙️ 作成中...";
       createButton.dataset.busy = "1";
     }
     clearError();
@@ -534,7 +534,7 @@
     if (toggleButton) {
       toggleButton.dataset.lifecycleState = state;
       toggleButton.disabled = workflowPageLifecycleUpdateState.inFlight;
-      toggleButton.textContent = isFixed ? "Draftに戻す" : "固定保存";
+      toggleButton.textContent = isFixed ? "↩️ Draftに戻す" : "💾 固定保存";
       toggleButton.classList.remove("primary", "secondary");
       toggleButton.classList.add(isFixed ? "secondary" : "primary");
     }
@@ -568,8 +568,8 @@
             "固定保存を解除して Draft に戻します。",
             "Draft に戻すとページ設定と手順編集を再開できます。",
           ],
-      confirmLabel: isFixing ? "固定保存する" : "Draftへ戻す",
-      cancelLabel: "キャンセル",
+      confirmLabel: isFixing ? "💾 固定保存する" : "↩️ Draftへ戻す",
+      cancelLabel: "✖️ キャンセル",
     });
     if (!confirmed) return false;
     const toggleButton = document.getElementById("workflow-page-lifecycle-toggle");
@@ -577,7 +577,7 @@
     if (toggleButton) {
       toggleButton.disabled = true;
       toggleButton.dataset.busy = "1";
-      toggleButton.textContent = isFixing ? "固定保存中..." : "更新中...";
+      toggleButton.textContent = isFixing ? "⏳ 固定保存中..." : "🔄 更新中...";
     }
     try {
       const res = await fetch(`/api/workflow-pages/${encodeURIComponent(workflowPageId)}`, {
@@ -784,7 +784,7 @@
       const addButton = document.createElement("button");
       addButton.type = "button";
       addButton.className = "secondary";
-      addButton.textContent = "+ 手順を追加";
+      addButton.textContent = "➕ 手順を追加";
       addWrap.appendChild(addButton);
       body.appendChild(addWrap);
       panel.appendChild(body);
@@ -794,11 +794,11 @@
       const cancelButton = document.createElement("button");
       cancelButton.type = "button";
       cancelButton.className = "secondary";
-      cancelButton.textContent = "キャンセル";
+      cancelButton.textContent = "✖️ キャンセル";
       const saveButton = document.createElement("button");
       saveButton.type = "button";
       saveButton.className = "primary";
-      saveButton.textContent = "保存";
+      saveButton.textContent = "💾 保存";
       actionBar.appendChild(cancelButton);
       actionBar.appendChild(saveButton);
       panel.appendChild(actionBar);
@@ -854,7 +854,7 @@
           const removeButton = document.createElement("button");
           removeButton.type = "button";
           removeButton.className = "secondary";
-          removeButton.textContent = "-";
+          removeButton.textContent = "🗑️ 削除";
           removeButton.hidden = requiredAction || optionalCount <= 0;
           removeButton.disabled = requiredAction || optionalCount <= 0;
           removeButton.title = requiredAction ? "必須手順は削除できません。" : "";
@@ -1084,7 +1084,7 @@
     if (saveButton) {
       saveButton.disabled = true;
       saveButton.dataset.busy = "1";
-      saveButton.textContent = "保存中...";
+      saveButton.textContent = "💾 保存中...";
     }
     clearError();
 

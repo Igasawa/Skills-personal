@@ -175,7 +175,7 @@
 
     if ((status === "uploaded" || status === "failed") && !isCurrentPolling()) {
       currentActionsEl.appendChild(
-        buildActionButton(status === "uploaded" ? "整形を開始" : "再実行", async () => {
+        buildActionButton(status === "uploaded" ? "▶ 整形を開始" : "🔁 再実行", async () => {
           try {
             setBusy(true);
             clearJobActions();
@@ -434,7 +434,7 @@
     setMessage("アップロードが完了しました。整形ジョブを開始します...");
     await runPolishJob(jobId);
     await refreshJobs();
-    if (submitButton) submitButton.textContent = "実行";
+    if (submitButton) submitButton.textContent = "▶ 実行";
   }
 
   function bindEvents() {

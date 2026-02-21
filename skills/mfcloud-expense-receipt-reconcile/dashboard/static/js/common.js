@@ -56,9 +56,9 @@
         if (!text) return;
         try {
           await navigator.clipboard.writeText(text);
-          button.textContent = "コピーしました";
+          button.textContent = "✅ コピーしました";
           setTimeout(() => {
-            button.textContent = "コピー";
+            button.textContent = "📋 コピー";
           }, 1200);
         } catch {
           alert("クリップボードにコピーできませんでした。");
@@ -510,7 +510,7 @@
     closeButton.className = "dashboard-sidebar-close";
     closeButton.dataset.sidebarClose = "1";
     closeButton.setAttribute("aria-label", "サイドバーを閉じる");
-    closeButton.textContent = "\u00d7";
+    closeButton.textContent = "✖️ 閉じる";
     sidebar.appendChild(closeButton);
 
     const title = document.createElement("div");
@@ -566,7 +566,7 @@
     sidebarToggle.setAttribute("aria-controls", sidebar.id);
     sidebarToggle.setAttribute("aria-expanded", "false");
     sidebarToggle.setAttribute("aria-label", "サイドバー切替");
-    sidebarToggle.textContent = "サイドバー";
+    sidebarToggle.textContent = "☰ サイドバー";
     shellActions.appendChild(sidebarToggle);
     mainContent.appendChild(shellActions);
 
@@ -646,22 +646,22 @@
 
     function updateSidebarToggleLabel(viewportKind, isOpen) {
       if (viewportKind === "mobile") {
-        sidebarToggle.textContent = isOpen ? "メニューを閉じる" : "メニューを開く";
+        sidebarToggle.textContent = isOpen ? "✖️ メニューを閉じる" : "☰ メニューを開く";
         return;
       }
       if (viewportKind === "tablet") {
-        sidebarToggle.textContent = isOpen ? "メニューを折りたたむ" : "メニューを展開";
+        sidebarToggle.textContent = isOpen ? "◀ メニューを折りたたむ" : "▶ メニューを展開";
         return;
       }
       if (state === SIDEBAR_STATE_COLLAPSED) {
-        sidebarToggle.textContent = "サイドバーを展開";
+        sidebarToggle.textContent = "▶ サイドバーを展開";
         return;
       }
       if (state === SIDEBAR_STATE_HIDDEN) {
-        sidebarToggle.textContent = "サイドバーを表示";
+        sidebarToggle.textContent = "☰ サイドバーを表示";
         return;
       }
-      sidebarToggle.textContent = "サイドバーを折りたたむ";
+      sidebarToggle.textContent = "◀ サイドバーを折りたたむ";
     }
 
     function applySidebarLayout(options = {}) {
@@ -1003,13 +1003,13 @@
     const clearButton = document.createElement("button");
     clearButton.type = "button";
     clearButton.className = "secondary dashboard-ai-chat-clear";
-    clearButton.textContent = "履歴クリア";
+    clearButton.textContent = "🧹 クリア";
     actions.appendChild(clearButton);
 
     const sendButton = document.createElement("button");
     sendButton.type = "submit";
     sendButton.className = "primary dashboard-ai-chat-send";
-    sendButton.textContent = "送信";
+    sendButton.textContent = "➤ 送信";
     actions.appendChild(sendButton);
 
     return {
@@ -1076,16 +1076,16 @@
         const copyButton = document.createElement("button");
         copyButton.type = "button";
         copyButton.className = "dashboard-ai-chat-copy";
-        copyButton.textContent = "コピー";
+        copyButton.textContent = "📋 コピー";
         copyButton.setAttribute("aria-label", "AI回答をコピー");
         copyButton.addEventListener("click", async () => {
           if (!text) return;
           try {
             await navigator.clipboard.writeText(text);
-            copyButton.textContent = "コピー済み";
+            copyButton.textContent = "✅ コピー済み";
             showToast("AI回答をコピーしました。", "success");
             window.setTimeout(() => {
-              copyButton.textContent = "コピー";
+              copyButton.textContent = "📋 コピー";
             }, 1200);
           } catch (_error) {
             showToast("コピーに失敗しました。", "error");
@@ -1106,7 +1106,7 @@
           const confirmButton = document.createElement("button");
           confirmButton.type = "button";
           confirmButton.className = "dashboard-ai-chat-skill-action is-confirm";
-          confirmButton.textContent = "\u5b9f\u884c";
+          confirmButton.textContent = "✅ 実行";
           confirmButton.addEventListener("click", async () => {
             if (ui.pending) return;
             const token = String(toolResult.token || "").trim();
@@ -1118,7 +1118,7 @@
           const cancelButton = document.createElement("button");
           cancelButton.type = "button";
           cancelButton.className = "dashboard-ai-chat-skill-action is-cancel";
-          cancelButton.textContent = "\u30ad\u30e3\u30f3\u30bb\u30eb";
+          cancelButton.textContent = "✖️ キャンセル";
           cancelButton.addEventListener("click", async () => {
             if (ui.pending) return;
             const token = String(toolResult.token || "").trim();
@@ -1307,6 +1307,107 @@
     }
   }
 
+  const BUTTON_ICON_TEXT_MAP = {
+    "+": "➕",
+    "コピー": "📋 コピー",
+    "コピー済み": "✅ コピー済み",
+    "履歴クリア": "🧹 クリア",
+    "保存": "💾 保存",
+    "保存済み": "💾 保存済み",
+    "保存中...": "💾 保存中...",
+    "再実行": "🔁 再実行",
+    "更新": "🔄 更新",
+    "再読み込み": "🔄 再読み込み",
+    "開く": "📂 開く",
+    "閉じる": "✖️ 閉じる",
+    "キャンセル": "✖️ キャンセル",
+    "削除": "🗑️ 削除",
+    "作成": "🧱 作成",
+    "決定": "✅ 決定",
+    "適用する": "✅ 適用する",
+    "実行": "▶ 実行",
+    "作成して開く": "🛠️ 作成して開く",
+    "作成する": "🛠️ 作成する",
+    "送信": "➤ 送信",
+    "URLをコピー": "🔗 URLをコピー",
+    "プロンプトを送信": "✉️ プロンプトを送信",
+    "編集": "✏️ 編集",
+    "リンク名を編集": "✏️ リンク名を編集",
+    "固定解除": "📌 固定解除",
+    "固定化": "📌 固定化",
+    "復元": "♻️ 復元",
+    "詳細": "▼ 詳細",
+    "情報を表示": "ℹ️ 情報を表示",
+    "情報を隠す": "📖 情報を隠す",
+    "最適化中...": "✨ 最適化中...",
+    "AIで最適化": "✨ AIで最適化",
+    "メッセージを送信": "➤ メッセージを送信",
+    "元に戻す": "↩️ 元に戻す",
+    "OK": "✅ OK",
+    "並び替え": "↕️ 並び替え",
+    "固定リンクカードを選択": "📌 固定リンクカードを選択",
+  };
+
+  const BUTTON_ICON_PREFIXES = ["📋", "💾", "🗑", "🧹", "✖️", "✖", "✅", "♻️", "🔁", "🔄", "📂", "🛠️", "🛠", "▶", "➕", "🧱", "📌", "✉️", "✉", "✏️", "✏", "ℹ️", "📖", "✨", "⬇", "☰", "◀", "⏹", "🔊", "🧪", "⚙️", "⚙", "↕️"];
+
+  function normalizeButtonLabel(label) {
+    return String(label || "").replace(/\s+/g, " ").trim();
+  }
+
+  function isAlreadyIconized(label) {
+    return BUTTON_ICON_PREFIXES.some((prefix) => String(label || "").trim().startsWith(prefix));
+  }
+
+  function applyStandardButtonIcons(root) {
+    const targetRoot = root || document;
+    const buttons = targetRoot.querySelectorAll("button, input[type='button'], input[type='submit'], input[type='reset']");
+    buttons.forEach((button) => {
+      if (!button || button.dataset.buttonIconified) return;
+
+      if (button.matches("input")) {
+        const originalValue = normalizeButtonLabel(button.value);
+        const nextValue = BUTTON_ICON_TEXT_MAP[originalValue];
+        if (!nextValue || isAlreadyIconized(button.value)) {
+          if (nextValue && isAlreadyIconized(button.value)) return;
+          return;
+        }
+        button.value = nextValue;
+        button.dataset.buttonIconified = "1";
+        return;
+      }
+
+      const originalText = normalizeButtonLabel(button.textContent);
+      const nextText = BUTTON_ICON_TEXT_MAP[originalText];
+      if (!nextText || isAlreadyIconized(button.textContent)) return;
+      button.textContent = nextText;
+      button.dataset.buttonIconified = "1";
+    });
+  }
+
+  function bindButtonIconObserver() {
+    applyStandardButtonIcons(document);
+    if (typeof MutationObserver === "undefined") return;
+    const observer = new MutationObserver((mutations) => {
+      mutations.forEach((mutation) => {
+        mutation.addedNodes.forEach((node) => {
+          if (!(node instanceof Element)) return;
+          if (
+            node.tagName === "BUTTON" ||
+            node.querySelector?.("button") ||
+            node.tagName === "INPUT" &&
+            /^(?:button|submit|reset)$/i.test(node.type || "")
+          ) {
+            applyStandardButtonIcons(node);
+            node
+              .querySelectorAll?.("button, input[type='button'], input[type='submit'], input[type='reset']")
+              ?.forEach((child) => applyStandardButtonIcons(child.parentElement || child));
+          }
+        });
+      });
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+  }
+
   function initThemeToggle() {
     applyTheme(readStoredTheme());
     bindSystemThemeSync();
@@ -1317,6 +1418,7 @@
   mountThemeToggle();
   initSidebarLayout(sidebarLayout);
   initAiChatSidebar();
+  bindButtonIconObserver();
 
   window.DashboardCommon = {
     applyTheme,

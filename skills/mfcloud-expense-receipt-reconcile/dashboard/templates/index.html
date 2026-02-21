@@ -30,14 +30,14 @@
               >
                 {% if page_lifecycle == "fixed" %}Fixed{% else %}Draft{% endif %}
               </span>
-              <button type="button" class="primary" id="workflow-page-lifecycle-toggle">
-                {% if page_lifecycle == "fixed" %}Draftに戻す{% else %}固定保存{% endif %}
-              </button>
-              <button type="button" class="secondary" id="workflow-page-edit">ページ設定</button>
-              <button type="button" class="secondary" id="workflow-page-edit-steps">手順編集</button>
-              <button type="button" class="secondary" id="workflow-page-rollback-steps">前版に戻す</button>
+            <button type="button" class="primary" id="workflow-page-lifecycle-toggle">
+                {% if page_lifecycle == "fixed" %}↩️ Draftに戻す{% else %}💾 固定保存{% endif %}
+            </button>
+              <button type="button" class="secondary" id="workflow-page-edit">⚙️ ページ設定</button>
+              <button type="button" class="secondary" id="workflow-page-edit-steps">✏️ 手順編集</button>
+              <button type="button" class="secondary" id="workflow-page-rollback-steps">↩️ 前版に戻す</button>
               <span class="muted" id="workflow-page-step-version"></span>
-              <button type="button" class="secondary" id="workflow-page-archive">アーカイブ</button>
+              <button type="button" class="secondary" id="workflow-page-archive">🗃 アーカイブ</button>
             {% endif %}
             {% if not (workflow_page and workflow_page.id) %}
               <a class="secondary" href="/status">ステータスページを開く</a>
@@ -110,8 +110,8 @@
               <span class="step-status" data-step-status="preflight">未実行</span>
             </div>
             <div class="step-actions">
-              <button type="button" class="primary" data-step-action="preflight">準備を実行</button>
-              <button type="button" class="secondary" data-step-action="preflight_mf">MF再取得のみ</button>
+              <button type="button" class="primary" data-step-action="preflight">▶ 準備を実行</button>
+              <button type="button" class="secondary" data-step-action="preflight_mf">↻ MF再取得のみ</button>
               <span class="muted">各サイトのログインとMF連携の再取得をまとめて実行します。</span>
             </div>
           </div>
@@ -129,8 +129,8 @@
                 <span class="process-desc">Amazon領収書を取得</span>
               </div>
               <div class="step-actions">
-                <button type="button" class="primary" data-step-action="amazon_download">Amazon領収書を取得</button>
-                <button type="button" class="step-reset" data-step-reset="amazon_download">リセット</button>
+                <button type="button" class="primary" data-step-action="amazon_download">📥 Amazon領収書を取得</button>
+                <button type="button" class="step-reset" data-step-reset="amazon_download">↺ リセット</button>
               </div>
               <span class="step-status process-status" data-step-status="amazon_download">未実行</span>
             </div>
@@ -141,7 +141,7 @@
               </div>
               <div class="step-actions">
                 <a class="secondary" data-step-link="amazon_exclude" href="#">除外・印刷（完了記録まで）を開く</a>
-                <button type="button" class="step-reset" data-step-reset="amazon_decide_print">リセット</button>
+                <button type="button" class="step-reset" data-step-reset="amazon_decide_print">↺ リセット</button>
               </div>
               <span class="step-status process-status" data-step-status="amazon_decide_print">未実行</span>
             </div>
@@ -158,8 +158,8 @@
                 <span class="process-desc">楽天領収書を取得</span>
               </div>
               <div class="step-actions">
-                <button type="button" class="primary" data-step-action="rakuten_download">楽天領収書を取得</button>
-                <button type="button" class="step-reset" data-step-reset="rakuten_download">リセット</button>
+                <button type="button" class="primary" data-step-action="rakuten_download">📥 楽天領収書を取得</button>
+                <button type="button" class="step-reset" data-step-reset="rakuten_download">↺ リセット</button>
               </div>
               <span class="step-status process-status" data-step-status="rakuten_download">未実行</span>
             </div>
@@ -170,7 +170,7 @@
               </div>
               <div class="step-actions">
                 <a class="secondary" data-step-link="rakuten_exclude" href="#">除外・印刷（完了記録まで）を開く</a>
-                <button type="button" class="step-reset" data-step-reset="rakuten_decide_print">リセット</button>
+                <button type="button" class="step-reset" data-step-reset="rakuten_decide_print">↺ リセット</button>
               </div>
               <span class="step-status process-status" data-step-status="rakuten_decide_print">未実行</span>
             </div>
@@ -183,16 +183,16 @@
             </div>
             <div class="step-actions">
               <button type="button" class="secondary" data-provider-action="open_provider_source">
-                連携元フォルダを開く
+                📂 連携元フォルダを開く
               </button>
               <button type="button" class="secondary" data-provider-action="open_shared_inbox">
-                共通フォルダを開く
+                📂 共通フォルダを開く
               </button>
               <button type="button" class="primary" data-provider-action="import_provider_receipts">
-                共通フォルダから取り込み
+                📥 共通フォルダから取り込み
               </button>
               <button type="button" class="secondary" data-provider-action="print_provider_receipts">
-                一括印刷（結合PDFを開く）
+                🖨 一括印刷（結合PDFを開く）
               </button>
               <span class="muted">自動取得されない領収書（Aqua Voice / Claude / ChatGPT / Gamma など）を共通フォルダの直下に入れて取り込みます。<a href="/workspace" target="_blank" rel="noopener noreferrer">ワークスペースを開く</a></span>
               <span class="muted" data-provider-source-summary>Provider source folder status will appear here.</span>
@@ -209,11 +209,11 @@
               <span class="step-status" data-step-status="mf_bulk_upload_task">未実行</span>
             </div>
             <div class="step-actions">
-              <button type="button" class="secondary" data-manual-action="open_mf_bulk_inbox">MF一括アップロード用フォルダを開く</button>
-              <button type="button" class="primary" data-manual-action="run_mf_bulk_upload">MF一括アップロードを実行</button>
+              <button type="button" class="secondary" data-manual-action="open_mf_bulk_inbox">📂 MF一括アップロード用フォルダを開く</button>
+              <button type="button" class="primary" data-manual-action="run_mf_bulk_upload">▶ MF一括アップロードを実行</button>
               <span class="muted">mf_bulk_upload/inbox の領収書をMFへ送信します。送信済みファイルは _uploaded に移動します。</span>
-              <button type="button" class="secondary" data-manual-action="open_mf_csv_inbox">交通費CSVインポート用フォルダを開く</button>
-              <button type="button" class="primary" data-manual-action="run_mf_csv_import">交通費CSVインポートを実行</button>
+              <button type="button" class="secondary" data-manual-action="open_mf_csv_inbox">📂 交通費CSVインポート用フォルダを開く</button>
+              <button type="button" class="primary" data-manual-action="run_mf_csv_import">▶ 交通費CSVインポートを実行</button>
               <span class="muted">mf_csv_import/inbox のCSVを交通費インポートへ送信します。送信済みファイルは _imported に移動します。</span>
             </div>
           </div>
@@ -225,10 +225,10 @@
             </div>
             <div class="step-actions">
               <button type="button" class="secondary" data-archive-action="archive_outputs">
-                アーカイブ作成（保存のみ）
+                🧳 アーカイブ作成（保存のみ）
               </button>
               <button type="button" class="secondary" data-archive-action="month_close">
-                月次クローズ（アーカイブ+クリーンアップ）
+                🧹 月次クローズ（アーカイブ+クリーンアップ）
               </button>
               <div class="month-close-checklist" data-month-close-checklist>
                 <div class="checklist-header">月次クローズ前の確認項目</div>

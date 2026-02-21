@@ -946,3 +946,69 @@
 - **レビュー期限**: -
 - **ソース**: llm
 
+## [2026-02-21] Commit: fddeed2e19416c72b9261001634d8b2b9c2f6dfc
+- **要約**: ワークスペースの同期・初期化ロジックを core モジュール名前空間へ整理し、エラーハンドリングを追加しました。
+- **獲得した知識**: 同期関連のAPIは dashboardWorkspace.sync および dashboardWorkspace.core.sync に集約して定義する。, bootstrapWorkspace 実行時は try-catch ブロックで囲み、初期化失敗時に console.error でログを出力し、後続の処理（リンク初期化等）を停止させる。, 名前空間の解決は dashboard.core を最優先し、次に dashboard 直下、最後にレガシーなグローバル変数の順でフォールバックさせる。
+- **守るべきルール**: エラーハンドリングを伴わない非同期の初期化処理（bootstrap）の実装。, 名前空間を介さずにグローバルスコープの同期関数を直接参照・呼び出しすること。
+- **未解決の文脈**: resolveStateFn の定義がこの差分に含まれておらず、外部依存または未定義の可能性がある。, 後方互換性のために window.DashboardWorkspaceSync などの古い名前空間への代入が残存している。
+- **対象範囲**: skills/mfcloud-expense-receipt-reconcile/dashboard/static/js/workspace.js, skills/mfcloud-expense-receipt-reconcile/dashboard/static/js/workspace.sync.js
+- **確度**: 0.9
+- **重要度**: low
+- **レビュー期限**: -
+- **ソース**: llm
+
+## [2026-02-21] Commit: 3f918bb1ebb1268fe939b86b29e205b30fc68f01
+- **要約**: Workspace状態の初期化シム（shim）の強化と互換性の向上。
+- **獲得した知識**: 互換性シムを実装する際は、対象プロパティが関数であることを `typeof` 等で明示的に確認してから割り当てること。, 主要なライフサイクル関数（bootstrap等）には、古い命名規則や代替関数へのフォールバックを定義し、移行期間中の互換性を維持すること。
+- **守るべきルール**: 型チェックを行わずに `namespace.func || function() {}` のような論理和のみで関数を割り当てること（プロパティが非関数の真値である場合に実行時エラーを招くため）。
+- **未解決の文脈**: 複数のグローバル変数（DashboardWorkspace, DashboardWorkspaceState）に依存しており、状態管理の所在が分散している。, コアロジックと互換性維持のためのシムが同一ファイル内で密結合している。
+- **対象範囲**: skills/mfcloud-expense-receipt-reconcile/dashboard/static/js/workspace.state.js, Workspace状態管理の初期化プロセス
+- **確度**: 0.9
+- **重要度**: low
+- **レビュー期限**: -
+- **ソース**: llm
+
+## [2026-02-21] Commit: 03b43c33c2b046b0803063cd407078a1882b4c9a
+- **要約**: workspace.links.js におけるトーストメッセージの日本語化
+- **獲得した知識**: workspace.links.js 内のユーザー通知メッセージは日本語で統一する。
+- **守るべきルール**: エラーの具体的内容（バリデーション失敗、重複、保存失敗など）を区別せずに、同一の汎用的なエラーメッセージ（「追加リンクを複製できませんでした。」）に統合すること。
+- **未解決の文脈**: エラーメッセージの共通化により、ユーザーがエラーの具体的な原因（URLの形式不正なのか、重複なのか）を特定しにくくなっている。
+- **対象範囲**: skills/mfcloud-expense-receipt-reconcile/dashboard/static/js/workspace.links.js
+- **確度**: 0.9
+- **重要度**: low
+- **レビュー期限**: -
+- **ソース**: llm
+
+## [2026-02-21] Commit: 33fd3b2d8b9b119701e223cf207a1115bf0fe238
+- **要約**: プロンプト初期化処理を workspace.prompt.js モジュールへ集約し、DOMイベント制御や状態同期ロジックをカプセル化しました。
+- **獲得した知識**: 他モジュール（state, links, render等）の関数を呼び出す際は、resolve...Function ヘルパーを使用して安全なフォールバックを定義する。, プロンプト編集時は 250ms のデバウンスタイマーによる自動保存ロジックを実装する。, プロンプト最適化結果の適用において、needsConfirmation が存在する場合は必ず確認ダイアログを表示してユーザーの同意を得る。
+- **守るべきルール**: dashboard.core や dashboard.state などの名前空間へ直接アクセスし、存在チェックやフォールバックなしに関数を実行すること。, プロンプト編集画面のDOMイベントリスナーを workspace.prompt モジュール外でバラバラに定義すること。
+- **未解決の文脈**: 特定のDOM ID（workspace-prompt-editor等）に直接依存しており、HTML構造の変更に対して脆弱性が残っている。, showToastConfirmDialog のフォールバック実装が簡易的な警告表示のみであり、ダイアログとしての完全な代替になっていない可能性がある。
+- **対象範囲**: application
+- **確度**: 0.9
+- **重要度**: low
+- **レビュー期限**: -
+- **ソース**: llm
+
+## [2026-02-21] Commit: 4bc51b2e77e88dda48d18f68140c4dab8f8c16c7
+- **要約**: プロンプト最適化に関連するUI描画ヘルパー（ローディング表示、差分表示、モーダル制御、メタ情報更新）を workspace.render.js モジュールへ集約しました。
+- **獲得した知識**: プロンプト最適化ボタンの状態管理には setPromptOptimizeButtonLoading を使用する。, モーダルの表示切り替えとEscapeキーによる閉鎖イベントのライフサイクル管理には setPromptDiffVisibility を使用し、二重登録を防止する。, 文字数やステータスの更新には updatePromptMeta を使用し、DOM操作をカプセル化する。, UIヘルパー関数は register メソッドを通じて名前空間に公開する。
+- **守るべきルール**: 描画モジュール外でプロンプト関連のDOM要素を直接操作する。, Escapeキーなどのグローバルイベントリスナーを、要素の非表示時に解除し忘れる、または重複して登録する。
+- **未解決の文脈**: 「最適化中...」「文字」などの表示文字列がJavaScript内にハードコードされており、国際化（i18n）に対応していない。, getPromptOptimizeList が namespace.normalizePromptOptimizeList の存在に依存しており、定義順序や依存関係が暗黙的である。
+- **対象範囲**: skills/mfcloud-expense-receipt-reconcile/dashboard/static/js/workspace.render.js, プロンプト最適化UIコンポーネント
+- **確度**: 0.9
+- **重要度**: low
+- **レビュー期限**: -
+- **ソース**: llm
+
+## [2026-02-21] Commit: 35396e32dfacea9037f8b29a02a0a9dc44a8b48a
+- **要約**: ワークスペース初期化の回復性向上、プロンプト状態アクセスの整合性修正、およびエラー実行ループへの再計画ポリシー導入
+- **獲得した知識**: error_exec_loop.py は no_progress_streak を使用して、同一 error_signature が連続する回数を追跡しなければならない。, auto_replan_on_no_progress が有効な場合、no_progress_limit 到達時に final_status = replan としてループを停止させること。, 自動コミットおよびプッシュ処理において、認証失敗等のエラーが発生した場合は commit_payload 内に詳細を記録し、実行結果に反映させること。
+- **守るべきルール**: 進捗がない（同じエラーシグネチャが続く）状態で、上限を設けずにループを継続すること。, Gitプッシュの失敗を無視し、全体のステータスを resolved と誤認させること。, ワークスペースの初期化処理において、不完全な状態からの復旧（resilience）を考慮しない実装。
+- **未解決の文脈**: 自動コミット時の認証情報管理の堅牢化（テストコードで auth failed が確認されている）。, replan ステータスを受け取った際の、ダッシュボード側での具体的なユーザー通知や後続フローの最適化。
+- **対象範囲**: skills/error-exec-loop, skills/mfcloud-expense-receipt-reconcile/dashboard, skills/mfcloud-expense-receipt-reconcile/scripts
+- **確度**: 0.9
+- **重要度**: medium
+- **レビュー期限**: -
+- **ソース**: llm
+

@@ -146,7 +146,7 @@
     const summaryEl = row.querySelector("[data-template-step-schedule-summary]");
     const originalLabel = button.textContent;
     button.disabled = true;
-    button.textContent = "Scheduling...";
+    button.textContent = "⏱️ Scheduling...";
     try {
       const currentRes = await fetch(`${schedulerUrl}${schedulerUrl.includes("?") ? "&" : "?"}_=${Date.now()}`, {
         cache: "no-store",
@@ -253,7 +253,7 @@
       scheduleButton.type = "button";
       scheduleButton.className = "secondary";
       scheduleButton.dataset.templateStepSchedule = "1";
-      scheduleButton.textContent = "Set Timer";
+      scheduleButton.textContent = "⏱ Set Timer";
       row.insertBefore(scheduleButton, removeButton);
     }
 
@@ -303,7 +303,7 @@
     removeButton.type = "button";
     removeButton.className = "secondary";
     removeButton.dataset.templateStepRemove = "1";
-    removeButton.textContent = "-";
+    removeButton.textContent = "🗑️ 削除";
     removeButton.setAttribute("aria-label", "Remove task");
     removeButton.addEventListener("click", () => {
       row.remove();

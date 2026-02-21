@@ -50,7 +50,7 @@
         const restore = document.createElement("button");
         restore.type = "button";
         restore.className = "secondary";
-        restore.textContent = "復元";
+        restore.textContent = "♻️ 復元";
         restore.addEventListener("click", async () => {
           const workflowPageId = String(row?.id || "").trim();
           if (!workflowPageId) return;

@@ -237,6 +237,9 @@
     - `GET /api/scheduler/health` へ retry設定（`failure_retry_seconds`, `failure_retry_max_attempts`）を追加。
   - `api_workspace_routes.py`
     - scheduler health/restart のfallbackレスポンスでも retry設定値を返すよう調整。
+    - 通知設定API（`GET/POST /api/workflow-events/notification-settings`）と疎通確認API（`POST /api/workflow-events/notification-settings/test`）を運用化。
+    - 通知Webhookの解決順を `file` 優先・`env` フォールバックに統一（生URLはレスポンス非返却）。
+    - `escalated` 通知を Google Chat で送信し、`workflow_event_notification` 監査ログへ `success/failed/skipped` を記録。
   - `references/workflow_scheduler_runbook.md`
     - scheduler retry設定（`AX_SCHEDULER_*`）の推奨値・変更手順・確認手順・注意事項を追記。
   - `tests/test_dashboard_api.py`
@@ -244,6 +247,7 @@
     - `monthly` 31日指定が短月を挟んでもアンカー日を維持するケースを追加。
     - 起動失敗が1回再試行されること、再試行成功/再失敗の確定挙動を検証するケースを追加。
     - retry設定の環境変数解釈（`_env_int`）の境界値回帰テストを追加。
+    - 通知Webhook解決順（`file > env`）と設定クリア後フォールバック（`env`）の回帰テストを追加。
   - `scripts/playwright_smoke_scheduler_phase23.ps1`
     - schedulerの recurrence 選択肢（once/daily/weekly/monthly）と weekly/monthly 保存のUI/API往復を確認するスモークを追加。
     - retry検証を固定待機（65秒）から、health APIの retry秒数を参照したポーリング方式へ変更。
@@ -266,12 +270,21 @@
   - `powershell -ExecutionPolicy Bypass -File skills/mfcloud-expense-receipt-reconcile/scripts/playwright_smoke_scheduler_phase23.ps1 -BaseUrl http://127.0.0.1:8779 -TemplateId e2e_scheduler_phase23_pdca`: pass
     - レポート: `output/playwright/workflow_scheduler_phase23_smoke_20260221_131755.txt`
   - `pytest -q skills/mfcloud-expense-receipt-reconcile/tests/test_dashboard_api.py -k "scheduler_env_int_parses_and_falls_back or scheduler"`: 29 passed
+  - `pytest -q skills/mfcloud-expense-receipt-reconcile/tests/test_dashboard_api.py -k "notification_settings or escalation_notification or workflow_events_summary_returns_aggregated_counts"`: 11 passed
+  - `pytest -q skills/mfcloud-expense-receipt-reconcile/tests/test_dashboard_pages.py -k "errors_page_shows_incident_controls"`: 1 passed
+  - `pytest -q skills/mfcloud-expense-receipt-reconcile/tests/test_dashboard_contract.py -k "api_router_registers_expected_routes"`: 1 passed
+  - `node --check skills/mfcloud-expense-receipt-reconcile/dashboard/static/js/errors.js`: 成功
+  - Playwright（通知設定タブ最小スモーク）:
+    - `npx --yes --package @playwright/cli playwright-cli ...` で `/errors?tab=notification-settings` のDOM要素と `GET /api/workflow-events/notification-settings` を確認（pass）
+    - レポート: `output/playwright/workflow_notification_settings_ui_smoke_20260221_133207.txt`
+    - スクリーンショット: `.playwright-cli/page-2026-02-21T04-32-49-908Z.png`
 - 未解決:
-  - Phase 3.3（再送・再実行運用）の `escalated` 通知連携（Slack/メール）は未対応
+  - Phase 3.3（再送・再実行運用）の通知ポリシー拡張（成功通知ON/OFF、通知対象イベント選択）は未対応
+  - 可視化拡張（`workflow-events/summary` の日次トレンド表示）は未対応
 
 ## 5. 直近タスク（次の更新対象）
-1. Phase 3.3拡張: `escalated` 通知連携（Slack/メール）を追加
-2. 可視化拡張: `workflow-events/summary` を基に日次トレンド/通知要件を具体化
+1. Phase 3.3拡張: 通知ポリシーUI（成功通知ON/OFF、通知対象イベント選択）を追加
+2. 可視化拡張: `workflow-events/summary` を基に日次トレンド表示を追加
 3. Phase 2.3運用確認: scheduler runbookに沿った定期チェック運用を開始
 
 ## 6. 更新ルール

@@ -493,12 +493,12 @@
       const cancelButton = document.createElement("button");
       cancelButton.type = "button";
       cancelButton.className = "secondary";
-      cancelButton.textContent = "キャンセル";
+      cancelButton.textContent = "✖️ キャンセル";
 
       const saveButton = document.createElement("button");
       saveButton.type = "submit";
       saveButton.className = "primary";
-      saveButton.textContent = "保存";
+      saveButton.textContent = "💾 保存";
 
       const close = bindModalDismiss(overlay, modal, resolve);
 
@@ -664,7 +664,7 @@
     removeButton.className = "secondary";
     removeButton.dataset.sourceUrlRemove = "1";
     removeButton.setAttribute("aria-label", "このURL行を削除");
-    removeButton.textContent = "-";
+    removeButton.textContent = "🗑️ 削除";
     removeButton.addEventListener("click", () => {
       row.remove();
       ensureTemplateSourceUrlRows();
@@ -1470,7 +1470,7 @@
     removeButton.className = "secondary";
     removeButton.dataset.templateStepRemove = "1";
     removeButton.setAttribute("aria-label", "手順を削除");
-    removeButton.textContent = "-";
+    removeButton.textContent = "🗑️ 削除";
 
     const toggleButton = document.createElement("button");
     toggleButton.type = "button";
@@ -1652,7 +1652,7 @@
     }
     if (summaryEl) summaryEl.textContent = config.summary;
     if (saveButton) {
-      saveButton.textContent = hasTemplateTarget ? config.saveLabel : "テンプレート更新（対象なし）";
+      saveButton.textContent = hasTemplateTarget ? config.saveLabel : "💾 テンプレート更新（対象なし）";
       saveButton.disabled = !hasTemplateTarget;
       saveButton.title = hasTemplateTarget ? "" : "更新対象のテンプレートがありません。";
     }

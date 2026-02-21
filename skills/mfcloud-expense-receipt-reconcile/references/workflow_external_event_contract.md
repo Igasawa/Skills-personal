@@ -1,7 +1,7 @@
 # Workflow Events API 契約（Phase 3.1/3.2/3.3）
 
 最終更新: 2026-02-20  
-対象: `POST /api/workflow-events`, `GET /api/workflow-events/summary`, `GET /api/workflow-events/retry-jobs`, `POST /api/workflow-events/retry-jobs/drain`
+対象: `POST /api/workflow-events`, `GET /api/workflow-events/summary`, `GET /api/workflow-events/retry-jobs`, `POST /api/workflow-events/retry-jobs/drain`, `GET/POST /api/workflow-events/notification-settings`, `POST /api/workflow-events/notification-settings/test`
 
 ## 1. 目的
 - `trigger_kind=external_event` のテンプレートを、外部イベントで安全に起動する。
@@ -174,3 +174,41 @@
 - `AX_WORKFLOW_EVENT_RETRY_WORKER_ENABLED=1`
 - `AX_WORKFLOW_EVENT_RETRY_WORKER_POLL_SECONDS=30`
 - 3回失敗で `escalated` とし、自動再送を停止（手動対応へ移行）。
+
+## 12. 通知設定API契約（Phase 3.3）
+
+### Webhook設定取得
+- エンドポイント: `GET /api/workflow-events/notification-settings`
+- 返却:
+  - `status=ok`
+  - `configured`（`true/false`）
+  - `webhook_url_masked`（常にマスク済み）
+  - `source`（`file` / `env` / `none`）
+  - `updated_at`
+- 生のWebhook URLは返却しない。
+
+### Webhook設定保存/クリア
+- エンドポイント: `POST /api/workflow-events/notification-settings`
+- 入力:
+  - `webhook_url`（必須、空文字でクリア）
+- 検証:
+  - `https://chat.googleapis.com/v1/spaces/.../messages?key=...&token=...` の形式のみ許可
+- 解決優先順位:
+  1. 設定ファイル（`_workflow_events/notification_settings.json`）
+  2. 環境変数 `AX_GOOGLE_CHAT_WEBHOOK_URL`
+- 返却:
+  - `status=ok`
+  - `configured`, `webhook_url_masked`, `source`, `updated_at`
+
+### テスト送信
+- エンドポイント: `POST /api/workflow-events/notification-settings/test`
+- 動作:
+  - 現在有効なWebhookへ Google Chat テスト通知を1件送信する。
+  - 未設定時は `400`（`Google Chat webhook is not configured.`）。
+- 返却:
+  - 成功: `status=ok`, `sent=true`, `http_status`, `message`
+  - 失敗: `status=error`, `sent=false`, `http_status`, `message`
+- 監査:
+  - `event_type=workflow_event_notification`
+  - `action=notification_settings_test`
+  - `status=success/failed/skipped`
