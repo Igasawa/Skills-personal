@@ -1,5 +1,0 @@
-interface:
-  display_name: "Multi-Perspective Planner"
-  short_description: "要件・実装・運用・リスクを統合し意思決定可能な実行計画を提示"
-  default_prompt: "$skill-name を使って、意思決定可能な計画（複数視点統合・検証済み）を作成してください。"
-
