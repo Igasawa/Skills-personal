@@ -3,6 +3,7 @@
   const source = (dashboard.core && dashboard.core.sync) || {};
   const fallback = window.DashboardWorkspaceSync || {};
   const namespace = dashboard.sync || source || fallback || {};
+  const stateNamespace = dashboard.state || {};
   const linksNamespace = dashboard.links || {};
   const promptNamespace = dashboard.prompt || {};
   if (!dashboard.sync) {
@@ -18,6 +19,13 @@
     });
   };
 
+  const resolveStateFn = function (name, fallback) {
+    const candidate = stateNamespace[name];
+    if (typeof candidate === "function") return candidate;
+    if (typeof namespace[name] === "function") return namespace[name];
+    return fallback;
+  };
+
   async function bootstrapWorkspace() {
     const bootstrapState = namespace.bootstrapWorkspaceState || function () {};
     const initializeLinks = linksNamespace.initializeLinks || function () {};
@@ -28,15 +36,15 @@
   }
 
   register({
-    bootstrapWorkspaceState: namespace.bootstrapWorkspaceState || function () {},
-    scheduleWorkspaceSync: namespace.scheduleWorkspaceSync || function () {},
-    readPromptMap: namespace.readPromptMap || function () { return {}; },
-    saveWorkspaceState: namespace.saveWorkspaceState || function () { return null; },
+    bootstrapWorkspaceState: resolveStateFn("bootstrapWorkspaceState", function () {}),
+    scheduleWorkspaceSync: resolveStateFn("scheduleWorkspaceSync", function () {}),
+    readPromptMap: resolveStateFn("readPromptMap", function () { return {}; }),
+    saveWorkspaceState: resolveStateFn("saveWorkspaceState", function () { return null; }),
     bootstrap: bootstrapWorkspace,
-    pushWorkspaceStateToServer: namespace.pushWorkspaceStateToServer || function () { return Promise.resolve(false); },
-    fetchWorkspaceStateFromServer: namespace.fetchWorkspaceStateFromServer || function () { return null; },
-    collectLocalWorkspaceState: namespace.collectLocalWorkspaceState || function () { return {}; },
-    schedule: namespace.scheduleWorkspaceSync || function () {},
+    pushWorkspaceStateToServer: resolveStateFn("pushWorkspaceStateToServer", function () { return Promise.resolve(false); }),
+    fetchWorkspaceStateFromServer: resolveStateFn("fetchWorkspaceStateFromServer", function () { return null; }),
+    collectLocalWorkspaceState: resolveStateFn("collectLocalWorkspaceState", function () { return {}; }),
+    schedule: resolveStateFn("scheduleWorkspaceSync", function () {}),
   });
 
   namespace.schedule = namespace.scheduleWorkspaceSync;

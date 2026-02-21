@@ -3062,16 +3062,6 @@
     normalizePromptOptimizeList,
   };
 
-  const workspaceSyncApi = {
-    bootstrapWorkspaceState,
-    scheduleWorkspaceSync,
-    readPromptMap,
-    saveWorkspaceState,
-    pushWorkspaceStateToServer,
-    fetchWorkspaceStateFromServer,
-    collectLocalWorkspaceState,
-  };
-
   const workspaceRenderApi = {
     renderPromptFrontElement,
     renderPromptFronts,
@@ -3094,7 +3084,6 @@
   dashboardWorkspace.state = Object.assign(dashboardWorkspace.state || {}, workspaceStateApi);
   dashboardWorkspace.links = Object.assign(dashboardWorkspace.links || {}, workspaceLinksApi);
   dashboardWorkspace.prompt = Object.assign(dashboardWorkspace.prompt || {}, workspacePromptApi);
-  dashboardWorkspace.sync = Object.assign(dashboardWorkspace.sync || {}, workspaceSyncApi);
   dashboardWorkspace.render = Object.assign(dashboardWorkspace.render || {}, workspaceRenderApi);
   dashboardWorkspace.core = Object.assign(dashboardWorkspace.core || {}, {
     state: dashboardWorkspace.state,
