@@ -1,7 +1,7 @@
 # Shared Config Rollout Checklist
 
-更新日: 2026-02-20  
-対象優先度: 高頻度スキル優先
+Updated: 2026-02-20  
+Target priority: high-frequency skills first
 
 ## Rollout Rules
 
