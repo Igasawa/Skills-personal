@@ -237,6 +237,8 @@
     - `GET /api/scheduler/health` へ retry設定（`failure_retry_seconds`, `failure_retry_max_attempts`）を追加。
   - `api_workspace_routes.py`
     - scheduler health/restart のfallbackレスポンスでも retry設定値を返すよう調整。
+  - `references/workflow_scheduler_runbook.md`
+    - scheduler retry設定（`AX_SCHEDULER_*`）の推奨値・変更手順・確認手順・注意事項を追記。
   - `tests/test_dashboard_api.py`
     - `weekly` 起動後に `run_date` が 7日進行するケースを追加。
     - `monthly` 31日指定が短月を挟んでもアンカー日を維持するケースを追加。
@@ -262,7 +264,7 @@
 ## 5. 直近タスク（次の更新対象）
 1. Phase 3.3拡張: `escalated` 通知連携（Slack/メール）を追加
 2. 可視化拡張: `workflow-events/summary` を基に日次トレンド/通知要件を具体化
-3. Phase 2.3運用補完: retry設定値の運用手順（推奨値・変更時注意）をランブックへ追記
+3. Phase 2.3運用確認: scheduler runbookに沿った定期チェック運用を開始
 
 ## 6. 更新ルール
 - 実装または検証を行った日付ごとに「進捗ログ」を追記する。
@@ -271,6 +273,7 @@
 
 ## 7. 関連計画書
 - Phase 2（スケジュール実行増設）: `references/workflow_scheduler_phase2_plan.md`
+- Phase 2運用（scheduler）: `references/workflow_scheduler_runbook.md`
 - Phase 3（外部イベント増設）: `references/workflow_external_event_phase3_plan.md`
 - Phase 3契約（external_event）: `references/workflow_external_event_contract.md`
 - 制約契約（MVP）: `references/workflow_trigger_execution_contract.md`

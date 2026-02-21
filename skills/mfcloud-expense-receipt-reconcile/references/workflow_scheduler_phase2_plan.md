@@ -102,3 +102,6 @@
 2. 二重実行が抑止される
 3. 失敗時に原因と再実行方針がログで追跡できる
 4. UI/API/ドキュメントの用語と制約が一致している
+
+## 6. 関連運用文書
+- scheduler運用手順: `references/workflow_scheduler_runbook.md`
