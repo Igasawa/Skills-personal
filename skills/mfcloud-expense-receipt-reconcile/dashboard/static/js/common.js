@@ -1003,17 +1003,13 @@
     const clearButton = document.createElement("button");
     clearButton.type = "button";
     clearButton.className = "secondary dashboard-ai-chat-clear";
-    clearButton.textContent = "🧹 履歴クリア";
-    clearButton.setAttribute("aria-label", "AIチャット履歴をクリア");
-    clearButton.title = "履歴クリア";
+    clearButton.textContent = "履歴クリア";
     actions.appendChild(clearButton);
 
     const sendButton = document.createElement("button");
     sendButton.type = "submit";
     sendButton.className = "primary dashboard-ai-chat-send";
-    sendButton.textContent = "↗ 送信";
-    sendButton.setAttribute("aria-label", "AIチャットを送信");
-    sendButton.title = "送信";
+    sendButton.textContent = "送信";
     actions.appendChild(sendButton);
 
     return {
@@ -1080,19 +1076,16 @@
         const copyButton = document.createElement("button");
         copyButton.type = "button";
         copyButton.className = "dashboard-ai-chat-copy";
-        copyButton.textContent = "📋";
+        copyButton.textContent = "コピー";
         copyButton.setAttribute("aria-label", "AI回答をコピー");
-        copyButton.title = "AI回答をコピー";
         copyButton.addEventListener("click", async () => {
           if (!text) return;
           try {
             await navigator.clipboard.writeText(text);
-            copyButton.textContent = "✅";
-            copyButton.setAttribute("aria-label", "AI回答をコピーしました");
+            copyButton.textContent = "コピー済み";
             showToast("AI回答をコピーしました。", "success");
             window.setTimeout(() => {
-              copyButton.textContent = "📋";
-              copyButton.setAttribute("aria-label", "AI回答をコピー");
+              copyButton.textContent = "コピー";
             }, 1200);
           } catch (_error) {
             showToast("コピーに失敗しました。", "error");
