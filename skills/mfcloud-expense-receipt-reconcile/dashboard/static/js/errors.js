@@ -62,6 +62,16 @@
   const aiSkillsSummaryEl = document.getElementById("errors-ai-skills-summary");
   const aiSkillsEnvPolicyEl = document.getElementById("errors-ai-skills-env-policy");
   const aiSkillsListEl = document.getElementById("errors-ai-skills-list");
+  const notificationSettingsRefreshButton = document.getElementById("errors-notification-settings-refresh");
+  const notificationConfiguredEl = document.getElementById("errors-notification-configured");
+  const notificationSourceEl = document.getElementById("errors-notification-source");
+  const notificationMaskedEl = document.getElementById("errors-notification-masked");
+  const notificationUpdatedAtEl = document.getElementById("errors-notification-updated-at");
+  const notificationWebhookInput = document.getElementById("errors-notification-webhook-url");
+  const notificationSaveButton = document.getElementById("errors-notification-save");
+  const notificationClearButton = document.getElementById("errors-notification-clear");
+  const notificationTestButton = document.getElementById("errors-notification-test");
+  const notificationLastResultEl = document.getElementById("errors-notification-last-result");
 
   let incidents = [];
   let selectedIncidentId = "";
@@ -70,6 +80,7 @@
   let docStatusLoaded = false;
   let docTargetsLoaded = false;
   let aiSkillsLoaded = false;
+  let notificationSettingsLoaded = false;
   const aiSkillPending = new Set();
   const tabNames = new Set(
     Array.from(tabButtons)
@@ -182,6 +193,11 @@
     if (docRefreshButton) docRefreshButton.disabled = busy;
     if (docRunButton) docRunButton.disabled = busy;
     if (docTargetsRefreshButton) docTargetsRefreshButton.disabled = busy;
+    if (notificationSettingsRefreshButton) notificationSettingsRefreshButton.disabled = busy;
+    if (notificationSaveButton) notificationSaveButton.disabled = busy;
+    if (notificationClearButton) notificationClearButton.disabled = busy;
+    if (notificationTestButton) notificationTestButton.disabled = busy;
+    if (notificationWebhookInput) notificationWebhookInput.disabled = busy;
 
     document.querySelectorAll("[data-error-action]").forEach((button) => {
       button.disabled = busy || !selectedIncidentId;
@@ -216,7 +232,7 @@
     }).catch(() => null);
     if (!res) throw new Error("ネットワークエラー");
     const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data.detail || `HTTP ${res.status}`);
+    if (!res.ok) throw new Error(data.detail || data.message || `HTTP ${res.status}`);
     return data;
   }
 
@@ -580,6 +596,34 @@
     return payload;
   }
 
+  function renderNotificationSettings(payload) {
+    const configured = Boolean(payload?.configured);
+    const sourceRaw = toText(payload?.source, "none").toLowerCase();
+    let sourceLabel = "none";
+    if (sourceRaw === "file") sourceLabel = "file (UI設定)";
+    else if (sourceRaw === "env") sourceLabel = "env (AX_GOOGLE_CHAT_WEBHOOK_URL)";
+
+    setText(notificationConfiguredEl, configured ? "設定済み" : "未設定");
+    setText(notificationSourceEl, sourceLabel);
+    setText(notificationMaskedEl, toText(payload?.webhook_url_masked, "-"));
+    setText(notificationUpdatedAtEl, formatDateTime(payload?.updated_at));
+  }
+
+  async function refreshNotificationSettings(options = {}) {
+    const keepInput = Boolean(options.keepInput);
+    const keepResult = Boolean(options.keepResult);
+    const payload = await apiGetJson("/api/workflow-events/notification-settings");
+    renderNotificationSettings(payload);
+    if (notificationWebhookInput && !keepInput) {
+      notificationWebhookInput.value = "";
+    }
+    if (notificationLastResultEl && !keepResult) {
+      notificationLastResultEl.textContent = "-";
+    }
+    notificationSettingsLoaded = true;
+    return payload;
+  }
+
   async function updateAiSkillPermission(skillId, enabled) {
     const resolvedSkillId = String(skillId || "").trim().toLowerCase();
     if (!resolvedSkillId) return;
@@ -651,6 +695,24 @@
       showToast(message, "error");
       if (docRunResultEl) {
         docRunResultEl.textContent = pretty({ error: message });
+      }
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function runNotificationAction(fn) {
+    if (busy) return;
+    setBusy(true);
+    try {
+      await fn();
+      setStatus("", "");
+    } catch (error) {
+      const message = toFriendlyMessage(error?.message || "通知設定の処理に失敗しました");
+      setStatus(message, "error");
+      showToast(message, "error");
+      if (notificationLastResultEl) {
+        notificationLastResultEl.textContent = message;
       }
     } finally {
       setBusy(false);
@@ -802,6 +864,60 @@
     });
   }
 
+  if (notificationSettingsRefreshButton) {
+    notificationSettingsRefreshButton.addEventListener("click", () => {
+      runNotificationAction(async () => {
+        await refreshNotificationSettings({ keepInput: true, keepResult: true });
+        showToast("通知設定を更新しました", "success");
+      });
+    });
+  }
+
+  if (notificationSaveButton) {
+    notificationSaveButton.addEventListener("click", () => {
+      runNotificationAction(async () => {
+        const webhookUrl = toText(notificationWebhookInput?.value);
+        const data = await apiPostJson("/api/workflow-events/notification-settings", {
+          webhook_url: webhookUrl,
+        });
+        renderNotificationSettings(data);
+        notificationSettingsLoaded = true;
+        if (notificationWebhookInput) notificationWebhookInput.value = "";
+        const message = webhookUrl ? "通知Webhook URLを保存しました" : "通知Webhook URL設定をクリアしました";
+        if (notificationLastResultEl) notificationLastResultEl.textContent = message;
+        showToast(message, "success");
+      });
+    });
+  }
+
+  if (notificationClearButton) {
+    notificationClearButton.addEventListener("click", () => {
+      runNotificationAction(async () => {
+        const data = await apiPostJson("/api/workflow-events/notification-settings", {
+          webhook_url: "",
+        });
+        renderNotificationSettings(data);
+        notificationSettingsLoaded = true;
+        if (notificationWebhookInput) notificationWebhookInput.value = "";
+        if (notificationLastResultEl) notificationLastResultEl.textContent = "通知Webhook URL設定をクリアしました";
+        showToast("通知Webhook URL設定をクリアしました", "success");
+      });
+    });
+  }
+
+  if (notificationTestButton) {
+    notificationTestButton.addEventListener("click", () => {
+      runNotificationAction(async () => {
+        const data = await apiPostJson("/api/workflow-events/notification-settings/test", {});
+        const statusCode = toInt(data?.http_status, 200);
+        const message = toText(data?.message, "テスト通知を送信しました");
+        if (notificationLastResultEl) notificationLastResultEl.textContent = `${message} (HTTP ${statusCode})`;
+        await refreshNotificationSettings({ keepInput: true, keepResult: true });
+        showToast("テスト通知を送信しました", "success");
+      });
+    });
+  }
+
   function lazyLoadTabData(tabName) {
     if (tabName === "document-update" && !docStatusLoaded) {
       void refreshDocumentStatus().catch((error) => {
@@ -812,6 +928,13 @@
     }
     if (tabName === "document-targets" && !docTargetsLoaded) {
       void refreshDocumentTargets().catch((error) => {
+        const message = toFriendlyMessage(error?.message || "読み込みに失敗しました");
+        setStatus(message, "error");
+      });
+      return;
+    }
+    if (tabName === "notification-settings" && !notificationSettingsLoaded) {
+      void refreshNotificationSettings().catch((error) => {
         const message = toFriendlyMessage(error?.message || "読み込みに失敗しました");
         setStatus(message, "error");
       });
@@ -847,6 +970,8 @@
         tasks.push({ name: "ドキュメント更新", run: () => refreshDocumentStatus() });
       } else if (initialTab === "document-targets") {
         tasks.push({ name: "対象ドキュメント", run: () => refreshDocumentTargets() });
+      } else if (initialTab === "notification-settings") {
+        tasks.push({ name: "通知設定", run: () => refreshNotificationSettings() });
       } else if (initialTab === "ai-skills") {
         tasks.push({ name: "AIスキル権限", run: () => refreshAiSkills() });
       }

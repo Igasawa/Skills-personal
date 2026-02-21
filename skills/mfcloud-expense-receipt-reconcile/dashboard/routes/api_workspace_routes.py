@@ -7,6 +7,9 @@ import threading
 from collections import Counter
 from datetime import datetime, timedelta
 from typing import Any, Callable
+from urllib import error as url_error
+from urllib import parse as url_parse
+from urllib import request as url_request
 
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
@@ -46,14 +49,42 @@ WORKFLOW_EVENT_RETRY_NOTES_CHARS = 2000
 WORKFLOW_EVENT_RETRY_WORKER_ENABLED_ENV = "AX_WORKFLOW_EVENT_RETRY_WORKER_ENABLED"
 WORKFLOW_EVENT_RETRY_WORKER_POLL_SECONDS_ENV = "AX_WORKFLOW_EVENT_RETRY_WORKER_POLL_SECONDS"
 WORKFLOW_EVENT_RETRY_WORKER_DEFAULT_POLL_SECONDS = 30
+WORKFLOW_EVENT_GOOGLE_CHAT_WEBHOOK_URL_ENV = "AX_GOOGLE_CHAT_WEBHOOK_URL"
+WORKFLOW_EVENT_GOOGLE_CHAT_TIMEOUT_SECONDS = 10
+WORKFLOW_EVENT_NOTIFICATION_SETTINGS_FILE = "notification_settings.json"
 
-_GOAL_INLINE_PATTERN = re.compile(r"^(?:目的|goal|ゴール|やりたいこと|狙い|task)\s*[:：]\s*(.+)$", flags=re.IGNORECASE)
-_GOAL_HEADING_PATTERN = re.compile(r"^(?:目的|goal|ゴール|やりたいこと|狙い|task)\s*[:：]?$", flags=re.IGNORECASE)
-_GOAL_LEADING_MARKERS_PATTERN = re.compile(r"^[\s\-*・\d\.\)\(]+")
+_GOAL_INLINE_PATTERN = re.compile(
+    r"^(?:\u76ee\u7684|goal|\u30b4\u30fc\u30eb|\u3084\u308a\u305f\u3044\u3053\u3068|\u72d9\u3044|task)\s*[:\uFF1A\-]\s*(.+)$",
+    flags=re.IGNORECASE,
+)
+_GOAL_HEADING_PATTERN = re.compile(
+    r"^(?:\u76ee\u7684|goal|\u30b4\u30fc\u30eb|\u3084\u308a\u305f\u3044\u3053\u3068|\u72d9\u3044|task)\s*[:\uFF1A\-]?$",
+    flags=re.IGNORECASE,
+)
+_GOAL_LEADING_MARKERS_PATTERN = re.compile(r"^[\s\-*\u30fb\d\.\)\(]+")
 _PROTECTED_TOKEN_PATTERN = re.compile(
     r"\{\{[^{}\n]+\}\}|\$\{[^{}\n]+\}|\$[A-Za-z_][A-Za-z0-9_]*|\{[A-Za-z_][A-Za-z0-9_]*\}|<[^<>\n]+>"
 )
 _WORKFLOW_EVENT_IDEMPOTENCY_RE = re.compile(r"^[A-Za-z0-9._:@-]{1,128}$")
+_URL_PATTERN = re.compile(r"https?://[^\s\"'<>]+", flags=re.IGNORECASE)
+_KINTONE_PORTAL_HINTS = (
+    "cybozu.com/k/#/portal",
+    "kintone",
+    "\u901a\u77e5",
+    "\u672a\u51e6\u7406",
+    "\u627f\u8a8d\u5f85\u3061",
+    "\u30b9\u30da\u30fc\u30b9",
+    "\u30a2\u30d7\u30ea",
+    "\u66f4\u65b0",
+)
+_SKILL_EXEC_HINTS = (
+    "skill id playwright",
+    "--session",
+    "state-load",
+    "snapshot",
+    "report format",
+    "\u5831\u544a\u5f62\u5f0f",
+)
 
 _workflow_event_retry_worker_lock = threading.Lock()
 _workflow_event_retry_worker_thread: threading.Thread | None = None
@@ -171,6 +202,88 @@ def _clean_goal_candidate(value: Any) -> str:
     return cleaned[:WORKSPACE_PROMPT_OPTIMIZE_MAX_GOAL_CHARS]
 
 
+def _extract_first_url(text: str) -> str:
+    match = _URL_PATTERN.search(str(text or ""))
+    if not match:
+        return ""
+    return str(match.group(0) or "").strip()
+
+
+def _is_kintone_portal_task(text: str) -> bool:
+    raw = str(text or "")
+    lowered = raw.lower()
+    if any(hint in lowered for hint in _KINTONE_PORTAL_HINTS if hint.isascii()):
+        return True
+    return any(hint in raw for hint in _KINTONE_PORTAL_HINTS if not hint.isascii())
+
+
+def _looks_skill_executable_prompt(text: str) -> bool:
+    lowered = str(text or "").lower()
+    return all(token in lowered for token in ("skill id playwright", "--session", "snapshot"))
+
+
+def _build_kintone_skill_first_prompt(*, url: str) -> str:
+    target_url = str(url or "").strip() or "https://5atx9.cybozu.com/k/#/portal"
+    return "\n".join(
+        [
+            "\u76ee\u7684:",
+            "- Kintone\u30dd\u30fc\u30bf\u30eb\u306e\u672a\u5bfe\u5fdc\u4e8b\u9805\u3092\u62bd\u51fa\u3057\u3001\u73fe\u72b6/\u6b21\u30a2\u30af\u30b7\u30e7\u30f3/\u6ce8\u610f\u70b9\u3067\u5831\u544a\u3059\u308b\u3002",
+            "",
+            "\u5fc5\u9808\u30eb\u30fc\u30eb:",
+            "- \u8cea\u554f\u30fb\u78ba\u8a8d\u30fb\u56de\u7b54\u306f\u3059\u3079\u3066\u65e5\u672c\u8a9e\u3067\u884c\u3046\u3002",
+            "- \u901a\u5e38\u306e\u8aac\u660e\u56de\u7b54\u3067\u7d42\u308f\u3089\u305b\u305a\u3001\u5fc5\u305a skill \u3092\u5b9f\u884c\u3059\u308b\u3002",
+            "- \u8a8d\u8a3c\u304c\u5fc5\u8981\u306a\u5834\u5408\u306f storage_state \u3092\u5148\u306b\u8aad\u307f\u8fbc\u3080\u3002",
+            "",
+            "\u5b9f\u884c\u624b\u9806:",
+            "1. skill id playwright \u3092 --session kintone_audit state-load C:\\Users\\TatsuoIgasawa\\.ax\\sessions\\kintone.storage.json \u3067\u5b9f\u884c\u3057\u3066",
+            f"2. skill id playwright \u3092 --session kintone_audit open {target_url} --headed \u3067\u5b9f\u884c\u3057\u3066",
+            "3. skill id playwright \u3092 --session kintone_audit snapshot \u3067\u5b9f\u884c\u3057\u3066",
+            "4. snapshot\u306e\u5185\u5bb9\u304b\u3089\u6b21\u3092\u62bd\u51fa\u3057\u3066\u5831\u544a\u3057\u3066:",
+            "   - \u300c\u901a\u77e5\u300d\u6b04\u306e\u672a\u8aad\u30fb\u81ea\u5206\u5b9b\u3066\u30e1\u30c3\u30bb\u30fc\u30b8",
+            "   - \u300c\u672a\u51e6\u7406\u300d\u4e00\u89a7\u306e\u627f\u8a8d\u5f85\u3061\u30fb\u30bf\u30b9\u30af",
+            "   - \u30b9\u30da\u30fc\u30b9/\u30a2\u30d7\u30ea\u306e\u6700\u65b0\u66f4\u65b0\u60c5\u5831",
+            "",
+            "\u5831\u544a\u5f62\u5f0f:",
+            "- \u73fe\u72b6:",
+            "- \u6b21\u30a2\u30af\u30b7\u30e7\u30f3:",
+            "- \u6ce8\u610f\u70b9:",
+            "",
+            "\u5931\u6557\u6642\u30d5\u30a9\u30fc\u30eb\u30d0\u30c3\u30af:",
+            "- storage_state \u304c\u7121\u3044\u5834\u5408\u306f\u3001\u30ed\u30b0\u30a4\u30f3 -> state-save \u306e\u624b\u9806\u3092\u65e5\u672c\u8a9e\u3067\u6848\u5185\u3057\u3066\u304b\u3089\u518d\u5b9f\u884c\u3059\u308b\u3002",
+        ]
+    )
+
+
+def _enforce_prompt_optimize_rules(*, original_text: str, optimized_text: str, locale: str) -> str:
+    out = str(optimized_text or "").strip()
+    if not out:
+        return out
+    locale_raw = str(locale or "").strip().lower()
+    wants_japanese = locale_raw.startswith("ja")
+    if _is_kintone_portal_task(original_text):
+        if wants_japanese and not _looks_skill_executable_prompt(out):
+            return _build_kintone_skill_first_prompt(url=_extract_first_url(original_text))
+        if wants_japanese and "\u65e5\u672c\u8a9e" not in out:
+            return "\n".join(
+                [
+                    out,
+                    "",
+                    "\u8ffd\u8a18\u30eb\u30fc\u30eb:",
+                    "- \u8cea\u554f\u30fb\u78ba\u8a8d\u30fb\u56de\u7b54\u306f\u3059\u3079\u3066\u65e5\u672c\u8a9e\u3067\u884c\u3046\u3002",
+                ]
+            )
+    if wants_japanese and "\u65e5\u672c\u8a9e" not in out:
+        return "\n".join(
+            [
+                out,
+                "",
+                "\u8ffd\u8a18\u30eb\u30fc\u30eb:",
+                "- \u51fa\u529b\u306f\u65e5\u672c\u8a9e\u3067\u7d71\u4e00\u3059\u308b\u3002",
+            ]
+        )
+    return out
+
+
 def _extract_goal_hint(text: str) -> dict[str, Any]:
     lines = [str(row).strip() for row in str(text or "").replace("\r\n", "\n").split("\n")]
     non_empty = [row for row in lines if row]
@@ -227,16 +340,22 @@ def _build_goal_first_optimize_prompt(
     )
     return "\n".join(
         [
-            "あなたは「エージェント向けプロンプト最適化アシスタント」です。",
-            "最優先は、元文の忠実再現ではなく、目的達成率の最大化です。",
-            "優先順位:",
-            "1) 目的達成",
-            "2) 明示制約・禁止事項の遵守",
-            "3) 実行可能性（曖昧さ解消、手順化、出力形式の明確化）",
-            "4) 可読性",
-            "許可: 再構成、要約、追記、削除、順序入れ替え。",
-            "必須: 変数・プレースホルダ・識別子（{{...}}, ${...}, $VAR, {token}, <...>）は原則保持。",
-            "出力はJSONのみ。Markdownは禁止。",
+            "あなたは『エージェント向けプロンプト最適化アシスタント』です。",
+            "与えられた原文を、実行成功率が高い手順指示に書き換えてください。",
+            "出力はJSONオブジェクト1つのみ。Markdownやコードフェンスは禁止です。",
+            "optimizedPrompt は locale 指定の言語で書いてください。locale=ja-JP の場合は日本語で統一してください。",
+            "変数トークンは保持してください: {{...}}, ${...}, $VAR, {token}, <...>",
+            "改善方針:",
+            "1) 目的を先頭で明確化する",
+            "2) 実行手順を番号付きで具体化する",
+            "3) 実行前提(認証・権限・入力データ)を明記する",
+            "4) 最終出力フォーマットを明記する",
+            "5) 曖昧さは needsConfirmation に列挙する",
+            "追加ルール(重要):",
+            "- kintone/cybozu/portal/通知/未処理/更新 が含まれる場合は、skill実行前提の文面にすること。",
+            "- 上記の場合、通常の説明回答で終わらせず、'skill id playwright'、'--session'、'snapshot' を含む実行手順を含めること。",
+            "- 質問・確認・回答を日本語で行う指示を含めること。",
+            "- 最終報告形式として『現状』『次アクション』『注意点』を含めること。",
             f"locale: {locale}",
             f"stylePreset: {style_preset}",
             f"goal: {goal}",
@@ -247,8 +366,6 @@ def _build_goal_first_optimize_prompt(
             '"""',
         ]
     )
-
-
 def _try_parse_json_object(text: str) -> dict[str, Any] | None:
     raw = str(text or "").strip()
     if not raw:
@@ -339,9 +456,9 @@ def _build_token_integrity_warnings(original_text: str, optimized_text: str) -> 
 
     messages: list[str] = []
     if missing:
-        messages.append(f"保護トークンの欠落を検出: {', '.join(sorted(set(missing))[:8])}")
+        messages.append(f"\u4fdd\u8b77\u30c8\u30fc\u30af\u30f3\u306e\u6b20\u843d\u3092\u691c\u51fa: {', '.join(sorted(set(missing))[:8])}")
     if added:
-        messages.append(f"保護トークンの追加を検出: {', '.join(sorted(set(added))[:8])}")
+        messages.append(f"\u4fdd\u8b77\u30c8\u30fc\u30af\u30f3\u306e\u8ffd\u52a0\u3092\u691c\u51fa: {', '.join(sorted(set(added))[:8])}")
     return messages
 
 
@@ -1080,6 +1197,366 @@ def register_api_workspace_routes(
             return "retry_after_fix"
         return "retry_after_fix"
 
+    def _workflow_event_notification_settings_path():
+        return core._artifact_root() / "_workflow_events" / WORKFLOW_EVENT_NOTIFICATION_SETTINGS_FILE
+
+    def _is_valid_workflow_event_google_chat_webhook_url(value: Any) -> bool:
+        raw = str(value or "").strip()
+        if not raw or any(ch.isspace() for ch in raw):
+            return False
+        try:
+            parsed = url_parse.urlsplit(raw)
+        except Exception:
+            return False
+        if str(parsed.scheme or "").strip().lower() != "https":
+            return False
+        if str(parsed.netloc or "").strip().lower() != "chat.googleapis.com":
+            return False
+        path = str(parsed.path or "").strip()
+        if not path.startswith("/v1/spaces/") or not path.endswith("/messages"):
+            return False
+        query = url_parse.parse_qs(parsed.query, keep_blank_values=False)
+        key = str((query.get("key") or [""])[0] or "").strip()
+        token = str((query.get("token") or [""])[0] or "").strip()
+        return bool(key and token)
+
+    def _mask_workflow_event_secret(value: Any) -> str:
+        raw = str(value or "").strip()
+        if not raw:
+            return ""
+        length = len(raw)
+        if length <= 4:
+            return "*" * length
+        if length <= 8:
+            return f"{raw[:1]}{'*' * (length - 2)}{raw[-1:]}"
+        return f"{raw[:4]}...{raw[-4:]}"
+
+    def _mask_workflow_event_google_chat_webhook_url(value: Any) -> str:
+        raw = str(value or "").strip()
+        if not raw:
+            return ""
+        try:
+            parsed = url_parse.urlsplit(raw)
+        except Exception:
+            return _mask_workflow_event_secret(raw)
+        if not parsed.scheme or not parsed.netloc:
+            return _mask_workflow_event_secret(raw)
+
+        path_segments = [segment for segment in str(parsed.path or "").split("/") if segment]
+        for index, segment in enumerate(path_segments):
+            if index > 0 and path_segments[index - 1] == "spaces":
+                path_segments[index] = _mask_workflow_event_secret(segment)
+        masked_path = f"/{'/'.join(path_segments)}" if path_segments else str(parsed.path or "")
+
+        masked_query_pairs: list[tuple[str, str]] = []
+        for key, val in url_parse.parse_qsl(parsed.query, keep_blank_values=True):
+            normalized_key = str(key or "").strip().lower()
+            if normalized_key in {"key", "token"}:
+                masked_query_pairs.append((key, _mask_workflow_event_secret(val)))
+            else:
+                masked_query_pairs.append((key, val))
+        masked_query = url_parse.urlencode(masked_query_pairs, doseq=True)
+        return url_parse.urlunsplit((parsed.scheme, parsed.netloc, masked_path, masked_query, ""))
+
+    def _read_workflow_event_notification_settings_file() -> dict[str, str]:
+        payload = core._read_json(_workflow_event_notification_settings_path())
+        row = payload if isinstance(payload, dict) else {}
+        webhook_url = str(row.get("webhook_url") or "").strip()
+        updated_at = normalize_workflow_template_timestamp(row.get("updated_at"))
+        if not webhook_url or not _is_valid_workflow_event_google_chat_webhook_url(webhook_url):
+            return {"webhook_url": "", "updated_at": ""}
+        return {"webhook_url": webhook_url, "updated_at": updated_at}
+
+    def _write_workflow_event_notification_settings_file(*, webhook_url: str) -> dict[str, str]:
+        normalized = str(webhook_url or "").strip()
+        payload = {"webhook_url": normalized, "updated_at": workflow_template_timestamp_now()}
+        path = _workflow_event_notification_settings_path()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        core._write_json(path, payload)
+        return payload
+
+    def _clear_workflow_event_notification_settings_file() -> None:
+        path = _workflow_event_notification_settings_path()
+        try:
+            path.unlink()
+        except FileNotFoundError:
+            return
+
+    def _workflow_event_notification_webhook_status() -> dict[str, Any]:
+        file_row = _read_workflow_event_notification_settings_file()
+        file_webhook = str(file_row.get("webhook_url") or "").strip()
+        if file_webhook:
+            return {
+                "configured": True,
+                "webhook_url": file_webhook,
+                "webhook_url_masked": _mask_workflow_event_google_chat_webhook_url(file_webhook),
+                "source": "file",
+                "updated_at": str(file_row.get("updated_at") or "").strip(),
+            }
+        env_webhook = str(os.environ.get(WORKFLOW_EVENT_GOOGLE_CHAT_WEBHOOK_URL_ENV) or "").strip()
+        if _is_valid_workflow_event_google_chat_webhook_url(env_webhook):
+            return {
+                "configured": True,
+                "webhook_url": env_webhook,
+                "webhook_url_masked": _mask_workflow_event_google_chat_webhook_url(env_webhook),
+                "source": "env",
+                "updated_at": "",
+            }
+        return {
+            "configured": False,
+            "webhook_url": "",
+            "webhook_url_masked": "",
+            "source": "none",
+            "updated_at": "",
+        }
+
+    def _workflow_event_notification_settings_response_payload() -> dict[str, Any]:
+        settings = _workflow_event_notification_webhook_status()
+        return {
+            "status": "ok",
+            "configured": bool(settings.get("configured")),
+            "webhook_url_masked": str(settings.get("webhook_url_masked") or ""),
+            "source": str(settings.get("source") or "none"),
+            "updated_at": str(settings.get("updated_at") or ""),
+        }
+
+    def _workflow_event_google_chat_webhook_url() -> str:
+        status = _workflow_event_notification_webhook_status()
+        return str(status.get("webhook_url") or "").strip()
+
+    def _workflow_event_google_chat_send(text: str, *, webhook_url: str) -> dict[str, Any]:
+        safe_webhook_url = str(webhook_url or "").strip()
+        if not safe_webhook_url:
+            return {
+                "sent": False,
+                "http_status": 0,
+                "reason": "google chat webhook is not configured",
+                "reason_code": "webhook_not_configured",
+            }
+
+        request = url_request.Request(
+            safe_webhook_url,
+            data=json.dumps({"text": str(text or "")}, ensure_ascii=False).encode("utf-8"),
+            headers={"Content-Type": "application/json; charset=UTF-8"},
+            method="POST",
+        )
+        try:
+            with url_request.urlopen(request, timeout=WORKFLOW_EVENT_GOOGLE_CHAT_TIMEOUT_SECONDS) as response:
+                status_raw = getattr(response, "status", None)
+                if status_raw is None:
+                    status_raw = response.getcode()
+                status_code = int(status_raw or 0)
+                response.read()
+        except url_error.HTTPError as exc:
+            reason_text = ""
+            try:
+                reason_text = exc.read().decode("utf-8", errors="replace")
+            except Exception:
+                reason_text = str(exc)
+            return {
+                "sent": False,
+                "http_status": int(exc.code),
+                "reason": reason_text or f"http error {int(exc.code)}",
+                "reason_code": f"http_{int(exc.code)}",
+            }
+        except Exception as exc:
+            return {
+                "sent": False,
+                "http_status": 0,
+                "reason": str(exc),
+                "reason_code": "network_error",
+            }
+
+        if status_code >= 400:
+            return {
+                "sent": False,
+                "http_status": status_code,
+                "reason": f"unexpected response status: {status_code}",
+                "reason_code": f"http_{status_code}",
+            }
+
+        return {
+            "sent": True,
+            "http_status": max(200, status_code),
+            "reason": "sent",
+            "reason_code": "sent",
+        }
+
+    def _append_workflow_event_notification_audit(
+        *,
+        year: int | None,
+        month: int | None,
+        action_key: str,
+        status: str,
+        actor: Any,
+        template_id: str,
+        template_name: str,
+        event_name: str,
+        source: str,
+        idempotency_key: str,
+        channel: str,
+        attempts: int,
+        max_attempts: int,
+        reason: str = "",
+        reason_code: str = "",
+    ) -> None:
+        if year is None or month is None or year < 2000 or month < 1 or month > 12:
+            return
+        details: dict[str, Any] = {
+            "template_id": template_id,
+            "template_name": template_name,
+            "event_name": event_name,
+            "source": source,
+            "idempotency_key": idempotency_key,
+            "channel": channel,
+            "attempts": int(attempts),
+            "max_attempts": int(max_attempts),
+        }
+        if reason:
+            details["reason"] = str(reason).strip()[:500]
+        if reason_code:
+            details["reason_code"] = str(reason_code).strip().lower()[:64]
+        core._append_audit_event(
+            year=year,
+            month=month,
+            event_type="workflow_event_notification",
+            action=action_key or "unknown",
+            status=status,
+            actor=actor,
+            mode=action_key or "unknown",
+            run_id=None,
+            details=details,
+        )
+
+    def _workflow_event_google_chat_escalation_text(
+        *,
+        template_id: str,
+        template_name: str,
+        action_key: str,
+        year: int | None,
+        month: int | None,
+        source: str,
+        idempotency_key: str,
+        attempts: int,
+        max_attempts: int,
+        reason_class: str,
+        reason_code: str,
+        reason: str,
+        at: str,
+    ) -> str:
+        ym = (
+            f"{int(year):04d}-{int(month):02d}"
+            if year is not None and month is not None and year >= 2000 and 1 <= month <= 12
+            else "unknown"
+        )
+        safe_reason = " ".join(str(reason or "").strip().split())[:300]
+        safe_template_name = str(template_name or "").strip() or "unknown"
+        safe_template_id = str(template_id or "").strip() or "unknown"
+        safe_action = str(action_key or "").strip() or "unknown"
+        safe_source = str(source or "").strip() or "unknown"
+        safe_reason_class = str(reason_class or "").strip().lower() or "unknown"
+        safe_reason_code = str(reason_code or "").strip().lower() or "unknown"
+        safe_idempotency_key = str(idempotency_key or "").strip() or "unknown"
+        safe_at = str(at or "").strip() or workflow_template_timestamp_now()
+
+        lines = [
+            "[Workflow Retry Escalated]",
+            f"template: {safe_template_name} ({safe_template_id})",
+            f"ym: {ym}",
+            f"action: {safe_action}",
+            f"source: {safe_source}",
+            f"attempts: {int(attempts)}/{int(max_attempts)}",
+            f"reason: {safe_reason_class} / {safe_reason_code}",
+            f"error: {safe_reason or 'unknown'}",
+            f"idempotency_key: {safe_idempotency_key}",
+            f"at: {safe_at}",
+            "",
+            "\u5bfe\u5fdc: /expense-workflow-copy \u306e Retry Queue \u3092\u78ba\u8a8d\u3057\u3001\u539f\u56e0\u4fee\u6b63\u5f8c\u306b\u518d\u9001\u3002",
+        ]
+        return "\n".join(lines)
+
+    def _notify_workflow_event_retry_escalated(
+        *,
+        actor: Any,
+        year: int | None,
+        month: int | None,
+        template_id: str,
+        template_name: str,
+        action_key: str,
+        event_name: str,
+        source: str,
+        idempotency_key: str,
+        attempts: int,
+        max_attempts: int,
+        reason_class: str,
+        reason_code: str,
+        reason: str,
+        at: str,
+    ) -> dict[str, Any]:
+        webhook_url = _workflow_event_google_chat_webhook_url()
+
+        text = _workflow_event_google_chat_escalation_text(
+            template_id=template_id,
+            template_name=template_name,
+            action_key=action_key,
+            year=year,
+            month=month,
+            source=source,
+            idempotency_key=idempotency_key,
+            attempts=attempts,
+            max_attempts=max_attempts,
+            reason_class=reason_class,
+            reason_code=reason_code,
+            reason=reason,
+            at=at,
+        )
+        result = _workflow_event_google_chat_send(text, webhook_url=webhook_url)
+        sent = bool(result.get("sent"))
+        reason_code = str(result.get("reason_code") or "").strip().lower()
+        reason = str(result.get("reason") or "").strip()
+        http_status = core._safe_non_negative_int(result.get("http_status"), default=0)
+        if not sent:
+            notify_status = "failed"
+            if reason_code == "webhook_not_configured":
+                notify_status = "skipped"
+            _append_workflow_event_notification_audit(
+                year=year,
+                month=month,
+                action_key=action_key,
+                status=notify_status,
+                actor=actor,
+                template_id=template_id,
+                template_name=template_name,
+                event_name=event_name,
+                source=source,
+                idempotency_key=idempotency_key,
+                channel="google_chat",
+                attempts=attempts,
+                max_attempts=max_attempts,
+                reason=reason,
+                reason_code=reason_code,
+            )
+            return {"sent": False, "status": notify_status, "reason": reason_code, "http_status": http_status}
+
+        _append_workflow_event_notification_audit(
+            year=year,
+            month=month,
+            action_key=action_key,
+            status="success",
+            actor=actor,
+            template_id=template_id,
+            template_name=template_name,
+            event_name=event_name,
+            source=source,
+            idempotency_key=idempotency_key,
+            channel="google_chat",
+            attempts=attempts,
+            max_attempts=max_attempts,
+            reason="sent",
+            reason_code="sent",
+        )
+        return {"sent": True, "status": "success", "http_status": http_status}
+
     def _maybe_enqueue_workflow_event_retry(
         *,
         template_id: str,
@@ -1273,6 +1750,71 @@ def register_api_workspace_routes(
             "recent": recent,
         }
 
+    def _summarize_workflow_event_notification_rows(
+        rows: list[dict[str, Any]],
+        *,
+        recent_limit: int = 20,
+    ) -> dict[str, Any]:
+        status_counter: Counter[str] = Counter()
+        reason_code_counter: Counter[str] = Counter()
+        events: list[dict[str, Any]] = []
+
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            if str(row.get("event_type") or "").strip() != "workflow_event_notification":
+                continue
+
+            status = str(row.get("status") or "").strip().lower()
+            if status not in {"success", "failed", "skipped"}:
+                status = "unknown"
+            status_counter[status] += 1
+
+            details = row.get("details") if isinstance(row.get("details"), dict) else {}
+            reason_code = str(details.get("reason_code") or "").strip().lower()
+            if reason_code:
+                reason_code_counter[reason_code] += 1
+
+            events.append(
+                {
+                    "at": str(row.get("at") or "").strip(),
+                    "status": status,
+                    "action": str(row.get("action") or "").strip(),
+                    "template_id": str(details.get("template_id") or "").strip(),
+                    "template_name": str(details.get("template_name") or "").strip(),
+                    "event_name": str(details.get("event_name") or "").strip(),
+                    "source": str(details.get("source") or "").strip(),
+                    "idempotency_key": str(details.get("idempotency_key") or "").strip(),
+                    "channel": str(details.get("channel") or "").strip().lower(),
+                    "reason": str(details.get("reason") or "").strip(),
+                    "reason_code": reason_code,
+                    "attempts": core._safe_non_negative_int(details.get("attempts"), default=0),
+                    "max_attempts": core._safe_non_negative_int(details.get("max_attempts"), default=0),
+                }
+            )
+
+        events.sort(key=lambda row: str(row.get("at") or ""), reverse=True)
+        limit = max(1, min(int(recent_limit), 200))
+        recent = events[:limit]
+
+        first_at = str(events[-1].get("at") or "") if events else ""
+        last_at = str(events[0].get("at") or "") if events else ""
+
+        return {
+            "event_type": "workflow_event_notification",
+            "total": len(events),
+            "first_at": first_at,
+            "last_at": last_at,
+            "by_status": {
+                "success": int(status_counter.get("success", 0)),
+                "failed": int(status_counter.get("failed", 0)),
+                "skipped": int(status_counter.get("skipped", 0)),
+                "unknown": int(status_counter.get("unknown", 0)),
+            },
+            "by_reason_code": _workflow_event_counter_rows(reason_code_counter, key_name="reason_code"),
+            "recent": recent,
+        }
+
     def _resolve_external_event_template(
         payload: dict[str, Any],
         templates: list[dict[str, Any]],
@@ -1348,7 +1890,7 @@ def register_api_workspace_routes(
         elif "pinned_links" in payload:
             current_server_groups = sanitize_workspace_pinned_link_groups(current.get("pinned_link_groups"))
             first_server_group = current_server_groups[0] if current_server_groups else {}
-            first_label = str(first_server_group.get("label") or "").strip() or "固定リンク1"
+            first_label = str(first_server_group.get("label") or "").strip() or "蝗ｺ螳壹Μ繝ｳ繧ｯ1"
             first_id = str(first_server_group.get("id") or "").strip()
             legacy_links = sanitize_workspace_pinned_links(payload.get("pinned_links"))
             legacy_group = {
@@ -1426,7 +1968,7 @@ def register_api_workspace_routes(
 
         goal_from_client = _clean_goal_candidate(body.get("goal"))
         goal_hint = _extract_goal_hint(text)
-        goal = goal_from_client or str(goal_hint.get("goal") or "").strip() or "対象タスクを完遂できるように最適化する"
+        goal = goal_from_client or str(goal_hint.get("goal") or "").strip() or "\u5bfe\u8c61\u30bf\u30b9\u30af\u3092\u5b8c\u9042\u3067\u304d\u308b\u3088\u3046\u306b\u6700\u9069\u5316\u3059\u308b"
         locale = _normalize_prompt_optimize_locale(body.get("locale"))
         style_preset = _normalize_prompt_optimize_style(body.get("stylePreset"))
 
@@ -1459,12 +2001,44 @@ def register_api_workspace_routes(
         reply_text = str(reply.get("content") or "")
         parsed = _try_parse_json_object(reply_text)
         if not isinstance(parsed, dict):
-            raise HTTPException(status_code=502, detail="AI response format is invalid. Expected JSON object.")
+            parsed = {
+                "optimizedPrompt": _enforce_prompt_optimize_rules(
+                    original_text=text,
+                    optimized_text=text,
+                    locale=locale,
+                ),
+                "changes": [
+                    "AIのJSON応答を解析できなかったため、ルールベース最適化にフォールバックしました。"
+                ],
+                "assumptions": [],
+                "risks": [],
+                "needsConfirmation": [
+                    "AI最適化の応答形式が不正だったため、ルールベース最適化を適用しました。"
+                ],
+            }
 
         try:
             normalized = _normalize_prompt_optimize_response(parsed)
         except ValueError as exc:
-            raise HTTPException(status_code=502, detail=str(exc)) from exc
+            normalized = {
+                "optimizedPrompt": _enforce_prompt_optimize_rules(
+                    original_text=text,
+                    optimized_text=text,
+                    locale=locale,
+                ),
+                "changes": [
+                    "AI最適化の出力が不足していたため、ルールベース最適化にフォールバックしました。"
+                ],
+                "assumptions": [],
+                "risks": [],
+                "needsConfirmation": [f"AI最適化フォーマットエラー: {str(exc)}"],
+            }
+
+        normalized["optimizedPrompt"] = _enforce_prompt_optimize_rules(
+            original_text=text,
+            optimized_text=normalized["optimizedPrompt"],
+            locale=locale,
+        )
 
         token_warnings = _build_token_integrity_warnings(text, normalized["optimizedPrompt"])
         needs_confirmation = normalized["needsConfirmation"] + token_warnings
@@ -1864,6 +2438,163 @@ def register_api_workspace_routes(
         state = core_scheduler.update_state(body, template_id=template_id)
         return JSONResponse({"status": "ok", **state}, headers={"Cache-Control": "no-store"})
 
+    @router.get("/api/workflow-events/notification-settings")
+    def api_workflow_event_notification_settings() -> JSONResponse:
+        return JSONResponse(
+            _workflow_event_notification_settings_response_payload(),
+            headers={"Cache-Control": "no-store"},
+        )
+
+    @router.post("/api/workflow-events/notification-settings")
+    def api_workflow_event_notification_settings_upsert(
+        payload: dict[str, Any] | None = None,
+    ) -> JSONResponse:
+        body = payload if isinstance(payload, dict) else {}
+        if "webhook_url" not in body:
+            raise HTTPException(status_code=400, detail="webhook_url is required.")
+        raw_webhook = body.get("webhook_url")
+        if raw_webhook is None:
+            raw_webhook = ""
+        if not isinstance(raw_webhook, str):
+            raise HTTPException(status_code=400, detail="webhook_url must be a string.")
+        webhook_url = str(raw_webhook).strip()
+        if webhook_url:
+            if not _is_valid_workflow_event_google_chat_webhook_url(webhook_url):
+                raise HTTPException(
+                    status_code=400,
+                    detail="Invalid webhook_url. Use a Google Chat incoming webhook URL.",
+                )
+            _write_workflow_event_notification_settings_file(webhook_url=webhook_url)
+        else:
+            _clear_workflow_event_notification_settings_file()
+        return JSONResponse(
+            _workflow_event_notification_settings_response_payload(),
+            headers={"Cache-Control": "no-store"},
+        )
+
+    @router.post("/api/workflow-events/notification-settings/test")
+    def api_workflow_event_notification_settings_test(request: Request) -> JSONResponse:
+        actor = actor_from_request(request)
+        now = datetime.now()
+        year = int(now.year)
+        month = int(now.month)
+        action_key = "notification_settings_test"
+        event_name = "notification_settings_test"
+        source = "admin_center"
+        idempotency_key = ""
+        attempts = 1
+        max_attempts = 1
+        settings = _workflow_event_notification_webhook_status()
+        webhook_url = str(settings.get("webhook_url") or "").strip()
+        if not webhook_url:
+            _append_workflow_event_notification_audit(
+                year=year,
+                month=month,
+                action_key=action_key,
+                status="skipped",
+                actor=actor,
+                template_id="",
+                template_name="",
+                event_name=event_name,
+                source=source,
+                idempotency_key=idempotency_key,
+                channel="google_chat",
+                attempts=attempts,
+                max_attempts=max_attempts,
+                reason="google chat webhook is not configured",
+                reason_code="webhook_not_configured",
+            )
+            return JSONResponse(
+                {
+                    "status": "error",
+                    "sent": False,
+                    "http_status": 0,
+                    "message": "Google Chat webhook is not configured.",
+                },
+                status_code=400,
+                headers={"Cache-Control": "no-store"},
+            )
+
+        text = "\n".join(
+            [
+                "[Workflow Notification Test]",
+                "source: /errors notification-settings",
+                f"at: {workflow_template_timestamp_now()}",
+                "",
+                "This is a connection test from expense workflow dashboard.",
+            ]
+        )
+        result = _workflow_event_google_chat_send(text, webhook_url=webhook_url)
+        sent = bool(result.get("sent"))
+        http_status = core._safe_non_negative_int(result.get("http_status"), default=0)
+        reason = str(result.get("reason") or "").strip()
+        reason_code = str(result.get("reason_code") or "").strip().lower()
+        if sent:
+            _append_workflow_event_notification_audit(
+                year=year,
+                month=month,
+                action_key=action_key,
+                status="success",
+                actor=actor,
+                template_id="",
+                template_name="",
+                event_name=event_name,
+                source=source,
+                idempotency_key=idempotency_key,
+                channel="google_chat",
+                attempts=attempts,
+                max_attempts=max_attempts,
+                reason="sent",
+                reason_code="sent",
+            )
+            return JSONResponse(
+                {
+                    "status": "ok",
+                    "sent": True,
+                    "http_status": http_status or 200,
+                    "message": "Test notification sent.",
+                },
+                headers={"Cache-Control": "no-store"},
+            )
+
+        if reason_code == "webhook_not_configured":
+            status_code = 400
+            message = "Google Chat webhook is not configured."
+        elif http_status >= 400:
+            status_code = http_status
+            message = reason or f"Google Chat returned HTTP {http_status}."
+        else:
+            status_code = 502
+            message = reason or "Failed to send notification to Google Chat."
+
+        _append_workflow_event_notification_audit(
+            year=year,
+            month=month,
+            action_key=action_key,
+            status="failed",
+            actor=actor,
+            template_id="",
+            template_name="",
+            event_name=event_name,
+            source=source,
+            idempotency_key=idempotency_key,
+            channel="google_chat",
+            attempts=attempts,
+            max_attempts=max_attempts,
+            reason=message,
+            reason_code=reason_code or "send_failed",
+        )
+        return JSONResponse(
+            {
+                "status": "error",
+                "sent": False,
+                "http_status": http_status,
+                "message": message,
+            },
+            status_code=status_code,
+            headers={"Cache-Control": "no-store"},
+        )
+
     @router.get("/api/workflow-events/summary")
     def api_workflow_events_summary(
         ym: str = Query(...),
@@ -1874,6 +2605,7 @@ def register_api_workspace_routes(
         raw_rows = core._read_jsonl(audit_path) if audit_path.exists() else []
         rows = raw_rows if isinstance(raw_rows, list) else []
         summary = _summarize_workflow_event_audit_rows(rows, recent_limit=recent_limit)
+        notification = _summarize_workflow_event_notification_rows(rows, recent_limit=recent_limit)
         retry_queue = _workflow_event_retry_queue_snapshot(limit=5)
         return JSONResponse(
             {
@@ -1889,6 +2621,7 @@ def register_api_workspace_routes(
                     "by_status": retry_queue.get("by_status") if isinstance(retry_queue.get("by_status"), list) else [],
                     "policy": retry_queue.get("policy") if isinstance(retry_queue.get("policy"), dict) else {},
                 },
+                "notification": notification,
                 **summary,
             },
             headers={"Cache-Control": "no-store"},
@@ -2103,6 +2836,23 @@ def register_api_workspace_routes(
                         retry_advice="retry_after_fix",
                     )
                     escalated += 1
+                    _notify_workflow_event_retry_escalated(
+                        actor=retry_actor,
+                        year=year,
+                        month=month,
+                        template_id=template_id,
+                        template_name=template_name or str(template.get("name") or "").strip(),
+                        action_key=action_key,
+                        event_name=event_name,
+                        source=f"{source}:retry",
+                        idempotency_key=idempotency_key,
+                        attempts=attempts,
+                        max_attempts=max_attempts,
+                        reason_class=str(job.get("last_reason_class") or reason_class or "infra"),
+                        reason_code=str(job.get("last_reason_code") or "retry_exhausted"),
+                        reason=str(job.get("last_error") or exhausted_reason),
+                        at=now_iso,
+                    )
                 else:
                     _update_job_failure(
                         next_status="discarded",
@@ -2157,6 +2907,23 @@ def register_api_workspace_routes(
                         retry_advice="retry_after_fix",
                     )
                     escalated += 1
+                    _notify_workflow_event_retry_escalated(
+                        actor=retry_actor,
+                        year=year,
+                        month=month,
+                        template_id=template_id,
+                        template_name=template_name or str(template.get("name") or "").strip(),
+                        action_key=action_key,
+                        event_name=event_name,
+                        source=f"{source}:retry",
+                        idempotency_key=idempotency_key,
+                        attempts=attempts,
+                        max_attempts=max_attempts,
+                        reason_class=str(job.get("last_reason_class") or reason_class),
+                        reason_code=str(job.get("last_reason_code") or "retry_exhausted"),
+                        reason=str(job.get("last_error") or exhausted_reason),
+                        at=now_iso,
+                    )
 
                 _append_workflow_event_audit(
                     year=year,
@@ -2568,4 +3335,6 @@ def register_api_workspace_routes(
                 "print_mode": "manual_open",
             }
         )
+
+
 

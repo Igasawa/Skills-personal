@@ -78,6 +78,8 @@ def test_api_router_registers_expected_routes() -> None:
         "/api/workflow-pages",
         "/api/workflow-pages/{workflow_page_id}",
         "/api/workflow-events",
+        "/api/workflow-events/notification-settings",
+        "/api/workflow-events/notification-settings/test",
         "/api/workflow-events/retry-jobs",
         "/api/workflow-events/retry-jobs/drain",
         "/api/workflow-events/summary",

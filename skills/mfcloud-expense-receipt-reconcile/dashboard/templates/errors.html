@@ -30,6 +30,7 @@
         <button type="button" class="pill" data-errors-tab="workflow-archive" id="errors-tab-workflow-archive">WFアーカイブ管理</button>
         <button type="button" class="pill" data-errors-tab="kil-review" id="errors-tab-kil-review">KIL Review</button>
         <button type="button" class="pill" data-errors-tab="ai-skills" id="errors-tab-ai-skills">AIスキル権限</button>
+        <button type="button" class="pill" data-errors-tab="notification-settings" id="errors-tab-notification-settings">通知設定</button>
       </div>
 
       <section class="errors-tab-panel" data-errors-tab-panel="incidents">
@@ -395,6 +396,54 @@
               <tbody id="errors-ai-skills-list"></tbody>
             </table>
           </div>
+        </section>
+      </section>
+
+      <section class="errors-tab-panel hidden" data-errors-tab-panel="notification-settings">
+        <section class="card">
+          <div class="section-header">
+            <h2>通知設定</h2>
+            <button type="button" class="secondary" id="errors-notification-settings-refresh">現在値を更新</button>
+          </div>
+          <p class="muted">Google Chat Webhook URL を管理センターから更新します。</p>
+
+          <div class="grid two errors-notification-grid">
+            <div class="errors-doc-stat">
+              <span class="label">設定状態</span>
+              <span class="value" id="errors-notification-configured">-</span>
+            </div>
+            <div class="errors-doc-stat">
+              <span class="label">source</span>
+              <span class="value" id="errors-notification-source">-</span>
+            </div>
+            <div class="errors-doc-stat">
+              <span class="label">現在値 (masked)</span>
+              <span class="value" id="errors-notification-masked">-</span>
+            </div>
+            <div class="errors-doc-stat">
+              <span class="label">最終更新</span>
+              <span class="value" id="errors-notification-updated-at">-</span>
+            </div>
+          </div>
+
+          <div class="error-options errors-notification-form">
+            <label>
+              Webhook URL
+              <input
+                type="url"
+                id="errors-notification-webhook-url"
+                placeholder="https://chat.googleapis.com/v1/spaces/.../messages?key=...&token=..."
+                autocomplete="off"
+              />
+            </label>
+          </div>
+
+          <div class="step-actions">
+            <button type="button" class="primary" id="errors-notification-save">保存</button>
+            <button type="button" class="secondary" id="errors-notification-clear">クリア</button>
+            <button type="button" class="secondary" id="errors-notification-test">テスト送信</button>
+          </div>
+          <p class="muted" id="errors-notification-last-result">-</p>
         </section>
       </section>
     </div>

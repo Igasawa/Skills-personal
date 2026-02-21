@@ -42,6 +42,10 @@ def _workflow_event_retry_jobs_store(ax_home: Path) -> Path:
     return _artifact_root(ax_home) / "_workflow_events" / "retry_jobs.json"
 
 
+def _workflow_event_notification_settings_store(ax_home: Path) -> Path:
+    return _artifact_root(ax_home) / "_workflow_events" / "notification_settings.json"
+
+
 def _write_json(path: Path, data: dict[str, Any] | list[Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -79,6 +83,14 @@ def _read_workflow_event_retry_jobs(ax_home: Path) -> dict[str, Any]:
         return {"jobs": {}}
     payload = json.loads(path.read_text(encoding="utf-8"))
     return payload if isinstance(payload, dict) else {"jobs": {}}
+
+
+def _read_workflow_event_notification_settings(ax_home: Path) -> dict[str, Any]:
+    path = _workflow_event_notification_settings_store(ax_home)
+    if not path.exists():
+        return {}
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    return payload if isinstance(payload, dict) else {}
 
 
 def _create_client(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> TestClient:
@@ -1896,7 +1908,7 @@ def test_api_workspace_state_post_persists_and_sanitizes(monkeypatch: pytest.Mon
         "/api/workspace/state",
         json={
             "links": [
-                {"label": " MF 経費  ", "url": "https://expense.moneyforward.com/expense_reports"},
+                {"label": " MF 邨瑚ｲｻ  ", "url": "https://expense.moneyforward.com/expense_reports"},
                 {"label": "duplicate", "url": "https://expense.moneyforward.com/expense_reports"},
                 {"label": "invalid", "url": "ftp://example.com/a"},
             ],
@@ -1917,7 +1929,7 @@ def test_api_workspace_state_post_persists_and_sanitizes(monkeypatch: pytest.Mon
             },
             "link_profiles": {
                 "mf_expense_reports": {
-                    "owner": " 経理 田中 ",
+                    "owner": " 邨檎炊 逕ｰ荳ｭ ",
                     "agent": "codex",
                     "reviewed_on": "2026-02-18",
                 },
@@ -1934,11 +1946,11 @@ def test_api_workspace_state_post_persists_and_sanitizes(monkeypatch: pytest.Mon
     assert res.status_code == 200
     body = res.json()
     assert body["status"] == "ok"
-    assert body["links"] == [{"label": "MF 経費", "url": "https://expense.moneyforward.com/expense_reports"}]
+    assert body["links"] == [{"label": "MF 邨瑚ｲｻ", "url": "https://expense.moneyforward.com/expense_reports"}]
     assert body["pinned_links"] == [{"label": "Pinned Ops", "url": "https://ops.example.com/"}]
     pinned_group = body["pinned_link_groups"][0]
     assert pinned_group["id"]
-    assert pinned_group["label"] == "固定リンク1"
+    assert pinned_group["label"] == "蝗ｺ螳壹Μ繝ｳ繧ｯ1"
     assert pinned_group["links"] == [{"label": "Pinned Ops", "url": "https://ops.example.com/"}]
     assert pinned_group["created_at"] == ""
     assert body["prompts"] == {
@@ -1950,7 +1962,7 @@ def test_api_workspace_state_post_persists_and_sanitizes(monkeypatch: pytest.Mon
         "custom:https%3A%2F%2Fexample.com": "custom note",
     }
     assert body["link_profiles"] == {
-        "mf_expense_reports": {"owner": "経理 田中", "agent": "codex", "reviewed_on": "2026-02-18"},
+        "mf_expense_reports": {"owner": "邨檎炊 逕ｰ荳ｭ", "agent": "codex", "reviewed_on": "2026-02-18"},
         "custom:https%3A%2F%2Fexample.com": {"owner": "B Team", "agent": "", "reviewed_on": ""},
     }
     assert body["active_prompt_key"] == "mf_expense_reports"
@@ -2164,8 +2176,8 @@ def test_api_workspace_prompt_optimize_returns_goal_first_payload(
                 "content": json.dumps(
                     {
                         "optimizedPrompt": "目的:\n- 月次処理を完遂する\n\n手順:\n1. 未処理を洗い出す\n2. 完了条件を確認する",
-                        "changes": ["構成を再編成", "手順を具体化"],
-                        "assumptions": ["対象月は入力済み"],
+                        "changes": ["目的を明確化", "手順を具体化"],
+                        "assumptions": ["対象月が指定済み"],
                         "risks": [],
                         "needsConfirmation": [],
                     },
@@ -2194,7 +2206,7 @@ def test_api_workspace_prompt_optimize_returns_goal_first_payload(
     assert body["provider"] == "gemini"
     assert body["model"] == "gemini-2.0-flash"
     assert "optimizedPrompt" in body and body["optimizedPrompt"]
-    assert body["changes"] == ["構成を再編成", "手順を具体化"]
+    assert body["changes"] == ["目的を明確化", "手順を具体化"]
     assert captured_context["path"] == "/workspace"
     assert captured_context["feature"] == "workspace_prompt_optimize"
     assert captured_messages and captured_messages[-1]["role"] == "user"
@@ -2247,7 +2259,7 @@ def test_api_workspace_prompt_optimize_adds_token_integrity_warning(
     assert any("保護トークン" in str(row) for row in body["needsConfirmation"])
 
 
-def test_api_workspace_prompt_optimize_rejects_invalid_ai_json(
+def test_api_workspace_prompt_optimize_fallbacks_on_invalid_ai_json(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     client = _create_client(monkeypatch, tmp_path)
@@ -2273,10 +2285,12 @@ def test_api_workspace_prompt_optimize_rejects_invalid_ai_json(
         "/api/workspace/prompt/optimize",
         json={"text": "目的: テスト"},
     )
-    assert res.status_code == 502
-    assert "JSON" in str(res.json().get("detail") or "")
-
-
+    assert res.status_code == 200
+    body = res.json()
+    assert body["status"] == "ok"
+    assert str(body.get("optimizedPrompt") or "").strip()
+    needs = body.get("needsConfirmation") if isinstance(body.get("needsConfirmation"), list) else []
+    assert needs
 def test_api_workspace_prompt_optimize_rejects_empty_text(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -2285,6 +2299,107 @@ def test_api_workspace_prompt_optimize_rejects_empty_text(
     res = client.post("/api/workspace/prompt/optimize", json={"text": ""})
     assert res.status_code == 400
     assert "must not be empty" in str(res.json().get("detail") or "")
+
+
+def test_api_workspace_prompt_optimize_enforces_skill_first_for_kintone_portal(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    client = _create_client(monkeypatch, tmp_path)
+    _set_ai_chat_env(monkeypatch, api_key="test-key")
+
+    def _fake_chat(
+        *,
+        messages: list[dict[str, str]],
+        page_context: dict[str, str],
+        policy_profile: str = "",
+    ) -> dict[str, Any]:
+        del messages, page_context, policy_profile
+        return {
+            "provider": "gemini",
+            "model": "gemini-2.0-flash",
+            "reply": {
+                "role": "assistant",
+                "content": json.dumps(
+                    {
+                        "optimizedPrompt": "Kintone page summary",
+                        "changes": ["simplify"],
+                        "assumptions": [],
+                        "risks": [],
+                        "needsConfirmation": [],
+                    },
+                    ensure_ascii=False,
+                ),
+            },
+            "usage": {"prompt_tokens": 8, "completion_tokens": 8, "total_tokens": 16},
+        }
+
+    monkeypatch.setattr(api_workspace_routes.ai_chat, "chat", _fake_chat)
+
+    res = client.post(
+        "/api/workspace/prompt/optimize",
+        json={
+            "text": "Kintoneのトップページ（https://5atx9.cybozu.com/k/#/portal）を解析して通知・未処理・更新を報告して",
+            "locale": "ja-JP",
+            "stylePreset": "goal-first",
+        },
+    )
+    assert res.status_code == 200
+    body = res.json()
+    assert body["status"] == "ok"
+    optimized = str(body.get("optimizedPrompt") or "")
+    assert "skill id playwright" in optimized
+    assert "--session kintone_audit" in optimized
+    assert "snapshot" in optimized
+    assert "日本語" in optimized
+    assert "報告形式:" in optimized
+    assert "現状:" in optimized
+    assert "次アクション:" in optimized
+    assert "注意点:" in optimized
+
+
+def test_api_workspace_prompt_optimize_appends_japanese_rule_when_missing(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    client = _create_client(monkeypatch, tmp_path)
+    _set_ai_chat_env(monkeypatch, api_key="test-key")
+
+    def _fake_chat(
+        *,
+        messages: list[dict[str, str]],
+        page_context: dict[str, str],
+        policy_profile: str = "",
+    ) -> dict[str, Any]:
+        del messages, page_context, policy_profile
+        return {
+            "provider": "gemini",
+            "model": "gemini-2.0-flash",
+            "reply": {
+                "role": "assistant",
+                "content": json.dumps(
+                    {
+                        "optimizedPrompt": "Purpose:\n1. Check data\n2. Summarize findings",
+                        "changes": ["structure"],
+                        "assumptions": [],
+                        "risks": [],
+                        "needsConfirmation": [],
+                    },
+                    ensure_ascii=False,
+                ),
+            },
+            "usage": {"prompt_tokens": 8, "completion_tokens": 8, "total_tokens": 16},
+        }
+
+    monkeypatch.setattr(api_workspace_routes.ai_chat, "chat", _fake_chat)
+
+    res = client.post(
+        "/api/workspace/prompt/optimize",
+        json={"text": "遉ｾ蜀・・騾ｲ謐励ｒ遒ｺ隱阪☆繧九・繝ｭ繝ｳ繝励ヨ繧呈隼蝟・＠縺ｦ", "locale": "ja-JP"},
+    )
+    assert res.status_code == 200
+    body = res.json()
+    assert body["status"] == "ok"
+    optimized = str(body.get("optimizedPrompt") or "")
+    assert "出力は日本語で統一する。" in optimized
 
 
 def test_api_scheduler_state_get_returns_default(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -2610,7 +2725,7 @@ def test_api_workflow_subheading_treats_legacy_default_text_as_blank(
                 "month": 2,
                 "mfcloud_url": "https://example.com/mf",
                 "source_urls": ["https://example.com/mf"],
-                "steps": [{"id": "step-1", "title": "Amazon取得", "action": "amazon_download"}],
+                "steps": [{"id": "step-1", "title": "Amazon蜿門ｾ・", "action": "amazon_download"}],
                 "notes": "",
                 "rakuten_orders_url": "",
                 "source_template_id": "tmpl-legacy-subheading",
@@ -2619,7 +2734,7 @@ def test_api_workflow_subheading_treats_legacy_default_text_as_blank(
                     {
                         "version": 1,
                         "updated_at": "2026-02-01T10:00:00",
-                        "steps": [{"id": "step-1", "title": "Amazon取得", "action": "amazon_download"}],
+                        "steps": [{"id": "step-1", "title": "Amazon蜿門ｾ・", "action": "amazon_download"}],
                     }
                 ],
                 "archived": False,
@@ -4409,11 +4524,44 @@ def test_api_workflow_event_retry_jobs_drain_escalates_after_max_attempts(
 ) -> None:
     client = _create_client(monkeypatch, tmp_path)
     monkeypatch.setenv("AX_WORKFLOW_EVENT_RETRY_MAX_ATTEMPTS", "2")
+    monkeypatch.setenv(
+        "AX_GOOGLE_CHAT_WEBHOOK_URL",
+        "https://chat.googleapis.com/v1/spaces/test/messages?key=test&token=test",
+    )
+    notifications: list[dict[str, Any]] = []
+
+    class _FakeWebhookResponse:
+        status = 200
+
+        def __enter__(self) -> "_FakeWebhookResponse":
+            return self
+
+        def __exit__(self, exc_type: Any, exc: Any, tb: Any) -> bool:
+            return False
+
+        def read(self) -> bytes:
+            return b"{\"status\":\"ok\"}"
+
+        def getcode(self) -> int:
+            return 200
+
+    def _fake_urlopen(req: Any, timeout: int = 0) -> _FakeWebhookResponse:
+        payload_raw = req.data if isinstance(req.data, (bytes, bytearray)) else b"{}"
+        payload = json.loads(payload_raw.decode("utf-8"))
+        notifications.append(
+            {
+                "url": str(getattr(req, "full_url", "")).strip(),
+                "timeout": int(timeout),
+                "payload": payload if isinstance(payload, dict) else {},
+            }
+        )
+        return _FakeWebhookResponse()
 
     def _fake_start_run(payload: dict[str, Any]) -> dict[str, Any]:
         raise HTTPException(status_code=409, detail="Another run is already in progress.")
 
     monkeypatch.setattr(public_core, "_start_run", _fake_start_run)
+    monkeypatch.setattr(api_workspace_routes.url_request, "urlopen", _fake_urlopen)
 
     create_res = client.post(
         "/api/workflow-templates",
@@ -4465,6 +4613,15 @@ def test_api_workflow_event_retry_jobs_drain_escalates_after_max_attempts(
     assert int(job.get("attempts") or 0) == 2
     assert str(job.get("last_reason_code") or "") == "retry_exhausted"
     assert str(job.get("last_retry_advice") or "") == "retry_after_fix"
+    assert len(notifications) == 1
+    notify = notifications[0]
+    assert "chat.googleapis.com" in str(notify.get("url") or "")
+    assert int(notify.get("timeout") or 0) >= 1
+    payload = notify.get("payload") if isinstance(notify.get("payload"), dict) else {}
+    text = str(payload.get("text") or "")
+    assert "[Workflow Retry Escalated]" in text
+    assert "evt-retry-escalate-001" in text
+    assert "attempts: 2/2" in text
 
     entries = _read_audit_entries(tmp_path, "2026-02")
     workflow_entries = [row for row in entries if str(row.get("event_type") or "") == "workflow_event"]
@@ -4474,6 +4631,97 @@ def test_api_workflow_event_retry_jobs_drain_escalates_after_max_attempts(
     assert str(last.get("status") or "") == "failed"
     assert str(details.get("reason_code") or "") == "retry_exhausted"
     assert str(details.get("retry_advice") or "") == "retry_after_fix"
+    notification_entries = [
+        row for row in entries if str(row.get("event_type") or "") == "workflow_event_notification"
+    ]
+    assert notification_entries
+    notification_last = notification_entries[-1]
+    notification_details = notification_last.get("details") or {}
+    assert str(notification_last.get("status") or "") == "success"
+    assert str(notification_details.get("channel") or "") == "google_chat"
+    assert str(notification_details.get("idempotency_key") or "") == "evt-retry-escalate-001"
+
+
+def test_api_workflow_event_retry_jobs_drain_escalation_notification_failure_does_not_block(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    client = _create_client(monkeypatch, tmp_path)
+    monkeypatch.setenv("AX_WORKFLOW_EVENT_RETRY_MAX_ATTEMPTS", "1")
+    monkeypatch.setenv(
+        "AX_GOOGLE_CHAT_WEBHOOK_URL",
+        "https://chat.googleapis.com/v1/spaces/test/messages?key=test&token=test",
+    )
+
+    def _fake_start_run(payload: dict[str, Any]) -> dict[str, Any]:
+        raise HTTPException(status_code=409, detail="Another run is already in progress.")
+
+    def _failing_urlopen(req: Any, timeout: int = 0) -> Any:
+        raise RuntimeError("google chat unavailable")
+
+    monkeypatch.setattr(public_core, "_start_run", _fake_start_run)
+    monkeypatch.setattr(api_workspace_routes.url_request, "urlopen", _failing_urlopen)
+
+    create_res = client.post(
+        "/api/workflow-templates",
+        json={
+            "name": "External Event Retry Escalation Notification Failure",
+            "year": 2026,
+            "month": 2,
+            "mfcloud_url": "https://example.com/external-retry-escalation-notify-fail",
+            "steps": [
+                {
+                    "title": "Step 1",
+                    "action": "preflight",
+                    "trigger_kind": "external_event",
+                    "execution_mode": "manual_confirm",
+                }
+            ],
+        },
+    )
+    assert create_res.status_code == 200
+    template_id = str((create_res.json().get("template") or {}).get("id") or "")
+    assert template_id
+
+    first_res = client.post(
+        "/api/workflow-events",
+        json={"template_id": template_id, "idempotency_key": "evt-retry-escalate-notify-fail-001"},
+    )
+    assert first_res.status_code == 409
+
+    drain_res = client.post("/api/workflow-events/retry-jobs/drain", json={"force": True})
+    assert drain_res.status_code == 200
+    body = drain_res.json()
+    assert body.get("processed") == 1
+    assert body.get("retrying") == 0
+    assert body.get("escalated") == 1
+
+    retry_jobs = _read_workflow_event_retry_jobs(tmp_path)
+    jobs = retry_jobs.get("jobs") if isinstance(retry_jobs.get("jobs"), dict) else {}
+    key = f"{template_id}:evt-retry-escalate-notify-fail-001"
+    assert key in jobs
+    job = jobs.get(key) or {}
+    assert str(job.get("status") or "") == "escalated"
+    assert int(job.get("attempts") or 0) == 1
+
+    entries = _read_audit_entries(tmp_path, "2026-02")
+    workflow_entries = [row for row in entries if str(row.get("event_type") or "") == "workflow_event"]
+    assert workflow_entries
+    workflow_last = workflow_entries[-1]
+    workflow_details = workflow_last.get("details") or {}
+    assert str(workflow_last.get("status") or "") == "failed"
+    assert str(workflow_details.get("reason_code") or "") == "retry_exhausted"
+
+    notification_entries = [
+        row for row in entries if str(row.get("event_type") or "") == "workflow_event_notification"
+    ]
+    assert notification_entries
+    notification_last = notification_entries[-1]
+    notification_details = notification_last.get("details") or {}
+    assert str(notification_last.get("status") or "") == "failed"
+    assert str(notification_details.get("channel") or "") == "google_chat"
+    assert str(notification_details.get("idempotency_key") or "") == "evt-retry-escalate-notify-fail-001"
+    assert "google chat unavailable" in str(notification_details.get("reason") or "")
 
 
 def test_api_workflow_events_summary_returns_aggregated_counts(
@@ -4550,6 +4798,42 @@ def test_api_workflow_events_summary_returns_aggregated_counts(
             },
         },
         {
+            "at": "2026-02-20T10:07:30",
+            "event_type": "workflow_event_notification",
+            "action": "preflight",
+            "status": "success",
+            "details": {
+                "template_id": "tpl_001",
+                "template_name": "Template A",
+                "event_name": "preflight",
+                "source": "webhook:retry",
+                "idempotency_key": "evt-003",
+                "channel": "google_chat",
+                "attempts": 3,
+                "max_attempts": 3,
+                "reason": "sent",
+                "reason_code": "sent",
+            },
+        },
+        {
+            "at": "2026-02-20T10:07:40",
+            "event_type": "workflow_event_notification",
+            "action": "preflight",
+            "status": "failed",
+            "details": {
+                "template_id": "tpl_002",
+                "template_name": "Template B",
+                "event_name": "preflight",
+                "source": "webhook:retry",
+                "idempotency_key": "evt-004",
+                "channel": "google_chat",
+                "attempts": 3,
+                "max_attempts": 3,
+                "reason": "network unavailable",
+                "reason_code": "network_error",
+            },
+        },
+        {
             "at": "2026-02-20T10:08:00",
             "event_type": "run",
             "action": "preflight",
@@ -4618,6 +4902,26 @@ def test_api_workflow_events_summary_returns_aggregated_counts(
     assert int(retry_queue.get("due") or 0) >= 0
     assert isinstance(retry_queue.get("by_status"), list)
     assert isinstance(retry_queue.get("policy"), dict)
+    notification = body.get("notification") or {}
+    assert notification.get("event_type") == "workflow_event_notification"
+    assert int(notification.get("total") or 0) == 2
+    assert str(notification.get("first_at") or "") == "2026-02-20T10:07:30"
+    assert str(notification.get("last_at") or "") == "2026-02-20T10:07:40"
+    notification_status = notification.get("by_status") or {}
+    assert int(notification_status.get("success") or 0) == 1
+    assert int(notification_status.get("failed") or 0) == 1
+    assert int(notification_status.get("skipped") or 0) == 0
+    assert int(notification_status.get("unknown") or 0) == 0
+    notification_reason_rows = (
+        notification.get("by_reason_code") if isinstance(notification.get("by_reason_code"), list) else []
+    )
+    notification_reason = {str(item.get("reason_code") or ""): int(item.get("count") or 0) for item in notification_reason_rows}
+    assert notification_reason.get("sent") == 1
+    assert notification_reason.get("network_error") == 1
+    notification_recent = notification.get("recent") if isinstance(notification.get("recent"), list) else []
+    assert len(notification_recent) == 2
+    assert str(notification_recent[0].get("at") or "") == "2026-02-20T10:07:40"
+    assert str(notification_recent[1].get("at") or "") == "2026-02-20T10:07:30"
 
 
 def test_api_workflow_events_summary_returns_empty_when_audit_not_found(
@@ -4648,6 +4952,201 @@ def test_api_workflow_events_summary_returns_empty_when_audit_not_found(
     assert by_status.get("rejected") == 0
     assert by_status.get("failed") == 0
     assert by_status.get("unknown") == 0
+    notification = body.get("notification") or {}
+    assert notification.get("event_type") == "workflow_event_notification"
+    assert notification.get("total") == 0
+    assert notification.get("first_at") == ""
+    assert notification.get("last_at") == ""
+    assert notification.get("by_reason_code") == []
+    assert notification.get("recent") == []
+    notification_status = notification.get("by_status") or {}
+    assert notification_status.get("success") == 0
+    assert notification_status.get("failed") == 0
+    assert notification_status.get("skipped") == 0
+    assert notification_status.get("unknown") == 0
+
+
+def test_api_workflow_event_notification_settings_get_none(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    client = _create_client(monkeypatch, tmp_path)
+    res = client.get("/api/workflow-events/notification-settings")
+    assert res.status_code == 200
+    body = res.json()
+    assert body.get("status") == "ok"
+    assert body.get("configured") is False
+    assert body.get("source") == "none"
+    assert body.get("webhook_url_masked") == ""
+    assert body.get("updated_at") == ""
+
+
+def test_api_workflow_event_notification_settings_get_env_masked(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    webhook_url = "https://chat.googleapis.com/v1/spaces/AAAAAABBBBB/messages?key=KEYVALUE1234&token=TOKENVALUE9876"
+    monkeypatch.setenv("AX_GOOGLE_CHAT_WEBHOOK_URL", webhook_url)
+    client = _create_client(monkeypatch, tmp_path)
+    res = client.get("/api/workflow-events/notification-settings")
+    assert res.status_code == 200
+    body = res.json()
+    assert body.get("status") == "ok"
+    assert body.get("configured") is True
+    assert body.get("source") == "env"
+    masked = str(body.get("webhook_url_masked") or "")
+    assert "chat.googleapis.com" in masked
+    assert "KEYVALUE1234" not in masked
+    assert "TOKENVALUE9876" not in masked
+    assert body.get("updated_at") == ""
+
+
+def test_api_workflow_event_notification_settings_save_and_clear(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    client = _create_client(monkeypatch, tmp_path)
+    webhook_url = "https://chat.googleapis.com/v1/spaces/CCCCCCDDDD/messages?key=SAVEKEY1234&token=SAVETOKEN9999"
+
+    save_res = client.post(
+        "/api/workflow-events/notification-settings",
+        json={"webhook_url": webhook_url},
+    )
+    assert save_res.status_code == 200
+    save_body = save_res.json()
+    assert save_body.get("status") == "ok"
+    assert save_body.get("configured") is True
+    assert save_body.get("source") == "file"
+    assert str(save_body.get("updated_at") or "")
+    assert "SAVEKEY1234" not in str(save_body.get("webhook_url_masked") or "")
+    assert "SAVETOKEN9999" not in str(save_body.get("webhook_url_masked") or "")
+
+    stored = _read_workflow_event_notification_settings(tmp_path)
+    assert str(stored.get("webhook_url") or "") == webhook_url
+    assert str(stored.get("updated_at") or "")
+
+    clear_res = client.post(
+        "/api/workflow-events/notification-settings",
+        json={"webhook_url": ""},
+    )
+    assert clear_res.status_code == 200
+    clear_body = clear_res.json()
+    assert clear_body.get("status") == "ok"
+    assert clear_body.get("configured") is False
+    assert clear_body.get("source") == "none"
+    assert clear_body.get("webhook_url_masked") == ""
+    assert _workflow_event_notification_settings_store(tmp_path).exists() is False
+
+
+def test_api_workflow_event_notification_settings_rejects_invalid_url(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    client = _create_client(monkeypatch, tmp_path)
+    res = client.post(
+        "/api/workflow-events/notification-settings",
+        json={"webhook_url": "https://example.com/hook"},
+    )
+    assert res.status_code == 400
+    detail = str(res.json().get("detail") or "")
+    assert "Invalid webhook_url" in detail
+
+
+def test_api_workflow_event_notification_settings_test_success(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setenv(
+        "AX_GOOGLE_CHAT_WEBHOOK_URL",
+        "https://chat.googleapis.com/v1/spaces/test/messages?key=testkey&token=testtoken",
+    )
+
+    class _FakeWebhookResponse:
+        status = 200
+
+        def __enter__(self) -> "_FakeWebhookResponse":
+            return self
+
+        def __exit__(self, exc_type: Any, exc: Any, tb: Any) -> bool:
+            return False
+
+        def read(self) -> bytes:
+            return b"{\"status\":\"ok\"}"
+
+        def getcode(self) -> int:
+            return 200
+
+    sent_payload: dict[str, Any] = {}
+
+    def _fake_urlopen(req: Any, timeout: int = 0) -> _FakeWebhookResponse:
+        payload_raw = req.data if isinstance(req.data, (bytes, bytearray)) else b"{}"
+        payload = json.loads(payload_raw.decode("utf-8"))
+        sent_payload["url"] = str(getattr(req, "full_url", "")).strip()
+        sent_payload["payload"] = payload
+        sent_payload["timeout"] = int(timeout)
+        return _FakeWebhookResponse()
+
+    monkeypatch.setattr(api_workspace_routes.url_request, "urlopen", _fake_urlopen)
+    client = _create_client(monkeypatch, tmp_path)
+    res = client.post("/api/workflow-events/notification-settings/test", json={})
+    assert res.status_code == 200
+    body = res.json()
+    assert body.get("status") == "ok"
+    assert body.get("sent") is True
+    assert int(body.get("http_status") or 0) == 200
+    assert "Test notification sent." in str(body.get("message") or "")
+    assert "chat.googleapis.com" in str(sent_payload.get("url") or "")
+    payload = sent_payload.get("payload") if isinstance(sent_payload.get("payload"), dict) else {}
+    assert "[Workflow Notification Test]" in str(payload.get("text") or "")
+    assert int(sent_payload.get("timeout") or 0) >= 1
+    now = datetime.now()
+    ym = f"{int(now.year):04d}-{int(now.month):02d}"
+    entries = _read_audit_entries(tmp_path, ym)
+    rows = [row for row in entries if str(row.get("event_type") or "") == "workflow_event_notification"]
+    assert rows
+    last = rows[-1]
+    assert str(last.get("action") or "") == "notification_settings_test"
+    assert str(last.get("status") or "") == "success"
+    details = last.get("details") or {}
+    assert str(details.get("event_name") or "") == "notification_settings_test"
+    assert str(details.get("source") or "") == "admin_center"
+    assert str(details.get("reason_code") or "") == "sent"
+
+
+def test_api_workflow_event_notification_settings_test_failure_returns_error(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setenv(
+        "AX_GOOGLE_CHAT_WEBHOOK_URL",
+        "https://chat.googleapis.com/v1/spaces/test/messages?key=testkey&token=testtoken",
+    )
+
+    def _failing_urlopen(req: Any, timeout: int = 0) -> Any:
+        raise RuntimeError("google chat test unavailable")
+
+    monkeypatch.setattr(api_workspace_routes.url_request, "urlopen", _failing_urlopen)
+    client = _create_client(monkeypatch, tmp_path)
+    res = client.post("/api/workflow-events/notification-settings/test", json={})
+    assert res.status_code == 502
+    body = res.json()
+    assert body.get("status") == "error"
+    assert body.get("sent") is False
+    assert int(body.get("http_status") or 0) == 0
+    assert "google chat test unavailable" in str(body.get("message") or "")
+    now = datetime.now()
+    ym = f"{int(now.year):04d}-{int(now.month):02d}"
+    entries = _read_audit_entries(tmp_path, ym)
+    rows = [row for row in entries if str(row.get("event_type") or "") == "workflow_event_notification"]
+    assert rows
+    last = rows[-1]
+    assert str(last.get("action") or "") == "notification_settings_test"
+    assert str(last.get("status") or "") == "failed"
+    details = last.get("details") or {}
+    assert str(details.get("event_name") or "") == "notification_settings_test"
+    assert str(details.get("source") or "") == "admin_center"
+    assert str(details.get("reason_code") or "") == "network_error"
+    assert "google chat test unavailable" in str(details.get("reason") or "")
 
 
 def test_workflow_event_retry_worker_starts_and_invokes_callback(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -5004,3 +5503,4 @@ def test_api_error_incident_lifecycle_plan_approve_handoff(
     incident_detail = detail_body.get("incident") if isinstance(detail_body.get("incident"), dict) else {}
     assert str(incident_detail.get("handoff_path") or "").endswith("handoff.json")
     assert str(incident_detail.get("handoff_queue_path") or "").endswith(f"{incident_id}.json")
+

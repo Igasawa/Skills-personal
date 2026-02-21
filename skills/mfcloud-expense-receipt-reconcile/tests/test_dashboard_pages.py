@@ -724,8 +724,12 @@ def test_errors_page_shows_incident_controls(monkeypatch: pytest.MonkeyPatch, tm
     assert 'id="errors-handoff-json"' in res.text
     assert 'id="errors-tab-workflow-archive"' in res.text
     assert 'id="errors-tab-kil-review"' in res.text
+    assert 'id="errors-tab-notification-settings"' in res.text
     assert 'id="workflow-archive-list"' in res.text
     assert 'id="kil-review-status"' in res.text
+    assert 'id="errors-notification-webhook-url"' in res.text
+    assert 'id="errors-notification-save"' in res.text
+    assert 'id="errors-notification-test"' in res.text
     assert "/static/js/errors.js" in res.text
     assert "/static/js/workflow-archive-pages.js" in res.text
     assert "/static/js/kil-review.js" in res.text

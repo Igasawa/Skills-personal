@@ -1634,6 +1634,35 @@
   margin-top: 14px;
 }
 
+.errors-notification-grid {
+  margin-top: 14px;
+}
+
+.errors-notification-form {
+  margin-top: 12px;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.errors-notification-form label {
+  grid-column: 1 / -1;
+}
+
+.errors-notification-form input[type="url"] {
+  width: 100%;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size: 12px;
+}
+
+#errors-notification-masked {
+  word-break: break-all;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size: 12px;
+}
+
+#errors-notification-last-result {
+  margin-top: 10px;
+}
+
 .errors-doc-targets-stats {
   margin-top: 8px;
   display: flex;
