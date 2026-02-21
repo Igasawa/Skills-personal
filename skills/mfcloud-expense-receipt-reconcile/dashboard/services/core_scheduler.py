@@ -42,6 +42,7 @@ _TIMER_STATE_KEYS = {
     "notes",
     "run_date",
     "run_time",
+    "monthly_anchor_day",
     "catch_up_policy",
     "recurrence",
     "updated_at",
@@ -59,6 +60,7 @@ _TIMER_STATE_COPY_KEYS = {
     "notes",
     "run_date",
     "run_time",
+    "monthly_anchor_day",
     "catch_up_policy",
     "recurrence",
 }
@@ -116,6 +118,7 @@ def _default_state() -> dict[str, Any]:
         "notes": "",
         "run_date": None,
         "run_time": DEFAULT_RUN_TIME,
+        "monthly_anchor_day": None,
         "catch_up_policy": "run_on_startup",
         "recurrence": "once",
         "updated_at": None,
@@ -180,6 +183,27 @@ def _normalize_run_time(value: Any) -> str:
     if hour < 0 or hour > 23 or minute < 0 or minute > 59:
         return DEFAULT_RUN_TIME
     return f"{hour:02d}:{minute:02d}"
+
+
+def _day_from_run_date(value: Any) -> int | None:
+    normalized = _normalize_run_date(value)
+    if not normalized:
+        return None
+    day = _as_int(normalized[-2:])
+    if day is None or day < 1 or day > 31:
+        return None
+    return day
+
+
+def _normalize_monthly_anchor_day(value: Any, *, fallback_run_date: Any = None) -> int | None:
+    day = _as_int(value)
+    if day is None:
+        day = _day_from_run_date(fallback_run_date)
+    if day is None:
+        return None
+    if day < 1 or day > 31:
+        return None
+    return day
 
 
 def _normalize_text(value: Any, *, max_len: int) -> str:
@@ -262,6 +286,10 @@ def _normalize_state(payload: Any) -> dict[str, Any]:
     out["notes"] = _normalize_text(src.get("notes"), max_len=2000)
     out["run_date"] = _normalize_run_date(src.get("run_date"))
     out["run_time"] = _normalize_run_time(src.get("run_time"))
+    out["monthly_anchor_day"] = _normalize_monthly_anchor_day(
+        src.get("monthly_anchor_day"),
+        fallback_run_date=out["run_date"],
+    )
     out["catch_up_policy"] = _normalize_catch_up_policy(src.get("catch_up_policy"))
     out["recurrence"] = _normalize_recurrence(src.get("recurrence"))
     out["updated_at"] = str(src.get("updated_at") or "").strip() or None
@@ -683,20 +711,23 @@ def _is_repeating(state: dict[str, Any]) -> bool:
     return _normalize_recurrence(state.get("recurrence")) != "once"
 
 
-def _next_recurrence_datetime(scheduled: datetime, recurrence: str) -> datetime:
+def _next_recurrence_datetime(scheduled: datetime, recurrence: str, *, monthly_anchor_day: int | None = None) -> datetime:
     normalized = _normalize_recurrence(recurrence)
     if normalized == "daily":
         return scheduled + timedelta(days=1)
     if normalized == "weekly":
         return scheduled + timedelta(weeks=1)
     if normalized == "monthly":
+        anchor_day = _normalize_monthly_anchor_day(monthly_anchor_day, fallback_run_date=scheduled.strftime("%Y-%m-%d"))
+        if anchor_day is None:
+            anchor_day = scheduled.day
         year = scheduled.year
         month = scheduled.month + 1
         if month > 12:
             year += 1
             month = 1
         max_day = calendar.monthrange(year, month)[1]
-        day = min(scheduled.day, max_day)
+        day = min(anchor_day, max_day)
         return scheduled.replace(year=year, month=month, day=day)
     return scheduled
 
@@ -708,7 +739,21 @@ def _align_state_for_repetition(
     reference: datetime | None = None,
 ) -> None:
     recurrence = _normalize_recurrence(state.get("recurrence"))
-    next_scheduled = _next_recurrence_datetime(scheduled, recurrence)
+    monthly_anchor_day = None
+    if recurrence == "monthly":
+        monthly_anchor_day = _normalize_monthly_anchor_day(
+            state.get("monthly_anchor_day"),
+            fallback_run_date=state.get("run_date"),
+        )
+        if monthly_anchor_day is None:
+            monthly_anchor_day = scheduled.day
+        state["monthly_anchor_day"] = monthly_anchor_day
+
+    next_scheduled = _next_recurrence_datetime(
+        scheduled,
+        recurrence,
+        monthly_anchor_day=monthly_anchor_day,
+    )
     if reference is not None:
         guard = 0
         while next_scheduled <= reference:
@@ -716,7 +761,11 @@ def _align_state_for_repetition(
             # Guard against malformed recurrence progression.
             if guard > 5000:
                 break
-            advanced = _next_recurrence_datetime(next_scheduled, recurrence)
+            advanced = _next_recurrence_datetime(
+                next_scheduled,
+                recurrence,
+                monthly_anchor_day=monthly_anchor_day,
+            )
             if advanced <= next_scheduled:
                 break
             next_scheduled = advanced
@@ -731,6 +780,7 @@ def _enrich_state(
     state: dict[str, Any], *, template_id: str | None = None, template_timers_count: int | None = None
 ) -> dict[str, Any]:
     view = _normalize_state(state)
+    view.pop("monthly_anchor_day", None)
     scheduled = _scheduled_datetime(view)
     view["next_run_at"] = scheduled.isoformat(timespec="seconds") if scheduled else None
     if template_id is not None:
@@ -1144,12 +1194,21 @@ def update_state(payload: dict[str, Any] | None, template_id: str | None = None)
             timer_state["notes"] = _normalize_text(body.get("notes"), max_len=2000)
         if "run_date" in body:
             timer_state["run_date"] = _validate_run_date_input(body.get("run_date"))
+            timer_state["monthly_anchor_day"] = _normalize_monthly_anchor_day(
+                timer_state.get("monthly_anchor_day"),
+                fallback_run_date=timer_state.get("run_date"),
+            )
         if "run_time" in body:
             timer_state["run_time"] = _validate_run_time_input(body.get("run_time"))
         if "catch_up_policy" in body:
             timer_state["catch_up_policy"] = _validate_catch_up_policy_input(body.get("catch_up_policy"))
         if "recurrence" in body:
             timer_state["recurrence"] = _validate_recurrence_input(body.get("recurrence"))
+            if timer_state["recurrence"] == "monthly":
+                timer_state["monthly_anchor_day"] = _normalize_monthly_anchor_day(
+                    timer_state.get("monthly_anchor_day"),
+                    fallback_run_date=timer_state.get("run_date"),
+                )
 
         if rearm:
             timer_state["last_result"] = None

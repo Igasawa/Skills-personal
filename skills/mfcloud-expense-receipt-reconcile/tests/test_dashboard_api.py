@@ -2822,6 +2822,106 @@ def test_api_scheduler_state_daily_recurrence_skip_policy_advances_to_future_slo
     assert body["run_time"] == run_time
 
 
+def test_api_scheduler_state_weekly_recurrence_advances_by_week(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    client = _create_client(monkeypatch, tmp_path)
+    run_payloads: list[dict[str, Any]] = []
+
+    def fake_start_run(payload: dict[str, Any]) -> dict[str, str]:
+        run_payloads.append(dict(payload))
+        return {"run_id": f"run_{len(run_payloads):03d}"}
+
+    monkeypatch.setattr(public_core_scheduler.core_runs, "_start_run", fake_start_run)
+
+    now = datetime.now()
+    run_time = (now - timedelta(minutes=1)).strftime("%H:%M")
+    run_date = now.strftime("%Y-%m-%d")
+
+    res = client.post(
+        "/api/scheduler/state",
+        json={
+            "enabled": True,
+            "action_key": "preflight",
+            "card_id": "weekly-test-card",
+            "year": now.year,
+            "month": now.month,
+            "run_date": run_date,
+            "run_time": run_time,
+            "recurrence": "weekly",
+            "catch_up_policy": "run_on_startup",
+        },
+    )
+    assert res.status_code == 200
+    body = res.json()
+    assert (body.get("last_result") or {}).get("status") == "started"
+    assert (body.get("last_result") or {}).get("reason_code") == "started"
+    assert len(run_payloads) == 1
+
+    expected_next = now + timedelta(days=7)
+    assert body["run_date"] == expected_next.strftime("%Y-%m-%d")
+    assert body["run_time"] == run_time
+    assert body["year"] == expected_next.year
+    assert body["month"] == expected_next.month
+
+
+def test_api_scheduler_state_monthly_recurrence_preserves_anchor_day_after_short_month(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    client = _create_client(monkeypatch, tmp_path)
+    run_payloads: list[dict[str, Any]] = []
+
+    def fake_start_run(payload: dict[str, Any]) -> dict[str, str]:
+        run_payloads.append(dict(payload))
+        return {"run_id": f"run_{len(run_payloads):03d}"}
+
+    class FrozenDateTime(datetime):
+        current = datetime(2026, 2, 15, 10, 0, 0)
+
+        @classmethod
+        def now(cls, tz=None):  # type: ignore[override]
+            if tz is not None:
+                return cls.current.astimezone(tz)
+            return cls.current
+
+    monkeypatch.setattr(public_core_scheduler, "datetime", FrozenDateTime)
+    monkeypatch.setattr(public_core_scheduler, "_started_at", datetime(2026, 2, 1, 0, 0, 0))
+    monkeypatch.setattr(public_core_scheduler.core_runs, "_start_run", fake_start_run)
+
+    template_id = "scheduler-monthly-anchor"
+    first = client.post(
+        f"/api/scheduler/state?template_id={template_id}",
+        json={
+            "enabled": True,
+            "action_key": "preflight",
+            "card_id": "monthly-anchor-card",
+            "year": 2026,
+            "month": 1,
+            "run_date": "2026-01-31",
+            "run_time": "09:00",
+            "recurrence": "monthly",
+            "catch_up_policy": "run_on_startup",
+        },
+    )
+    assert first.status_code == 200
+    first_body = first.json()
+    assert (first_body.get("last_result") or {}).get("status") == "started"
+    assert first_body["run_date"] == "2026-02-28"
+    assert first_body["run_time"] == "09:00"
+    assert len(run_payloads) == 1
+
+    FrozenDateTime.current = datetime(2026, 3, 1, 10, 0, 0)
+    second = client.post(f"/api/scheduler/state?template_id={template_id}", json={"enabled": True})
+    assert second.status_code == 200
+    second_body = second.json()
+    assert (second_body.get("last_result") or {}).get("status") == "started"
+    assert second_body["run_date"] == "2026-03-31"
+    assert second_body["run_time"] == "09:00"
+    assert len(run_payloads) == 2
+
+
 def test_api_scheduler_state_enabled_true_without_transition_keeps_last_result(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
