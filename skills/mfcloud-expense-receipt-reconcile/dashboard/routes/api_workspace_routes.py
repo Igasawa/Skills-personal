@@ -52,6 +52,7 @@ WORKFLOW_EVENT_RETRY_WORKER_DEFAULT_POLL_SECONDS = 30
 WORKFLOW_EVENT_GOOGLE_CHAT_WEBHOOK_URL_ENV = "AX_GOOGLE_CHAT_WEBHOOK_URL"
 WORKFLOW_EVENT_GOOGLE_CHAT_TIMEOUT_SECONDS = 10
 WORKFLOW_EVENT_NOTIFICATION_SETTINGS_FILE = "notification_settings.json"
+_WORKSPACE_ROUTES_REGISTERED_ROUTER_IDS: set[int] = set()
 
 _GOAL_INLINE_PATTERN = re.compile(
     r"^(?:\u76ee\u7684|goal|\u30b4\u30fc\u30eb|\u3084\u308a\u305f\u3044\u3053\u3068|\u72d9\u3044|task)\s*[:\uFF1A\-]\s*(.+)$",
@@ -161,6 +162,13 @@ def stop_workflow_event_retry_worker() -> None:
     if thread and thread.is_alive():
         thread.join(timeout=1.5)
 
+
+def _is_workspace_routes_registered(router: APIRouter) -> bool:
+    return id(router) in _WORKSPACE_ROUTES_REGISTERED_ROUTER_IDS
+
+
+def _mark_workspace_routes_registered(router: APIRouter) -> None:
+    _WORKSPACE_ROUTES_REGISTERED_ROUTER_IDS.add(id(router))
 
 def _trim_prompt_optimize_text(value: Any, *, max_chars: int) -> str:
     return str(value or "").strip()[: max(0, int(max_chars))]
@@ -462,7 +470,7 @@ def _build_token_integrity_warnings(original_text: str, optimized_text: str) -> 
     return messages
 
 
-def register_api_workspace_routes(
+def _register_api_workspace_routes_impl(
     router: APIRouter,
     *,
     actor_from_request: ActorFromRequest,
@@ -3419,5 +3427,70 @@ def register_api_workspace_routes(
             }
         )
 
+
+def _register_api_workspace_routes_with_guard(*args: Any, **kwargs: Any) -> None:
+    router = args[0] if args else kwargs.get("router")
+    if not isinstance(router, APIRouter):
+        raise TypeError("register_api_workspace_routes requires a router.")
+    if _is_workspace_routes_registered(router):
+        return
+    _register_api_workspace_routes_impl(*args, **kwargs)
+    _mark_workspace_routes_registered(router)
+
+
+def register_api_workspace_routes(*args: Any, **kwargs: Any) -> None:
+    """Backward-compatible route registration entrypoint."""
+    _register_api_workspace_routes_with_guard(*args, **kwargs)
+
+
+def register_api_workspace_state_routes(*args: Any, **kwargs: Any) -> None:
+    """Register workspace state + prompt optimize endpoints."""
+    _register_api_workspace_routes_with_guard(*args, **kwargs)
+
+
+def register_api_workflow_pages_routes(*args: Any, **kwargs: Any) -> None:
+    """Register workflow page endpoints."""
+    _register_api_workspace_routes_with_guard(*args, **kwargs)
+
+
+def register_api_workflow_template_routes(*args: Any, **kwargs: Any) -> None:
+    """Register workflow template endpoints."""
+    _register_api_workspace_routes_with_guard(*args, **kwargs)
+
+
+def register_api_workflow_events_routes(*args: Any, **kwargs: Any) -> None:
+    """Register workflow event endpoints."""
+    _register_api_workspace_routes_with_guard(*args, **kwargs)
+
+
+def register_api_scheduler_routes(*args: Any, **kwargs: Any) -> None:
+    """Register scheduler-related workspace endpoints."""
+    _register_api_workspace_routes_with_guard(*args, **kwargs)
+
+
+def register_api_workspace_worker_routes(*args: Any, **kwargs: Any) -> None:
+    """Compatibility helper kept for migration. Worker endpoints are registered via
+    register_api_workspace_routes."""
+    _register_api_workspace_routes_with_guard(*args, **kwargs)
+
+
+__all__ = [
+    "_register_api_workspace_routes_impl",
+    "_register_api_workspace_routes_with_guard",
+    "_is_workspace_routes_registered",
+    "_mark_workspace_routes_registered",
+    "register_api_workspace_routes",
+    "register_api_workspace_state_routes",
+    "register_api_workflow_pages_routes",
+    "register_api_workflow_template_routes",
+    "register_api_workflow_events_routes",
+    "register_api_scheduler_routes",
+    "register_api_workspace_worker_routes",
+    "start_workflow_event_retry_worker",
+    "stop_workflow_event_retry_worker",
+    "set_workflow_event_retry_drain_callback",
+    "url_request",
+    "ai_chat",
+]
 
 

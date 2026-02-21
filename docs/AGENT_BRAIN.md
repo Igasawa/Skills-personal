@@ -924,3 +924,25 @@
 - **レビュー期限**: -
 - **ソース**: llm
 
+## [2026-02-21] Commit: 31b666c3500a6d7eb680e087f73c304f50e1219c
+- **要約**: AIスキルの自動ルーティング機能、確認フロー、およびKintone認証サポートの追加。
+- **獲得した知識**: ワークスペースのピン留め管理には 'pinned-groups' という名称・ID体系を統一して使用する, 解決済みインシデントは、メタデータやログを含めて 'reports/error_archive/resolved/' 配下にアーカイブする, インシデントの引き継ぎ状態は 'handed_off' ステータスと 'execution_owner' プロパティで管理する, UIメッセージ（削除確認ダイアログ等）は日本語で実装する
+- **守るべきルール**: 開発時の一時ファイル（tmp_*、workspace_*.js、ws.diff、*.bak等）をコミットに含める, ワークスペースのグループ管理に旧称の 'pinned-links' を使用する
+- **未解決の文脈**: スケジューラー関連コンポーネントの整理（一部テストで削除された要素の整合性確認）, 不要になったJS/CSSのクリーンアップ, rakuten_d 関連の未完了事項の対応
+- **対象範囲**: AIスキルルーティング, Kintone認証・連携, ワークスペース管理, インシデント管理・アーカイブ
+- **確度**: 0.9
+- **重要度**: medium
+- **レビュー期限**: -
+- **ソース**: llm
+
+## [2026-02-21] Commit: 5414abd5431144e0c95d380b530884744b081b70
+- **要約**: スケジューラワーカーの自動開始有効化および管理用ヘルスモニタリングUIの導入
+- **獲得した知識**: アプリケーションの初期化プロセス（_start_background_workers）において、core_scheduler.start_worker() と start_workflow_event_retry_worker() をセットで呼び出すこと。, スケジューラの稼働状態およびワーカーのヘルスチェック結果を、管理UIおよび専用のAPIエンドポイントを通じて提供すること。
+- **守るべきルール**: 無人実行が必要な環境において、スケジューラワーカーを停止（stop_worker）したままデプロイすること。, バックグラウンドプロセスの起動確認テストをスキップすること。
+- **未解決の文脈**: 以前のコードコメントにあった『ウィザード操作のために自動実行を無効にする』という制約との整合性。ウィザード実行中に排他制御が必要な場合のハンドリングが明示されていない。, ワーカーが異常停止した場合の自動再起動メカニズムの有無。
+- **対象範囲**: skills/mfcloud-expense-receipt-reconcile/dashboard/app.py, skills/mfcloud-expense-receipt-reconcile/dashboard/services/core_scheduler.py, skills/mfcloud-expense-receipt-reconcile/dashboard/routes/api_workspace_routes.py
+- **確度**: 0.9
+- **重要度**: medium
+- **レビュー期限**: -
+- **ソース**: llm
+

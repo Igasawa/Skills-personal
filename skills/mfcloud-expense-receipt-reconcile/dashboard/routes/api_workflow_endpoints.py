@@ -66,7 +66,7 @@ from .api_helpers import (
     WORKFLOW_TEMPLATE_STEP_TRIGGERS,
     WORKFLOW_TEMPLATE_STEP_TYPES,
 )
-from .api_workspace_routes import register_api_workspace_routes
+from .api_workspace_state_routes import register_api_workspace_routes
 
 
 def register_api_workflow_endpoints(router: APIRouter) -> None:

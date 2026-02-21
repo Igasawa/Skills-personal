@@ -2977,5 +2977,70 @@
     initializePrompt();
   }
 
+  window.DashboardWorkspaceState = {
+    bootstrapWorkspaceState,
+    bootstrap: bootstrap,
+    readRawCustomLinks,
+    readCustomLinks,
+    readLinkNoteMap,
+    readLinkProfileMap,
+    readPromptMap,
+    readActivePromptKey,
+    savePromptMap,
+    savePromptTextForKey,
+    getPromptTextForKey,
+    storeActivePromptKey,
+    saveWorkspaceState,
+    scheduleWorkspaceSync,
+  };
+
+  window.DashboardWorkspaceLinks = {
+    initializeLinks,
+    renderLinkLists,
+    renderPinnedLinkGroups,
+    readPinnedLinkGroups,
+    readPinnedLinksAll,
+    saveCustomLinks,
+    savePinnedLinkGroups,
+    renderPinnedLinks,
+    clearLinkUndoNotice,
+    clearToast,
+    showToastConfirmDialog,
+    getAllPinnedLinksFromGroups,
+    buildCustomPromptKey,
+  };
+
+  window.DashboardWorkspacePrompt = {
+    initializePrompt,
+    activatePromptEditorForKey,
+    optimizeActivePrompt,
+    copyHandoffSetForKey,
+    resolvePromptContextFromButton,
+    resolvePromptContextFromFront,
+    renderPromptFronts,
+    setActivePrompt,
+    getPromptMapCached,
+    closePromptOptimizePreview,
+  };
+
+  window.DashboardWorkspaceSync = {
+    bootstrapWorkspaceState,
+    scheduleWorkspaceSync,
+    readPromptMap,
+    saveWorkspaceState,
+    bootstrap,
+  };
+
+  window.DashboardWorkspaceRender = {
+    renderPromptFrontElement,
+    renderPromptFronts,
+    renderLinkLists,
+    renderPinnedLinkGroups,
+    renderPinnedLinks,
+    updatePromptMeta,
+    setPromptOptimizeButtonLoading,
+    setPromptDiffVisibility,
+  };
+
   void bootstrap();
 })();

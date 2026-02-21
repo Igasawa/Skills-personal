@@ -12,7 +12,7 @@ if str(SHARED_LIB_DIR) not in sys.path:
     sys.path.insert(0, str(SHARED_LIB_DIR))
 
 from routes.api import create_api_router
-from routes.api_workspace_routes import (
+from routes.api_workspace_worker import (
     start_workflow_event_retry_worker,
     stop_workflow_event_retry_worker,
 )
