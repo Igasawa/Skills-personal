@@ -1,6 +1,7 @@
 (function () {
   const dashboard = window.DashboardWorkspace || {};
-  const source = (dashboard.core && dashboard.core.state) || {};
+  const core = dashboard.core || {};
+  const source = core.state || {};
   const fallback = window.DashboardWorkspaceState || {};
   const namespace = dashboard.state || source || fallback || {};
   if (!dashboard.state) {
@@ -15,30 +16,38 @@
     });
   };
 
+  const resolveFunction = function (name, fallback) {
+    const value = namespace[name];
+    return typeof value === "function" ? value : fallback;
+  };
+
   register({
-    bootstrapWorkspaceState: namespace.bootstrapWorkspaceState || function () {},
-    bootstrap: namespace.bootstrap || function () {},
-    readRawCustomLinks: namespace.readRawCustomLinks || function () { return []; },
-    readCustomLinks: namespace.readCustomLinks || function () { return []; },
-    readPromptMap: namespace.readPromptMap || function () { return {}; },
-    readActivePromptKey: namespace.readActivePromptKey || function () { return ""; },
-    savePromptMap: namespace.savePromptMap || function () { return false; },
-    savePromptTextForKey: namespace.savePromptTextForKey || function () { return false; },
-    getPromptTextForKey: namespace.getPromptTextForKey || function () { return ""; },
-    storeActivePromptKey: namespace.storeActivePromptKey || function () {},
-    saveWorkspaceState: namespace.saveWorkspaceState || function () { return null; },
-    scheduleWorkspaceSync: namespace.scheduleWorkspaceSync || function () {},
-    collectLocalWorkspaceState: namespace.collectLocalWorkspaceState || function () { return {}; },
-    fetchWorkspaceStateFromServer: namespace.fetchWorkspaceStateFromServer || function () { return null; },
-    pushWorkspaceStateToServer: namespace.pushWorkspaceStateToServer || function () { return Promise.resolve(false); },
-    applyWorkspaceStateToLocalStorage: namespace.applyWorkspaceStateToLocalStorage || function () {},
-    hasMeaningfulWorkspaceState: namespace.hasMeaningfulWorkspaceState || function () { return false; },
-    getLinkNoteForKey: namespace.getLinkNoteForKey || function () { return ""; },
-    getLinkProfileForKey: namespace.getLinkProfileForKey || function () { return {}; },
-    saveLinkNoteForKey: namespace.saveLinkNoteForKey || function () { return false; },
-    saveLinkProfileForKey: namespace.saveLinkProfileForKey || function () { return false; },
-    readLinkNoteMap: namespace.readLinkNoteMap || function () { return {}; },
-    readLinkProfileMap: namespace.readLinkProfileMap || function () { return {}; },
+    bootstrapWorkspaceState: resolveFunction("bootstrapWorkspaceState", function () {}),
+    bootstrap: resolveFunction(
+      "bootstrap",
+      resolveFunction("bootstrapWorkspaceState", function () {})
+    ),
+    readRawCustomLinks: resolveFunction("readRawCustomLinks", function () { return []; }),
+    readCustomLinks: resolveFunction("readCustomLinks", function () { return []; }),
+    readPromptMap: resolveFunction("readPromptMap", function () { return {}; }),
+    readActivePromptKey: resolveFunction("readActivePromptKey", function () { return ""; }),
+    savePromptMap: resolveFunction("savePromptMap", function () { return false; }),
+    savePromptTextForKey: resolveFunction("savePromptTextForKey", function () { return false; }),
+    getPromptTextForKey: resolveFunction("getPromptTextForKey", function () { return ""; }),
+    storeActivePromptKey: resolveFunction("storeActivePromptKey", function () {}),
+    saveWorkspaceState: resolveFunction("saveWorkspaceState", function () { return null; }),
+    scheduleWorkspaceSync: resolveFunction("scheduleWorkspaceSync", function () {}),
+    collectLocalWorkspaceState: resolveFunction("collectLocalWorkspaceState", function () { return {}; }),
+    fetchWorkspaceStateFromServer: resolveFunction("fetchWorkspaceStateFromServer", function () { return null; }),
+    pushWorkspaceStateToServer: resolveFunction("pushWorkspaceStateToServer", function () { return Promise.resolve(false); }),
+    applyWorkspaceStateToLocalStorage: resolveFunction("applyWorkspaceStateToLocalStorage", function () {}),
+    hasMeaningfulWorkspaceState: resolveFunction("hasMeaningfulWorkspaceState", function () { return false; }),
+    getLinkNoteForKey: resolveFunction("getLinkNoteForKey", function () { return ""; }),
+    getLinkProfileForKey: resolveFunction("getLinkProfileForKey", function () { return {}; }),
+    saveLinkNoteForKey: resolveFunction("saveLinkNoteForKey", function () { return false; }),
+    saveLinkProfileForKey: resolveFunction("saveLinkProfileForKey", function () { return false; }),
+    readLinkNoteMap: resolveFunction("readLinkNoteMap", function () { return {}; }),
+    readLinkProfileMap: resolveFunction("readLinkProfileMap", function () { return {}; }),
   });
 
   namespace.schedule = namespace.scheduleWorkspaceSync;
