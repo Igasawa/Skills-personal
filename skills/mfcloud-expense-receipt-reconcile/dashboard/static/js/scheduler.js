@@ -71,6 +71,26 @@
     return `${String(y)}-${String(m).padStart(2, "0")}`;
   }
 
+  function isValidDateText(value) {
+    const text = String(value || "").trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) return false;
+    const d = new Date(`${text}T00:00:00`);
+    if (Number.isNaN(d.getTime())) return false;
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, "0");
+    const dd = String(d.getDate()).padStart(2, "0");
+    return `${yyyy}-${mm}-${dd}` === text;
+  }
+
+  function isValidTimeText(value) {
+    const text = String(value || "").trim();
+    if (!/^\d{2}:\d{2}$/.test(text)) return false;
+    const hh = Number.parseInt(text.slice(0, 2), 10);
+    const mm = Number.parseInt(text.slice(3, 5), 10);
+    if (!Number.isFinite(hh) || !Number.isFinite(mm)) return false;
+    return hh >= 0 && hh <= 23 && mm >= 0 && mm <= 59;
+  }
+
   function recurrenceLabel(code) {
     const map = {
       once: "once",
@@ -642,6 +662,21 @@
       catch_up_policy: String(catchUpEl.value || "run_on_startup"),
       recurrence: String(recurrenceEl.value || "once"),
     };
+
+    if (payload.enabled) {
+      if (!Number.isInteger(payload.year) || !Number.isInteger(payload.month) || payload.month < 1 || payload.month > 12) {
+        showToast("Scheduler year/month is required.", "error");
+        return;
+      }
+      if (!isValidDateText(payload.run_date)) {
+        showToast("Scheduler run date is invalid.", "error");
+        return;
+      }
+      if (!isValidTimeText(payload.run_time)) {
+        showToast("Scheduler run time is invalid.", "error");
+        return;
+      }
+    }
 
     setBusy(true);
     try {

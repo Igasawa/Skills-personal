@@ -193,6 +193,57 @@ def _normalize_card_id(value: Any) -> str:
     return _normalize_text(value, max_len=128)
 
 
+def _validate_action_key_input(value: Any) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return DEFAULT_ACTION_KEY
+    if text not in SCHEDULER_ALLOWED_ACTION_KEYS:
+        raise HTTPException(status_code=400, detail="Scheduler action_key is invalid.")
+    return text
+
+
+def _validate_catch_up_policy_input(value: Any) -> str:
+    text = str(value or "").strip().lower()
+    if not text:
+        return "run_on_startup"
+    if text not in CATCH_UP_POLICIES:
+        raise HTTPException(status_code=400, detail="Scheduler catch_up_policy is invalid.")
+    return text
+
+
+def _validate_recurrence_input(value: Any) -> str:
+    text = str(value or "").strip().lower()
+    if not text:
+        return "once"
+    if text not in SCHEDULER_RECURRENCE:
+        raise HTTPException(status_code=400, detail="Scheduler recurrence is invalid.")
+    return text
+
+
+def _validate_run_date_input(value: Any) -> str | None:
+    text = str(value or "").strip()
+    if not text:
+        return None
+    normalized = _normalize_run_date(text)
+    if not normalized:
+        raise HTTPException(status_code=400, detail="Scheduler run_date is invalid.")
+    return normalized
+
+
+def _validate_run_time_input(value: Any) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return DEFAULT_RUN_TIME
+    normalized = _normalize_run_time(text)
+    hour = _as_int(text[:2]) if len(text) >= 2 else None
+    minute = _as_int(text[3:5]) if len(text) >= 5 else None
+    if not SCHEDULE_TIME_RE.fullmatch(text) or hour is None or minute is None:
+        raise HTTPException(status_code=400, detail="Scheduler run_time is invalid.")
+    if normalized != text:
+        raise HTTPException(status_code=400, detail="Scheduler run_time is invalid.")
+    return normalized
+
+
 def _normalize_state(payload: Any) -> dict[str, Any]:
     src = payload if isinstance(payload, dict) else {}
     out = _default_state()
@@ -1080,7 +1131,7 @@ def update_state(payload: dict[str, Any] | None, template_id: str | None = None)
         if "card_id" in body:
             timer_state["card_id"] = _normalize_card_id(body.get("card_id"))
         if "action_key" in body:
-            timer_state["action_key"] = _normalize_action_key(body.get("action_key"))
+            timer_state["action_key"] = _validate_action_key_input(body.get("action_key"))
         if "year" in body:
             year = _as_int(body.get("year"))
             timer_state["year"] = year
@@ -1092,13 +1143,13 @@ def update_state(payload: dict[str, Any] | None, template_id: str | None = None)
         if "notes" in body:
             timer_state["notes"] = _normalize_text(body.get("notes"), max_len=2000)
         if "run_date" in body:
-            timer_state["run_date"] = _normalize_run_date(body.get("run_date"))
+            timer_state["run_date"] = _validate_run_date_input(body.get("run_date"))
         if "run_time" in body:
-            timer_state["run_time"] = _normalize_run_time(body.get("run_time"))
+            timer_state["run_time"] = _validate_run_time_input(body.get("run_time"))
         if "catch_up_policy" in body:
-            timer_state["catch_up_policy"] = _normalize_catch_up_policy(body.get("catch_up_policy"))
+            timer_state["catch_up_policy"] = _validate_catch_up_policy_input(body.get("catch_up_policy"))
         if "recurrence" in body:
-            timer_state["recurrence"] = _normalize_recurrence(body.get("recurrence"))
+            timer_state["recurrence"] = _validate_recurrence_input(body.get("recurrence"))
 
         if rearm:
             timer_state["last_result"] = None

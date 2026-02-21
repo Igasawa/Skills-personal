@@ -2612,6 +2612,86 @@ def test_api_scheduler_state_post_rejects_enable_without_schedule(
     assert "run_date" in detail
 
 
+def test_api_scheduler_state_post_rejects_invalid_action_key(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    client = _create_client(monkeypatch, tmp_path)
+    res = client.post(
+        "/api/scheduler/state",
+        json={
+            "enabled": False,
+            "action_key": "invalid_action",
+        },
+    )
+    assert res.status_code == 400
+    detail = str(res.json().get("detail") or "")
+    assert "action_key" in detail
+
+
+def test_api_scheduler_state_post_rejects_invalid_recurrence(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    client = _create_client(monkeypatch, tmp_path)
+    res = client.post(
+        "/api/scheduler/state",
+        json={
+            "enabled": False,
+            "recurrence": "hourly",
+        },
+    )
+    assert res.status_code == 400
+    detail = str(res.json().get("detail") or "")
+    assert "recurrence" in detail
+
+
+def test_api_scheduler_state_post_rejects_invalid_catch_up_policy(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    client = _create_client(monkeypatch, tmp_path)
+    res = client.post(
+        "/api/scheduler/state",
+        json={
+            "enabled": False,
+            "catch_up_policy": "invalid",
+        },
+    )
+    assert res.status_code == 400
+    detail = str(res.json().get("detail") or "")
+    assert "catch_up_policy" in detail
+
+
+def test_api_scheduler_state_post_rejects_invalid_run_date_format(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    client = _create_client(monkeypatch, tmp_path)
+    res = client.post(
+        "/api/scheduler/state",
+        json={
+            "enabled": False,
+            "run_date": "2026-02-30",
+        },
+    )
+    assert res.status_code == 400
+    detail = str(res.json().get("detail") or "")
+    assert "run_date" in detail
+
+
+def test_api_scheduler_state_post_rejects_invalid_run_time_format(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    client = _create_client(monkeypatch, tmp_path)
+    res = client.post(
+        "/api/scheduler/state",
+        json={
+            "enabled": False,
+            "run_time": "24:61",
+        },
+    )
+    assert res.status_code == 400
+    detail = str(res.json().get("detail") or "")
+    assert "run_time" in detail
+
+
 def test_api_scheduler_state_daily_recurrence_advances_run_date(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     client = _create_client(monkeypatch, tmp_path)
     run_payloads: list[dict[str, object]] = []
