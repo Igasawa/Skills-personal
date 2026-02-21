@@ -231,20 +231,24 @@
     - `monthly_anchor_day` を内部状態に追加し、`monthly` の日付進行で「元の日付アンカー」を保持するよう更新。
     - 31日指定の月次スケジュールで、2月補正後も次回以降に31日基準へ復帰できるよう修正。
     - APIレスポンスには `monthly_anchor_day` を露出しないよう `enrich` 時に除外。
+    - 起動失敗時の最小retry policyを追加（同一スロットで1回だけ再試行し、再失敗時は `retry_exhausted` で `failed` 確定）。
+    - retry内部状態（`failure_retry_signature/attempts/next_at`）を導入し、APIレスポンスからは非公開化。
   - `tests/test_dashboard_api.py`
     - `weekly` 起動後に `run_date` が 7日進行するケースを追加。
     - `monthly` 31日指定が短月を挟んでもアンカー日を維持するケースを追加。
+    - 起動失敗が1回再試行されること、再試行成功/再失敗の確定挙動を検証するケースを追加。
 - 検証:
   - `pytest -q skills/mfcloud-expense-receipt-reconcile/tests/test_dashboard_api.py -k "weekly_recurrence_advances_by_week or monthly_recurrence_preserves_anchor_day_after_short_month"`: 2 passed
-  - `pytest -q skills/mfcloud-expense-receipt-reconcile/tests/test_dashboard_api.py -k "scheduler"`: 26 passed
+  - `pytest -q skills/mfcloud-expense-receipt-reconcile/tests/test_dashboard_api.py -k "run_failure_retries_once_then_fails or run_failure_retry_succeeds_on_second_attempt"`: 2 passed
+  - `pytest -q skills/mfcloud-expense-receipt-reconcile/tests/test_dashboard_api.py -k "scheduler"`: 28 passed
   - `pytest -q skills/mfcloud-expense-receipt-reconcile/tests/test_dashboard_pages.py -k "expense_workflow_copy_page_shows_shared_wizard or expense_workflow_copy_template_loads_scheduler_panel_with_template_context"`: 2 passed
   - `pytest -q skills/mfcloud-expense-receipt-reconcile/tests/test_dashboard_contract.py -k "api_router_registers_expected_routes or dashboard_templates_reference_expected_script_chunks"`: 2 passed
 - 未解決:
-  - Phase 2.3 の retry policy（起動失敗時1回再試行）の実装
+  - Phase 2.3 の Playwright実画面検証（weekly/monthly/retryのシナリオ追加）
 
 ## 5. 直近タスク（次の更新対象）
 1. Phase 3.3拡張: `escalated` 通知連携（Slack/メール）を追加
-2. Phase 2.3着手: 繰り返し運用（daily/weekly/monthly）の詳細実装に着手
+2. Phase 2.3完了検証: weekly/monthly/retry の Playwrightスモーク追加
 3. 可視化拡張: `workflow-events/summary` を基に日次トレンド/通知要件を具体化
 
 ## 6. 更新ルール

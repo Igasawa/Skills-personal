@@ -27,6 +27,8 @@ SCHEDULER_RECURRENCE = {"once", "daily", "weekly", "monthly"}
 DEFAULT_RUN_TIME = "09:00"
 DEFAULT_ACTION_KEY = "preflight"
 SCHEDULER_POLL_SECONDS = 15
+SCHEDULER_FAILURE_RETRY_SECONDS = 60
+SCHEDULER_FAILURE_RETRY_MAX_ATTEMPTS = 1
 ONCE_RECEIPT_MAX_ITEMS = 5000
 TRIGGER_LOCK_STALE_SECONDS = 6 * 60 * 60
 SCHEDULE_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
@@ -50,6 +52,9 @@ _TIMER_STATE_KEYS = {
     "last_result",
     "last_triggered_signature",
     "last_triggered_at",
+    "failure_retry_signature",
+    "failure_retry_attempts",
+    "failure_retry_next_at",
 }
 _TIMER_STATE_COPY_KEYS = {
     "card_id",
@@ -126,6 +131,9 @@ def _default_state() -> dict[str, Any]:
         "last_result": None,
         "last_triggered_signature": "",
         "last_triggered_at": None,
+        "failure_retry_signature": "",
+        "failure_retry_attempts": 0,
+        "failure_retry_next_at": None,
     }
 
 
@@ -299,6 +307,10 @@ def _normalize_state(payload: Any) -> dict[str, Any]:
     out["last_result"] = last_result if isinstance(last_result, dict) else None
     out["last_triggered_signature"] = str(src.get("last_triggered_signature") or "").strip()
     out["last_triggered_at"] = str(src.get("last_triggered_at") or "").strip() or None
+    out["failure_retry_signature"] = str(src.get("failure_retry_signature") or "").strip()
+    retry_attempts = _as_int(src.get("failure_retry_attempts"))
+    out["failure_retry_attempts"] = retry_attempts if retry_attempts is not None and retry_attempts >= 0 else 0
+    out["failure_retry_next_at"] = str(src.get("failure_retry_next_at") or "").strip() or None
     return out
 
 
@@ -781,6 +793,9 @@ def _enrich_state(
 ) -> dict[str, Any]:
     view = _normalize_state(state)
     view.pop("monthly_anchor_day", None)
+    view.pop("failure_retry_signature", None)
+    view.pop("failure_retry_attempts", None)
+    view.pop("failure_retry_next_at", None)
     scheduled = _scheduled_datetime(view)
     view["next_run_at"] = scheduled.isoformat(timespec="seconds") if scheduled else None
     if template_id is not None:
@@ -858,6 +873,57 @@ def _set_last_result(
     timer_state["last_result"] = result
 
 
+def _clear_failure_retry_state(timer_state: dict[str, Any]) -> None:
+    timer_state["failure_retry_signature"] = ""
+    timer_state["failure_retry_attempts"] = 0
+    timer_state["failure_retry_next_at"] = None
+
+
+def _schedule_failure_retry(
+    timer_state: dict[str, Any],
+    *,
+    template_id: str,
+    signature: str,
+    now: datetime,
+    scheduled: datetime,
+    detail: str,
+) -> bool:
+    current_signature = str(timer_state.get("failure_retry_signature") or "").strip()
+    attempts = _as_int(timer_state.get("failure_retry_attempts")) or 0
+    if current_signature != signature:
+        current_signature = ""
+        attempts = 0
+
+    if attempts >= SCHEDULER_FAILURE_RETRY_MAX_ATTEMPTS:
+        _clear_failure_retry_state(timer_state)
+        return False
+
+    retry_attempt = attempts + 1
+    retry_at = now + timedelta(seconds=SCHEDULER_FAILURE_RETRY_SECONDS)
+    timer_state["failure_retry_signature"] = signature
+    timer_state["failure_retry_attempts"] = retry_attempt
+    timer_state["failure_retry_next_at"] = retry_at.isoformat(timespec="seconds")
+    _set_last_result(
+        timer_state,
+        status="deferred",
+        scheduled=scheduled,
+        detail=detail,
+        reason_code="retry_scheduled",
+    )
+    _append_scheduler_audit_event(
+        timer_state=timer_state,
+        template_id=template_id,
+        status="deferred",
+        scheduled=scheduled,
+        detail="retry_scheduled",
+        extra={
+            "retry_attempt": retry_attempt,
+            "retry_at": retry_at.isoformat(timespec="seconds"),
+        },
+    )
+    return True
+
+
 def _evaluate_single_timer(
     timer_state: dict[str, Any],
     template_id: str,
@@ -868,6 +934,7 @@ def _evaluate_single_timer(
     next_retry_at = _next_retry_at_by_template.get(template_id)
     if not bool(timer_state.get("enabled")):
         timer_state["last_evaluated_at"] = now.isoformat(timespec="seconds")
+        _clear_failure_retry_state(timer_state)
         _next_retry_at_by_template.pop(template_id, None)
         return
 
@@ -876,6 +943,7 @@ def _evaluate_single_timer(
     scheduled = _scheduled_datetime(timer_state)
     if scheduled is None:
         timer_state["enabled"] = False
+        _clear_failure_retry_state(timer_state)
         _set_last_result(
             timer_state,
             status="failed",
@@ -892,6 +960,16 @@ def _evaluate_single_timer(
         return
 
     signature = _schedule_signature(timer_state)
+    retry_signature = str(timer_state.get("failure_retry_signature") or "").strip()
+    retry_attempts = _as_int(timer_state.get("failure_retry_attempts")) or 0
+    retry_next_at = _parse_datetime(timer_state.get("failure_retry_next_at"))
+    if retry_signature and retry_signature != signature:
+        _clear_failure_retry_state(timer_state)
+        retry_signature = ""
+        retry_attempts = 0
+        retry_next_at = None
+    has_failure_retry = bool(retry_signature and retry_signature == signature and retry_attempts > 0)
+
     is_repeating = _is_repeating(timer_state)
     once_receipt_key = ""
     if not is_repeating:
@@ -903,6 +981,7 @@ def _evaluate_single_timer(
             timer_state["last_triggered_at"] = (
                 str(existing_receipt.get("triggered_at") or "").strip() or now.isoformat(timespec="seconds")
             )
+            _clear_failure_retry_state(timer_state)
             _set_last_result(
                 timer_state,
                 status="skipped_duplicate",
@@ -930,6 +1009,9 @@ def _evaluate_single_timer(
         _next_retry_at_by_template.pop(template_id, None)
         return
 
+    if has_failure_retry and retry_next_at is not None and now < retry_next_at:
+        return
+
     missed = scheduled < _started_at
     if missed and str(timer_state.get("catch_up_policy")) == "skip":
         if is_repeating:
@@ -938,6 +1020,7 @@ def _evaluate_single_timer(
             timer_state["enabled"] = False
         timer_state["last_triggered_signature"] = signature
         timer_state["last_triggered_at"] = now.isoformat(timespec="seconds")
+        _clear_failure_retry_state(timer_state)
         _set_last_result(
             timer_state,
             status="skipped_missed",
@@ -1015,43 +1098,64 @@ def _evaluate_single_timer(
                     detail=detail,
                 )
             else:
+                if _schedule_failure_retry(
+                    timer_state,
+                    template_id=template_id,
+                    signature=signature,
+                    now=now,
+                    scheduled=scheduled,
+                    detail=detail,
+                ):
+                    return
                 timer_state["enabled"] = False
                 timer_state["last_triggered_signature"] = signature
                 timer_state["last_triggered_at"] = now.isoformat(timespec="seconds")
+                _clear_failure_retry_state(timer_state)
                 _set_last_result(
                     timer_state,
                     status="failed",
                     scheduled=scheduled,
                     detail=detail,
                     code=int(exc.status_code),
-                    reason_code="http_error",
+                    reason_code="retry_exhausted",
                 )
                 _append_scheduler_audit_event(
                     timer_state=timer_state,
                     template_id=template_id,
                     status="failed",
                     scheduled=scheduled,
-                    detail=detail,
+                    detail="retry_exhausted",
                 )
                 _next_retry_at_by_template.pop(template_id, None)
             return
         except Exception as exc:  # noqa: BLE001
+            detail = str(exc)
+            if _schedule_failure_retry(
+                timer_state,
+                template_id=template_id,
+                signature=signature,
+                now=now,
+                scheduled=scheduled,
+                detail=detail,
+            ):
+                return
             timer_state["enabled"] = False
             timer_state["last_triggered_signature"] = signature
             timer_state["last_triggered_at"] = now.isoformat(timespec="seconds")
+            _clear_failure_retry_state(timer_state)
             _set_last_result(
                 timer_state,
                 status="failed",
                 scheduled=scheduled,
-                detail=str(exc),
-                reason_code="unexpected_error",
+                detail=detail,
+                reason_code="retry_exhausted",
             )
             _append_scheduler_audit_event(
                 timer_state=timer_state,
                 template_id=template_id,
                 status="failed",
                 scheduled=scheduled,
-                detail=str(exc),
+                detail="retry_exhausted",
             )
             _next_retry_at_by_template.pop(template_id, None)
             return
@@ -1062,6 +1166,7 @@ def _evaluate_single_timer(
             timer_state["enabled"] = False
         timer_state["last_triggered_signature"] = signature
         timer_state["last_triggered_at"] = now.isoformat(timespec="seconds")
+        _clear_failure_retry_state(timer_state)
         run_id = str(run_result.get("run_id") or "")
         _set_last_result(
             timer_state,
@@ -1178,6 +1283,8 @@ def update_state(payload: dict[str, Any] | None, template_id: str | None = None)
             timer_state["enabled"] = enabled_after
             if enabled_after and not enabled_before:
                 rearm = True
+            if not enabled_after:
+                _clear_failure_retry_state(timer_state)
         if "card_id" in body:
             timer_state["card_id"] = _normalize_card_id(body.get("card_id"))
         if "action_key" in body:
@@ -1214,6 +1321,7 @@ def update_state(payload: dict[str, Any] | None, template_id: str | None = None)
             timer_state["last_result"] = None
             timer_state["last_triggered_signature"] = ""
             timer_state["last_triggered_at"] = None
+            _clear_failure_retry_state(timer_state)
 
         if bool(timer_state.get("enabled")):
             _validate_enabled_state(timer_state)

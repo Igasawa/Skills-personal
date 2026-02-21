@@ -2922,6 +2922,122 @@ def test_api_scheduler_state_monthly_recurrence_preserves_anchor_day_after_short
     assert len(run_payloads) == 2
 
 
+def test_api_scheduler_state_run_failure_retries_once_then_fails(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    client = _create_client(monkeypatch, tmp_path)
+    run_payloads: list[dict[str, Any]] = []
+
+    def failing_start_run(payload: dict[str, Any]) -> dict[str, str]:
+        run_payloads.append(dict(payload))
+        raise HTTPException(status_code=500, detail="scheduler-test-failure")
+
+    class FrozenDateTime(datetime):
+        current = datetime(2026, 2, 20, 10, 0, 0)
+
+        @classmethod
+        def now(cls, tz=None):  # type: ignore[override]
+            if tz is not None:
+                return cls.current.astimezone(tz)
+            return cls.current
+
+    monkeypatch.setattr(public_core_scheduler, "datetime", FrozenDateTime)
+    monkeypatch.setattr(public_core_scheduler, "_started_at", datetime(2026, 2, 20, 0, 0, 0))
+    monkeypatch.setattr(public_core_scheduler.core_runs, "_start_run", failing_start_run)
+
+    template_id = "scheduler-failure-retry-once"
+    payload = {
+        "enabled": True,
+        "action_key": "preflight",
+        "card_id": "failure-retry-card",
+        "year": 2026,
+        "month": 2,
+        "run_date": "2026-02-20",
+        "run_time": "09:00",
+        "recurrence": "once",
+        "catch_up_policy": "run_on_startup",
+    }
+
+    first = client.post(f"/api/scheduler/state?template_id={template_id}", json=payload)
+    assert first.status_code == 200
+    first_body = first.json()
+    assert first_body["enabled"] is True
+    assert (first_body.get("last_result") or {}).get("status") == "deferred"
+    assert (first_body.get("last_result") or {}).get("reason_code") == "retry_scheduled"
+    assert len(run_payloads) == 1
+
+    before_retry = client.post(f"/api/scheduler/state?template_id={template_id}", json={"enabled": True})
+    assert before_retry.status_code == 200
+    assert len(run_payloads) == 1
+    assert (before_retry.json().get("last_result") or {}).get("reason_code") == "retry_scheduled"
+
+    FrozenDateTime.current = datetime(2026, 2, 20, 10, 1, 5)
+    second = client.post(f"/api/scheduler/state?template_id={template_id}", json={"enabled": True})
+    assert second.status_code == 200
+    second_body = second.json()
+    assert second_body["enabled"] is False
+    assert (second_body.get("last_result") or {}).get("status") == "failed"
+    assert (second_body.get("last_result") or {}).get("reason_code") == "retry_exhausted"
+    assert len(run_payloads) == 2
+
+
+def test_api_scheduler_state_run_failure_retry_succeeds_on_second_attempt(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    client = _create_client(monkeypatch, tmp_path)
+    run_payloads: list[dict[str, Any]] = []
+
+    def flaky_start_run(payload: dict[str, Any]) -> dict[str, str]:
+        run_payloads.append(dict(payload))
+        if len(run_payloads) == 1:
+            raise HTTPException(status_code=500, detail="scheduler-test-flaky")
+        return {"run_id": "run_retry_success_001"}
+
+    class FrozenDateTime(datetime):
+        current = datetime(2026, 2, 20, 10, 0, 0)
+
+        @classmethod
+        def now(cls, tz=None):  # type: ignore[override]
+            if tz is not None:
+                return cls.current.astimezone(tz)
+            return cls.current
+
+    monkeypatch.setattr(public_core_scheduler, "datetime", FrozenDateTime)
+    monkeypatch.setattr(public_core_scheduler, "_started_at", datetime(2026, 2, 20, 0, 0, 0))
+    monkeypatch.setattr(public_core_scheduler.core_runs, "_start_run", flaky_start_run)
+
+    template_id = "scheduler-failure-retry-success"
+    payload = {
+        "enabled": True,
+        "action_key": "preflight",
+        "card_id": "failure-retry-success-card",
+        "year": 2026,
+        "month": 2,
+        "run_date": "2026-02-20",
+        "run_time": "09:00",
+        "recurrence": "once",
+        "catch_up_policy": "run_on_startup",
+    }
+
+    first = client.post(f"/api/scheduler/state?template_id={template_id}", json=payload)
+    assert first.status_code == 200
+    first_body = first.json()
+    assert first_body["enabled"] is True
+    assert (first_body.get("last_result") or {}).get("reason_code") == "retry_scheduled"
+    assert len(run_payloads) == 1
+
+    FrozenDateTime.current = datetime(2026, 2, 20, 10, 1, 5)
+    second = client.post(f"/api/scheduler/state?template_id={template_id}", json={"enabled": True})
+    assert second.status_code == 200
+    second_body = second.json()
+    assert second_body["enabled"] is False
+    assert (second_body.get("last_result") or {}).get("status") == "started"
+    assert (second_body.get("last_result") or {}).get("reason_code") == "started"
+    assert len(run_payloads) == 2
+
+
 def test_api_scheduler_state_enabled_true_without_transition_keeps_last_result(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
