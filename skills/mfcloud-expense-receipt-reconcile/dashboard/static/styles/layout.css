@@ -368,6 +368,47 @@
   box-shadow: 0 0 0 3px rgb(var(--semantic-field-border-focus) / 0.16);
 }
 
+.dashboard-ai-chat-skill-actions {
+  margin-top: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.dashboard-ai-chat-skill-meta {
+  width: 100%;
+  font-size: 11px;
+  color: rgb(var(--text-secondary));
+}
+
+.dashboard-ai-chat-skill-action {
+  appearance: none;
+  border: 1px solid rgb(var(--semantic-field-border-default));
+  background: rgb(var(--surface-1));
+  color: rgb(var(--text-default));
+  border-radius: 999px;
+  padding: 5px 10px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background var(--transition-fast), border-color var(--transition-fast), color var(--transition-fast);
+}
+
+.dashboard-ai-chat-skill-action:hover {
+  background: rgb(var(--semantic-interaction-hover-overlay));
+  border-color: rgb(var(--semantic-field-border-hover));
+}
+
+.dashboard-ai-chat-skill-action.is-confirm {
+  border-color: rgb(var(--semantic-button-primary-bg));
+  color: rgb(var(--semantic-button-primary-bg));
+}
+
+.dashboard-ai-chat-skill-action.is-cancel {
+  color: rgb(var(--semantic-feedback-danger-surface));
+}
+
 .dashboard-ai-chat-item.is-user .dashboard-ai-chat-bubble {
   background: rgb(var(--semantic-button-primary-bg));
   border-color: rgb(var(--semantic-button-primary-bg));

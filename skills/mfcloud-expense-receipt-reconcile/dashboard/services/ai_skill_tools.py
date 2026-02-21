@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 import json
 import os
+import re
 import shlex
 import subprocess
 import sys
@@ -11,6 +12,7 @@ from pathlib import Path
 from typing import Any
 
 SKILL_DOC_NAME = "SKILL.md"
+SKILL_META_NAME = "skill.yaml"
 MAX_ARGS = 40
 MAX_ARG_CHARS = 200
 MAX_OUTPUT_CHARS = 12000
@@ -29,6 +31,7 @@ IGNORED_SKILL_PATH_PARTS = {
     "venv",
     ".venv",
 }
+ENV_KEY_PATTERN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
 
 class SkillError(RuntimeError):
@@ -85,11 +88,35 @@ def _normalize_skill_id(value: Any) -> str:
     return str(value or "").strip().lower()
 
 
+def _skill_dir_from_row(skill: dict[str, Any]) -> Path | None:
+    skill_md = str(skill.get("skill_md") or "").strip()
+    if not skill_md:
+        return None
+    return Path(skill_md).parent
+
+
 def _read_text(path: Path) -> str:
     try:
         return path.read_text(encoding="utf-8-sig")
     except Exception:
         return path.read_text(encoding="utf-8", errors="ignore")
+
+
+def _parse_dotenv(path: Path) -> dict[str, str]:
+    out: dict[str, str] = {}
+    if not path.exists() or not path.is_file():
+        return out
+    for line in _read_text(path).splitlines():
+        raw = str(line or "").strip()
+        if not raw or raw.startswith("#") or "=" not in raw:
+            continue
+        key, value = raw.split("=", 1)
+        env_key = key.strip()
+        if not ENV_KEY_PATTERN.match(env_key):
+            continue
+        env_value = value.strip().strip('"').strip("'")
+        out[env_key] = env_value
+    return out
 
 
 def _parse_front_matter(path: Path) -> dict[str, str]:
@@ -113,6 +140,117 @@ def _parse_front_matter(path: Path) -> dict[str, str]:
         key, value = text.split(":", 1)
         out[str(key).strip().lower()] = str(value).strip().strip('"').strip("'")
     return out
+
+
+def _extract_required_env_keys(skill_yaml: Path) -> list[str]:
+    if not skill_yaml.exists() or not skill_yaml.is_file():
+        return []
+    lines = _read_text(skill_yaml).splitlines()
+    in_secrets = False
+    in_env = False
+    secrets_indent = -1
+    env_indent = -1
+    out: list[str] = []
+    for line in lines:
+        if not line.strip() or line.lstrip().startswith("#"):
+            continue
+        indent = len(line) - len(line.lstrip(" "))
+        text = line.strip()
+        if text.startswith("secrets:"):
+            in_secrets = True
+            in_env = False
+            secrets_indent = indent
+            continue
+        if in_secrets and indent <= secrets_indent and not text.startswith("-"):
+            in_secrets = False
+            in_env = False
+        if in_secrets and text.startswith("env:"):
+            in_env = True
+            env_indent = indent
+            continue
+        if not in_env:
+            continue
+        if indent <= env_indent:
+            in_env = False
+            continue
+        if not text.startswith("-"):
+            continue
+        key = text[1:].strip().strip('"').strip("'")
+        if not key or not ENV_KEY_PATTERN.match(key):
+            continue
+        if key not in out:
+            out.append(key)
+    return out
+
+
+def _required_env_keys_for_skill(skill: dict[str, Any]) -> list[str]:
+    skill_dir = _skill_dir_from_row(skill)
+    if not skill_dir:
+        return []
+    return _extract_required_env_keys(skill_dir / SKILL_META_NAME)
+
+
+def _load_required_secret_values(required_keys: list[str]) -> dict[str, str]:
+    keys = [key for key in required_keys if ENV_KEY_PATTERN.match(key)]
+    if not keys:
+        return {}
+    secrets_dir = _ax_home() / "secrets"
+    if not secrets_dir.exists() or not secrets_dir.is_dir():
+        return {}
+    out: dict[str, str] = {}
+    for env_path in sorted(secrets_dir.glob("*.env")):
+        row = _parse_dotenv(env_path)
+        for key in keys:
+            if key in out:
+                continue
+            value = row.get(key)
+            if value is None:
+                continue
+            out[key] = value
+    return out
+
+
+def _build_subprocess_env(required_keys: list[str]) -> tuple[dict[str, str], list[str]]:
+    merged_env: dict[str, str] = dict(os.environ)
+    if not required_keys:
+        return merged_env, []
+    secret_values = _load_required_secret_values(required_keys)
+    injected: list[str] = []
+    for key in required_keys:
+        current = str(merged_env.get(key) or "").strip()
+        if current:
+            continue
+        value = secret_values.get(key)
+        if value is None or str(value).strip() == "":
+            continue
+        merged_env[key] = value
+        injected.append(key)
+    return merged_env, injected
+
+
+def _normalize_kintone_failure(skill_id: str, stdout: str, stderr: str) -> str | None:
+    sid = _normalize_skill_id(skill_id)
+    if not sid.startswith("kintone"):
+        return None
+    text = f"{stdout}\n{stderr}".lower()
+    hints: list[str] = []
+    if "storage_state not found" in text:
+        hints.append(
+            "Kintone storage_state was not found. Create AX_HOME/sessions/kintone.storage.json "
+            "or pass --storage-state with a valid file path."
+        )
+    has_kintone_missing = (
+        bool(re.search(r"kintone_[a-z0-9_]+", text))
+        and any(word in text for word in ("missing", "not set", "required", "not configured"))
+    )
+    if has_kintone_missing:
+        hints.append(
+            "KINTONE_* credentials are missing. Configure AX_HOME/secrets/kintone.env "
+            "(for example KINTONE_USERNAME and KINTONE_PASSWORD)."
+        )
+    if not hints:
+        return None
+    return "Reconfiguration guide:\n- " + "\n- ".join(hints)
 
 
 def _iter_skill_dirs(root: Path) -> list[Path]:
@@ -430,6 +568,8 @@ def execute_skill(skill_id: str, args: Any = None, timeout_seconds: Any = None) 
 
     normalized_args = _normalize_args(args)
     timeout = _coerce_timeout(timeout_seconds)
+    required_env_keys = _required_env_keys_for_skill(skill)
+    merged_env, injected_env_keys = _build_subprocess_env(required_env_keys)
     cmd = _build_command(runner, normalized_args)
     cwd = str(runner.parent.parent if runner.parent.name == "scripts" else runner.parent)
 
@@ -444,6 +584,7 @@ def execute_skill(skill_id: str, args: Any = None, timeout_seconds: Any = None) 
             timeout=timeout,
             encoding="utf-8",
             errors="replace",
+            env=merged_env,
         )
     except subprocess.TimeoutExpired as exc:
         raise SkillExecutionTimeoutError(
@@ -457,6 +598,10 @@ def execute_skill(skill_id: str, args: Any = None, timeout_seconds: Any = None) 
     ended = time.time()
     stdout, stdout_truncated = _trim_output(result.stdout or "")
     stderr, stderr_truncated = _trim_output(result.stderr or "")
+    normalized_failure = _normalize_kintone_failure(str(skill.get("id") or ""), stdout, stderr)
+    if normalized_failure:
+        combined = (stderr + "\n\n" + normalized_failure).strip() if stderr else normalized_failure
+        stderr, stderr_truncated = _trim_output(combined)
     return {
         "skill": skill.get("id"),
         "name": skill.get("name"),
@@ -466,8 +611,11 @@ def execute_skill(skill_id: str, args: Any = None, timeout_seconds: Any = None) 
         "timeout_seconds": timeout,
         "duration_ms": int((ended - started) * 1000),
         "returncode": int(result.returncode),
+        "required_env_keys": required_env_keys,
+        "injected_env_keys": injected_env_keys,
         "stdout": stdout,
         "stderr": stderr,
+        "normalized_error": normalized_failure,
         "stdout_truncated": stdout_truncated,
         "stderr_truncated": stderr_truncated,
     }

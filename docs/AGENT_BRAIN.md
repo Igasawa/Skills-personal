@@ -649,3 +649,278 @@
 - **レビュー期限**: -
 - **ソース**: llm
 
+## [2026-02-19] Commit: a06002cd62e474bbcaf15d9dc1812707cc69da0b
+- **要約**: ワークスペース管理の命名規則統一、インシデントアーカイブ手順の確立、およびスクレイパー不具合の引き継ぎ情報の記録
+- **獲得した知識**: ワークスペースのピン留め管理には 'pinned-groups' という名称・ID体系を統一して使用する, UIメッセージ（削除確認ダイアログ等）は日本語で実装する, 解決済みインシデントは、メタデータやログを含めて 'reports/error_archive/resolved/' 配下にアーカイブする, インシデントの引き継ぎ状態は 'handed_off' ステータスと 'execution_owner' プロパティで管理する
+- **守るべきルール**: 開発時の一時ファイル（tmp_*、workspace_*.js、ws.diff、*.bak等）をコミットに含めること, ワークスペースのグループ管理に旧称の 'pinned-links' を使用すること
+- **未解決の文脈**: スケジューラー関連コンポーネントの整理（一部テストで削除された要素の整合性確認）, 不要になったJS/CSSのクリーンアップ, rakuten_download.mjs における Node.js worker exit 原因の特定と修正
+- **対象範囲**: docs/, skills/mfcloud-expense-receipt-reconcile/
+- **確度**: 1.0
+- **重要度**: low
+- **レビュー期限**: -
+- **ソース**: llm
+
+## [2026-02-20] Commit: 7f0c62386d955ee4eaf1aaec62fdc9dc79d1a6db
+- **要約**: 生成されたレポートアーティファクトのGit追跡停止と.gitignore設定の更新
+- **獲得した知識**: skills/mfcloud-expense-receipt-reconcile/reports/ 配下の各サブディレクトリ（error_inbox, error_plans, error_handoffs, error_runs, error_archive）はGit管理対象外とする。, ディレクトリ構造を保持する必要がある場合は、.gitkeep ファイルを配置し、それのみをGit管理対象に含める（.gitignore で否定条件 ! を使用する）。
+- **守るべきルール**: インシデント対応の結果や実行ログ、プランファイルなどの動的生成物をリポジトリに直接コミットすること。
+- **未解決の文脈**: 他のスキルディレクトリにおいても同様のレポート出力が存在する場合、統一的な除外設定を適用する必要がある。
+- **対象範囲**: ci, other
+- **確度**: 1.0
+- **重要度**: low
+- **レビュー期限**: -
+- **ソース**: llm
+
+## [2026-02-20] Commit: cef45e25f2cadde4322e2a24b36cc8bb9a829de2
+- **要約**: ワークフロータスク定義UIの簡素化および実行ターゲット設定の非表示化
+- **獲得した知識**: ワークフローの手順ヘッダー (step-head) および実行フォーム (run-form) は、簡素化されたUIでは hidden クラスを付与して非表示にする。, 手順アクションの選択肢 (<select data-template-step-action>) はUIから排除し、ユーザーに直接選択させない構成とする。, 非表示にする要素にはアクセシビリティ向上のため aria-hidden="true" を付与する。
+- **守るべきルール**: 簡素化が意図されたワークフロー設定画面において、詳細な実行ターゲット設定やアクション選択用のセレクトボックスを露出させること。
+- **未解決の文脈**: JS側から TEMPLATE_STEP_ACTION_LABELS 等のラベルマッピングロジックを削除したため、他画面で同様の表示が必要になった場合に再定義が必要となる。, UIの制御がCSSクラス (hidden) に強く依存しており、将来的なUIフレームワークの変更時に影響を受ける可能性がある。
+- **対象範囲**: application, other
+- **確度**: 0.9
+- **重要度**: low
+- **レビュー期限**: -
+- **ソース**: llm
+
+## [2026-02-20] Commit: e87cf43ddefda04cd2c1e5cc06bfa65ad6a02abb
+- **要約**: 領収書名ガード機能の実装と、Windowsセルフホストランナーによるスモークテストの自動化
+- **獲得した知識**: 本番実行（download run）時には、設定値にプレースホルダーが含まれていないか検証を必須とする, dry_run または skip_receipt_name フラグが有効な場合に限り、プレースホルダーの存在を許容する, Windows環境のGitHub Actionsワークフローでは、シェルに pwsh を指定し、bash依存構文（&&, ||等）を排除する
+- **守るべきルール**: 設定ファイルのサンプルURL（https://example/ 等）を置換せずに本番実行を開始すること, Windowsランナー向けのステップで、PowerShellで解釈できないbash特有の制御構文を使用すること
+- **未解決の文脈**: セルフホストランナー（Windows）のOSアップデートやランタイム環境の維持管理コスト, プレースホルダー判定ロジックの網羅性（現在は特定のURLパターンに依存している可能性あり）
+- **対象範囲**: skills/mfcloud-expense-receipt-reconcile, .github/workflows/workflow-smoke-self-hosted.yml
+- **確度**: 0.9
+- **重要度**: medium
+- **レビュー期限**: -
+- **ソース**: llm
+
+## [2026-02-20] Commit: 9107aec07f7b52b8635d670fc2fda9d4fd2ac78f
+- **要約**: 組織横断の共有設定基盤(org-profile)の導入と、MFクラウド関連スキルへの統合
+- **獲得した知識**: 共有設定(org-profile)の変更時は docs/shared-config-schema.json に基づくバリデーションを必須とする, 設定値の優先順位は、原則としてスキル固有設定が組織プロファイル設定を上書きするロジック（resolved_sources）に従う, 設定の変更・追加時は .github/workflows/config-guard.yml による自動検証を通過させる必要がある, 非推奨となった設定項目については docs/deprecation-policy.md に基づき移行期間を設けて管理する
+- **守るべきルール**: スキーマ検証を介さずに org-profile.template.json や関連設定を直接本番環境へ適用する, 組織共通で定義可能なURLや名称を、各スキルの config.json に個別にハードコードし続ける
+- **未解決の文脈**: 既存の他スキルに対する shared-config への移行対応（現在は mfcloud-expense-receipt-reconcile のみ完了）, deprecation-policy.md に定義された旧設定パラメータの完全な削除
+- **対象範囲**: shared-config, mfcloud-expense-receipt-reconcile, CI/CD workflows, scripts/lib/shared_config.py
+- **確度**: 0.9
+- **重要度**: medium
+- **レビュー期限**: 2026-05-20
+- **ソース**: llm
+
+## [2026-02-20] Commit: 421f971923865e6e3c74c27ac8221b839deb9985
+- **要約**: ダッシュボードのルーティング刷新。経費精算フローを /expense へ移動し、デフォルトの起動画面を /workspace に変更。
+- **獲得した知識**: 経費精算関連のフローは /expense プレフィックス配下に配置する。, ダッシュボードのデフォルト起動パス（ルートアクセス時の遷移先）は /workspace とする。, 特定のレガシーなサブヘッダー文字列（「成果物の確認と実行をまとめて管理します...」等）は、UI上で非表示（hidden）にする。
+- **守るべきルール**: 経費精算フローに旧ルート（ルート直下など）をそのまま使用すること。, レガシーな説明文をUIにそのまま表示し続けること。
+- **未解決の文脈**: api_workflow_endpoints.py 内にレガシーなサブヘッダー文字列がハードコードされており、文言のバリエーションが増えた場合の保守性が低い。
+- **対象範囲**: mfcloud-expense-receipt-reconcile/dashboard/routes, mfcloud-expense-receipt-reconcile/dashboard/templates, mfcloud-expense-receipt-reconcile/scripts/start_dashboard.ps1
+- **確度**: 0.9
+- **重要度**: medium
+- **レビュー期限**: -
+- **ソース**: llm
+
+## [2026-02-20] Commit: ad3d0f0eaeba2ae39f66ceb9988d5c7dbda978e9
+- **要約**: 共有設定(shared-config)のバリデーション強化と空文字のフォールバック処理の改善
+- **獲得した知識**: 設定値の文字列は必ずトリムし、空になった場合はNone（null）として扱うこと, URL形式の設定値はurlparseを用いてschemeとnetlocの存在を検証すること, metadata.notesなどの非秘匿フィールドに'-----BEGIN PRIVATE KEY-----'などの機密情報パターンが含まれていないかチェックを強制すること
+- **守るべきルール**: 空文字列("")を有効な設定値としてそのまま処理すること, 機密情報をメタデータや注釈フィールド(notes)に直接記述すること, URLの形式チェックを行わずに設定値として受け入れること
+- **未解決の文脈**: 機密情報検知のパターンが特定の文字列に限定されており、将来的に正規表現ベースの包括的なスキャンへの拡張が必要, URLバリデーションが基本的な形式チェックのみであり、ドメイン制限などの詳細な制約は未実装
+- **対象範囲**: scripts/config_migrate.py, scripts/lib/shared_config.py, scripts/validate_org_profile.py, skills/mfcloud-expense-receipt-reconcile/
+- **確度**: 0.9
+- **重要度**: medium
+- **レビュー期限**: -
+- **ソース**: llm
+
+## [2026-02-20] Commit: 9c9edcb3b8124617628cd9bf7566c24a6e823c7d
+- **要約**: コピーウィザードにおけるワークフローステップ種別の表示ラベル更新
+- **獲得した知識**: ワークフローステップの種別ラベルを定義する際は、'manual'は'人'、'agent'は'AI'、'browser'は'AI（browser）'と表記する。
+- **守るべきルール**: UI上の表示ラベルに'Agent'や'Browser'、'手動'といった技術寄りの用語をそのまま使用すること。
+- **未解決の文脈**: プロジェクト内の他の箇所やマニュアル等で、古いラベル表記（手動/Agent/Browser）が残存している可能性がある。
+- **対象範囲**: skills/mfcloud-expense-receipt-reconcile/dashboard/static/js/index.constants.js, コピーウィザードUI表示
+- **確度**: 1.0
+- **重要度**: low
+- **レビュー期限**: -
+- **ソース**: llm
+
+## [2026-02-20] Commit: 3ddb63dec2fe4602a29afc89c2bd1e8ab8ccc934
+- **要約**: ダッシュボード基盤および実行/アーカイブ関連の共通ロジックを scripts/lib/ へ抽出し、スキル間での再利用性を向上。
+- **獲得した知識**: 共通基盤ロジック（AX_HOME解決、JSON I/O、アーカイブ管理等）は scripts/lib/ の共通モジュール（skill_runtime_common.py等）を使用する。, 既存スキルの移行時は、common.py 等で互換ラッパーを維持し、既存のインポートパスを壊さないように配慮する。, ダッシュボードの初期化には dashboard_app_factory.py を利用し、Flask/FastAPI等のボイラープレートコードを共通化する。
+- **守るべきルール**: スキルディレクトリ内で独自に AX_HOME や artifacts パスをハードコードして解決すること。, ダッシュボードのルーティングや実行レジストリのロジックを各スキルで重複して実装すること。
+- **未解決の文脈**: 共有化計画（Step 1-2完了）の残りのステップ（UIコンポーネントの共通化など）の実施が必要。, 互換ラッパーの完全な廃止と、全スキルでの新共通ライブラリへの直接参照への切り替え時期の検討。
+- **対象範囲**: scripts/lib/, skills/mfcloud-expense-receipt-reconcile/dashboard/, docs/dashboard-sharedization-plan.md
+- **確度**: 0.9
+- **重要度**: low
+- **レビュー期限**: -
+- **ソース**: llm
+
+## [2026-02-20] Commit: d38c551ada5363994677b9044a2b9cdefcfa5969
+- **要約**: ドキュメント内のユーザー固有の絶対パスを環境変数を用いたポータブルな記述に置換
+- **獲得した知識**: PowerShellの実行例では、ユーザーディレクトリの指定に $env:USERPROFILE を使用する。, Windowsタスクスケジューラ等のコマンドライン引数では %USERPROFILE% を使用する。, ドキュメント内のパス記述において、特定の個人名を含む絶対パス（例: C:\Users\TatsuoIgasawa）を禁止する。
+- **守るべきルール**: 作成者のローカル環境に依存した絶対パス（C:\Users\<個人名>\...）をドキュメントやスクリプト例に含めること。
+- **未解決の文脈**: 他のスキルやドキュメント（特に古いもの）に同様のハードコードされたパスが残っていないかの全量調査。, PowerShell内でのパス区切り文字（\\ vs \）の表記揺れの確認と統一。
+- **対象範囲**: プロジェクト全体のドキュメント（README.md, SKILL.md, Runbook）, コマンド実行例およびスクリプト内のサンプルパス
+- **確度**: 1.0
+- **重要度**: low
+- **レビュー期限**: -
+- **ソース**: llm
+
+## [2026-02-20] Commit: be408a12252ec396187760ded8aff60ad663ac8c
+- **要約**: クローン後の初期セットアップを自動化するPowerShellスクリプトの導入と、パス指定の環境変数化による標準化。
+- **獲得した知識**: スキル固有の初期セットアップには bootstrap_from_clone.ps1 を使用し、手動での環境構築を避ける。, ドキュメントやスクリプト内でのパス指定は、絶対パスを避け必ず $env:AX_HOME を起点とする。, Windows環境では、ユーザーの利便性向上のためダッシュボード起動用とスキルフォルダ参照用のデスクトップショートカットを提供する。
+- **守るべきルール**: C:\Users\<user>\.ax のような、特定のユーザー環境に依存した絶対パスをドキュメントやスクリプトに記述すること。, AX_HOME 環境変数を介さずに直接ランタイムディレクトリを操作すること。
+- **未解決の文脈**: セットアップスクリプトがWindows/PowerShellに強く依存しており、他OS環境での自動化が考慮されていない。, Playwrightによる各サービス（Amazon/楽天/マネーフォワード）へのログインセッション作成は依然として手動操作が必要である。
+- **対象範囲**: mfcloud-expense-receipt-reconcile スキル, リポジトリ全体のセットアップ・運用方針
+- **確度**: 0.9
+- **重要度**: low
+- **レビュー期限**: -
+- **ソース**: llm
+
+## [2026-02-20] Commit: 5880cf20b9dd416c5e03456ccb3f5db27c074aa2
+- **要約**: ワークフローステップの起動条件(trigger_kind)と実行方式(execution_mode)の分離と正規化
+- **獲得した知識**: ワークフローステップ定義には trigger_kind と execution_mode を含めること, execution_mode が 'auto' の場合は timer_minutes の指定を必須とする, APIバリデーションにおいて、execution_mode=auto かつ timer_minutes 欠如時は 400 Bad Request を返す, trigger_kind には manual_start, scheduled, external_event, after_previous 等の定義済み定数を使用する
+- **守るべきルール**: execution_mode を 'auto' に設定しながら timer_minutes を省略する実装, 起動トリガーと実行制御のロジックを単一のフィールドで管理すること
+- **未解決の文脈**: 既存のワークフローテンプレートに対するデータ移行または互換性維持の確認, MVP仕様のため、より複雑なトリガー条件（複数条件のAND/OR等）への拡張は未着手
+- **対象範囲**: skills/mfcloud-expense-receipt-reconcile/dashboard/routes/api_workflow_endpoints.py, skills/mfcloud-expense-receipt-reconcile/dashboard/static/js/index.state.js, docs/workflow_step_trigger_execution_mvp_spec.md
+- **確度**: 0.9
+- **重要度**: medium
+- **レビュー期限**: -
+- **ソース**: llm
+
+## [2026-02-20] Commit: 1b9a3eee9aadabdd3fb35eca90809a9ea832e861
+- **要約**: AX_HOMEのセーフティガード導入とポータブルなセットアップ手順への更新
+- **獲得した知識**: AX_HOMEはリポジトリのルートディレクトリ外に配置しなければならない。, Windows環境において、UNCパス（\\server\share）をAX_HOMEに指定することは原則禁止。, 制約を回避してリポジトリ内やUNCパスを使用する場合は、環境変数 AX_ALLOW_UNSAFE_AX_HOME=1 または引数 -AllowUnsafeAxHome を明示的に使用する。, ドキュメント内のパス表記は特定のユーザー環境に依存せず <Skillpersonal_clone_root> 等のプレースホルダーを使用する。
+- **守るべきルール**: リポジトリ内のディレクトリを AX_HOME に設定する（秘匿情報の混入・コミットリスク）。, 意図せずUNCパスを AX_HOME に使用する（複数ユーザー間でのセッション競合・上書きリスク）。, セットアップ手順に $env:USERPROFILE を含む絶対パスをハードコードする。
+- **未解決の文脈**: Python (skill_runtime_common.py) と PowerShell (bootstrap_from_clone.ps1) の両方にセーフティガードのロジックが重複して実装されている。, リポジトリルートの判定ロジックが現在のディレクトリ階層構造に依存している。
+- **対象範囲**: scripts/lib/skill_runtime_common.py, skills/mfcloud-expense-receipt-reconcile/scripts/bootstrap_from_clone.ps1, README.md, SKILL.md
+- **確度**: 1.0
+- **重要度**: medium
+- **レビュー期限**: -
+- **ソース**: llm
+
+## [2026-02-20] Commit: 344df572e47b822b7b6231ba9a7382f8b5998351
+- **要約**: ワークフローのスケジュール実行同期および外部イベントWebhook連携機能の追加
+- **獲得した知識**: 新しいエンドポイント `/api/workflow-events` を通じて外部イベントを受け付ける。, イベント処理のレスポンスには、実行の有無を示す `triggered` と、重複判定を示す `duplicate` フラグを含める必要がある。, ワークフローイベントに関連する設定（URL等）は環境変数から取得する構成とする。
+- **守るべきルール**: 重複実行（duplicate）のチェックをバイパスしてイベントを処理すること。, 契約テスト（contract test）のルート定義更新を忘れること。
+- **未解決の文脈**: Webhookの認証（署名検証等）の実装詳細がパッチからは不明であり、セキュリティ要件の再確認が必要。, 外部イベントとスケジュール実行が競合した場合の優先順位制御の明文化。
+- **対象範囲**: skills/mfcloud-expense-receipt-reconcile/dashboard/routes/api_workspace_routes.py, skills/mfcloud-expense-receipt-reconcile/tests/
+- **確度**: 0.85
+- **重要度**: medium
+- **レビュー期限**: -
+- **ソース**: llm
+
+## [2026-02-20] Commit: dc4a9e00dbb37efec67d00451dfb7055089c716f
+- **要約**: AIチャット応答のMarkdown装飾抑制とコピー機能の追加
+- **獲得した知識**: AIへのシステムプロンプト（ガードレール）に、回答の直接開始、Markdown装飾（見出し、区切り線、強調）の禁止、箇条書きの最小化を含めること。, フロントエンド表示時、正規表現を用いてアシスタントの回答からMarkdown記号（#、---、**、*）を強制的に除去する。, アシスタントの回答バブルには、navigator.clipboard APIを利用したコピーボタンを配置する。
+- **守るべきルール**: AIの回答冒頭に「承知いたしました」などの冗長な前置きを含めること。, ### や --- などのMarkdown記法を用いて回答を構造化すること。, 強調（**）などの装飾記号を回答内に残したまま表示すること。
+- **未解決の文脈**: クライアントサイドの正規表現によるMarkdown除去は簡易的であり、複雑なネストや特殊な記法には完全に対応していない可能性がある。, プロンプトによる制御とJSによる事後処理の二重管理となっており、将来的にMarkdownを許可する方針転換時に修正が複数箇所に及ぶ。
+- **対象範囲**: skills/mfcloud-expense-receipt-reconcile/dashboard/services/ai_chat.py, skills/mfcloud-expense-receipt-reconcile/dashboard/static/js/common.js
+- **確度**: 0.9
+- **重要度**: low
+- **レビュー期限**: -
+- **ソース**: llm
+
+## [2026-02-20] Commit: d9978fc55907809f7a47595dd8e7bcaac78eaee5
+- **要約**: ワークフローのトリガーと実行モードに関するUX改善、および進捗管理ドキュメントの導入
+- **獲得した知識**: 進捗ログ（workflow_trigger_execution_progress.md等）は、実装・検証を行った日付ごとに追記し、必ず『実装』『検証』『未解決』の3項目を記録する, フェーズ状態の更新（ステータス変更）は、実装完了時ではなく、必ず「検証完了時」に行う, ワークフローの手順詳細やプレビュー表示では、『担当タイプ』『開始条件』『実行方法』という統一されたラベルを使用する
+- **守るべきルール**: 検証（Playwrightやpytest等）が完了していない段階で、ドキュメント上のフェーズを完了（Done）に更新すること, 進捗ログにおいて、現時点で判明している未解決事項や課題の記述を省略すること
+- **未解決の文脈**: Phase 1の残タスク：制約ルールの仕様明文化および回帰テストの追加, Phase 2（スケジューラ増設）およびPhase 3（外部イベント増設）の未実装, 外部イベント増設に必要となる受信API契約の先行定義
+- **対象範囲**: skills/mfcloud-expense-receipt-reconcile/dashboard/, ワークフロー設定UIおよび進捗管理ドキュメント（references/）
+- **確度**: 0.9
+- **重要度**: low
+- **レビュー期限**: -
+- **ソース**: llm
+
+## [2026-02-20] Commit: 9b68f46fa9c88cbd46cca7459b3d25926c9208f7
+- **要約**: ワークフロー専用ページの作成機能と、draft/fixedのライフサイクル管理の導入
+- **獲得した知識**: ワークフローのライフサイクル状態は 'draft' または 'fixed' の2種類で厳格に管理する。, 下書き状態 ('draft') のワークフローは、サイドバーの 'draft' セクションに表示し、ラベルに 'Draft:' プレフィックスを付与する。, 確定状態 ('fixed') のワークフローは、サイドバーの 'workflow' セクションに表示する。, APIエンドポイントでの入力値バリデーション時に、ライフサイクル状態の正規化（小文字化・トリム・デフォルト値処理）を必須とする。
+- **守るべきルール**: ライフサイクル状態を考慮せずにサイドバーのリンクを一律のセクションに表示すること。, 定義済みの 'draft', 'fixed' 以外の文字列をライフサイクル状態としてデータベースに保存すること。
+- **未解決の文脈**: 既存のワークフローデータに対するライフサイクル状態のデフォルト値（fixed想定）の適用と整合性の担保。, フロントエンドにおける下書きから確定状態への遷移（昇格）プロセスのUI/UXのさらなる洗練。
+- **対象範囲**: skills/mfcloud-expense-receipt-reconcile/dashboard/routes/api_workflow_endpoints.py, skills/mfcloud-expense-receipt-reconcile/dashboard/routes/pages.py, skills/mfcloud-expense-receipt-reconcile/dashboard/static/js/index.events.js
+- **確度**: 0.9
+- **重要度**: low
+- **レビュー期限**: -
+- **ソース**: llm
+
+## [2026-02-20] Commit: 2c077633adcda994229a78a8d097a4e45ac24017
+- **要約**: 外部イベント連携の信頼性強化（冪等性・トークン検証）と、実行状況を可視化するサマリーUIの導入。
+- **獲得した知識**: 外部イベントAPIでは、x-workflow-event-token による認証と x-idempotency-key による冪等性制御を必須とする。, ワークフローの実行履歴表示には workflow-event-summary-panel コンポーネントを使用し、data-workflow-event-recent-limit 属性で表示件数を制御する。, 新しい外部連携フローを導入する際は、references/ 配下に contract.md と runbook.md を作成し、仕様と運用手順を明文化する。
+- **守るべきルール**: 冪等性キーの検証を伴わない外部イベント受付の実装。, UIコンポーネントのIDやデータ属性（scheduler-panel, workflow-event-summary-panel等）の変更時に、テストコードの検証項目を更新しないこと。
+- **未解決の文脈**: workflow_external_event_phase3_plan.md 等に記載されたフェーズ3以降の未実装機能の完了。, テストコード内での特定の日付（2026年3月など）への依存。将来的にテストが失敗する可能性があるため、動的な日付生成への移行が望ましい。
+- **対象範囲**: skills/mfcloud-expense-receipt-reconcile/dashboard, skills/mfcloud-expense-receipt-reconcile/references
+- **確度**: 0.9
+- **重要度**: medium
+- **レビュー期限**: -
+- **ソース**: llm
+
+## [2026-02-20] Commit: 8b481f05bff0f8d016ae8453f291461dc4d03531
+- **要約**: ワークフローイベントの集計機能にリトライアドバイス（再試行の要否判断）の集計ロジックとUI表示を追加。
+- **獲得した知識**: ワークフローイベントの集計APIは、ステータスと理由クラスに基づいた retry_advice を返却すること。, UIコンポーネント（HTML/JS）は workflow-event-summary-retry-advice IDを使用してアドバイスを表示すること。, 仕様変更時は references/ 配下のドキュメント（契約、要件、ランブック、進捗管理）をセットで更新し、整合性を維持すること。
+- **守るべきルール**: フロントエンド側で独自にリトライ可否の判定ロジックを実装すること（バックエンドの判定ロジックに集約する）。, ステータスが success の場合に、ユーザーを混乱させるようなアドバイスを表示すること。
+- **未解決の文脈**: retry_advice の判定ロジックが文字列ベースの単純なマッチングであるため、将来的にエラーコードに基づいた詳細な分類が必要になる可能性がある。, テストコードがUI要素の存在確認に留まっており、集計ロジック自体の網羅的なユニットテストが不足している。
+- **対象範囲**: skills/mfcloud-expense-receipt-reconcile/dashboard, skills/mfcloud-expense-receipt-reconcile/references
+- **確度**: 0.9
+- **重要度**: low
+- **レビュー期限**: -
+- **ソース**: llm
+
+## [2026-02-20] Commit: 4c574fdb87559bf2f51debe8c90a1e8043c5a59e
+- **要約**: ワークフローイベントの再試行ジョブキューおよびドレインAPIの実装
+- **獲得した知識**: 最大再試行回数は3回（WORKFLOW_EVENT_RETRY_MAX_ATTEMPTS）に制限する。, 再試行のベース遅延時間は30秒（WORKFLOW_EVENT_RETRY_BASE_DELAY_SECONDS）とする。, 最終状態（成功/失敗）に達したジョブの保持期間（TTL）は30日間とする。, イベント名およびソースの最大文字数は80文字に制限する。
+- **守るべきルール**: 指数バックオフや回数制限を設けない無制限な再試行の実装。, トラブルシューティングに必要な再試行履歴の即時削除（30日間の保持ルールに反する行為）。
+- **未解決の文脈**: 大量の再試行ジョブが滞留した場合のドレイン処理（/drain）のパフォーマンス影響の検証。, 再試行キューの滞留状況や失敗率に関するモニタリング/アラート設定の検討。
+- **対象範囲**: application, other
+- **確度**: 0.9
+- **重要度**: medium
+- **レビュー期限**: -
+- **ソース**: llm
+
+## [2026-02-20] Commit: a05fcf138ebd3018503cfbac7a1c7e21abe3dadd
+- **要約**: ワークフローイベントの再試行キュー可視化と手動ドレイン機能の実装
+- **獲得した知識**: ダッシュボードのスケジューラーUIには、再試行キューの状態表示（workflow-event-summary-retry-queue）と手動ドレインボタン（workflow-event-retry-drain）を配置する。, フロントエンドのJS（scheduler.js）で、再試行キューの操作に関連するDOM要素の制御ロジックを維持する。, UIの変更に伴い、対応するテストケース（test_dashboard_pages.py）で要素の存在確認を必須とする。
+- **守るべきルール**: 再試行キューの状態をユーザーに隠蔽したまま、バックグラウンドでのみ自動再試行を繰り返すこと。, 手動ドレイン実行時の多重クリック防止策を講じずにアクションを公開すること。
+- **未解決の文脈**: 手動ドレイン実行中の詳細な進捗表示や、大量イベント処理時のタイムアウト制御の最適化。, 自動再試行スケジュールと手動ドレインが競合した場合の優先順位定義。
+- **対象範囲**: mfcloud-expense-receipt-reconcile, dashboard, workflow-events
+- **確度**: 0.9
+- **重要度**: medium
+- **レビュー期限**: 2026-03-21
+- **ソース**: llm
+
+## [2026-02-20] Commit: b272cde8843d634a979bd4708656575858bbbe97
+- **要約**: ワークフローイベントの自動リトライ用ドレインワーカーの追加と、FastAPI lifespanによるワーカーのライフサイクル管理の導入
+- **獲得した知識**: create_dashboard_app を使用する際は、start_worker および stop_worker 引数を通じてバックグラウンド処理のライフサイクルを定義すること。, ワーカーの起動・停止ロジックは FastAPI の lifespan コンテキストマネージャ内で管理し、アプリケーションのライフサイクルと同期させること。
+- **守るべきルール**: FastAPI の lifespan を介さずに、グローバルスコープやルーター内で直接バックグラウンドワーカーを起動・管理すること。, アプリケーション停止時にワーカーのクリーンアップ処理（stop_worker）を省略すること。
+- **未解決の文脈**: テストコードにおいて起動前に stop_worker が呼ばれる挙動（['stop', 'start', 'stop']）の意図が不明確であり、冪等性確保のための仕様か確認が必要。, ワーカーが長時間実行される場合の例外ハンドリングや、メインイベントループへの影響（ブロッキング）に関する詳細な制約の定義。
+- **対象範囲**: scripts/lib/dashboard_app_factory.py, skills/mfcloud-expense-receipt-reconcile/dashboard/app.py
+- **確度**: 0.9
+- **重要度**: medium
+- **レビュー期限**: -
+- **ソース**: llm
+
+## [2026-02-20] Commit: 5adf5aa7aefa7310163641d2201e8a9fb3f83611
+- **要約**: AIチャットへのサーバーサイド・ガードレール（ポリシープロファイル）の導入
+- **獲得した知識**: ai_chat.chat メソッドを呼び出す際は、コンテキストに応じた policy_profile（例: POLICY_PROFILE_DASHBOARD_STRICT）を明示的に指定する。, AIチャットのモック関数（_fake_chat等）を定義・更新する際は、policy_profile 引数をキーワード専用引数として追加し、インターフェースの整合性を保つ。
+- **守るべきルール**: ガードレールが必要な処理において policy_profile を指定せず、デフォルト設定や緩い制約に依存する。, テストコードのモックで新しい引数（policy_profile）を無視し、シグネチャ不一致によるエラーを誘発させる。
+- **未解決の文脈**: プロファイルの種類が増加した場合の管理コストと、各プロファイルの定義内容のドキュメント化。, 既存のチャット呼び出し箇所すべてにおいて、最適なプロファイルが選択されているかの再評価。
+- **対象範囲**: skills/mfcloud-expense-receipt-reconcile/dashboard/services/ai_chat.py, skills/mfcloud-expense-receipt-reconcile/dashboard/routes/api_ai_chat_routes.py, AIチャット機能に関連するテストスイート
+- **確度**: 0.9
+- **重要度**: medium
+- **レビュー期限**: -
+- **ソース**: llm
+
+## [2026-02-21] Commit: 17d7402f785a2195c7d04273bb0356403890aac1
+- **要約**: エラー通知用Webhook設定UIおよび監査ログ機能の実装
+- **獲得した知識**: Webhook設定画面には、URLの入力、保存、および疎通確認用のテストボタンを配置する。, 新しい設定タブを追加する場合は 'errors-tab-' プレフィックスを持つIDを付与し、既存のタブ切り替えロジックと整合させる。, 外部へのリクエスト送信（Webhookテスト等）を行う際は、urllib等の標準ライブラリまたはプロジェクト標準のクライアントを使用し、例外処理を適切に行う。
+- **守るべきルール**: バリデーションなしでWebhook URLを保存すること。, テスト送信機能を提供せずに設定を完了させること。
+- **未解決の文脈**: urllibを使用した同期的なリクエスト送信の非同期化（FastAPIの背景タスク化など）の検討。, Webhook送信時のタイムアウト設定やリトライ戦略の明確化。, SSRF（Server Side Request Forgery）対策としてのURL制限の実装。
+- **対象範囲**: skills/mfcloud-expense-receipt-reconcile/dashboard
+- **確度**: 0.85
+- **重要度**: medium
+- **レビュー期限**: -
+- **ソース**: llm
+
+## [2026-02-21] Commit: 7ddc7bde4f79ec29cd0bd1cef3f0d4a7f0845b08
+- **要約**: ワークスペースのピン留めリンクグループにおける文字化けしたフォールバックラベルの修正
+- **獲得した知識**: デフォルト値やフォールバック用の文字列には、エンコーディング起因の不具合を避けるため、マルチバイト文字の直接記述を避け、英数字または定義済みの定数を使用する。
+- **守るべきルール**: ソースコード内に文字化けした状態の文字列をそのままフォールバック値としてハードコードすること。
+- **未解決の文脈**: 他のモジュールやルートにおいて、同様の文字化けしたデフォルト値が混入していないかの網羅的な確認。, ハードコードされた 'Group 1' 文字列の国際化（i18n）対応。
+- **対象範囲**: skills/mfcloud-expense-receipt-reconcile/dashboard/routes/api_workspace_routes.py, ワークスペース設定のピン留めリンク管理機能
+- **確度**: 1.0
+- **重要度**: low
+- **レビュー期限**: -
+- **ソース**: llm
+

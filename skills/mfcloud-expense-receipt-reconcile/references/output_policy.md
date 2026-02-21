@@ -4,7 +4,7 @@
 
 `AX_HOME/artifacts/mfcloud-expense-receipt-reconcile/YYYY-MM/`
 
-例: `C:\Users\<user>\.ax\artifacts\mfcloud-expense-receipt-reconcile\2026-01\`
+例: `%USERPROFILE%\.ax\artifacts\mfcloud-expense-receipt-reconcile\2026-01\`
 
 ## 2. 必須成果物（毎回確認）
 

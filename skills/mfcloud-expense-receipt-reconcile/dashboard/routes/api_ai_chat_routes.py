@@ -8,6 +8,7 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import JSONResponse
 
 from services import ai_chat
+from services import ai_skill_router
 from services import ai_skill_tools
 
 
@@ -55,7 +56,7 @@ def _format_skill_result(result: dict[str, Any]) -> str:
         lines.append("stderr:")
         lines.append(stderr)
     if not stdout and not stderr:
-        lines.append("(出力なし)")
+        lines.append("(no output)")
     return "\n".join(lines)
 
 
@@ -137,6 +138,19 @@ def register_api_ai_chat_routes(router: APIRouter) -> None:
         command_response = _handle_skill_chat_command(messages[-1]["content"])
         if command_response is not None:
             return JSONResponse(command_response)
+
+        latest_text = str(messages[-1]["content"] or "").strip()
+        if not latest_text.lower().startswith("/skill"):
+            try:
+                routed = ai_skill_router.route_chat(messages=messages, page_context=page_context)
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
+            except ai_chat.UpstreamTimeoutError as exc:
+                raise HTTPException(status_code=504, detail=str(exc)) from exc
+            except ai_chat.UpstreamApiError as exc:
+                raise HTTPException(status_code=502, detail=str(exc)) from exc
+            if routed is not None:
+                return JSONResponse(routed)
 
         try:
             result = ai_chat.chat(

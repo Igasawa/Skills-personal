@@ -863,13 +863,41 @@
     lastViewportKind = getSidebarViewportKind();
   }
 
+  function sanitizeAiChatToolResult(value) {
+    const row = value && typeof value === "object" ? value : null;
+    if (!row) return null;
+    const command = String(row.command || "").trim();
+    if (command !== "propose") return null;
+    const token = String(row.token || "").trim();
+    const skill = String(row.skill || "").trim().toLowerCase();
+    const expiresAt = String(row.expires_at || "").trim();
+    if (!token || !skill || !expiresAt) return null;
+    const rawArgs = Array.isArray(row.args) ? row.args : [];
+    const args = rawArgs
+      .filter((item) => typeof item === "string")
+      .map((item) => String(item || "").trim())
+      .filter((item) => item.length > 0)
+      .slice(0, 40);
+    return {
+      command: "propose",
+      token,
+      skill,
+      args,
+      expires_at: expiresAt,
+      write_intent: Boolean(row.write_intent),
+    };
+  }
+
   function sanitizeAiChatMessage(value) {
     const row = value && typeof value === "object" ? value : {};
     const role = String(row.role || "").trim().toLowerCase();
     if (role !== "user" && role !== "assistant") return null;
     const content = String(row.content || "").trim();
     if (!content) return null;
-    return { role, content: content.slice(0, 4000) };
+    const normalized = { role, content: content.slice(0, 4000) };
+    const toolResult = sanitizeAiChatToolResult(row.tool_result);
+    if (toolResult) normalized.tool_result = toolResult;
+    return normalized;
   }
 
   function normalizeAiChatMessages(value) {
@@ -923,8 +951,12 @@
     return normalized;
   }
 
-  function pushAiChatMessage(messages, role, content) {
-    const merged = [...normalizeAiChatMessages(messages), { role, content }];
+  function pushAiChatMessage(messages, role, content, extra = null) {
+    const row = { role, content };
+    if (extra && typeof extra === "object") {
+      Object.assign(row, extra);
+    }
+    const merged = [...normalizeAiChatMessages(messages), row];
     return writeAiChatMessages(merged);
   }
 
@@ -1004,6 +1036,7 @@
     let text = String(value || "");
     if (!text) return "";
     text = text.replace(/\r\n?/g, "\n");
+    text = text.replace(/\[AX_SKILL_PLAN\][\s\S]*?\[\/AX_SKILL_PLAN\]/g, "").trim();
 
     text = text
       .split("\n")
@@ -1059,6 +1092,43 @@
           }
         });
         bubble.appendChild(copyButton);
+
+        const toolResult = row.tool_result && typeof row.tool_result === "object" ? row.tool_result : null;
+        if (toolResult && toolResult.command === "propose") {
+          const actions = document.createElement("div");
+          actions.className = "dashboard-ai-chat-skill-actions";
+
+          const info = document.createElement("div");
+          info.className = "dashboard-ai-chat-skill-meta";
+          info.textContent = `対象スキル: ${String(toolResult.skill || "")} / 有効期限: ${String(toolResult.expires_at || "")}`;
+          actions.appendChild(info);
+
+          const confirmButton = document.createElement("button");
+          confirmButton.type = "button";
+          confirmButton.className = "dashboard-ai-chat-skill-action is-confirm";
+          confirmButton.textContent = "\u5b9f\u884c";
+          confirmButton.addEventListener("click", async () => {
+            if (ui.pending) return;
+            const token = String(toolResult.token || "").trim();
+            if (!token) return;
+            await sendAiChat(ui, `/confirm ${token}`);
+          });
+          actions.appendChild(confirmButton);
+
+          const cancelButton = document.createElement("button");
+          cancelButton.type = "button";
+          cancelButton.className = "dashboard-ai-chat-skill-action is-cancel";
+          cancelButton.textContent = "\u30ad\u30e3\u30f3\u30bb\u30eb";
+          cancelButton.addEventListener("click", async () => {
+            if (ui.pending) return;
+            const token = String(toolResult.token || "").trim();
+            if (!token) return;
+            await sendAiChat(ui, `/cancel ${token}`);
+          });
+          actions.appendChild(cancelButton);
+
+          bubble.appendChild(actions);
+        }
       }
       item.appendChild(bubble);
       ui.log.appendChild(item);
@@ -1140,7 +1210,8 @@
       if (!reply || reply.role !== "assistant") {
         throw new Error("AI response is invalid.");
       }
-      ui.messages = pushAiChatMessage(ui.messages, "assistant", reply.content);
+      const toolResult = sanitizeAiChatToolResult(payload?.tool_result);
+      ui.messages = pushAiChatMessage(ui.messages, "assistant", reply.content, toolResult ? { tool_result: toolResult } : null);
       renderAiChatMessages(ui);
       setAiChatStatus(ui, `接続中: ${String(payload?.model || "gemini")}`, "success");
       return true;

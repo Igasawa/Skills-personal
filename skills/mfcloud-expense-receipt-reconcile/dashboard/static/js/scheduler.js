@@ -36,6 +36,7 @@
   const workflowEventSummaryDuplicateEl = document.getElementById("workflow-event-summary-duplicate");
   const workflowEventSummaryRetryAdviceEl = document.getElementById("workflow-event-summary-retry-advice");
   const workflowEventSummaryRetryQueueEl = document.getElementById("workflow-event-summary-retry-queue");
+  const workflowEventSummaryNotificationEl = document.getElementById("workflow-event-summary-notification");
   const workflowEventSummaryRecentEl = document.getElementById("workflow-event-summary-recent");
   const pageEl = document.querySelector(".page");
   const templateStepsListEl = document.getElementById("template-steps-list");
@@ -432,6 +433,26 @@
       `succeeded: ${toInt(retryQueueStatus.succeeded, 0)}`,
     ]);
 
+    const notification = data.notification && typeof data.notification === "object" ? data.notification : {};
+    const notificationStatus = notification.by_status && typeof notification.by_status === "object" ? notification.by_status : {};
+    const notificationReasonRows = Array.isArray(notification.by_reason_code)
+      ? notification.by_reason_code.slice(0, 2)
+      : [];
+    const notificationRows = [
+      `total: ${toInt(notification.total, 0)}`,
+      `success: ${toInt(notificationStatus.success, 0)}`,
+      `failed: ${toInt(notificationStatus.failed, 0)}`,
+      `skipped: ${toInt(notificationStatus.skipped, 0)}`,
+      `unknown: ${toInt(notificationStatus.unknown, 0)}`,
+      `last: ${String(notification.last_at || "").trim() || "-"}`,
+    ];
+    notificationReasonRows.forEach((row) => {
+      const reasonCode = String(row?.reason_code || "").trim() || "unknown";
+      const count = toInt(row?.count, 0);
+      notificationRows.push(`${reasonCode}: ${count}`);
+    });
+    replaceChildrenText(workflowEventSummaryNotificationEl, notificationRows);
+
     renderWorkflowEventSummaryRecentRows(Array.isArray(data.recent) ? data.recent : []);
   }
 
@@ -444,6 +465,7 @@
     replaceChildrenText(workflowEventSummaryDuplicateEl, []);
     replaceChildrenText(workflowEventSummaryRetryAdviceEl, []);
     replaceChildrenText(workflowEventSummaryRetryQueueEl, []);
+    replaceChildrenText(workflowEventSummaryNotificationEl, []);
     renderWorkflowEventSummaryRecentRows([]);
   }
 
