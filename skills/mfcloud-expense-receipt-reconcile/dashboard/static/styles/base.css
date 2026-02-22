@@ -95,11 +95,13 @@
   --semantic-field-text: var(--text-default);
 
   --semantic-feedback-success-surface: var(--brand-sub-500);
-  --semantic-feedback-success-text: 24 10 12;
+  --semantic-feedback-success-text: 8 52 42;
   --semantic-feedback-warning-surface: var(--brand-accent-warm);
-  --semantic-feedback-warning-text: 24 10 12;
-  --semantic-feedback-danger-surface: var(--state-danger);
-  --semantic-feedback-danger-text: 24 10 12;
+  --semantic-feedback-warning-text: 88 56 8;
+  --semantic-feedback-failure-surface: var(--state-danger);
+  --semantic-feedback-failure-text: 89 16 16;
+  --semantic-feedback-danger-surface: var(--semantic-feedback-failure-surface);
+  --semantic-feedback-danger-text: var(--semantic-feedback-failure-text);
   --semantic-feedback-info-surface: var(--brand-accent-cool);
   --semantic-feedback-info-text: 24 10 12;
 
@@ -154,6 +156,9 @@
   --shadow-xl: 0 8px 24px rgb(0 0 0 / 0.46);
 
   --semantic-button-primary-text: 24 10 12;
+  --semantic-feedback-success-text: 205 255 244;
+  --semantic-feedback-warning-text: 255 237 202;
+  --semantic-feedback-failure-text: 255 221 221;
   --modal-backdrop-alpha: 0.56;
   --focus-ring: rgb(var(--semantic-interaction-focus-ring) / 0.42);
 }
@@ -193,6 +198,9 @@
     --shadow-xl: 0 8px 24px rgb(0 0 0 / 0.46);
 
     --semantic-button-primary-text: 24 10 12;
+    --semantic-feedback-success-text: 205 255 244;
+    --semantic-feedback-warning-text: 255 237 202;
+    --semantic-feedback-failure-text: 255 221 221;
     --modal-backdrop-alpha: 0.56;
     --focus-ring: rgb(var(--semantic-interaction-focus-ring) / 0.42);
   }

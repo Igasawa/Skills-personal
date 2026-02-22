@@ -148,7 +148,7 @@ select:focus-visible {
 .error-box {
   background: rgb(var(--semantic-feedback-danger-surface) / 0.12);
   border: 1px solid rgb(var(--semantic-feedback-danger-surface) / 0.34);
-  color: rgb(var(--semantic-feedback-warning-text));
+  color: rgb(var(--semantic-feedback-failure-text));
   padding: 10px 12px;
   border-radius: var(--radius-default);
   font-size: 13px;
@@ -237,21 +237,39 @@ select:focus-visible {
 }
 
 .mf-draft-status-pill.created {
-  border-color: rgb(var(--semantic-feedback-success-surface) / 0.36);
+  border-color: rgb(var(--semantic-feedback-success-surface) / 0.46);
   background: rgb(var(--semantic-feedback-success-surface) / 0.2);
-  color: rgb(var(--semantic-feedback-warning-text));
+  color: rgb(var(--semantic-feedback-success-text));
+}
+
+.mf-draft-status-pill.created::before {
+  content: "✓";
+  margin-right: 0.3rem;
+  font-size: 11px;
 }
 
 .mf-draft-status-pill.failed {
-  border-color: rgb(var(--semantic-feedback-danger-surface) / 0.42);
-  background: rgb(var(--semantic-feedback-danger-surface) / 0.14);
-  color: rgb(var(--text-default));
+  border-color: rgb(var(--semantic-feedback-failure-surface) / 0.5);
+  background: rgb(var(--semantic-feedback-failure-surface) / 0.18);
+  color: rgb(var(--semantic-feedback-failure-text));
+}
+
+.mf-draft-status-pill.failed::before {
+  content: "!";
+  margin-right: 0.3rem;
+  font-size: 11px;
 }
 
 .mf-draft-status-pill.skipped {
-  border-color: rgb(var(--semantic-feedback-warning-surface) / 0.42);
-  background: rgb(var(--semantic-feedback-warning-surface) / 0.16);
+  border-color: rgb(var(--semantic-feedback-warning-surface) / 0.52);
+  background: rgb(var(--semantic-feedback-warning-surface) / 0.2);
   color: rgb(var(--semantic-feedback-warning-text));
+}
+
+.mf-draft-status-pill.skipped::before {
+  content: "–";
+  margin-right: 0.3rem;
+  font-size: 11px;
 }
 
 .mf-draft-table td {
