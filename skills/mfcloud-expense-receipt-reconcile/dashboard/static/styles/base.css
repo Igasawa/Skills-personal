@@ -45,6 +45,20 @@
   --radius-default: 0.75rem;
   --radius-bubble: 1rem;
 
+  --font-size-caption: 12px;
+  --font-size-body: 14px;
+  --font-size-lead: 16px;
+  --font-size-heading-md: 20px;
+  --font-size-heading-xl: 28px;
+
+  --line-height-body: 1.6;
+  --line-height-heading: 1.35;
+
+  --space-8: 8px;
+  --space-12: 12px;
+  --space-16: 16px;
+  --space-24: 24px;
+
   --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.05);
   --shadow-md: 0 2px 4px rgb(0 0 0 / 0.06);
   --shadow-lg: 0 4px 12px rgb(0 0 0 / 0.08);
@@ -231,8 +245,24 @@
 body {
   margin: 0;
   font-family: "IBM Plex Sans", "Noto Sans JP", sans-serif;
+  font-size: var(--font-size-body);
+  line-height: var(--line-height-body);
   color: var(--ink);
   background: radial-gradient(circle at top left, rgb(var(--surface-1)) 0%, rgb(var(--surface-0)) 42%, rgb(var(--surface-2)) 100%);
+}
+
+h1,
+h2 {
+  line-height: var(--line-height-heading);
+  letter-spacing: 0.01em;
+}
+
+h1 {
+  font-size: var(--font-size-heading-xl);
+}
+
+h2 {
+  font-size: var(--font-size-heading-md);
 }
 
 :where(a, button, input, select, textarea):focus-visible {

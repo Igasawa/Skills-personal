@@ -36,8 +36,8 @@
 .dashboard-shell-actions {
   display: flex;
   align-items: center;
-  gap: 10px;
-  margin-bottom: 16px;
+  gap: var(--space-12);
+  margin-bottom: var(--space-16);
 }
 
 .dashboard-sidebar-toggle {
@@ -85,18 +85,18 @@
 
 .dashboard-sidebar {
   position: sticky;
-  top: 24px;
+  top: var(--space-24);
   align-self: start;
   width: 100%;
   min-width: 0;
   background: rgb(var(--surface-glass-fallback));
   border: 1px solid rgb(var(--surface-glass-border));
   border-radius: 20px;
-  box-shadow: var(--shadow-lg);
-  padding: 18px;
+  box-shadow: var(--shadow);
+  padding: var(--space-16);
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: var(--space-12);
   min-height: fit-content;
   transition: transform 160ms var(--motion-easing-standard), box-shadow var(--transition-fast), opacity 160ms var(--motion-easing-standard);
   z-index: var(--z-sidebar);
@@ -139,7 +139,7 @@
   color: rgb(var(--text-default));
   padding: 8px 10px;
   font: inherit;
-  font-size: 12px;
+  font-size: var(--font-size-caption);
 }
 
 .dashboard-sidebar-search:focus {
@@ -149,10 +149,10 @@
 }
 
 .dashboard-sidebar-title {
-  margin: 0 2px 6px;
+  margin: 0 2px var(--space-8);
   color: rgb(var(--text-secondary));
-  font-size: 13px;
-  letter-spacing: 0.05em;
+  font-size: var(--font-size-body);
+  letter-spacing: 0.01em;
   text-transform: uppercase;
 }
 
@@ -174,7 +174,7 @@
   background: rgb(var(--surface-2));
   color: rgb(var(--text-secondary));
   font: inherit;
-  font-size: 12px;
+  font-size: var(--font-size-caption);
   font-weight: 600;
   padding: 8px 10px;
   cursor: pointer;
@@ -226,7 +226,7 @@
   border: 1px solid rgb(var(--semantic-field-border-default));
   border-radius: 12px;
   padding: 10px 14px;
-  font-size: 13px;
+  font-size: var(--font-size-body);
   font-weight: 600;
   background: rgb(var(--surface-2));
   transition: background var(--transition-fast), border-color var(--transition-fast), color var(--transition-fast);
@@ -250,15 +250,15 @@
 
 .dashboard-ai-chat {
   position: sticky;
-  top: 24px;
+  top: var(--space-24);
   align-self: start;
   background: rgb(var(--surface-glass-fallback));
   border: 1px solid rgb(var(--surface-glass-border));
   border-radius: 20px;
-  box-shadow: var(--shadow-lg);
-  padding: 16px;
+  box-shadow: var(--shadow);
+  padding: var(--space-16);
   display: grid;
-  gap: 12px;
+  gap: var(--space-12);
   min-height: 300px;
   max-height: calc(100vh - 56px);
 
@@ -278,14 +278,14 @@
 }
 
 .dashboard-ai-chat-title {
-  font-size: 14px;
+  font-size: var(--font-size-lead);
   font-weight: 700;
   color: rgb(var(--text-default));
-  letter-spacing: 0.02em;
+  letter-spacing: 0.01em;
 }
 
 .dashboard-ai-chat-status {
-  font-size: 12px;
+  font-size: var(--font-size-caption);
   color: rgb(var(--text-secondary));
   white-space: nowrap;
   overflow: hidden;
@@ -315,7 +315,7 @@
 
 .dashboard-ai-chat-empty {
   color: rgb(var(--text-secondary));
-  font-size: 13px;
+  font-size: var(--font-size-body);
   padding: 8px 2px;
 }
 
@@ -338,8 +338,8 @@
   color: rgb(var(--text-default));
   border-radius: 12px;
   padding: 8px 10px;
-  font-size: 13px;
-  line-height: 1.5;
+  font-size: var(--font-size-body);
+  line-height: var(--line-height-body);
   white-space: pre-wrap;
   word-break: break-word;
   position: relative;
@@ -363,7 +363,7 @@
   border-radius: 999px;
   padding: 4px 8px;
   font: inherit;
-  font-size: 11px;
+  font-size: var(--font-size-caption);
   font-weight: 600;
   line-height: 1;
   cursor: pointer;
@@ -383,7 +383,7 @@
 }
 
 .dashboard-ai-chat-skill-actions {
-  margin-top: 10px;
+  margin-top: var(--space-12);
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
@@ -391,7 +391,7 @@
 
 .dashboard-ai-chat-skill-meta {
   width: 100%;
-  font-size: 11px;
+  font-size: var(--font-size-caption);
   color: rgb(var(--text-secondary));
 }
 
@@ -403,7 +403,7 @@
   border-radius: 999px;
   padding: 5px 10px;
   font: inherit;
-  font-size: 12px;
+  font-size: var(--font-size-caption);
   font-weight: 600;
   cursor: pointer;
   transition: background var(--transition-fast), border-color var(--transition-fast), color var(--transition-fast);
@@ -431,7 +431,7 @@
 
 .dashboard-ai-chat-form {
   display: grid;
-  gap: 10px;
+  gap: var(--space-12);
   margin-top: auto;
 }
 
@@ -465,17 +465,17 @@
 }
 
 .dashboard-sidebar-section {
-  margin-top: 10px;
+  margin-top: var(--space-12);
   padding-top: 12px;
   border-top: 1px solid rgb(var(--semantic-field-border-default));
   display: grid;
-  gap: 10px;
+  gap: var(--space-12);
 }
 
 .dashboard-sidebar-section-title {
-  font-size: 12px;
+  font-size: var(--font-size-caption);
   color: rgb(var(--text-secondary));
-  letter-spacing: 0.04em;
+  letter-spacing: 0.01em;
   text-transform: uppercase;
 }
 
@@ -496,7 +496,7 @@
   margin-top: 0;
   padding-top: 0;
   border-top: 0;
-  gap: 6px;
+  gap: var(--space-8);
 }
 
 .dashboard-shell.is-sidebar-collapsed .dashboard-sidebar-link {
@@ -508,9 +508,9 @@
 .dashboard-shell.is-sidebar-collapsed .dashboard-sidebar-link::after {
   content: attr(data-short-label);
   display: inline-block;
-  font-size: 11px;
+  font-size: var(--font-size-caption);
   font-weight: 700;
-  letter-spacing: 0.02em;
+  letter-spacing: 0.01em;
 }
 
 .dashboard-shell.is-sidebar-collapsed .dashboard-sidebar-resizer,
@@ -555,47 +555,48 @@
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  gap: 24px;
-  margin-bottom: 32px;
+  gap: var(--space-24);
+  margin-bottom: var(--space-24);
 }
 
 .eyebrow {
-  font-size: 14px;
-  letter-spacing: 0.08em;
+  font-size: var(--font-size-body);
+  letter-spacing: 0.01em;
   text-transform: uppercase;
   color: rgb(var(--text-secondary));
-  margin: 0 0 8px;
+  margin: 0 0 var(--space-8);
 }
 
 h1 {
-  margin: 0 0 8px;
-  font-size: 34px;
+  margin: 0 0 var(--space-8);
 }
 
 .subtitle {
   margin: 0;
+  font-size: var(--font-size-lead);
+  line-height: var(--line-height-body);
   color: rgb(var(--text-secondary));
 }
 
 .hero-meta {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: var(--space-12);
 }
 
 .hero-tabs {
   display: flex;
   flex-wrap: wrap;
-  gap: 10px;
+  gap: var(--space-12);
   align-items: center;
 }
 
 .theme-toggle {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--space-8);
   width: fit-content;
-  padding: 4px;
+  padding: var(--space-8);
   border-radius: 999px;
   background: rgb(var(--surface-1));
   border: 1px solid rgb(var(--semantic-field-border-default));
@@ -606,9 +607,9 @@ h1 {
   width: 100%;
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 6px;
+  gap: var(--space-8);
   border-radius: 12px;
-  padding: 6px;
+  padding: var(--space-8);
 }
 
 .dashboard-sidebar .theme-toggle-button {
@@ -624,10 +625,10 @@ h1 {
   background: transparent;
   color: rgb(var(--text-secondary));
   padding: 7px 12px;
-  font-size: 12px;
+  font-size: var(--font-size-caption);
   font-weight: 600;
   line-height: 1;
-  letter-spacing: 0.02em;
+  letter-spacing: 0.01em;
   cursor: pointer;
   transition: background var(--transition-fast), border-color var(--transition-fast), color var(--transition-fast);
 }
@@ -646,12 +647,12 @@ h1 {
 .pill {
   display: inline-flex;
   align-items: center;
-  padding: 8px 16px;
+  padding: var(--space-8) var(--space-16);
   border-radius: 999px;
   background: rgb(var(--surface-1));
   border: 1px solid rgb(var(--semantic-field-border-default));
   box-shadow: var(--shadow-md);
-  font-size: 13px;
+  font-size: var(--font-size-body);
   color: rgb(var(--text-secondary));
   text-decoration: none;
   transition: background var(--transition-fast), border-color var(--transition-fast), color var(--transition-fast);
@@ -677,8 +678,8 @@ h1 {
 
 .grid {
   display: grid;
-  gap: 24px;
-  margin-bottom: 24px;
+  gap: var(--space-24);
+  margin-bottom: var(--space-24);
 }
 
 .grid.two {
@@ -689,25 +690,18 @@ h1 {
   background: rgb(var(--surface-glass-fallback));
   border: 1px solid rgb(var(--surface-glass-border));
   border-radius: 20px;
-  box-shadow: var(--shadow-lg);
-  padding: 24px;
-
-  @supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-    background: rgb(var(--surface-glass) / var(--surface-glass-alpha));
-    border-color: rgb(var(--surface-glass-border) / var(--surface-glass-border-alpha));
-    -webkit-backdrop-filter: blur(var(--surface-glass-blur));
-    backdrop-filter: blur(var(--surface-glass-blur));
-  }
+  box-shadow: var(--shadow);
+  padding: var(--space-24);
 }
 
 .cards {
   display: grid;
-  gap: 16px;
+  gap: var(--space-16);
 }
 
 .run-card {
   display: block;
-  padding: 16px;
+  padding: var(--space-16);
   border-radius: 16px;
   background: rgb(var(--surface-2));
   border: 1px solid rgb(var(--semantic-field-border-default));
@@ -734,12 +728,12 @@ h1 {
 
 .run-stats {
   display: flex;
-  gap: 20px;
+  gap: var(--space-24);
 }
 
 .stack {
   display: grid;
-  gap: 10px;
+  gap: var(--space-12);
 }
 
 @media (prefers-reduced-transparency: reduce) {
@@ -831,11 +825,11 @@ h1 {
 
 /* 直近の実行セクション */
 .latest-run-section {
-  padding: 16px;
+  padding: var(--space-16);
   background: rgb(var(--surface-2));
   border-radius: 12px;
   border: 1px solid rgb(var(--semantic-field-border-default));
-  margin-bottom: 20px;
+  margin-bottom: var(--space-24);
   transition: border-color var(--transition-fast), background var(--transition-fast);
 }
 
@@ -857,37 +851,37 @@ h1 {
 
 /* セクション区切り */
 .section-divider {
-  margin: 24px 0 16px;
+  margin: var(--space-24) 0 var(--space-16);
   padding-top: 0;
 }
 
 .section-divider h3 {
-  margin: 0 0 16px;
-  font-size: 16px;
+  margin: 0 0 var(--space-16);
+  font-size: var(--font-size-lead);
   font-weight: 600;
   color: rgb(var(--text-default));
 }
 
 /* 月次クローズチェックリスト */
 .month-close-checklist {
-  margin: 20px 0;
-  padding: 16px;
+  margin: var(--space-24) 0;
+  padding: var(--space-16);
   background: rgb(var(--surface-2));
   border-radius: 8px;
   border: 1px solid rgb(var(--semantic-field-border-default));
 }
 
 .checklist-header {
-  font-size: 14px;
+  font-size: var(--font-size-lead);
   font-weight: 600;
   color: rgb(var(--text-default));
-  margin-bottom: 12px;
+  margin-bottom: var(--space-12);
 }
 
 .checklist-items {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: var(--space-12);
 }
 
 .checklist-item {
@@ -895,7 +889,7 @@ h1 {
   align-items: center;
   gap: 8px;
   cursor: pointer;
-  font-size: 14px;
+  font-size: var(--font-size-body);
   color: rgb(var(--text-default));
   user-select: none;
   transition: color var(--transition-fast);
