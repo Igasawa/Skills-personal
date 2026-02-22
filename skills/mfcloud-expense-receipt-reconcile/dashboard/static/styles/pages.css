@@ -480,21 +480,39 @@
 }
 
 .step-status.done {
-  border-color: rgb(var(--semantic-feedback-success-surface) / 0.36);
+  border-color: rgb(var(--semantic-feedback-success-surface) / 0.46);
   background: rgb(var(--semantic-feedback-success-surface) / 0.2);
-  color: rgb(var(--semantic-feedback-warning-text));
+  color: rgb(var(--semantic-feedback-success-text));
+}
+
+.step-status.done::before {
+  content: "✓";
+  margin-right: 0.3rem;
+  font-size: 11px;
 }
 
 .step-status.running {
-  border-color: rgb(var(--semantic-feedback-warning-surface) / 0.42);
-  background: rgb(var(--semantic-feedback-warning-surface) / 0.32);
+  border-color: rgb(var(--semantic-feedback-warning-surface) / 0.52);
+  background: rgb(var(--semantic-feedback-warning-surface) / 0.24);
   color: rgb(var(--semantic-feedback-warning-text));
+}
+
+.step-status.running::before {
+  content: "↻";
+  margin-right: 0.3rem;
+  font-size: 11px;
 }
 
 .step-status.pending {
   border-color: rgb(var(--semantic-field-border-default));
   background: rgb(var(--surface-1));
   color: rgb(var(--text-secondary));
+}
+
+.step-status.pending::before {
+  content: "…";
+  margin-right: 0.3rem;
+  font-size: 11px;
 }
 
 .step-actions {
