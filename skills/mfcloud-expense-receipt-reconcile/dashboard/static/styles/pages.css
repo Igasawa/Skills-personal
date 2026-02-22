@@ -569,15 +569,17 @@
 }
 
 .step-actions {
+  --step-actions-gap: 10px;
+  --step-actions-min-height: 40px;
   display: flex;
-  gap: 10px;
+  gap: var(--step-actions-gap);
   align-items: center;
   flex-wrap: wrap;
-  row-gap: 10px;
+  row-gap: var(--step-actions-gap);
 }
 
-.wizard-step .step-actions > :where(.primary, .secondary, .step-reset) {
-  min-height: 40px;
+.wizard-step > .step-actions > :where(.primary, .secondary, .step-reset) {
+  min-height: var(--step-actions-min-height);
 }
 
 .wizard-step .step-actions > .muted {
@@ -588,6 +590,52 @@
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
+}
+
+.hero .step-actions {
+  --step-actions-gap: 8px;
+  --step-actions-min-height: 36px;
+}
+
+.workflow-page-primary-action {
+  font-weight: 700;
+  box-shadow: var(--shadow-sm);
+}
+
+.workflow-page-more-actions {
+  position: relative;
+  display: inline-flex;
+}
+
+.workflow-page-more-toggle {
+  min-width: 88px;
+  justify-content: center;
+}
+
+.workflow-page-more-icon {
+  font-size: 16px;
+  line-height: 1;
+}
+
+.workflow-page-more-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 20;
+  min-width: 180px;
+  padding: 8px;
+  border-radius: 10px;
+  border: 1px solid rgb(var(--semantic-field-border-default));
+  background: rgb(var(--surface-1));
+  box-shadow: var(--shadow-md);
+  display: grid;
+  gap: 6px;
+}
+
+.workflow-page-more-menu > .secondary {
+  width: 100%;
+  justify-content: flex-start;
+  min-height: var(--step-actions-min-height);
 }
 
 .scheduler-panel {

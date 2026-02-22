@@ -30,14 +30,29 @@
               >
                 {% if page_lifecycle == "fixed" %}Fixed{% else %}Draft{% endif %}
               </span>
-            <button type="button" class="primary" id="workflow-page-lifecycle-toggle">
-                {% if page_lifecycle == "fixed" %}↩️ Draftに戻す{% else %}💾 固定保存{% endif %}
-            </button>
-              <button type="button" class="secondary" id="workflow-page-edit">⚙️ ページ設定</button>
-              <button type="button" class="secondary" id="workflow-page-edit-steps">✏️ 手順編集</button>
-              <button type="button" class="secondary" id="workflow-page-rollback-steps">↩️ 前版に戻す</button>
+              <button type="button" class="primary workflow-page-primary-action" id="workflow-page-lifecycle-toggle">
+                <span class="action-label">{% if page_lifecycle == "fixed" %}Draftに戻す{% else %}固定保存{% endif %}</span>
+              </button>
+              <div class="workflow-page-more-actions">
+                <button
+                  type="button"
+                  class="secondary workflow-page-more-toggle"
+                  id="workflow-page-more-toggle"
+                  aria-expanded="false"
+                  aria-controls="workflow-page-more-menu"
+                  aria-haspopup="menu"
+                >
+                  <span aria-hidden="true" class="workflow-page-more-icon">⋮</span>
+                  <span class="action-label">その他</span>
+                </button>
+                <div class="workflow-page-more-menu" id="workflow-page-more-menu" role="menu" hidden>
+                  <button type="button" class="secondary" id="workflow-page-edit" role="menuitem">ページ設定</button>
+                  <button type="button" class="secondary" id="workflow-page-edit-steps" role="menuitem">手順編集</button>
+                  <button type="button" class="secondary" id="workflow-page-rollback-steps" role="menuitem">前版に戻す</button>
+                  <button type="button" class="secondary" id="workflow-page-archive" role="menuitem">アーカイブ</button>
+                </div>
+              </div>
               <span class="muted" id="workflow-page-step-version"></span>
-              <button type="button" class="secondary" id="workflow-page-archive">🗃 アーカイブ</button>
             {% endif %}
             {% if not (workflow_page and workflow_page.id) %}
               <a class="secondary" href="/status">ステータスページを開く</a>

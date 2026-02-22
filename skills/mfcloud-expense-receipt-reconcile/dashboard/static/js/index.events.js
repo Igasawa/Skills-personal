@@ -298,6 +298,7 @@
     safeInit(() => applyWorkflowPageStepLayout(workflowPage?.steps), "applyWorkflowPageStepLayout");
     safeInit(renderWorkflowPageStepVersionLabel, "renderWorkflowPageStepVersionLabel");
     safeInit(syncWorkflowPageLifecycleUi, "syncWorkflowPageLifecycleUi");
+    safeInit(initWorkflowPageMoreMenu, "initWorkflowPageMoreMenu");
     safeInit(restoreYmSelection, "restoreYmSelection");
     const initialYm = getYmFromForm();
     applyArchivePageLink(initialYm);
@@ -362,6 +363,49 @@
       if (key in checklistState) {
         checkbox.checked = checklistState[key];
       }
+    });
+  }
+
+  function initWorkflowPageMoreMenu() {
+    const toggleButton = document.getElementById("workflow-page-more-toggle");
+    const menuEl = document.getElementById("workflow-page-more-menu");
+    if (!(toggleButton instanceof HTMLElement) || !(menuEl instanceof HTMLElement)) return;
+
+    const closeMenu = ({ returnFocus = false } = {}) => {
+      menuEl.hidden = true;
+      toggleButton.setAttribute("aria-expanded", "false");
+      if (returnFocus) toggleButton.focus();
+    };
+    const openMenu = () => {
+      menuEl.hidden = false;
+      toggleButton.setAttribute("aria-expanded", "true");
+    };
+
+    toggleButton.addEventListener("click", (event) => {
+      event.preventDefault();
+      if (menuEl.hidden) {
+        openMenu();
+        const firstItem = menuEl.querySelector("button[role='menuitem']");
+        if (firstItem instanceof HTMLElement) {
+          firstItem.focus();
+        }
+        return;
+      }
+      closeMenu({ returnFocus: true });
+    });
+
+    menuEl.addEventListener("keydown", (event) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      closeMenu({ returnFocus: true });
+    });
+
+    document.addEventListener("click", (event) => {
+      if (menuEl.hidden) return;
+      const target = event.target;
+      if (!(target instanceof Node)) return;
+      if (menuEl.contains(target) || toggleButton.contains(target)) return;
+      closeMenu();
     });
   }
 

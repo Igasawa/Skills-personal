@@ -534,7 +534,7 @@
     if (toggleButton) {
       toggleButton.dataset.lifecycleState = state;
       toggleButton.disabled = workflowPageLifecycleUpdateState.inFlight;
-      toggleButton.textContent = isFixed ? "↩️ Draftに戻す" : "💾 固定保存";
+      toggleButton.textContent = isFixed ? "Draftに戻す" : "固定保存";
       toggleButton.classList.remove("primary", "secondary");
       toggleButton.classList.add(isFixed ? "secondary" : "primary");
     }
@@ -568,7 +568,7 @@
             "固定保存を解除して Draft に戻します。",
             "Draft に戻すとページ設定と手順編集を再開できます。",
           ],
-      confirmLabel: isFixing ? "💾 固定保存する" : "↩️ Draftへ戻す",
+      confirmLabel: isFixing ? "固定保存する" : "Draftへ戻す",
       cancelLabel: "✖️ キャンセル",
     });
     if (!confirmed) return false;
@@ -577,7 +577,7 @@
     if (toggleButton) {
       toggleButton.disabled = true;
       toggleButton.dataset.busy = "1";
-      toggleButton.textContent = isFixing ? "⏳ 固定保存中..." : "🔄 更新中...";
+      toggleButton.textContent = isFixing ? "固定保存中..." : "更新中...";
     }
     try {
       const res = await fetch(`/api/workflow-pages/${encodeURIComponent(workflowPageId)}`, {
