@@ -23,6 +23,12 @@
   --surface-3: 210 214 220;
   --surface-4: 180 185 190;
   --surface-overlay: 0 0 0;
+  --surface-glass: 255 255 255;
+  --surface-glass-alpha: 0.76;
+  --surface-glass-border: 188 197 210;
+  --surface-glass-border-alpha: 0.64;
+  --surface-glass-blur: 18px;
+  --surface-glass-fallback: var(--surface-1);
 
   --text-default: 23 23 26;
   --text-secondary: 80 85 90;
@@ -38,6 +44,20 @@
 
   --radius-default: 0.75rem;
   --radius-bubble: 1rem;
+
+  --font-size-caption: 12px;
+  --font-size-body: 14px;
+  --font-size-lead: 16px;
+  --font-size-heading-md: 20px;
+  --font-size-heading-xl: 28px;
+
+  --line-height-body: 1.6;
+  --line-height-heading: 1.35;
+
+  --space-8: 8px;
+  --space-12: 12px;
+  --space-16: 16px;
+  --space-24: 24px;
 
   --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.05);
   --shadow-md: 0 2px 4px rgb(0 0 0 / 0.06);
@@ -95,11 +115,13 @@
   --semantic-field-text: var(--text-default);
 
   --semantic-feedback-success-surface: var(--brand-sub-500);
-  --semantic-feedback-success-text: 24 10 12;
+  --semantic-feedback-success-text: 8 52 42;
   --semantic-feedback-warning-surface: var(--brand-accent-warm);
-  --semantic-feedback-warning-text: 24 10 12;
-  --semantic-feedback-danger-surface: var(--state-danger);
-  --semantic-feedback-danger-text: 24 10 12;
+  --semantic-feedback-warning-text: 88 56 8;
+  --semantic-feedback-failure-surface: var(--state-danger);
+  --semantic-feedback-failure-text: 89 16 16;
+  --semantic-feedback-danger-surface: var(--semantic-feedback-failure-surface);
+  --semantic-feedback-danger-text: var(--semantic-feedback-failure-text);
   --semantic-feedback-info-surface: var(--brand-accent-cool);
   --semantic-feedback-info-text: 24 10 12;
 
@@ -136,6 +158,12 @@
   --surface-3: 54 54 56;
   --surface-4: 72 72 74;
   --surface-overlay: 0 0 0;
+  --surface-glass: 33 36 44;
+  --surface-glass-alpha: 0.68;
+  --surface-glass-border: 126 136 155;
+  --surface-glass-border-alpha: 0.52;
+  --surface-glass-blur: 18px;
+  --surface-glass-fallback: 34 34 36;
 
   --text-default: 235 235 245;
   --text-secondary: 180 180 185;
@@ -154,6 +182,9 @@
   --shadow-xl: 0 8px 24px rgb(0 0 0 / 0.46);
 
   --semantic-button-primary-text: 24 10 12;
+  --semantic-feedback-success-text: 205 255 244;
+  --semantic-feedback-warning-text: 255 237 202;
+  --semantic-feedback-failure-text: 255 221 221;
   --modal-backdrop-alpha: 0.56;
   --focus-ring: rgb(var(--semantic-interaction-focus-ring) / 0.42);
 }
@@ -175,6 +206,12 @@
     --surface-3: 54 54 56;
     --surface-4: 72 72 74;
     --surface-overlay: 0 0 0;
+    --surface-glass: 33 36 44;
+    --surface-glass-alpha: 0.68;
+    --surface-glass-border: 126 136 155;
+    --surface-glass-border-alpha: 0.52;
+    --surface-glass-blur: 18px;
+    --surface-glass-fallback: 34 34 36;
 
     --text-default: 235 235 245;
     --text-secondary: 180 180 185;
@@ -193,6 +230,9 @@
     --shadow-xl: 0 8px 24px rgb(0 0 0 / 0.46);
 
     --semantic-button-primary-text: 24 10 12;
+    --semantic-feedback-success-text: 205 255 244;
+    --semantic-feedback-warning-text: 255 237 202;
+    --semantic-feedback-failure-text: 255 221 221;
     --modal-backdrop-alpha: 0.56;
     --focus-ring: rgb(var(--semantic-interaction-focus-ring) / 0.42);
   }
@@ -205,8 +245,24 @@
 body {
   margin: 0;
   font-family: "IBM Plex Sans", "Noto Sans JP", sans-serif;
+  font-size: var(--font-size-body);
+  line-height: var(--line-height-body);
   color: var(--ink);
   background: radial-gradient(circle at top left, rgb(var(--surface-1)) 0%, rgb(var(--surface-0)) 42%, rgb(var(--surface-2)) 100%);
+}
+
+h1,
+h2 {
+  line-height: var(--line-height-heading);
+  letter-spacing: 0.01em;
+}
+
+h1 {
+  font-size: var(--font-size-heading-xl);
+}
+
+h2 {
+  font-size: var(--font-size-heading-md);
 }
 
 :where(a, button, input, select, textarea):focus-visible {

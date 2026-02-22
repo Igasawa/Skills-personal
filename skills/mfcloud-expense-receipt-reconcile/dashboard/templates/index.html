@@ -119,152 +119,180 @@
             </div>
           </form>
           <div id="step-preflight" class="wizard-step preflight-inline" data-step-id="preflight">
-            <div class="step-head">
+            <div class="step-head wizard-step-header">
               <span class="step-num">0</span>
               <span class="step-title">手順0 準備（ログイン確認・MF連携更新）</span>
-              <span class="step-status" data-step-status="preflight">未実行</span>
+              <div class="wizard-step-header-actions">
+                <button type="button" class="primary" data-step-action="preflight">▶ 準備を実行</button>
+                <span class="step-status" data-step-status="preflight">未実行</span>
+              </div>
             </div>
-            <div class="step-actions">
-              <button type="button" class="primary" data-step-action="preflight">▶ 準備を実行</button>
-              <button type="button" class="secondary" data-step-action="preflight_mf">↻ MF再取得のみ</button>
-              <span class="muted">各サイトのログインとMF連携の再取得をまとめて実行します。</span>
-            </div>
+            <details class="wizard-step-details">
+              <summary class="step-detail-toggle">詳細</summary>
+              <div class="step-actions">
+                <button type="button" class="secondary" data-step-action="preflight_mf">↻ MF再取得のみ</button>
+                <span class="muted">ログイン確認と連携更新を実施します。詳細は<a href="/workspace" target="_blank" rel="noopener noreferrer">操作ガイド</a>を参照してください。</span>
+              </div>
+            </details>
           </div>
         </div>
         <div class="wizard-steps">
           <div id="step-amazon-task" class="wizard-step wizard-task" data-task-id="amazon">
-            <div class="task-head">
+            <div class="task-head wizard-step-header">
               <span class="step-num">1</span>
               <span class="step-title">手順1 Amazon（取得→除外判断→印刷完了）</span>
-              <span class="task-status" data-task-status="amazon">未実行</span>
-            </div>
-            <div id="step-amazon-download" class="task-process-row" data-process-id="amazon_download">
-              <div class="task-process-label">
-                <span class="process-title">取得</span>
-                <span class="process-desc">Amazon領収書を取得</span>
-              </div>
-              <div class="step-actions">
+              <div class="wizard-step-header-actions">
                 <button type="button" class="primary" data-step-action="amazon_download">📥 Amazon領収書を取得</button>
-                <button type="button" class="step-reset" data-step-reset="amazon_download">↺ リセット</button>
+                <span class="task-status" data-task-status="amazon">未実行</span>
               </div>
-              <span class="step-status process-status" data-step-status="amazon_download">未実行</span>
             </div>
-            <div id="step-amazon-decide-print" class="task-process-row" data-process-id="amazon_decide_print">
-              <div class="task-process-label">
-                <span class="process-title">除外判断・印刷（完了記録まで）</span>
-                <span class="process-desc">除外対象を決めて印刷し、完了を記録</span>
+            <details class="wizard-step-details">
+              <summary class="step-detail-toggle">詳細</summary>
+              <div id="step-amazon-download" class="task-process-row" data-process-id="amazon_download">
+                <div class="task-process-label">
+                  <span class="process-title">取得</span>
+                  <span class="process-desc">取得後の再実行はここから操作します。</span>
+                </div>
+                <div class="step-actions">
+                  <button type="button" class="step-reset" data-step-reset="amazon_download">↺ リセット</button>
+                </div>
+                <span class="step-status process-status" data-step-status="amazon_download">未実行</span>
               </div>
-              <div class="step-actions">
-                <a class="secondary" data-step-link="amazon_exclude" href="#">除外・印刷（完了記録まで）を開く</a>
-                <button type="button" class="step-reset" data-step-reset="amazon_decide_print">↺ リセット</button>
+              <div id="step-amazon-decide-print" class="task-process-row" data-process-id="amazon_decide_print">
+                <div class="task-process-label">
+                  <span class="process-title">除外判断・印刷（完了記録まで）</span>
+                  <span class="process-desc">除外対象を決めて印刷し、完了を記録</span>
+                </div>
+                <div class="step-actions">
+                  <a class="secondary" data-step-link="amazon_exclude" href="#">除外・印刷（完了記録まで）を開く</a>
+                  <button type="button" class="step-reset" data-step-reset="amazon_decide_print">↺ リセット</button>
+                </div>
+                <span class="step-status process-status" data-step-status="amazon_decide_print">未実行</span>
               </div>
-              <span class="step-status process-status" data-step-status="amazon_decide_print">未実行</span>
-            </div>
+            </details>
           </div>
           <div id="step-rakuten-task" class="wizard-step wizard-task" data-task-id="rakuten">
-            <div class="task-head">
+            <div class="task-head wizard-step-header">
               <span class="step-num">2</span>
               <span class="step-title">手順2 楽天（取得→除外判断→印刷完了）</span>
-              <span class="task-status" data-task-status="rakuten">未実行</span>
-            </div>
-            <div id="step-rakuten-download" class="task-process-row" data-process-id="rakuten_download">
-              <div class="task-process-label">
-                <span class="process-title">取得</span>
-                <span class="process-desc">楽天領収書を取得</span>
-              </div>
-              <div class="step-actions">
+              <div class="wizard-step-header-actions">
                 <button type="button" class="primary" data-step-action="rakuten_download">📥 楽天領収書を取得</button>
-                <button type="button" class="step-reset" data-step-reset="rakuten_download">↺ リセット</button>
+                <span class="task-status" data-task-status="rakuten">未実行</span>
               </div>
-              <span class="step-status process-status" data-step-status="rakuten_download">未実行</span>
             </div>
-            <div id="step-rakuten-decide-print" class="task-process-row" data-process-id="rakuten_decide_print">
-              <div class="task-process-label">
-                <span class="process-title">除外判断・印刷（完了記録まで）</span>
-                <span class="process-desc">除外対象を決めて印刷し、完了を記録</span>
+            <details class="wizard-step-details">
+              <summary class="step-detail-toggle">詳細</summary>
+              <div id="step-rakuten-download" class="task-process-row" data-process-id="rakuten_download">
+                <div class="task-process-label">
+                  <span class="process-title">取得</span>
+                  <span class="process-desc">取得後の再実行はここから操作します。</span>
+                </div>
+                <div class="step-actions">
+                  <button type="button" class="step-reset" data-step-reset="rakuten_download">↺ リセット</button>
+                </div>
+                <span class="step-status process-status" data-step-status="rakuten_download">未実行</span>
               </div>
-              <div class="step-actions">
-                <a class="secondary" data-step-link="rakuten_exclude" href="#">除外・印刷（完了記録まで）を開く</a>
-                <button type="button" class="step-reset" data-step-reset="rakuten_decide_print">↺ リセット</button>
+              <div id="step-rakuten-decide-print" class="task-process-row" data-process-id="rakuten_decide_print">
+                <div class="task-process-label">
+                  <span class="process-title">除外判断・印刷（完了記録まで）</span>
+                  <span class="process-desc">除外対象を決めて印刷し、完了を記録</span>
+                </div>
+                <div class="step-actions">
+                  <a class="secondary" data-step-link="rakuten_exclude" href="#">除外・印刷（完了記録まで）を開く</a>
+                  <button type="button" class="step-reset" data-step-reset="rakuten_decide_print">↺ リセット</button>
+                </div>
+                <span class="step-status process-status" data-step-status="rakuten_decide_print">未実行</span>
               </div>
-              <span class="step-status process-status" data-step-status="rakuten_decide_print">未実行</span>
-            </div>
+            </details>
           </div>
           <div id="step-provider-ingest" class="wizard-step" data-step-id="provider_ingest">
-            <div class="step-head">
+            <div class="step-head wizard-step-header">
               <span class="step-num">3</span>
               <span class="step-title">手順3 共通フォルダ取り込み（手動取得分）</span>
-              <span class="step-status" data-step-status="provider_ingest">未実行</span>
+              <div class="wizard-step-header-actions">
+                <button type="button" class="primary" data-provider-action="import_provider_receipts">
+                  📥 共通フォルダから取り込み
+                </button>
+                <span class="step-status" data-step-status="provider_ingest">未実行</span>
+              </div>
             </div>
-            <div class="step-actions">
-              <button type="button" class="secondary" data-provider-action="open_provider_source">
-                📂 連携元フォルダを開く
-              </button>
-              <button type="button" class="secondary" data-provider-action="open_shared_inbox">
-                📂 共通フォルダを開く
-              </button>
-              <button type="button" class="primary" data-provider-action="import_provider_receipts">
-                📥 共通フォルダから取り込み
-              </button>
-              <button type="button" class="secondary" data-provider-action="print_provider_receipts">
-                🖨 一括印刷（結合PDFを開く）
-              </button>
-              <span class="muted">自動取得されない領収書（Aqua Voice / Claude / ChatGPT / Gamma など）を共通フォルダの直下に入れて取り込みます。<a href="/workspace" target="_blank" rel="noopener noreferrer">ワークスペースを開く</a></span>
-              <span class="muted" data-provider-source-summary>Provider source folder status will appear here.</span>
-              <span class="muted" data-provider-import-summary>Provider import result will appear here.</span>
-              <span class="muted" data-provider-source-setup-guide hidden>
-                `AX_MANUAL_RECEIPT_SOURCE_DIR` を設定してください。<a href="#" target="_blank" rel="noopener noreferrer">セットアップ手順</a>
-              </span>
-            </div>
+            <details class="wizard-step-details">
+              <summary class="step-detail-toggle">詳細</summary>
+              <div class="step-actions">
+                <button type="button" class="secondary" data-provider-action="open_provider_source">
+                  📂 連携元フォルダを開く
+                </button>
+                <button type="button" class="secondary" data-provider-action="open_shared_inbox">
+                  📂 共通フォルダを開く
+                </button>
+                <button type="button" class="secondary" data-provider-action="print_provider_receipts">
+                  🖨 一括印刷（結合PDFを開く）
+                </button>
+                <span class="muted">手動取得分を共通フォルダへ置いて取り込みます。詳細は<a href="/workspace" target="_blank" rel="noopener noreferrer">ワークスペース手順</a>へ。</span>
+                <span class="muted" data-provider-source-summary>Provider source folder status will appear here.</span>
+                <span class="muted" data-provider-import-summary>Provider import result will appear here.</span>
+                <span class="muted" data-provider-source-setup-guide hidden>
+                  `AX_MANUAL_RECEIPT_SOURCE_DIR` の設定が必要です。<a href="#" target="_blank" rel="noopener noreferrer">セットアップ手順</a>
+                </span>
+              </div>
+            </details>
           </div>
           <div id="step-mf-bulk-upload-task" class="wizard-step" data-step-id="mf_bulk_upload_task">
-            <div class="step-head">
+            <div class="step-head wizard-step-header">
               <span class="step-num">4</span>
               <span class="step-title">手順4 MF一括アップロード（必要な場合のみ）</span>
-              <span class="step-status" data-step-status="mf_bulk_upload_task">未実行</span>
+              <div class="wizard-step-header-actions">
+                <button type="button" class="primary" data-manual-action="run_mf_bulk_upload">▶ MF一括アップロードを実行</button>
+                <span class="step-status" data-step-status="mf_bulk_upload_task">未実行</span>
+              </div>
             </div>
-            <div class="step-actions">
-              <button type="button" class="secondary" data-manual-action="open_mf_bulk_inbox">📂 MF一括アップロード用フォルダを開く</button>
-              <button type="button" class="primary" data-manual-action="run_mf_bulk_upload">▶ MF一括アップロードを実行</button>
-              <span class="muted">mf_bulk_upload/inbox の領収書をMFへ送信します。送信済みファイルは _uploaded に移動します。</span>
-              <button type="button" class="secondary" data-manual-action="open_mf_csv_inbox">📂 交通費CSVインポート用フォルダを開く</button>
-              <button type="button" class="primary" data-manual-action="run_mf_csv_import">▶ 交通費CSVインポートを実行</button>
-              <span class="muted">mf_csv_import/inbox のCSVを交通費インポートへ送信します。送信済みファイルは _imported に移動します。</span>
-            </div>
+            <details class="wizard-step-details">
+              <summary class="step-detail-toggle">詳細</summary>
+              <div class="step-actions">
+                <button type="button" class="secondary" data-manual-action="open_mf_bulk_inbox">📂 MF一括アップロード用フォルダを開く</button>
+                <button type="button" class="secondary" data-manual-action="open_mf_csv_inbox">📂 交通費CSVインポート用フォルダを開く</button>
+                <button type="button" class="secondary" data-manual-action="run_mf_csv_import">▶ 交通費CSVインポートを実行</button>
+                <span class="muted">領収書は mf_bulk_upload/inbox、CSVは mf_csv_import/inbox を使用します。詳細は運用ガイドを確認してください。</span>
+              </div>
+            </details>
           </div>
           <div id="step-month-close" class="wizard-step" data-step-id="month_close">
-            <div class="step-head">
+            <div class="step-head wizard-step-header">
               <span class="step-num">5</span>
               <span class="step-title">手順5 月次クローズ（完了時のみ）</span>
-              <span class="step-status pending">未実行</span>
-            </div>
-            <div class="step-actions">
-              <button type="button" class="secondary" data-archive-action="archive_outputs">
-                🧳 アーカイブ作成（保存のみ）
-              </button>
-              <button type="button" class="secondary" data-archive-action="month_close">
-                🧹 月次クローズ（アーカイブ+クリーンアップ）
-              </button>
-              <div class="month-close-checklist" data-month-close-checklist>
-                <div class="checklist-header">月次クローズ前の確認項目</div>
-                <div class="checklist-items">
-                  <label class="checklist-item">
-                    <input type="checkbox" data-checklist-item="expense_submission">
-                    <span>①申請</span>
-                  </label>
-                  <label class="checklist-item">
-                    <input type="checkbox" data-checklist-item="document_printout">
-                    <span>②申請画面プリントアウト</span>
-                  </label>
-                  <label class="checklist-item">
-                    <input type="checkbox" data-checklist-item="mf_accounting_link">
-                    <span>③ＭＦ会計と連携</span>
-                  </label>
-                </div>
+              <div class="wizard-step-header-actions">
+                <button type="button" class="primary" data-archive-action="month_close">
+                  🧹 月次クローズ（アーカイブ+クリーンアップ）
+                </button>
+                <span class="step-status pending">未実行</span>
               </div>
-              <span class="muted">月次処理完了後、成果物をアーカイブし、翌月へ移行します。</span>
-              <span class="muted">「月次クローズ」実行後、フォームの年月が自動的に翌月に切り替わります。</span>
             </div>
+            <details class="wizard-step-details">
+              <summary class="step-detail-toggle">詳細</summary>
+              <div class="step-actions">
+                <button type="button" class="secondary" data-archive-action="archive_outputs">
+                  🧳 アーカイブ作成（保存のみ）
+                </button>
+                <div class="month-close-checklist" data-month-close-checklist>
+                  <div class="checklist-header">月次クローズ前の確認項目</div>
+                  <div class="checklist-items">
+                    <label class="checklist-item">
+                      <input type="checkbox" data-checklist-item="expense_submission">
+                      <span>①申請</span>
+                    </label>
+                    <label class="checklist-item">
+                      <input type="checkbox" data-checklist-item="document_printout">
+                      <span>②申請画面プリントアウト</span>
+                    </label>
+                    <label class="checklist-item">
+                      <input type="checkbox" data-checklist-item="mf_accounting_link">
+                      <span>③ＭＦ会計と連携</span>
+                    </label>
+                  </div>
+                </div>
+                <span class="muted">処理後は成果物をアーカイブし、年月は翌月へ切り替わります。詳細は月次クローズ手順を確認してください。</span>
+              </div>
+            </details>
           </div>
         </div>
       </section>
