@@ -386,15 +386,68 @@
 }
 
 .wizard-step {
-  padding: 16px;
+  padding: 22px 20px;
   border-radius: 16px;
   background: linear-gradient(
     180deg,
     rgb(var(--surface-2) / 0.92) 0%,
     rgb(var(--surface-2) / 0.74) 100%
   );
-  border: 1px solid rgb(var(--semantic-field-border-default));
+  border: 1px solid rgb(var(--semantic-field-border-default) / 0.55);
   box-shadow: var(--shadow-sm);
+}
+
+.wizard-step-header-actions {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.wizard-step-details {
+  margin-top: 12px;
+}
+
+.wizard-step-header-actions > :where(.primary, .secondary, .step-reset) {
+  min-height: 38px;
+}
+
+.wizard-step-header-actions .step-status,
+.wizard-step-header-actions .task-status {
+  justify-self: auto;
+}
+
+.wizard-step-details > summary {
+  list-style: none;
+}
+
+.wizard-step-details > summary::-webkit-details-marker {
+  display: none;
+}
+
+.step-detail-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: rgb(var(--text-secondary));
+  cursor: pointer;
+  user-select: none;
+}
+
+.step-detail-toggle::before {
+  content: "▸";
+  font-size: 11px;
+  transition: transform var(--transition-fast);
+}
+
+.wizard-step-details[open] .step-detail-toggle::before {
+  transform: rotate(90deg);
+}
+
+.wizard-step-details .step-actions {
+  margin-top: 10px;
 }
 
 .preflight-inline {
@@ -418,9 +471,9 @@
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   gap: 12px;
-  margin-bottom: 12px;
+  margin-bottom: 10px;
   padding-bottom: 10px;
-  border-bottom: 1px solid rgb(var(--semantic-field-border-default) / 0.64);
+  border-bottom: 1px solid rgb(var(--semantic-field-border-default) / 0.4);
 }
 
 .step-num {
@@ -505,14 +558,18 @@
   row-gap: 10px;
 }
 
-.wizard-step > .step-actions > :where(.primary, .secondary, .step-reset) {
+.wizard-step .step-actions > :where(.primary, .secondary, .step-reset) {
   min-height: 40px;
 }
 
-.wizard-step > .step-actions > .muted {
+.wizard-step .step-actions > .muted {
   flex: 1 1 100%;
-  line-height: 1.55;
+  line-height: 1.5;
   margin: 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 .scheduler-panel {
@@ -764,7 +821,7 @@
   align-items: center;
   gap: 12px;
   padding-bottom: 10px;
-  border-bottom: 1px solid rgb(var(--semantic-field-border-default) / 0.64);
+  border-bottom: 1px solid rgb(var(--semantic-field-border-default) / 0.4);
 }
 
 .task-status {
@@ -1611,9 +1668,13 @@
     grid-template-columns: auto minmax(0, 1fr);
   }
 
+  .wizard-step-header-actions {
+    grid-column: 1 / -1;
+    justify-content: flex-start;
+  }
+
   .step-status,
   .task-status {
-    grid-column: 1 / -1;
     justify-self: start;
   }
 }
