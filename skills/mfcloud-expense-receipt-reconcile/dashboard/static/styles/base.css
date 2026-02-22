@@ -23,6 +23,12 @@
   --surface-3: 210 214 220;
   --surface-4: 180 185 190;
   --surface-overlay: 0 0 0;
+  --surface-glass: 255 255 255;
+  --surface-glass-alpha: 0.76;
+  --surface-glass-border: 188 197 210;
+  --surface-glass-border-alpha: 0.64;
+  --surface-glass-blur: 18px;
+  --surface-glass-fallback: var(--surface-1);
 
   --text-default: 23 23 26;
   --text-secondary: 80 85 90;
@@ -138,6 +144,12 @@
   --surface-3: 54 54 56;
   --surface-4: 72 72 74;
   --surface-overlay: 0 0 0;
+  --surface-glass: 33 36 44;
+  --surface-glass-alpha: 0.68;
+  --surface-glass-border: 126 136 155;
+  --surface-glass-border-alpha: 0.52;
+  --surface-glass-blur: 18px;
+  --surface-glass-fallback: 34 34 36;
 
   --text-default: 235 235 245;
   --text-secondary: 180 180 185;
@@ -180,6 +192,12 @@
     --surface-3: 54 54 56;
     --surface-4: 72 72 74;
     --surface-overlay: 0 0 0;
+    --surface-glass: 33 36 44;
+    --surface-glass-alpha: 0.68;
+    --surface-glass-border: 126 136 155;
+    --surface-glass-border-alpha: 0.52;
+    --surface-glass-blur: 18px;
+    --surface-glass-fallback: 34 34 36;
 
     --text-default: 235 235 245;
     --text-secondary: 180 180 185;
